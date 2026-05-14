@@ -48,14 +48,14 @@ class ReportOperationsService
             WHERE 1=1 {$dateCondition}
         ", $params);
 
-        // Services
+        // Online services (replaces legacy service_orders)
         $services = DB::selectOne("
             SELECT
                 COUNT(*) as total_orders,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
                 SUM(CASE WHEN status != 'cancelled' THEN selling_price ELSE 0 END) as total_revenue,
                 SUM(CASE WHEN status != 'cancelled' THEN profit ELSE 0 END) as total_profit
-            FROM service_orders
+            FROM online_transactions
             WHERE 1=1 {$dateCondition}
         ", $params);
 
@@ -64,8 +64,8 @@ class ReportOperationsService
             SELECT
                 COUNT(*) as total_transactions,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as total_amount,
-                SUM(CASE WHEN status = 'completed' THEN fee ELSE 0 END) as total_fees
+                SUM(CASE WHEN status = 'completed' THEN selling_price ELSE 0 END) as total_amount,
+                SUM(CASE WHEN status = 'completed' THEN profit ELSE 0 END) as total_fees
             FROM online_transactions
             WHERE 1=1 {$dateCondition}
         ", $params);
