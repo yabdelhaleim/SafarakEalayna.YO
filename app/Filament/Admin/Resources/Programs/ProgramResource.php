@@ -151,8 +151,8 @@ class ProgramResource extends Resource
             ->filters([
                 SelectFilter::make('program_type')->label('النوع')->options(['hajj' => 'حج', 'umra' => 'عمرة']),
             ])
-            ->recordActions([
-                Action::make('addCost')
+            ->actions([
+                \Filament\Tables\Actions\Action::make('addCost')
                     ->label('تسجيل مصروف')
                     ->icon('heroicon-o-minus-circle')
                     ->color('danger')
@@ -196,10 +196,10 @@ class ProgramResource extends Resource
                         \Filament\Notifications\Notification::make()->title('تم تسجيل المصروف')->success()->send();
                     }),
                 \Filament\Tables\Actions\ViewAction::make(),
-                EditAction::make(),
-                DeleteAction::make()
+                \Filament\Tables\Actions\EditAction::make(),
+                \Filament\Tables\Actions\DeleteAction::make()
             ])
-            ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
+            ->bulkActions([\Filament\Tables\Actions\BulkActionGroup::make([\Filament\Tables\Actions\DeleteBulkAction::make()])]);
     }
 
     public static function getPages(): array

@@ -27,6 +27,30 @@ class FlightCarrierController extends Controller
         return ApiResponse::success('Flight carriers retrieved successfully', $carriers);
     }
 
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'flight_system_id' => 'nullable|exists:flight_systems,id',
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:50|unique:flight_carriers,code',
+            'iata_code' => 'nullable|string|max:10',
+            'currency' => 'required|string|max:10',
+            'balance' => 'numeric|min:0',
+            'credit_limit' => 'numeric|min:0',
+            'is_active' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        $validated['created_by'] = $request->user()?->id ?? 1;
+        $validated['is_active'] = $validated['is_active'] ?? true;
+        $validated['balance'] = $validated['balance'] ?? 0;
+        $validated['credit_limit'] = $validated['credit_limit'] ?? 0;
+
+        $carrier = FlightCarrier::create($validated);
+
+        return ApiResponse::success('Flight carrier created successfully', $carrier, 201);
+    }
+
     public function show(FlightCarrier $carrier)
     {
         $carrier->load(['system', 'groups', 'transactions' => function($q) {
@@ -34,6 +58,32 @@ class FlightCarrierController extends Controller
         }]);
 
         return ApiResponse::success('Flight carrier retrieved successfully', $carrier);
+    }
+
+    public function update(Request $request, FlightCarrier $carrier)
+    {
+        $validated = $request->validate([
+            'flight_system_id' => 'nullable|exists:flight_systems,id',
+            'name' => 'sometimes|required|string|max:255',
+            'code' => 'sometimes|required|string|max:50|unique:flight_carriers,code,' . $carrier->id,
+            'iata_code' => 'nullable|string|max:10',
+            'currency' => 'sometimes|required|string|max:10',
+            'balance' => 'numeric|min:0',
+            'credit_limit' => 'numeric|min:0',
+            'is_active' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        $carrier->update($validated);
+
+        return ApiResponse::success('Flight carrier updated successfully', $carrier);
+    }
+
+    public function destroy(FlightCarrier $carrier)
+    {
+        $carrier->delete();
+
+        return ApiResponse::success('Flight carrier deleted successfully');
     }
 
     public function balance(Request $request, FlightCarrier $carrier)

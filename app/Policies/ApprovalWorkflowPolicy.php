@@ -13,7 +13,7 @@ class ApprovalWorkflowPolicy
      */
     public function viewAny(User $user): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -21,7 +21,7 @@ class ApprovalWorkflowPolicy
      */
     public function view(User $user, ApprovalWorkflow $approvalWorkflow): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -29,7 +29,7 @@ class ApprovalWorkflowPolicy
      */
     public function create(User $user): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -37,7 +37,7 @@ class ApprovalWorkflowPolicy
      */
     public function update(User $user, ApprovalWorkflow $approvalWorkflow): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -45,7 +45,7 @@ class ApprovalWorkflowPolicy
      */
     public function delete(User $user, ApprovalWorkflow $approvalWorkflow): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -53,7 +53,7 @@ class ApprovalWorkflowPolicy
      */
     public function restore(User $user, ApprovalWorkflow $approvalWorkflow): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -61,7 +61,7 @@ class ApprovalWorkflowPolicy
      */
     public function forceDelete(User $user, ApprovalWorkflow $approvalWorkflow): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**

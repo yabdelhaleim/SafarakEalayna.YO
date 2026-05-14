@@ -61,4 +61,55 @@ class AuditController extends Controller
 
         return ApiResponse::success('التقرير اليومي', $report);
     }
+
+    public function index(Request $request)
+    {
+        $logs = \App\Models\AuditLog::with('user')->latest()->paginate($request->input('per_page', 50));
+        return ApiResponse::success('سجل التدقيق', $logs->items(), ['pagination' => [
+            'total' => $logs->total(),
+            'current_page' => $logs->currentPage(),
+            'last_page' => $logs->lastPage(),
+        ]]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'action' => 'required|string',
+            'model_type' => 'nullable|string',
+            'model_id' => 'nullable|integer',
+            'notes' => 'nullable|string',
+        ]);
+
+        $log = \App\Models\AuditLog::create(array_merge($validated, [
+            'user_id' => $request->user()?->id ?? 1,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]));
+
+        return ApiResponse::success('تم إنشاء سجل التدقيق بنجاح', $log, 201);
+    }
+
+    public function show(\App\Models\AuditLog $audit)
+    {
+        return ApiResponse::success('تفاصيل سجل التدقيق', $audit->load('user'));
+    }
+
+    public function update(Request $request, \App\Models\AuditLog $audit)
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+        ]);
+
+        $audit->update($validated);
+
+        return ApiResponse::success('تم تحديث السجل بنجاح', $audit);
+    }
+
+    public function destroy(\App\Models\AuditLog $audit)
+    {
+        $audit->delete();
+
+        return ApiResponse::success('تم حذف السجل بنجاح');
+    }
 }

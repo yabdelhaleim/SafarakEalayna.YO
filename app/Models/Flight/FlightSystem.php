@@ -52,7 +52,7 @@ class FlightSystem extends Model
 
     public function bookings(): HasMany
     {
-        return $this->hasMany(\App\Models\Flight\FlightBooking::class);
+        return $this->hasMany(\App\Models\FlightBooking::class);
     }
 
     public function systemTransactions(): HasMany

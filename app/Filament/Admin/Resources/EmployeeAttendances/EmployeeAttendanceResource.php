@@ -73,19 +73,25 @@ class EmployeeAttendanceResource extends Resource
                 TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'present' => 'success',
-                        'absent' => 'danger',
-                        'late' => 'warning',
-                        'excused' => 'info',
-                        default => 'gray',
+                    ->color(function ($state): string {
+                        $val = $state instanceof \BackedEnum ? $state->value : $state;
+                        return match ($val) {
+                            'present' => 'success',
+                            'absent' => 'danger',
+                            'late' => 'warning',
+                            'excused' => 'info',
+                            default => 'gray',
+                        };
                     })
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'present' => 'حاضر',
-                        'absent' => 'غائب',
-                        'late' => 'متأخر',
-                        'excused' => 'مستأذن / إجازة',
-                        default => $state,
+                    ->formatStateUsing(function ($state) {
+                        $val = $state instanceof \BackedEnum ? $state->value : $state;
+                        return match($val) {
+                            'present' => 'حاضر',
+                            'absent' => 'غائب',
+                            'late' => 'متأخر',
+                            'excused' => 'مستأذن / إجازة',
+                            default => $val,
+                        };
                     }),
             ])
             ->filters([
@@ -110,12 +116,12 @@ class EmployeeAttendanceResource extends Resource
                     })
             ])
             ->actions([
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+                \Filament\Tables\Actions\EditAction::make(),
+                \Filament\Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                \Filament\Tables\Actions\BulkActionGroup::make([
+                    \Filament\Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

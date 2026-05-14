@@ -15,7 +15,7 @@ class Invoice extends Model
 {
     use SoftDeletes;
 
-    #[Fillable([
+    protected $fillable = [
         'invoice_number',
         'customer_id',
         'type',
@@ -35,7 +35,7 @@ class Invoice extends Model
         'terms',
         'transaction_id',
         'created_by',
-    ])]
+    ];
 
     protected function casts(): array
     {

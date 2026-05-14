@@ -13,7 +13,7 @@ class AuditLogPolicy
      */
     public function viewAny(User $user): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -21,7 +21,7 @@ class AuditLogPolicy
      */
     public function view(User $user, AuditLog $auditLog): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -29,7 +29,7 @@ class AuditLogPolicy
      */
     public function create(User $user): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -37,7 +37,7 @@ class AuditLogPolicy
      */
     public function update(User $user, AuditLog $auditLog): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -45,7 +45,7 @@ class AuditLogPolicy
      */
     public function delete(User $user, AuditLog $auditLog): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -53,7 +53,7 @@ class AuditLogPolicy
      */
     public function restore(User $user, AuditLog $auditLog): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**
@@ -61,7 +61,7 @@ class AuditLogPolicy
      */
     public function forceDelete(User $user, AuditLog $auditLog): bool
     {
-        return false;
+        return in_array($user->role, ['admin', 'owner']);
     }
 
     /**

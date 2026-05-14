@@ -82,16 +82,17 @@ class EmployeeAttendanceResource extends Resource
 
                 BadgeColumn::make('status', 'الحالة')
                     ->colors([
-                        'present' => 'success',
-                        'absent' => 'danger',
-                        'late' => 'warning',
+                        'success' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'present',
+                        'danger' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'absent',
+                        'warning' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'late',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match($state) {
-                        return match($state) {
+                    ->formatStateUsing(function ($state): string {
+                        $val = $state instanceof \BackedEnum ? $state->value : $state;
+                        return match($val) {
                             'present' => 'حاضر',
                             'absent' => 'غائب',
                             'late' => 'تأخير',
-                            default => $state,
+                            default => (string) $val,
                         };
                     }),
 

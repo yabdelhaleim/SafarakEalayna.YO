@@ -170,6 +170,18 @@ class ReportController extends Controller
         }
     }
 
+    public function sales(Request $request): JsonResponse
+    {
+        try {
+            $filters = $this->validateDateFilters($request);
+            $data = $this->operationsService->getProfitSummary($filters);
+
+            return ApiResponse::success('Sales overview retrieved successfully.', $data);
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
     public function flightReport(Request $request): JsonResponse
     {
         try {

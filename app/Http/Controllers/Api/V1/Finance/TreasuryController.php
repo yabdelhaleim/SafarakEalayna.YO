@@ -76,4 +76,60 @@ class TreasuryController extends Controller
 
         return ApiResponse::success('تم إغلاق الدرج بنجاح', $result);
     }
+
+    public function index(Request $request)
+    {
+        $accounts = \App\Models\Account::whereIn('type', ['treasury', 'cashbox'])
+            ->active()
+            ->get();
+
+        return ApiResponse::success('قائمة الخزائن', $accounts);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|string',
+            'balance' => 'numeric|min:0',
+            'currency' => 'required|string|size:3',
+            'notes' => 'nullable|string',
+        ]);
+
+        $validated['owner_type'] = 'office';
+        $validated['is_active'] = true;
+
+        $accountService = app(\App\Services\Finance\AccountService::class);
+        $account = $accountService->createAccount($validated);
+
+        return ApiResponse::success('تم إنشاء الخزينة بنجاح', $account, 201);
+    }
+
+    public function show(\App\Models\Account $treasury)
+    {
+        return ApiResponse::success('تفاصيل الخزينة', $treasury);
+    }
+
+    public function update(Request $request, \App\Models\Account $treasury)
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'currency' => 'sometimes|required|string|size:3',
+            'is_active' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        $accountService = app(\App\Services\Finance\AccountService::class);
+        $treasury = $accountService->updateAccount($treasury, $validated);
+
+        return ApiResponse::success('تم تحديث الخزينة بنجاح', $treasury);
+    }
+
+    public function destroy(\App\Models\Account $treasury)
+    {
+        $accountService = app(\App\Services\Finance\AccountService::class);
+        $accountService->deactivateAccount($treasury);
+
+        return ApiResponse::success('تم تعطيل الخزينة بنجاح');
+    }
 }

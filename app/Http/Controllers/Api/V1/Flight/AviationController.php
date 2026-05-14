@@ -31,6 +31,15 @@ class AviationController extends Controller
         ], $status === 'ERROR' ? 422 : 200);
     }
 
+    public function index(Request $request): JsonResponse
+    {
+        $operation = 'LIST_BOOKINGS';
+        $filters = $request->only(['date_from', 'date_to', 'airline']);
+        $report = $this->aviationService->getReport($filters);
+        
+        return $this->respond('SUCCESS', $operation, $report['bookings'] ?? []);
+    }
+
     public function store(StoreAviationBookingRequest $request): JsonResponse
     {
         $operation = 'CREATE_BOOKING';
@@ -141,6 +150,18 @@ class AviationController extends Controller
             return $this->respond('SUCCESS', $operation, $transaction, [], [], $request->agent_name);
         } catch (\Exception $e) {
             return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'SYSTEM_ERROR', 'message' => $e->getMessage()]], [], $request->agent_name);
+        }
+    }
+
+    public function destroy($id): JsonResponse
+    {
+        $operation = 'DELETE_BOOKING';
+        try {
+            $booking = \App\Models\FlightBooking::findOrFail($id);
+            $booking->delete();
+            return $this->respond('SUCCESS', $operation, null);
+        } catch (\Exception $e) {
+            return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'DELETE_FAILED', 'message' => $e->getMessage()]]);
         }
     }
 }

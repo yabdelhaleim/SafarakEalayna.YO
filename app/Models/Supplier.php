@@ -13,7 +13,7 @@ class Supplier extends Model
 {
     use SoftDeletes;
 
-    #[Fillable([
+    protected $fillable = [
         'name',
         'code',
         'type',
@@ -31,7 +31,7 @@ class Supplier extends Model
         'is_active',
         'notes',
         'created_by',
-    ])]
+    ];
 
     protected function casts(): array
     {

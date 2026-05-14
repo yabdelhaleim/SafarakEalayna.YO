@@ -100,4 +100,38 @@ class EmployeeReportController extends Controller
             'data' => $report,
         ]);
     }
+
+    public function index(Request $request): JsonResponse
+    {
+        $fromDate = $request->input('from_date', now()->startOfMonth()->toDateString());
+        $toDate = $request->input('to_date', now()->endOfMonth()->toDateString());
+
+        $report = $this->reportService->getOverallReport($fromDate, $toDate);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Overall report generated successfully',
+            'data' => $report,
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+    }
+
+    public function show($id): JsonResponse
+    {
+        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+    }
+
+    public function update(Request $request, $id): JsonResponse
+    {
+        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+    }
+
+    public function destroy($id): JsonResponse
+    {
+        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+    }
 }

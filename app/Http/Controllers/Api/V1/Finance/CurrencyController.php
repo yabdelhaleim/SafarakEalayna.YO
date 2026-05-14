@@ -62,4 +62,40 @@ class CurrencyController extends Controller
 
         return ApiResponse::success('أسعار الصرف النشطة', $rates);
     }
+
+    public function index(Request $request)
+    {
+        $rates = \App\Models\ExchangeRate::orderBy('effective_date', 'desc')->get();
+        return ApiResponse::success('قائمة أسعار الصرف', $rates);
+    }
+
+    public function store(Request $request)
+    {
+        return $this->setRate($request);
+    }
+
+    public function show(\App\Models\ExchangeRate $currency)
+    {
+        return ApiResponse::success('تفاصيل سعر الصرف', $currency);
+    }
+
+    public function update(Request $request, \App\Models\ExchangeRate $currency)
+    {
+        $validated = $request->validate([
+            'rate' => 'sometimes|required|numeric|min:0',
+            'effective_date' => 'nullable|date',
+            'is_active' => 'boolean',
+        ]);
+
+        $currency->update($validated);
+
+        return ApiResponse::success('تم تحديث سعر الصرف بنجاح', $currency);
+    }
+
+    public function destroy(\App\Models\ExchangeRate $currency)
+    {
+        $currency->delete();
+
+        return ApiResponse::success('تم حذف سعر الصرف بنجاح');
+    }
 }

@@ -272,15 +272,15 @@ class FlightBookingResource extends Resource
             ->filters([
                 TrashedFilter::make(),
             ])
-            ->recordActions([
+            ->actions([
                 \Filament\Tables\Actions\Action::make('modify')
                     ->label('طلب تعديل')
                     ->icon('heroicon-o-adjustments-horizontal')
                     ->color('info')
                     ->url(fn ($record): string => \App\Filament\Admin\Resources\TicketModifications\TicketModificationResource::getUrl('create') . '?booking_id=' . $record->id),
-                EditAction::make()->modal(false),
+                \Filament\Tables\Actions\EditAction::make()->modal(false),
             ])
-            ->toolbarActions([
+            ->bulkActions([
             ]);
     }
 

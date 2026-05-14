@@ -86,15 +86,23 @@ class PassengerResource extends Resource
                 TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'adult' => 'success',
-                        'child' => 'warning',
-                        'infant' => 'info',
+                    ->color(function ($state): string {
+                        $val = $state instanceof \BackedEnum ? $state->value : $state;
+                        return match ($val) {
+                            'adult' => 'success',
+                            'child' => 'warning',
+                            'infant' => 'info',
+                            default => 'gray',
+                        };
                     })
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'adult' => 'بالغ',
-                        'child' => 'طفل',
-                        'infant' => 'رضيع',
+                    ->formatStateUsing(function ($state): string {
+                        $val = $state instanceof \BackedEnum ? $state->value : $state;
+                        return match ($val) {
+                            'adult' => 'بالغ',
+                            'child' => 'طفل',
+                            'infant' => 'رضيع',
+                            default => (string) $val,
+                        };
                     }),
                 TextColumn::make('date_of_birth')
                     ->label('تاريخ الميلاد')
@@ -103,13 +111,13 @@ class PassengerResource extends Resource
             ->filters([
                 //
             ])
-            ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
+            ->actions([
+                \Filament\Tables\Actions\EditAction::make(),
+                \Filament\Tables\Actions\DeleteAction::make(),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+            ->bulkActions([
+                \Filament\Tables\Actions\BulkActionGroup::make([
+                    \Filament\Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

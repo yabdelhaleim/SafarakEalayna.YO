@@ -58,4 +58,54 @@ class ApprovalController extends Controller
 
         return ApiResponse::success('تم رفض الطلب', $workflow);
     }
+
+    public function index(Request $request)
+    {
+        $workflows = ApprovalWorkflow::with(['requestedBy', 'approvable'])
+            ->latest()
+            ->get();
+
+        return ApiResponse::success('قائمة طلبات الموافقة', $workflows);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'approvable_type' => 'required|string',
+            'approvable_id' => 'required|integer',
+            'status' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $workflow = ApprovalWorkflow::create(array_merge($validated, [
+            'requested_by' => $request->user()?->id ?? 1,
+            'status' => $validated['status'] ?? 'pending',
+        ]));
+
+        return ApiResponse::success('تم إنشاء طلب الموافقة بنجاح', $workflow, 201);
+    }
+
+    public function show(ApprovalWorkflow $approval)
+    {
+        return ApiResponse::success('تفاصيل طلب الموافقة', $approval->load(['requestedBy', 'approvable']));
+    }
+
+    public function update(Request $request, ApprovalWorkflow $approval)
+    {
+        $validated = $request->validate([
+            'status' => 'sometimes|required|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $approval->update($validated);
+
+        return ApiResponse::success('تم تحديث طلب الموافقة بنجاح', $approval);
+    }
+
+    public function destroy(ApprovalWorkflow $approval)
+    {
+        $approval->delete();
+
+        return ApiResponse::success('تم حذف طلب الموافقة بنجاح');
+    }
 }
