@@ -328,8 +328,8 @@ class EmployeeBonusService
             ->pluck('count', 'employee_id')
             ->toArray();
 
-        // Service orders
-        $serviceQuery = DB::table('service_orders');
+        // Online transactions (replaces legacy service_orders)
+        $serviceQuery = DB::table('online_transactions');
         if ($fromDate) {
             $serviceQuery->where('created_at', '>=', $fromDate.' 00:00:00');
         }

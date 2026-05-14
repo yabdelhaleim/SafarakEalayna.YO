@@ -65,11 +65,14 @@ class AuditController extends Controller
     public function index(Request $request)
     {
         $logs = \App\Models\AuditLog::with('user')->latest()->paginate($request->input('per_page', 50));
-        return ApiResponse::success('سجل التدقيق', $logs->items(), ['pagination' => [
-            'total' => $logs->total(),
-            'current_page' => $logs->currentPage(),
-            'last_page' => $logs->lastPage(),
-        ]]);
+        return ApiResponse::success('سجل التدقيق', [
+            'items' => $logs->items(),
+            'pagination' => [
+                'total' => $logs->total(),
+                'current_page' => $logs->currentPage(),
+                'last_page' => $logs->lastPage(),
+            ],
+        ]);
     }
 
     public function store(Request $request)
