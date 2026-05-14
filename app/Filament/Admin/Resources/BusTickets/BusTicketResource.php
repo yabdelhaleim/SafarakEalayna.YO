@@ -1,0 +1,222 @@
+<?php
+
+namespace App\Filament\Admin\Resources\BusTickets;
+
+use App\Models\BusTicket;
+use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+
+class BusTicketResource extends Resource
+{
+    protected static ?string $model = BusTicket::class;
+
+    /** موديل قديم — إدارة الباص الحالية من موارد BusCompany / BusInventory / BusBooking. */
+    protected static bool $shouldRegisterNavigation = false;
+
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-truck';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'الباصات';
+
+    protected static ?string $navigationLabel = 'تذاكر الباص (قديم)';
+    protected static ?string $pluralLabel = 'تذاكر الباص (قديم)';
+    protected static ?string $modelLabel = 'تذكرة باص (قديم)';
+
+    protected static ?int $navigationSort = 5;
+
+    protected static ?string $recordTitleAttribute = 'passenger_name';
+
+    public static function form(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                TextInput::make('passenger_name')
+                    ->label('اسم الراكب')
+                    ->required()
+                    ->maxLength(255)
+                    ->searchable(),
+
+                TextInput::make('phone')
+                    ->label('رقم الهاتف')
+                    ->tel()
+                    ->maxLength(20)
+                    ->searchable(),
+
+                TextInput::make('country')
+                    ->label('الدولة')
+                    ->maxLength(100)
+                    ->required(),
+
+                TextInput::make('bus_name')
+                    ->label('اسم الباص')
+                    ->maxLength(255)
+                    ->required(),
+
+                TextInput::make('ticket_count')
+                    ->label('عدد التذاكر')
+                    ->numeric()
+                    ->default(1)
+                    ->minValue(1)
+                    ->required(),
+
+                DatePicker::make('departure_date')
+                    ->label('تاريخ المغادرة')
+                    ->required(),
+
+                DatePicker::make('return_date')
+                    ->label('تاريخ العودة'),
+
+                TextInput::make('purchase_price')
+                    ->label('سعر الشراء')
+                    ->numeric()
+                    ->prefix('ج.م')
+                    ->step(0.01)
+                    ->required(),
+
+                TextInput::make('selling_price')
+                    ->label('سعر البيع')
+                    ->numeric()
+                    ->prefix('ج.م')
+                    ->step(0.01)
+                    ->required(),
+
+                Select::make('employee_id')
+                    ->label('الموظف المسؤول')
+                    ->relationship('employee', 'name')
+                    ->searchable()
+                    ->required(),
+
+                Select::make('payment_method')
+                    ->label('طريقة الدفع')
+                    ->options([
+                        'cash' => 'نقدي',
+                        'bank_transfer' => 'تحويل بنكي',
+                        'card' => 'بطاقة',
+                        'other' => 'أخرى',
+                    ])
+                    ->required(),
+
+                TextInput::make('amount')
+                    ->label('المبلغ')
+                    ->numeric()
+                    ->prefix('ج.م')
+                    ->step(0.01),
+
+                TextInput::make('reference_number')
+                    ->label('رقم المرجع')
+                    ->maxLength(255),
+
+                TextInput::make('notes')
+                    ->label('ملاحظات')
+                    ->maxLength(500),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->recordTitleAttribute('passenger_name')
+            ->columns([
+                TextColumn::make('id', 'الرقم')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('passenger_name', 'اسم الراكب')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('phone', 'الهاتف')
+                    ->searchable(),
+
+                TextColumn::make('country', 'الدولة')
+                    ->searchable(),
+
+                TextColumn::make('bus_name', 'اسم الباص')
+                    ->searchable(),
+
+                TextColumn::make('ticket_count', 'عدد التذاكر')
+                    ->numeric()
+                    ->sortable(),
+
+                TextColumn::make('departure_date', 'تاريخ المغادرة')
+                    ->date('d/m/Y')
+                    ->sortable(),
+
+                TextColumn::make('return_date', 'تاريخ العودة')
+                    ->date('d/m/Y'),
+
+                TextColumn::make('selling_price', 'سعر البيع')
+                    ->money('jod')
+                    ->sortable(),
+
+                TextColumn::make('profit', 'الربح')
+                    ->money('jod')
+                    ->sortable()
+                    ->color('success'),
+
+                BadgeColumn::make('status', 'الحالة')
+                    ->color(fn (string $state): string => match ($state) {
+                        'pending' => 'warning',
+                        'confirmed' => 'success',
+                        'cancelled' => 'danger',
+                        'completed' => 'info',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'pending' => 'قيد الانتظار',
+                        'confirmed' => 'مؤكد',
+                        'cancelled' => 'ملغي',
+                        'completed' => 'مكتمل',
+                        default => $state,
+                    }),
+
+                TextColumn::make('employee.name', 'الموظف')
+                    ->searchable()
+                    ->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('status', 'الحالة')
+                    ->options([
+                        'pending' => 'قيد الانتظار',
+                        'confirmed' => 'مؤكد',
+                        'cancelled' => 'ملغي',
+                        'completed' => 'مكتمل',
+                    ]),
+
+                SelectFilter::make('country', 'الدولة')
+                    ->searchable(),
+
+                SelectFilter::make('employee_id', 'الموظف')
+                    ->relationship('employee', 'name')
+                    ->searchable(),
+            ])
+            ->defaultSort('departure_date', 'desc')
+            ->recordActions([
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ManageBusTickets::route('/'),
+        ];
+    }
+}

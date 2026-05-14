@@ -1,0 +1,26 @@
+{
+    "timestamp": "2026-05-06 22:15:09",
+    "total_operations": 12,
+    "passed": 7,
+    "failed": 5,
+    "success_rate": 58.33,
+    "results": {
+        "finance_account_create": true,
+        "finance_account_read": true,
+        "finance_account_update": true,
+        "finance_account_delete": false,
+        "flight_booking_create": false,
+        "bus_company_create": true,
+        "bus_company_read": true,
+        "bus_company_update": true,
+        "bus_company_delete": true,
+        "service_create": false,
+        "online_service_create": false,
+        "employee_create": false
+    },
+    "created_ids": {
+        "Finance Account": 28,
+        "Flight Customer": 3,
+        "Bus Company": 1
+    }
+}

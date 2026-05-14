@@ -1,0 +1,484 @@
+<?php
+
+use App\Enums\BusBookingStatus;
+use App\Enums\BusInventoryPaymentType;
+use App\Enums\FlightBookingStatus;
+use App\Enums\OnlineFeeType;
+use App\Enums\OnlineTransactionStatus;
+use App\Enums\ServiceOrderStatus;
+use App\Enums\TransactionType;
+use App\Models\Account;
+use App\Models\AccountEntry;
+use App\Models\Bus\BusBooking;
+use App\Models\Bus\BusInventory;
+use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightPayment;
+use App\Models\Flight\FlightRefund;
+use App\Models\Online\OnlineServiceType;
+use App\Models\Online\OnlineTransaction;
+use App\Models\Service\ServiceOrder;
+use App\Models\Service\ServicePayment;
+use App\Models\Transaction;
+use App\Services\Finance\TransactionService;
+use App\Services\Service\ServiceOrderService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use function Pest\Faker\faker;
+
+uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Artisan::call('db:seed');
+});
+
+// Test 1 — Account Balance Matches Entries Sum
+test('account balance matches entries sum', function () {
+    $accounts = Account::all();
+
+    foreach ($accounts as $account) {
+        $creditSum = AccountEntry::where('account_id', $account->id)
+            ->sum('credit');
+
+        $debitSum = AccountEntry::where('account_id', $account->id)
+            ->sum('debit');
+
+        $expectedBalance = $creditSum - $debitSum;
+        $actualBalance = (float) $account->balance;
+
+        $difference = abs($expectedBalance - $actualBalance);
+
+        $this->assertLessThanOrEqual(
+            0.01,
+            $difference,
+            "Account '{$account->name}' (ID: {$account->id}) balance mismatch. " .
+            "Expected: {$expectedBalance}, Actual: {$actualBalance}, Difference: {$difference}"
+        );
+    }
+});
+
+// Test 2 — Every Transaction Has Correct Journal Entry
+test('every transaction has correct entries', function () {
+    $transactions = Transaction::all();
+
+    foreach ($transactions as $transaction) {
+        $entries = AccountEntry::where('transaction_id', $transaction->id)->get();
+
+        $type = $transaction->type;
+        $amount = (float) $transaction->amount;
+
+        if ($type === TransactionType::Income) {
+            $this->assertCount(
+                1,
+                $entries,
+                "Income transaction {$transaction->id} should have exactly 1 entry, has {$entries->count()}"
+            );
+
+            $entry = $entries->first();
+
+            $this->assertEquals(
+                $amount,
+                (float) $entry->credit,
+                "Income transaction {$transaction->id} credit amount mismatch"
+            );
+
+            $this->assertEquals(
+                0.00,
+                (float) $entry->debit,
+                "Income transaction {$transaction->id} should have zero debit"
+            );
+
+            $this->assertEquals(
+                $transaction->to_account_id,
+                $entry->account_id,
+                "Income transaction {$transaction->id} entry account mismatch"
+            );
+        } elseif ($type === TransactionType::Expense) {
+            $this->assertCount(
+                1,
+                $entries,
+                "Expense transaction {$transaction->id} should have exactly 1 entry, has {$entries->count()}"
+            );
+
+            $entry = $entries->first();
+
+            $this->assertEquals(
+                $amount,
+                (float) $entry->debit,
+                "Expense transaction {$transaction->id} debit amount mismatch"
+            );
+
+            $this->assertEquals(
+                0.00,
+                (float) $entry->credit,
+                "Expense transaction {$transaction->id} should have zero credit"
+            );
+
+            $this->assertEquals(
+                $transaction->from_account_id,
+                $entry->account_id,
+                "Expense transaction {$transaction->id} entry account mismatch"
+            );
+        } elseif ($type === TransactionType::Refund) {
+            $this->assertCount(
+                1,
+                $entries,
+                "Refund transaction {$transaction->id} should have exactly 1 entry, has {$entries->count()}"
+            );
+
+            $entry = $entries->first();
+
+            $this->assertEquals(
+                $amount,
+                (float) $entry->debit,
+                "Refund transaction {$transaction->id} debit amount mismatch"
+            );
+
+            $this->assertEquals(
+                0.00,
+                (float) $entry->credit,
+                "Refund transaction {$transaction->id} should have zero credit"
+            );
+
+            $this->assertEquals(
+                $transaction->from_account_id,
+                $entry->account_id,
+                "Refund transaction {$transaction->id} entry account mismatch"
+            );
+        }
+    }
+});
+
+// Test 3 — Flight Payments Never Exceed Selling Price
+test('flight payments never exceed selling price', function () {
+    $bookings = FlightBooking::all();
+
+    foreach ($bookings as $booking) {
+        $totalPaid = FlightPayment::where('booking_id', $booking->id)
+            ->sum('amount');
+
+        $sellingPrice = (float) $booking->selling_price;
+
+        $this->assertLessThanOrEqual(
+            $sellingPrice,
+            (float) $totalPaid,
+            "Flight booking {$booking->booking_number} overpaid. " .
+            "Selling price: {$sellingPrice}, Total paid: {$totalPaid}"
+        );
+    }
+});
+
+// Test 4 — Every Flight Payment Has A Matching Transaction
+test('every flight payment has transaction', function () {
+    $payments = FlightPayment::all();
+
+    foreach ($payments as $payment) {
+        $transaction = Transaction::find($payment->transaction_id);
+
+        $this->assertNotNull(
+            $transaction,
+            "Flight payment {$payment->id} has missing transaction"
+        );
+
+        $this->assertEquals(
+            TransactionType::Income->value,
+            $transaction->type->value,
+            "Flight payment {$payment->id} transaction type is not income"
+        );
+
+        $this->assertEqualsWithDelta(
+            (float) $payment->amount,
+            (float) $transaction->amount,
+            0.01,
+            "Flight payment {$payment->id} amount mismatch with transaction"
+        );
+
+        $this->assertEquals(
+            'App\Models\Flight\FlightBooking',
+            $transaction->related_type,
+            "Flight payment {$payment->id} transaction related_type mismatch"
+        );
+
+        $this->assertEquals(
+            $payment->booking_id,
+            $transaction->related_id,
+            "Flight payment {$payment->id} transaction related_id mismatch"
+        );
+    }
+});
+
+// Test 5 — Flight Refund Calculations Are Correct
+test('flight refund calculations are correct', function () {
+    $refunds = FlightRefund::all();
+
+    foreach ($refunds as $refund) {
+        $expectedRefund = max(0, $refund->total_paid - $refund->airline_penalty - $refund->office_penalty);
+
+        $this->assertEqualsWithDelta(
+            $expectedRefund,
+            (float) $refund->refund_amount,
+            0.01,
+            "Flight refund {$refund->id} calculation incorrect. " .
+            "Expected: {$expectedRefund}, Actual: {$refund->refund_amount}"
+        );
+
+        $this->assertGreaterThanOrEqual(
+            0,
+            (float) $refund->refund_amount,
+            "Flight refund {$refund->id} has negative refund amount"
+        );
+
+        $booking = FlightBooking::find($refund->booking_id);
+
+        $this->assertNotNull($booking, "Flight refund {$refund->id} has missing booking");
+
+        $this->assertTrue(
+            in_array($booking->status->value, [
+                FlightBookingStatus::Cancelled->value,
+                FlightBookingStatus::Refunded->value,
+            ]),
+            "Flight refund {$refund->id} booking status is not cancelled/refunded"
+        );
+
+        if ($refund->refund_amount > 0) {
+            $transaction = Transaction::find($refund->transaction_id);
+
+            $this->assertNotNull(
+                $transaction,
+                "Flight refund {$refund->id} with amount > 0 has missing transaction"
+            );
+
+            $this->assertEquals(
+                TransactionType::Refund->value,
+                $transaction->type->value,
+                "Flight refund {$refund->id} transaction type is not refund"
+            );
+
+            $this->assertEqualsWithDelta(
+                (float) $refund->refund_amount,
+                (float) $transaction->amount,
+                0.01,
+                "Flight refund {$refund->id} transaction amount mismatch"
+            );
+        }
+    }
+});
+
+// Test 6 — Bus Inventory Ticket Counts Are Consistent
+test('bus inventory ticket count is consistent', function () {
+    $inventories = BusInventory::all();
+
+    foreach ($inventories as $inventory) {
+        $sold = BusBooking::where('inventory_id', $inventory->id)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
+            ->sum('quantity');
+
+        $expectedAvailable = $inventory->total_tickets - $sold;
+        $actualAvailable = $inventory->available_tickets;
+
+        $this->assertEquals(
+            $expectedAvailable,
+            $actualAvailable,
+            "Bus inventory {$inventory->id} available_tickets incorrect. " .
+            "Expected: {$expectedAvailable}, Actual: {$actualAvailable}"
+        );
+
+        $this->assertGreaterThanOrEqual(
+            0,
+            $actualAvailable,
+            "Bus inventory {$inventory->id} has negative available tickets"
+        );
+
+        $expectedTotalCost = $inventory->total_tickets * $inventory->cost_per_ticket;
+
+        $this->assertEqualsWithDelta(
+            $expectedTotalCost,
+            (float) $inventory->total_cost,
+            0.01,
+            "Bus inventory {$inventory->id} total_cost calculation incorrect"
+        );
+    }
+});
+
+// Test 7 — Bus Inventory Debt Is Consistent
+test('bus inventory debt is consistent', function () {
+    $inventories = BusInventory::all();
+
+    foreach ($inventories as $inventory) {
+        $amountPaid = (float) $inventory->amount_paid;
+        $remainingDebt = (float) $inventory->remaining_debt;
+        $totalCost = (float) $inventory->total_cost;
+
+        $this->assertEqualsWithDelta(
+            $totalCost,
+            $amountPaid + $remainingDebt,
+            0.01,
+            "Bus inventory {$inventory->id} debt inconsistency. " .
+            "amount_paid({$amountPaid}) + remaining_debt({$remainingDebt}) != total_cost({$totalCost})"
+        );
+
+        $this->assertGreaterThanOrEqual(
+            0,
+            $remainingDebt,
+            "Bus inventory {$inventory->id} has negative remaining debt"
+        );
+
+        if ($inventory->payment_type === BusInventoryPaymentType::Cash->value) {
+            $this->assertEquals(
+                0.00,
+                $remainingDebt,
+                "Bus inventory {$inventory->id} is cash payment but has remaining debt"
+            );
+        }
+    }
+});
+
+// Test 8 — Online Transaction Fee Calculation Is Correct
+test('online transaction fee calculation is correct', function () {
+    $transactions = OnlineTransaction::where('status', OnlineTransactionStatus::Completed->value)->get();
+
+    foreach ($transactions as $transaction) {
+        $serviceType = OnlineServiceType::find($transaction->type_id);
+
+        $this->assertNotNull($serviceType, "Online transaction {$transaction->id} has missing service type");
+
+        if ($serviceType->fee_type === OnlineFeeType::Fixed->value) {
+            $expectedFee = (float) $serviceType->fee_value;
+        } else {
+            $expectedFee = round((float) $transaction->amount * (float) $serviceType->fee_value / 100, 2);
+        }
+
+        $this->assertEqualsWithDelta(
+            $expectedFee,
+            (float) $transaction->fee,
+            0.01,
+            "Online transaction {$transaction->id} fee calculation incorrect. " .
+            "Type: {$serviceType->fee_type->value}, Expected: {$expectedFee}, Actual: {$transaction->fee}"
+        );
+
+        $expectedTotal = (float) $transaction->amount + $expectedFee;
+
+        $this->assertEqualsWithDelta(
+            $expectedTotal,
+            (float) $transaction->total_collected,
+            0.01,
+            "Online transaction {$transaction->id} total_collected incorrect"
+        );
+    }
+});
+
+// Test 9 — Online Transaction Dual Entry Is Correct
+test('online transaction dual entry is correct', function () {
+    $transactions = OnlineTransaction::where('status', OnlineTransactionStatus::Completed->value)->get();
+
+    foreach ($transactions as $transaction) {
+        $expenseTx = Transaction::find($transaction->expense_transaction_id);
+        $incomeTx = Transaction::find($transaction->income_transaction_id);
+
+        $this->assertNotNull(
+            $expenseTx,
+            "Online transaction {$transaction->id} missing expense transaction"
+        );
+
+        $this->assertNotNull(
+            $incomeTx,
+            "Online transaction {$transaction->id} missing income transaction"
+        );
+
+        $this->assertEquals(
+            TransactionType::Expense->value,
+            $expenseTx->type->value,
+            "Online transaction {$transaction->id} expense transaction has wrong type"
+        );
+
+        $this->assertEquals(
+            TransactionType::Income->value,
+            $incomeTx->type->value,
+            "Online transaction {$transaction->id} income transaction has wrong type"
+        );
+
+        $this->assertEqualsWithDelta(
+            (float) $transaction->amount,
+            (float) $expenseTx->amount,
+            0.01,
+            "Online transaction {$transaction->id} expense amount mismatch"
+        );
+
+        $this->assertEqualsWithDelta(
+            (float) $transaction->total_collected,
+            (float) $incomeTx->amount,
+            0.01,
+            "Online transaction {$transaction->id} income amount mismatch"
+        );
+
+        // Net effect verification
+        $netEffect = (float) $incomeTx->amount - (float) $expenseTx->amount;
+
+        $this->assertEqualsWithDelta(
+            (float) $transaction->fee,
+            $netEffect,
+            0.01,
+            "Online transaction {$transaction->id} net effect should equal fee"
+        );
+    }
+});
+
+// Test 10 — Service Order Cannot Be Overpaid
+test('service order cannot be overpaid', function () {
+    $order = ServiceOrder::where('status', ServiceOrderStatus::Completed->value)->first();
+
+    $this->assertNotNull($order, 'No completed service orders found in database');
+
+    $alreadyPaid = ServicePayment::where('order_id', $order->id)->sum('amount');
+    $remaining = (float) $order->selling_price - (float) $alreadyPaid;
+    $overpaymentAmount = $remaining + 100.00;
+
+    $service = app(ServiceOrderService::class);
+
+    $this->expectException(\Exception::class);
+    $this->expectExceptionMessage('exceed');
+
+    try {
+        $service->addPayment($order, [
+            'amount' => $overpaymentAmount,
+            'account_id' => 1,
+            'notes' => 'Test overpayment',
+        ]);
+    } catch (\Exception $e) {
+        // Verify payment was NOT created
+        $paymentCount = ServicePayment::where('order_id', $order->id)->count();
+        $this->assertEquals(
+            1,
+            $paymentCount,
+            'Payment count should not have changed after failed overpayment attempt'
+        );
+
+        // Verify account balance unchanged
+        $account = Account::find(1);
+        $this->assertNotNull($account, 'Account should exist');
+
+        // Re-throw to satisfy expectException
+        throw $e;
+    }
+});
+
+// Test 11 — Report Queries Complete Under 2 Seconds
+test('report queries are fast with large data', function () {
+    $reports = [
+        'Financial Summary' => fn () => app(\App\Services\Reports\ReportFinanceService::class)->getFinancialSummary([]),
+        'Profit Summary' => fn () => app(\App\Services\Reports\ReportOperationsService::class)->getProfitSummary([]),
+        'Employee Performance' => fn () => app(\App\Services\Reports\ReportEmployeeService::class)->getEmployeePerformance([]),
+        'Top Customers' => fn () => app(\App\Services\Reports\ReportCustomerService::class)->getTopCustomers([]),
+        'Accounts Balance' => fn () => app(\App\Services\Reports\ReportFinanceService::class)->getAccountsBalance(),
+    ];
+
+    foreach ($reports as $name => $query) {
+        $start = microtime(true);
+        $query();
+        $elapsed = microtime(true) - $start;
+
+        $this->assertLessThan(
+            2.0,
+            $elapsed,
+            "Report '{$name}' took {$elapsed}s — must be under 2 seconds."
+        );
+    }
+});

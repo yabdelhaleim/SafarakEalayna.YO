@@ -1,0 +1,421 @@
+<template>
+  <div class="auth-page">
+    <div class="auth-bg">
+      <div class="bg-orb bg-orb-1"></div>
+      <div class="bg-orb bg-orb-2"></div>
+      <div class="bg-orb bg-orb-3"></div>
+    </div>
+
+    <div class="auth-container">
+      <!-- Logo Section -->
+      <div class="auth-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="12" fill="url(#loginGrad)"/>
+            <path d="M14 33L24 15l10 18H14z" fill="white" opacity=".9"/>
+            <path d="M14 33h20" stroke="white" stroke-width="2" opacity=".45"/>
+            <defs>
+              <linearGradient id="loginGrad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3B82F6"/>
+                <stop offset="1" stop-color="#06B6D4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1 class="logo-title">سفارك إلينا</h1>
+        <p class="logo-subtitle">نظام إدارة السفر والسياحة</p>
+      </div>
+
+      <!-- Login Card -->
+      <div class="auth-card">
+        <div class="card-header">
+          <h2>تسجيل الدخول</h2>
+          <p>أدخل بياناتك للوصول إلى لوحة التحكم</p>
+        </div>
+
+        <!-- Error Alert -->
+        <div v-if="errorMessage" class="auth-error">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="10" cy="10" r="8"/>
+            <path d="M13 7l-6 6M7 7l6 6"/>
+          </svg>
+          <span>{{ errorMessage }}</span>
+        </div>
+
+        <form @submit.prevent="handleLogin" class="auth-form">
+          <div class="form-group">
+            <label for="email">البريد الإلكتروني</label>
+            <div class="input-wrap" :class="{ 'input-error': errors.email }">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                <rect x="2" y="4" width="16" height="12" rx="2"/>
+                <path d="M2 6l8 5 8-5"/>
+              </svg>
+              <input
+                id="email"
+                v-model="form.email"
+                type="email"
+                placeholder="admin@office.com"
+                required
+                autocomplete="email"
+                dir="ltr"
+              />
+            </div>
+            <span v-if="errors.email" class="field-error">{{ errors.email[0] || errors.email }}</span>
+          </div>
+
+          <div class="form-group">
+            <label for="password">كلمة المرور</label>
+            <div class="input-wrap" :class="{ 'input-error': errors.password }">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                <rect x="4" y="9" width="12" height="9" rx="2"/>
+                <path d="M7 9V6a3 3 0 016 0v3"/>
+              </svg>
+              <input
+                id="password"
+                v-model="form.password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="••••••••"
+                required
+                autocomplete="current-password"
+                dir="ltr"
+              />
+              <button type="button" class="toggle-pass" @click="showPassword = !showPassword" tabindex="-1">
+                <svg v-if="!showPassword" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M1 10s3-7 9-7 9 7 9 7-3 7-9 7-9-7-9-7z"/>
+                  <circle cx="10" cy="10" r="3"/>
+                </svg>
+                <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M8.1 8.1a3 3 0 004.25 4.25M3 3l14 14"/>
+                  <path d="M7.5 5.2C8.3 4.5 9.1 4 10 4c6 0 9 7 9 7s-1 2.3-3 4.2M1 10s1.5-3.5 4.5-5.5"/>
+                </svg>
+              </button>
+            </div>
+            <span v-if="errors.password" class="field-error">{{ errors.password[0] || errors.password }}</span>
+          </div>
+
+          <button type="submit" class="auth-btn" :disabled="authStore.loading.login">
+            <svg v-if="authStore.loading.login" class="spin" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M10 2a8 8 0 018 8"/>
+            </svg>
+            <span v-else>تسجيل الدخول</span>
+          </button>
+        </form>
+
+        <div class="auth-footer">
+          <span>ليس لديك حساب؟</span>
+          <router-link to="/register" class="auth-link">إنشاء حساب جديد</router-link>
+        </div>
+
+        <!-- Demo Credentials -->
+        <div class="demo-box">
+          <div class="demo-title">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+              <circle cx="10" cy="10" r="8"/>
+              <path d="M10 7v3M10 13h.01"/>
+            </svg>
+            بيانات تجريبية للدخول
+          </div>
+          <div class="demo-creds">
+            <div class="demo-row" @click="fillAdmin">
+              <span class="demo-label">مدير النظام:</span>
+              <code>admin@office.com</code> / <code>password</code>
+            </div>
+            <div class="demo-row" @click="fillEmployee">
+              <span class="demo-label">موظف:</span>
+              <code>employee1@office.com</code> / <code>password</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/authStore';
+
+const router = useRouter();
+const authStore = useAuthStore();
+
+const form = reactive({
+  email: '',
+  password: '',
+});
+
+const showPassword = ref(false);
+
+const errors = computed(() => authStore.errors);
+const errorMessage = computed(() => {
+  if (authStore.errors.message) return authStore.errors.message;
+  return '';
+});
+
+const handleLogin = async () => {
+  const result = await authStore.login(form);
+  if (result.success) {
+    router.push('/dashboard');
+  }
+};
+
+const fillAdmin = () => {
+  form.email = 'admin@office.com';
+  form.password = 'password';
+};
+
+const fillEmployee = () => {
+  form.email = 'employee1@office.com';
+  form.password = 'password';
+};
+</script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700;800&display=swap');
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080D18;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  direction: rtl;
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+}
+
+/* Animated background orbs */
+.auth-bg { position: absolute; inset: 0; pointer-events: none; }
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  animation: float 12s ease-in-out infinite;
+}
+.bg-orb-1 {
+  width: 500px; height: 500px;
+  background: rgba(59, 130, 246, 0.12);
+  top: -100px; right: -100px;
+  animation-delay: 0s;
+}
+.bg-orb-2 {
+  width: 400px; height: 400px;
+  background: rgba(6, 182, 212, 0.10);
+  bottom: -80px; left: -80px;
+  animation-delay: -4s;
+}
+.bg-orb-3 {
+  width: 300px; height: 300px;
+  background: rgba(59, 130, 246, 0.08);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: -8s;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-30px) scale(1.05); }
+}
+
+.auth-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* Logo */
+.auth-logo {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon { width: 56px; height: 56px; }
+.logo-icon svg { width: 100%; height: 100%; display: block; }
+.logo-title {
+  font-size: 28px; font-weight: 800;
+  color: #F1F5F9;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+.logo-subtitle {
+  font-size: 13px; color: #3E5474;
+  margin: 0;
+}
+
+/* Card */
+.auth-card {
+  width: 100%;
+  background: #0E1525;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 32px 28px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.card-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.card-header h2 {
+  font-size: 22px; font-weight: 700;
+  color: #F1F5F9; margin: 0 0 6px;
+}
+.card-header p {
+  font-size: 13px; color: #8EA5C2; margin: 0;
+}
+
+/* Error Alert */
+.auth-error {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 10px;
+  margin-bottom: 18px;
+  color: #EF4444;
+  font-size: 13px; font-weight: 500;
+}
+.auth-error svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* Form */
+.auth-form { display: flex; flex-direction: column; gap: 18px; }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group label {
+  font-size: 13px; font-weight: 600; color: #8EA5C2;
+}
+
+.input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  background: #141E30;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 0 14px;
+  height: 44px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-wrap:focus-within {
+  border-color: rgba(59,130,246,0.5);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+.input-wrap.input-error {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+.input-wrap > svg {
+  width: 16px; height: 16px; color: #3E5474; flex-shrink: 0;
+}
+.input-wrap input {
+  flex: 1; border: none; outline: none;
+  background: transparent;
+  font-size: 14px; color: #F1F5F9;
+  font-family: inherit;
+  height: 100%;
+}
+.input-wrap input::placeholder { color: #3E5474; }
+
+.toggle-pass {
+  background: none; border: none; cursor: pointer;
+  padding: 0; color: #3E5474;
+  display: flex; align-items: center;
+  transition: color 0.15s;
+}
+.toggle-pass:hover { color: #8EA5C2; }
+.toggle-pass svg { width: 16px; height: 16px; }
+
+.field-error {
+  font-size: 11.5px; color: #EF4444; padding-right: 2px;
+}
+
+/* Submit Button */
+.auth-btn {
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3B82F6, #06B6D4);
+  color: white;
+  font-family: inherit;
+  font-size: 15px; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(59,130,246,0.25);
+  margin-top: 4px;
+}
+.auth-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 28px rgba(59,130,246,0.35);
+}
+.auth-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.auth-btn:disabled {
+  opacity: 0.6; cursor: not-allowed;
+}
+
+.spin {
+  width: 20px; height: 20px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Footer */
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px; color: #8EA5C2;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.auth-link {
+  color: #3B82F6;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+.auth-link:hover { color: #60A5FA; }
+
+/* Demo Box */
+.demo-box {
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 10px;
+}
+.demo-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: #3B82F6;
+  margin-bottom: 10px;
+}
+.demo-title svg { width: 14px; height: 14px; }
+.demo-creds { display: flex; flex-direction: column; gap: 6px; }
+.demo-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; color: #8EA5C2;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.demo-row:hover { background: rgba(59, 130, 246, 0.08); }
+.demo-label { font-weight: 600; color: #F1F5F9; }
+.demo-row code {
+  background: rgba(255,255,255,0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-family: 'Courier New', monospace;
+  color: #06B6D4;
+  direction: ltr;
+}
+</style>

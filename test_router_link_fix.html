@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Router Link Fix</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        .status-loading { background: #fef3c7; color: #854d0e; }
+        .status-ready { background: #d1fae5; color: #065f46; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <h1>🧪 اختبار إصلاح Router Link</h1>
+
+            <div class="card">
+                <h3>الحالة الحالية:</h3>
+                <div class="status" :class="'status-' + state">
+                    {{ stateText }}
+                </div>
+
+                <div v-if="booking">
+                    <p><strong>رقم الحجز:</strong> {{ booking.bookingNumber }}</p>
+                    <p><strong>ID:</strong> {{ booking.id }}</p>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button @click="startLoading" :disabled="loading">
+                        تحميل حجز
+                    </button>
+                    <button @click="clearBooking">
+                        مسح البيانات
+                    </button>
+                    <button @click="simulateError">
+                        محاكاة خطأ
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>اختبار الروابط:</h3>
+
+                <!-- حالة التحميل -->
+                <div v-if="loading">
+                    <p style="color: #94a3b8;">جاري التحميل...</p>
+                    <p style="font-size: 12px; color: #64748b;">الروابط يجب أن تكون مخفية أثناء التحميل</p>
+                </div>
+
+                <!-- حالة الخطأ -->
+                <div v-else-if="error">
+                    <p class="error">{{ error }}</p>
+                    <router-link to="/" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none;">
+                        العودة للرئيسية
+                    </router-link>
+                </div>
+
+                <!-- حالة البيانات -->
+                <div v-else-if="booking">
+                    <p class="success">✅ البيانات محملة - الروابط يجب أن تكون ظاهرة</p>
+
+                    <!-- الرابط الذي يسبب المشكلة -->
+                    <div style="margin-top: 15px; padding: 15px; background: #334155; border-radius: 8px;">
+                        <p style="margin-bottom: 10px;"><strong>الرابط المُصلح:</strong></p>
+                        <!-- مع v-if للحماية -->
+                        <router-link
+                            v-if="booking && booking.id"
+                            :to="{ name: 'details', params: { id: booking.id } }"
+                            style="display: inline-block; padding: 8px 16px; background: #d97706; color: white; border-radius: 6px; text-decoration: none;">
+                            تعديل الحجز
+                        </router-link>
+                        <span v-else style="color: #94a3b8; font-size: 12px;">
+                            (الرابط مخفي لأن booking.id غير متوفر)
+                        </span>
+                    </div>
+                </div>
+
+                <!-- حالة لا توجد بيانات -->
+                <div v-else>
+                    <p style="color: #94a3b8;">لا توجد بيانات</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>سجل الأخطاء:</h3>
+                <div v-if="errors.length === 0" style="color: #10b981;">
+                    ✅ لا توجد أخطاء
+                </div>
+                <div v-else>
+                    <div v-for="(err, idx) in errors" :key="idx" style="padding: 10px; background: #fee2e2; color: #991b1b; border-radius: 6px; margin-bottom: 5px; font-size: 12px;">
+                        {{ err }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+        const { createRouter, createWebHashHistory } = VueRouter;
+
+        const router = createRouter({
+            history: createWebHashHistory(),
+            routes: [
+                { path: '/', component: { template: '<div>الرئيسية</div>' } },
+                { path: '/details/:id', component: { template: '<div>تفاصيل الحجز: {{ $route.params.id }}</div>' } }
+            ]
+        });
+
+        // تتبع الأخطاء
+        const originalError = console.error;
+        console.error = function(...args) {
+            if (args[0] && args[0].toString().includes('Missing required param')) {
+                window.vueErrors = window.vueErrors || [];
+                window.vueErrors.push(args[0].toString());
+            }
+            originalError.apply(console, args);
+        };
+
+        const app = createApp({
+            data() {
+                return {
+                    loading: false,
+                    error: null,
+                    booking: null,
+                    errors: []
+                }
+            },
+            computed: {
+                state() {
+                    if (this.loading) return 'loading';
+                    if (this.error) return 'error';
+                    if (this.booking) return 'ready';
+                    return 'empty';
+                },
+                stateText() {
+                    switch(this.state) {
+                        case 'loading': return 'جاري التحميل...';
+                        case 'error': return 'خطأ';
+                        case 'ready': return 'جاهز';
+                        case 'empty': return 'فارغ';
+                    }
+                }
+            },
+            mounted() {
+                // مراقبة الأخطاء العالمية
+                setInterval(() => {
+                    if (window.vueErrors && window.vueErrors.length > 0) {
+                        this.errors = [...window.vueErrors];
+                        window.vueErrors = [];
+                    }
+                }, 500);
+            },
+            methods: {
+                async startLoading() {
+                    this.loading = true;
+                    this.error = null;
+
+                    // محاكاة API call
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    this.booking = {
+                        id: 226,
+                        bookingNumber: 'FLT-69F50F923C5EE',
+                        status: 'pending'
+                    };
+
+                    this.loading = false;
+                },
+                clearBooking() {
+                    this.booking = null;
+                    this.error = null;
+                    this.loading = false;
+                },
+                simulateError() {
+                    this.loading = true;
+                    this.error = null;
+
+                    // محاكاة خطأ
+                    setTimeout(() => {
+                        this.error = 'فشل تحميل الحجز';
+                        this.loading = false;
+                    }, 500);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

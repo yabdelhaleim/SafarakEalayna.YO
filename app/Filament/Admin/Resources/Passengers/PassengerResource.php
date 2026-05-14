@@ -1,0 +1,123 @@
+<?php
+
+namespace App\Filament\Admin\Resources\Passengers;
+
+use App\Filament\Admin\Concerns\BelongsToFlightModuleNavigation;
+use App\Filament\Admin\Resources\Passengers\Pages\ManagePassengers;
+use App\Models\Passenger;
+use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
+
+class PassengerResource extends Resource
+{
+    use BelongsToFlightModuleNavigation;
+
+    protected static ?string $model = Passenger::class;
+
+    protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-user-group';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'الشركاء والعملاء';
+
+    protected static ?string $navigationLabel = 'المسافرين';
+    protected static ?string $pluralLabel = 'المسافرين';
+    protected static ?string $modelLabel = 'مسافر';
+
+    protected static ?int $navigationSort = 10;
+
+    protected static ?string $recordTitleAttribute = 'first_name';
+
+    public static function form(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                Select::make('flight_booking_id')
+                    ->label('حجز الطيران')
+                    ->relationship('booking', 'booking_reference')
+                    ->searchable()
+                    ->required(),
+                TextInput::make('first_name')
+                    ->label('الاسم الأول')
+                    ->required()
+                    ->maxLength(255),
+                TextInput::make('last_name')
+                    ->label('اللقب / اسم العائلة')
+                    ->required()
+                    ->maxLength(255),
+                Select::make('type')
+                    ->label('نوع المسافر')
+                    ->options([
+                        'adult' => 'بالغ',
+                        'child' => 'طفل',
+                        'infant' => 'رضيع',
+                    ])
+                    ->required(),
+                DatePicker::make('date_of_birth')
+                    ->label('تاريخ الميلاد'),
+                TextInput::make('relation_to_customer')
+                    ->label('صلة القرابة بالعميل'),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->recordTitleAttribute('first_name')
+            ->columns([
+                TextColumn::make('booking.booking_reference')
+                    ->label('رقم الحجز')
+                    ->searchable(),
+                TextColumn::make('first_name')
+                    ->label('الاسم الأول')
+                    ->searchable(),
+                TextColumn::make('last_name')
+                    ->label('اللقب')
+                    ->searchable(),
+                TextColumn::make('type')
+                    ->label('النوع')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'adult' => 'success',
+                        'child' => 'warning',
+                        'infant' => 'info',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'adult' => 'بالغ',
+                        'child' => 'طفل',
+                        'infant' => 'رضيع',
+                    }),
+                TextColumn::make('date_of_birth')
+                    ->label('تاريخ الميلاد')
+                    ->date(),
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => ManagePassengers::route('/'),
+        ];
+    }
+}

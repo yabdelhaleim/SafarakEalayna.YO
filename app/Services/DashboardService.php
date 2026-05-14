@@ -1,0 +1,714 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\BusBookingStatus;
+use App\Models\Bus\BusBooking;
+use App\Models\Customer;
+use App\Models\Employee;
+use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightSystem;
+use App\Models\Invoice;
+use App\Models\Online\OnlineTransaction;
+use Carbon\Carbon;
+use Closure;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+class DashboardService
+{
+    public function getOverview(): array
+    {
+        $today = now()->toDateString();
+
+        return [
+            'today' => [
+                'flights' => FlightBooking::whereDate('created_at', $today)->count(),
+                'buses' => BusBooking::whereDate('created_at', $today)->count(),
+                'services' => $this->countServiceOrders(fn ($q) => $q->whereDate('created_at', $today)),
+                'online' => OnlineTransaction::whereDate('created_at', $today)->count(),
+            ],
+            'this_month' => [
+                'flights' => FlightBooking::whereYear('created_at', now()->year)
+                    ->whereMonth('created_at', now()->month)->count(),
+                'buses' => BusBooking::whereYear('created_at', now()->year)
+                    ->whereMonth('created_at', now()->month)->count(),
+                'services' => $this->countServiceOrders(fn ($q) => $q->whereYear('created_at', now()->year)
+                    ->whereMonth('created_at', now()->month)),
+                'online' => OnlineTransaction::whereYear('created_at', now()->year)
+                    ->whereMonth('created_at', now()->month)->count(),
+            ],
+            'total_customers' => Customer::count(),
+            'total_employees' => Employee::count(),
+            'pending_invoices' => Invoice::whereIn('status', ['sent', 'partially_paid'])->count(),
+            'overdue_invoices' => Invoice::where('status', 'overdue')->count(),
+        ];
+    }
+
+    public function getFinancialStats(string $from, string $to): array
+    {
+        // Use created_at instead of date (column doesn't exist)
+        $transactions = DB::table('transactions')
+            ->whereBetween('created_at', [$from, $to])
+            ->get();
+
+        $income = $transactions->where('type', 'income')->sum('amount');
+        $expense = $transactions->where('type', 'expense')->sum('amount');
+
+        return [
+            'total_income' => (float) $income,
+            'total_expense' => (float) $expense,
+            'net_profit' => (float) ($income - $expense),
+            'profit_margin' => $income > 0 ? round((($income - $expense) / $income) * 100, 2) : 0,
+            'transactions_count' => $transactions->count(),
+        ];
+    }
+
+    public function getBookingsStats(string $from, string $to): array
+    {
+        return [
+            'flights' => [
+                'total' => FlightBooking::whereBetween('created_at', [$from, $to])->count(),
+                'confirmed' => FlightBooking::whereBetween('created_at', [$from, $to])
+                    ->where('status', 'CONFIRMED')->count(),
+            ],
+            'buses' => [
+                'total' => BusBooking::whereBetween('created_at', [$from, $to])->count(),
+                'paid' => BusBooking::whereBetween('created_at', [$from, $to])
+                    ->where('status', 'paid')->count(),
+            ],
+            'services' => [
+                'total' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$from, $to])),
+                'completed' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$from, $to])
+                    ->where('status', 'completed')),
+            ],
+            'online' => [
+                'total' => OnlineTransaction::whereBetween('created_at', [$from, $to])->count(),
+                'success' => OnlineTransaction::whereBetween('created_at', [$from, $to])
+                    ->where('status', 'success')->count(),
+            ],
+        ];
+    }
+
+    public function getTopCustomers(int $limit = 5): array
+    {
+        $customers = Customer::withCount(['flightBookings'])
+            ->orderBy('flight_bookings_count', 'desc')
+            ->limit($limit)
+            ->get();
+
+        return $customers->map(function ($customer) {
+            return [
+                'id' => $customer->id,
+                'name' => $customer->full_name,
+                'phone' => $customer->phone,
+                'total_bookings' => $customer->flight_bookings_count,
+            ];
+        })->toArray();
+    }
+
+    public function getRecentActivities(int $limit = 10): array
+    {
+        $activities = collect();
+
+        $flights = FlightBooking::with('customer')
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(fn ($b) => [
+                'type' => 'flight',
+                'id' => $b->id,
+                'customer' => $b->customer->full_name ?? 'N/A',
+                'description' => "حجز طيران #{$b->booking_number} - {$b->from_airport} → {$b->to_airport}",
+                'amount' => (float) $b->selling_price,
+                'status' => $b->status,
+                'created_at' => $b->created_at->format('Y-m-d H:i:s'),
+            ]);
+
+        $activities = $activities->concat($flights);
+
+        // Try to get bus bookings, ignore if model has issues
+        try {
+            $buses = BusBooking::with('customer')
+                ->orderBy('created_at', 'desc')
+                ->limit(3)
+                ->get()
+                ->map(fn ($b) => [
+                    'type' => 'bus',
+                    'id' => $b->id,
+                    'customer' => $b->customer->full_name ?? 'N/A',
+                    'description' => "حجز باص #{$b->id}",
+                    'amount' => (float) ($b->total_price ?? 0),
+                    'status' => $b->status ?? 'pending',
+                    'created_at' => $b->created_at->format('Y-m-d H:i:s'),
+                ]);
+            $activities = $activities->concat($buses);
+        } catch (\Exception $e) {
+            // Skip if bus model has issues
+        }
+
+        if (Schema::hasTable('service_orders')) {
+            try {
+                $q = DB::table('service_orders')
+                    ->leftJoin('customers', 'service_orders.customer_id', '=', 'customers.id');
+                if (Schema::hasColumn('service_orders', 'deleted_at')) {
+                    $q->whereNull('service_orders.deleted_at');
+                }
+                $serviceRows = $q
+                    ->orderByDesc('service_orders.created_at')
+                    ->limit(3)
+                    ->select(
+                        'service_orders.id',
+                        'service_orders.selling_price',
+                        'service_orders.status',
+                        'service_orders.created_at',
+                        'customers.full_name as customer_full_name'
+                    )
+                    ->get();
+
+                $services = $serviceRows->map(fn ($b) => [
+                    'type' => 'service',
+                    'id' => (int) $b->id,
+                    'customer' => $b->customer_full_name ?? 'N/A',
+                    'description' => "طلب خدمة #{$b->id}",
+                    'amount' => (float) ($b->selling_price ?? 0),
+                    'status' => $b->status ?? 'pending',
+                    'created_at' => Carbon::parse($b->created_at)->format('Y-m-d H:i:s'),
+                ]);
+                $activities = $activities->concat($services);
+            } catch (\Exception $e) {
+                // Skip if service_orders query fails
+            }
+        }
+
+        return $activities
+            ->sortByDesc('created_at')
+            ->take($limit)
+            ->values()
+            ->toArray();
+    }
+
+    public function getAlerts(): array
+    {
+        $alerts = [];
+
+        // Overdue invoices
+        $overdueInvoices = Invoice::where('status', 'overdue')->count();
+        if ($overdueInvoices > 0) {
+            $alerts[] = [
+                'type' => 'warning',
+                'message' => "{$overdueInvoices} فاتورة متأخرة",
+                'priority' => 'high',
+            ];
+        }
+
+        // Pending flight bookings
+        $pendingFlights = FlightBooking::where('status', 'PENDING')->count();
+        if ($pendingFlights > 0) {
+            $alerts[] = [
+                'type' => 'info',
+                'message' => "{$pendingFlights} حجز طيران معلق",
+                'priority' => 'medium',
+            ];
+        }
+
+        return $alerts;
+    }
+
+    public function getFullDashboard(?string $dateFrom = null, ?string $dateTo = null, ?string $carrierId = null, ?string $systemType = null): array
+    {
+        $from = $dateFrom ?: now()->startOfMonth()->toDateString();
+        $to = $dateTo ?: now()->endOfMonth()->toDateString();
+
+        $base = [
+            'overview' => $this->getOverview(),
+            'financial' => $this->getFinancialStats($from, $to),
+            'bookings' => $this->getBookingsStats($from, $to),
+            'top_customers' => $this->getTopCustomers(),
+            'recent_activities' => $this->getRecentActivities(),
+            'alerts' => $this->getAlerts(),
+        ];
+
+        $airline = $this->buildAirlineOperationsDashboard($from, $to, $carrierId, $systemType);
+        $busOps = $this->buildBusOperationsDashboard($from, $to);
+
+        // Hajj Stats
+        $hajjBookings = \App\Models\HajjUmraBooking::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $hajjCount = (clone $hajjBookings)->count();
+        $hajjRevenue = (float) (clone $hajjBookings)->sum('selling_price');
+        $hajjProfit = (float) (clone $hajjBookings)->sum('profit');
+
+        // Online Stats
+        $onlineTx = \App\Models\Online\OnlineTransaction::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $onlineCount = (clone $onlineTx)->count();
+        $onlineRevenue = (float) (clone $onlineTx)->sum('selling_price');
+        $onlineProfit = (float) (clone $onlineTx)->sum('profit');
+
+        // Fawry Stats
+        $fawryTx = \App\Models\Fawry\FawryTransaction::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $fawryCount = (clone $fawryTx)->count();
+        $fawryRevenue = (float) (clone $fawryTx)->sum('selling_price');
+        $fawryProfit = (float) (clone $fawryTx)->sum('profit');
+
+        // Total accounts breakdown
+        $accounts = \App\Models\Account::where('is_active', true)->get();
+        $totalBalance = 0.0;
+        $cashboxBalance = 0.0;
+        $bankBalance = 0.0;
+        $walletBalance = 0.0;
+        foreach ($accounts as $acc) {
+            $val = (float) $acc->balance;
+            $totalBalance += $val;
+            $typeStr = $acc->type instanceof \BackedEnum ? $acc->type->value : (string) $acc->type;
+            if (in_array($typeStr, ['cashbox', 'treasury', 'صندوق', 'خزينة'])) {
+                $cashboxBalance += $val;
+            } elseif (in_array($typeStr, ['bank', 'بنك'])) {
+                $bankBalance += $val;
+            } elseif (in_array($typeStr, ['wallet', 'محفظة'])) {
+                $walletBalance += $val;
+            } else {
+                $cashboxBalance += $val;
+            }
+        }
+
+        $tourismSummary = [
+            'flights' => [
+                'count' => $airline['kpis']['total_bookings'] ?? 0,
+                'revenue' => $airline['kpis']['revenue'] ?? 0,
+                'profit' => $airline['kpis']['net_profit'] ?? 0,
+            ],
+            'hajj' => [
+                'count' => $hajjCount,
+                'revenue' => $hajjRevenue,
+                'profit' => $hajjProfit,
+            ],
+            'total_count' => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount,
+            'total_revenue' => ($airline['kpis']['revenue'] ?? 0) + $hajjRevenue,
+            'total_profit' => ($airline['kpis']['net_profit'] ?? 0) + $hajjProfit,
+        ];
+
+        $officeSummary = [
+            'bus' => [
+                'count' => $busOps['bus_kpis']['total_bookings'] ?? 0,
+                'revenue' => $busOps['bus_kpis']['revenue'] ?? 0,
+                'profit' => $busOps['bus_kpis']['net_profit'] ?? 0,
+            ],
+            'fawry' => [
+                'count' => $fawryCount,
+                'revenue' => $fawryRevenue,
+                'profit' => $fawryProfit,
+            ],
+            'online' => [
+                'count' => $onlineCount,
+                'revenue' => $onlineRevenue,
+                'profit' => $onlineProfit,
+            ],
+            'total_count' => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount,
+            'total_revenue' => ($busOps['bus_kpis']['revenue'] ?? 0) + $fawryRevenue + $onlineRevenue,
+            'total_profit' => ($busOps['bus_kpis']['net_profit'] ?? 0) + $fawryProfit + $onlineProfit,
+        ];
+
+        $extra = [
+            'tourism_summary' => $tourismSummary,
+            'office_summary' => $officeSummary,
+            'treasury_summary' => [
+                'total' => $totalBalance,
+                'cashbox' => $cashboxBalance,
+                'bank' => $bankBalance,
+                'wallet' => $walletBalance,
+            ],
+        ];
+
+        return array_merge($base, $airline, $busOps, $extra);
+    }
+
+    /**
+     * Vue dashboard: حجوزات الباصات بنفس فكرة نطاق التاريخ (بدون فلاتر شركة طيران).
+     *
+     * @return array<string, mixed>
+     */
+    protected function buildBusOperationsDashboard(string $from, string $to): array
+    {
+        $today = now()->toDateString();
+        $yesterday = Carbon::parse($today)->subDay()->toDateString();
+
+        $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
+
+        $bookingQuery = BusBooking::query()->whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+
+        $totalBookingsRange = (clone $bookingQuery)->count();
+        $todayBookings = BusBooking::whereDate('created_at', $today)->count();
+        $yesterdayBookings = BusBooking::whereDate('created_at', $yesterday)->count();
+
+        $nonCancelledScope = fn ($q) => (clone $q)->where('status', '!=', BusBookingStatus::Cancelled);
+
+        $revenueRange = (float) $nonCancelledScope($bookingQuery)->sum('total_price');
+        $profitRange = (float) $nonCancelledScope($bookingQuery)->sum('profit');
+
+        $cancelled = (clone $bookingQuery)->where('status', BusBookingStatus::Cancelled)->count();
+
+        $pendingPayments = (float) BusBooking::query()
+            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->selectRaw('COALESCE(SUM(total_price - paid_amount), 0) as aggregate')
+            ->value('aggregate');
+
+        $todayRevenue = (float) BusBooking::whereDate('created_at', $today)
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->sum('total_price');
+        $yesterdayRevenue = (float) BusBooking::whereDate('created_at', $yesterday)
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->sum('total_price');
+
+        $todayProfit = (float) BusBooking::whereDate('created_at', $today)
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->sum('profit');
+        $yesterdayProfit = (float) BusBooking::whereDate('created_at', $yesterday)
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->sum('profit');
+
+        $activeCompanies = (int) BusBooking::query()
+            ->whereBetween(DB::raw('DATE(bus_bookings.created_at)'), [$from, $to])
+            ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
+            ->selectRaw('COUNT(DISTINCT bus_inventories.company_id) as c')
+            ->value('c');
+
+        $companyRows = DB::table('bus_bookings')
+            ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
+            ->join('bus_companies', 'bus_inventories.company_id', '=', 'bus_companies.id')
+            ->whereRaw('DATE(bus_bookings.created_at) BETWEEN ? AND ?', [$from, $to])
+            ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
+            ->groupBy('bus_companies.id', 'bus_companies.name')
+            ->selectRaw('bus_companies.id as company_id, bus_companies.name as company_name, COUNT(bus_bookings.id) as booking_count, SUM(bus_bookings.total_price) as revenue_sum, SUM(bus_bookings.profit) as profit_sum')
+            ->orderByDesc('profit_sum')
+            ->limit(8)
+            ->get();
+
+        $busCompanyPerformance = $companyRows->map(function ($r) {
+            $rev = (float) $r->revenue_sum;
+            $profit = (float) $r->profit_sum;
+
+            return [
+                'id' => (int) $r->company_id,
+                'name' => $r->company_name,
+                'bookings' => (int) $r->booking_count,
+                'revenue' => $rev,
+                'profit' => $profit,
+                'profit_margin' => $rev > 0 ? round(($profit / $rev) * 100, 1) : 0,
+            ];
+        })->values()->all();
+
+        $bookingsChart = [];
+        $revenueChart = [];
+        $start = Carbon::parse($from);
+        $end = Carbon::parse($to);
+        if ($end->lt($start)) {
+            $end = $start->copy();
+        }
+        $days = min(14, $start->diffInDays($end) + 1);
+        for ($i = 0; $i < $days; $i++) {
+            $d = $start->copy()->addDays($i)->toDateString();
+            Carbon::setLocale('ar');
+            $label = Carbon::parse($d)->translatedFormat('D j M');
+            $cnt = BusBooking::whereDate('created_at', $d)->count();
+            $rev = (float) BusBooking::whereDate('created_at', $d)
+                ->where('status', '!=', BusBookingStatus::Cancelled)
+                ->sum('total_price');
+            $prof = (float) BusBooking::whereDate('created_at', $d)
+                ->where('status', '!=', BusBookingStatus::Cancelled)
+                ->sum('profit');
+            $bookingsChart[] = ['label' => $label, 'count' => $cnt];
+            $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
+        }
+
+        $topRoutes = DB::table('bus_bookings')
+            ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
+            ->whereRaw('DATE(bus_bookings.created_at) BETWEEN ? AND ?', [$from, $to])
+            ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
+            ->whereNotNull('bus_inventories.route')
+            ->groupBy('bus_inventories.route')
+            ->selectRaw('bus_inventories.route as route, COUNT(bus_bookings.id) as c, SUM(bus_bookings.total_price) as revenue')
+            ->orderByDesc('c')
+            ->limit(6)
+            ->get()
+            ->map(fn ($r) => [
+                'route' => $r->route,
+                'bookings' => (int) $r->c,
+                'revenue' => (float) $r->revenue,
+            ])
+            ->all();
+
+        $busRecent = BusBooking::with(['customer', 'inventory'])
+            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->orderByDesc('created_at')
+            ->limit(8)
+            ->get()
+            ->map(function (BusBooking $b) {
+                $route = $b->inventory?->route ?? '';
+                $cust = $b->customer?->full_name ?? '—';
+
+                return [
+                    'type' => 'bus',
+                    'description' => "حجز باص #{$b->id} — {$route} — {$cust}",
+                    'time' => $b->created_at?->diffForHumans(),
+                ];
+            })
+            ->all();
+
+        return [
+            'bus_kpis' => [
+                'today_bookings' => $todayBookings,
+                'today_bookings_change' => $pct((float) $todayBookings, (float) $yesterdayBookings),
+                'today_revenue' => $todayRevenue,
+                'today_revenue_change' => $pct($todayRevenue, $yesterdayRevenue),
+                'today_profit' => $todayProfit,
+                'today_profit_change' => $pct($todayProfit, $yesterdayProfit),
+                'active_companies' => $activeCompanies,
+                'cancelled_bookings' => $cancelled,
+                'cancellation_rate' => $totalBookingsRange > 0 ? round(($cancelled / $totalBookingsRange) * 100, 1) : 0,
+                'total_bookings' => $totalBookingsRange,
+                'revenue' => $revenueRange,
+                'net_profit' => $profitRange,
+                'pending_payments' => max(0, $pendingPayments),
+            ],
+            'bus_bookings_chart' => $bookingsChart,
+            'bus_revenue_chart' => $revenueChart,
+            'bus_company_performance' => $busCompanyPerformance,
+            'bus_top_routes' => $topRoutes,
+            'bus_recent_activity' => $busRecent,
+        ];
+    }
+
+    /**
+     * Data for the Vue airline operations dashboard (no mock values).
+     */
+    protected function buildAirlineOperationsDashboard(string $from, string $to, ?string $carrierId, ?string $systemType): array
+    {
+        $today = now()->toDateString();
+
+        $bookingQuery = FlightBooking::query()->whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        if ($carrierId) {
+            $bookingQuery->where('flight_carrier_id', (int) $carrierId);
+        }
+        if ($systemType !== null && $systemType !== '') {
+            if (is_numeric($systemType)) {
+                $bookingQuery->where('flight_system_id', (int) $systemType);
+            } else {
+                $bookingQuery->where('system_type', $systemType);
+            }
+        }
+
+        $totalBookingsRange = (clone $bookingQuery)->count();
+        $todayBookings = FlightBooking::whereDate('created_at', $today)
+            ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+            ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+            ->count();
+
+        $revenueRange = (float) (clone $bookingQuery)->sum('selling_price');
+        $profitRange = (float) (clone $bookingQuery)->sum('profit');
+
+        $paidSub = '(SELECT COALESCE(SUM(amount),0) FROM flight_payments WHERE flight_payments.flight_booking_id = flight_bookings.id)';
+        $outstanding = (float) DB::table('flight_bookings')
+            ->whereRaw('DATE(created_at) BETWEEN ? AND ?', [$from, $to])
+            ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+            ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+            ->whereRaw("selling_price - {$paidSub} > 0.01")
+            ->sum(DB::raw("selling_price - {$paidSub}"));
+
+        $yesterday = Carbon::parse($today)->subDay()->toDateString();
+        $todayBookingsYesterday = FlightBooking::whereDate('created_at', $yesterday)->count();
+        $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
+
+        $todayRevenue = (float) FlightBooking::whereDate('created_at', $today)->sum('selling_price');
+        $yesterdayRevenue = (float) FlightBooking::whereDate('created_at', $yesterday)->sum('selling_price');
+
+        $todayProfit = (float) FlightBooking::whereDate('created_at', $today)->sum('profit');
+        $yesterdayProfit = (float) FlightBooking::whereDate('created_at', $yesterday)->sum('profit');
+
+        $cancelled = (clone $bookingQuery)->where('status', 'CANCELLED')->count();
+
+        $carriersQ = FlightCarrier::query()->with('system')->where('is_active', true);
+        if ($carrierId) {
+            $carriersQ->where('id', (int) $carrierId);
+        }
+        $carriers = $carriersQ->orderBy('name')->get();
+
+        $systemsQ = FlightSystem::query()->where('is_active', true);
+        if ($systemType !== null && $systemType !== '' && is_numeric($systemType)) {
+            $systemsQ->where('id', (int) $systemType);
+        }
+        $systems = $systemsQ->orderBy('name')->get();
+
+        $systemCards = $systems->map(fn (FlightSystem $s) => [
+            'id' => 'sys_'.$s->id,
+            'company_name' => $s->name,
+            'system_name' => 'نظام رئيسي',
+            'balance' => (float) $s->balance,
+            'available_balance' => (float) $s->available_balance,
+            'currency' => $s->currency,
+            'is_active' => (bool) $s->is_active,
+        ])->values()->all();
+
+        $carrierCardsList = $carriers->map(fn (FlightCarrier $c) => [
+            'id' => 'car_'.$c->id,
+            'company_name' => $c->name,
+            'system_name' => $c->system?->name,
+            'balance' => (float) $c->balance,
+            'available_balance' => (float) $c->available_balance,
+            'currency' => $c->currency,
+            'is_active' => (bool) $c->is_active,
+        ])->values()->all();
+
+        $carrierCards = array_merge($systemCards, $carrierCardsList);
+
+        $systemPerformanceList = $systems->map(function (FlightSystem $s) use ($from, $to, $carrierId) {
+            $base = FlightBooking::query()
+                ->where('flight_system_id', $s->id)
+                ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+                ->when($carrierId, fn ($b) => $b->where('flight_carrier_id', (int) $carrierId));
+
+            $bookings = (clone $base)->count();
+            $revSum = (float) (clone $base)->sum('selling_price');
+            $profitSum = (float) (clone $base)->sum('profit');
+
+            return [
+                'id' => 'sys_'.$s->id,
+                'name' => $s->name . ' (نظام)',
+                'bookings' => $bookings,
+                'balance' => (float) $s->balance,
+                'profit' => $profitSum,
+                'profit_margin' => $revSum > 0 ? round(($profitSum / $revSum) * 100, 1) : 0,
+            ];
+        });
+
+        $carrierPerformanceList = $carriers->map(function (FlightCarrier $c) use ($from, $to, $systemType) {
+            $base = FlightBooking::query()
+                ->where('flight_carrier_id', $c->id)
+                ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+                ->when($systemType !== null && $systemType !== '', fn ($b) => is_numeric($systemType) ? $b->where('flight_system_id', (int) $systemType) : $b->where('system_type', $systemType));
+
+            $bookings = (clone $base)->count();
+            $revSum = (float) (clone $base)->sum('selling_price');
+            $profitSum = (float) (clone $base)->sum('profit');
+
+            return [
+                'id' => 'car_'.$c->id,
+                'name' => $c->name . ' (شركة)',
+                'bookings' => $bookings,
+                'balance' => (float) $c->balance,
+                'profit' => $profitSum,
+                'profit_margin' => $revSum > 0 ? round(($profitSum / $revSum) * 100, 1) : 0,
+            ];
+        });
+
+        $carrierPerformance = collect($systemPerformanceList)->merge($carrierPerformanceList)
+            ->sortByDesc('profit')
+            ->take(8)
+            ->values()
+            ->all();
+
+        $bookingsChart = [];
+        $revenueChart = [];
+        $start = Carbon::parse($from);
+        $end = Carbon::parse($to);
+        if ($end->lt($start)) {
+            $end = $start->copy();
+        }
+        $days = min(14, $start->diffInDays($end) + 1);
+        for ($i = 0; $i < $days; $i++) {
+            $d = $start->copy()->addDays($i)->toDateString();
+            Carbon::setLocale('ar');
+            $label = Carbon::parse($d)->translatedFormat('D j M');
+            $cnt = FlightBooking::whereDate('created_at', $d)
+                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+                ->count();
+            $rev = (float) FlightBooking::whereDate('created_at', $d)
+                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+                ->sum('selling_price');
+            $prof = (float) FlightBooking::whereDate('created_at', $d)
+                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+                ->sum('profit');
+            $bookingsChart[] = ['label' => $label, 'count' => $cnt];
+            $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
+        }
+
+        $topRoutes = FlightBooking::query()
+            ->selectRaw('from_airport, to_airport, COUNT(*) as c, SUM(selling_price) as revenue, SUM(profit) as profit')
+            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->whereNotNull('from_airport')
+            ->whereNotNull('to_airport')
+            ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+            ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+            ->groupBy('from_airport', 'to_airport')
+            ->orderByDesc('c')
+            ->limit(6)
+            ->get()
+            ->map(fn ($r) => [
+                'from' => $r->from_airport,
+                'to' => $r->to_airport,
+                'bookings' => (int) $r->c,
+                'revenue' => (float) $r->revenue,
+                'profit' => (float) $r->profit,
+            ])
+            ->all();
+
+        $recentActivity = FlightBooking::with('customer')
+            ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+            ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+            ->orderByDesc('created_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (FlightBooking $b) => [
+                'type' => 'booking',
+                'description' => 'حجز '.$b->booking_number.' — '.($b->from_airport ?? '').' → '.($b->to_airport ?? ''),
+                'time' => $b->created_at?->diffForHumans(),
+            ])
+            ->all();
+
+        return [
+            'kpis' => [
+                'today_bookings' => $todayBookings,
+                'today_bookings_change' => $pct((float) $todayBookings, (float) $todayBookingsYesterday),
+                'today_revenue' => $todayRevenue,
+                'today_revenue_change' => $pct($todayRevenue, $yesterdayRevenue),
+                'today_profit' => $todayProfit,
+                'today_profit_change' => $pct($todayProfit, $yesterdayProfit),
+                'active_carriers' => $carriers->count(),
+                'cancelled_bookings' => $cancelled,
+                'cancellation_rate' => $totalBookingsRange > 0 ? round(($cancelled / $totalBookingsRange) * 100, 1) : 0,
+                'total_bookings' => $totalBookingsRange,
+                'revenue' => $revenueRange,
+                'net_profit' => $profitRange,
+                'outstanding_payments' => $outstanding,
+            ],
+            'carrier_balance_cards' => $carrierCards,
+            'bookings_chart' => $bookingsChart,
+            'revenue_chart' => $revenueChart,
+            'carrier_performance' => $carrierPerformance,
+            'top_routes' => $topRoutes,
+            'recent_activity' => $recentActivity,
+        ];
+    }
+
+    /**
+     * طلبات الخدمة (جدول اختياري — أُزيل نموذج Eloquent مع إبقاء العداد إن وُجد الجدول).
+     */
+    protected function countServiceOrders(Closure $scope): int
+    {
+        if (! Schema::hasTable('service_orders')) {
+            return 0;
+        }
+
+        $query = DB::table('service_orders');
+        if (Schema::hasColumn('service_orders', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+        $scope($query);
+
+        return (int) $query->count();
+    }
+}

@@ -1,0 +1,305 @@
+<template>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div v-if="globalError" class="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl mb-4">
+      {{ globalError }}
+    </div>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-l from-indigo-400 to-blue-600 flex items-center gap-3">
+          <BarChart class="w-10 h-10 text-indigo-500" />
+          بيان الأرباح والخسائر
+        </h1>
+        <p class="text-sm text-text-muted mt-2 font-medium">
+          تقرير مالي متكامل يوضح إيراداتك ومصروفاتك وصافي الربح للمدة المحددة (Income Statement).
+        </p>
+      </div>
+
+      <!-- Date Range Filter -->
+      <div class="flex flex-col sm:flex-row gap-2">
+        <select 
+          v-model="filters.category"
+          @change="filters.module = 'all'; fetchReport()"
+          class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+        >
+          <option value="all">كل الأقسام (شامل)</option>
+          <option value="tourism">قسم السياحة فقط</option>
+          <option value="office">قسم المكتب فقط</option>
+        </select>
+        
+        <select 
+          v-if="filters.category !== 'all'"
+          v-model="filters.module"
+          @change="fetchReport"
+          class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors shadow-inner"
+        >
+          <option value="all">كل الموديولات</option>
+          <template v-if="filters.category === 'tourism'">
+            <option value="flight">الطيران فقط</option>
+            <option value="hajj_umra">الحج والعمرة فقط</option>
+            <option value="visa">التأشيرات فقط</option>
+          </template>
+          <template v-if="filters.category === 'office'">
+            <option value="bus">الباص فقط</option>
+            <option value="fawry">فوري فقط</option>
+            <option value="online">الخدمات الإلكترونية فقط</option>
+          </template>
+        </select>
+        
+        <input 
+          type="date" 
+          v-model="filters.from"
+          @change="fetchReport"
+          class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+        />
+        <input 
+          type="date" 
+          v-model="filters.to"
+          @change="fetchReport"
+          class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+        />
+        <button 
+          @click="fetchReport"
+          :disabled="loading"
+          class="bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          تحديث
+        </button>
+      </div>
+    </div>
+
+    <!-- Main KPIs -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Total Revenues -->
+      <div class="bg-card-bg border border-white/5 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl"></div>
+        <div class="flex justify-between items-start mb-4 relative z-10">
+          <div>
+            <p class="text-sm font-medium text-text-muted">إجمالي الإيرادات (المبيعات)</p>
+            <h3 class="text-2xl font-bold text-white mt-1">{{ formatCurrency(reportData.totalRevenues) }}</h3>
+          </div>
+          <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+            <TrendingUp class="w-5 h-5 text-emerald-400" />
+          </div>
+        </div>
+        <p class="text-xs text-text-muted relative z-10">إجمالي المبالغ المحصلة من الخدمات</p>
+      </div>
+
+      <!-- Total Expenses & COGS -->
+      <div class="bg-card-bg border border-white/5 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-rose-500/5 rounded-full blur-xl"></div>
+        <div class="flex justify-between items-start mb-4 relative z-10">
+          <div>
+            <p class="text-sm font-medium text-text-muted">إجمالي المصروفات والتكلفة</p>
+            <h3 class="text-2xl font-bold text-white mt-1">{{ formatCurrency(reportData.totalExpenses + reportData.totalCogs) }}</h3>
+          </div>
+          <div class="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center">
+            <TrendingDown class="w-5 h-5 text-rose-400" />
+          </div>
+        </div>
+        <p class="text-xs text-text-muted relative z-10">تكلفة المبيعات + مصروفات التشغيل</p>
+      </div>
+
+      <!-- Net Profit -->
+      <div class="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-2xl shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-8 -bottom-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        <div class="flex justify-between items-start mb-4 relative z-10">
+          <div>
+            <p class="text-sm font-medium text-white/80">صافي الربح / الخسارة</p>
+            <h3 class="text-3xl font-display font-black text-white mt-1">{{ formatCurrency(netProfit) }}</h3>
+          </div>
+          <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+            <Scale class="w-5 h-5 text-white" />
+          </div>
+        </div>
+        <div class="relative z-10">
+          <span 
+            class="text-xs font-bold px-2 py-1 rounded-md"
+            :class="netProfit >= 0 ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'"
+          >
+            {{ netProfit >= 0 ? 'ربح صافي ممتاز 🚀' : 'خسارة محققة ⚠️' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Details View (Statement format) -->
+    <div class="bg-card-bg border border-white/5 rounded-2xl shadow-xl overflow-hidden">
+      <div class="p-6 border-b border-white/5">
+        <h2 class="text-lg font-bold text-white">تفاصيل قائمة الدخل (Income Statement)</h2>
+      </div>
+
+      <div v-if="loading" class="p-12 text-center text-text-muted flex flex-col items-center justify-center">
+        <RefreshCw class="w-8 h-8 animate-spin mb-4 text-indigo-400" />
+        جاري حساب وتجميع الأرقام...
+      </div>
+
+      <div v-else class="p-6 font-mono text-sm space-y-8">
+        
+        <!-- Revenues Section -->
+        <div class="bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 relative overflow-hidden">
+          <div class="absolute -right-8 -top-8 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl"></div>
+          <h3 class="text-emerald-400 font-bold mb-5 border-b border-emerald-500/20 pb-3 text-xl font-sans flex items-center gap-2 relative z-10">
+            <TrendingUp class="w-6 h-6" />
+            الإيرادات (Revenues)
+          </h3>
+          <div class="space-y-3 pr-4 relative z-10">
+            <div v-for="(rev, index) in reportData.revenuesList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-emerald-500/30 transition-all">
+              <span class="text-white/90 font-medium">{{ rev.name }}</span>
+              <span class="text-emerald-400 font-bold font-display">{{ formatCurrency(rev.amount) }}</span>
+            </div>
+            <div v-if="reportData.revenuesList.length === 0" class="text-center py-4 text-emerald-400/50 text-sm">
+              لا توجد إيرادات مسجلة في هذه الفترة
+            </div>
+          </div>
+          <div class="flex justify-between font-black text-white mt-5 border-t border-emerald-500/30 pt-4 text-lg relative z-10">
+            <span>إجمالي الإيرادات</span>
+            <span class="text-emerald-400">{{ formatCurrency(reportData.totalRevenues) }}</span>
+          </div>
+        </div>
+
+        <!-- COGS Section -->
+        <div class="bg-gradient-to-br from-orange-500/5 to-orange-500/10 border border-orange-500/20 rounded-2xl p-6 relative overflow-hidden">
+          <h3 class="text-orange-400 font-bold mb-5 border-b border-orange-500/20 pb-3 text-xl font-sans flex items-center gap-2 relative z-10">
+            <Coins class="w-6 h-6" />
+            تكلفة المبيعات (Cost of Goods Sold - COGS)
+          </h3>
+          <div class="space-y-3 pr-4 relative z-10">
+            <div v-for="(cogs, index) in reportData.cogsList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-orange-500/30 transition-all">
+              <span class="text-white/90 font-medium">{{ cogs.name }}</span>
+              <span class="text-orange-400 font-bold font-display">{{ formatCurrency(cogs.amount) }}</span>
+            </div>
+            <div v-if="reportData.cogsList.length === 0" class="text-center py-4 text-orange-400/50 text-sm">
+              لا توجد تكاليف مبيعات مسجلة في هذه الفترة
+            </div>
+          </div>
+          <div class="flex justify-between font-black text-white mt-5 border-t border-orange-500/30 pt-4 text-lg relative z-10">
+            <span>إجمالي تكلفة المبيعات</span>
+            <span class="text-orange-400">{{ formatCurrency(reportData.totalCogs) }}</span>
+          </div>
+        </div>
+
+        <!-- Gross Profit -->
+        <div class="bg-indigo-500/10 border border-indigo-500/30 p-5 rounded-2xl flex justify-between items-center font-bold text-xl text-indigo-300 shadow-lg shadow-indigo-500/5">
+          <div class="flex items-center gap-3">
+            <div class="w-2 h-8 bg-indigo-500 rounded-full"></div>
+            <span>مجمل الربح (Gross Profit)</span>
+          </div>
+          <span class="font-display font-black tracking-wide">{{ formatCurrency(reportData.totalRevenues - reportData.totalCogs) }}</span>
+        </div>
+
+        <!-- Expenses Section -->
+        <div class="bg-gradient-to-br from-rose-500/5 to-rose-500/10 border border-rose-500/20 rounded-2xl p-6 relative overflow-hidden">
+          <div class="absolute -left-8 -bottom-8 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl"></div>
+          <h3 class="text-rose-400 font-bold mb-5 border-b border-rose-500/20 pb-3 text-xl font-sans flex items-center gap-2 relative z-10">
+            <TrendingDown class="w-6 h-6" />
+            المصروفات التشغيلية والعمومية (Operating Expenses)
+          </h3>
+          <div class="space-y-3 pr-4 relative z-10">
+            <div v-for="(exp, index) in reportData.expensesList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-rose-500/30 transition-all">
+              <span class="text-white/90 font-medium">{{ exp.name }}</span>
+              <span class="text-rose-400 font-bold font-display">{{ formatCurrency(exp.amount) }}</span>
+            </div>
+            <div v-if="reportData.expensesList.length === 0" class="text-center py-4 text-rose-400/50 text-sm">
+              لا توجد مصروفات مسجلة في هذه الفترة
+            </div>
+          </div>
+          <div class="flex justify-between font-black text-white mt-5 border-t border-rose-500/30 pt-4 text-lg relative z-10">
+            <span>إجمالي المصروفات</span>
+            <span class="text-rose-400">{{ formatCurrency(reportData.totalExpenses) }}</span>
+          </div>
+        </div>
+
+        <!-- Net Profit Final -->
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-700 p-8 rounded-2xl flex flex-col md:flex-row justify-between items-center font-bold text-2xl text-white mt-8 shadow-2xl shadow-indigo-500/20 border border-white/10 relative overflow-hidden">
+          <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+          <div class="flex items-center gap-4 relative z-10">
+            <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+              <Scale class="w-7 h-7 text-white" />
+            </div>
+            <span class="text-2xl">صافي الربح قبل الضرائب (Net Income)</span>
+          </div>
+          <div class="relative z-10 flex flex-col items-end mt-4 md:mt-0">
+            <span class="text-4xl font-display font-black tracking-wide drop-shadow-md" :class="netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'">
+              {{ formatCurrency(netProfit) }}
+            </span>
+            <span v-if="netProfit >= 0" class="text-xs text-emerald-100 bg-emerald-500/30 px-2 py-1 rounded mt-2">رصيد إيجابي 📈</span>
+            <span v-else class="text-xs text-rose-100 bg-rose-500/30 px-2 py-1 rounded mt-2">عجز (خسارة) 📉</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import {
+  BarChart,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Scale
+} from 'lucide-vue-next';
+import axios from 'axios';
+
+const globalError = ref('');
+
+const loading = ref(true);
+
+const filters = ref({
+  from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
+  to: new Date().toISOString().split('T')[0], // Today
+  category: 'all',
+  module: 'all'
+});
+
+// Mocked initial structure, awaiting backend data
+const reportData = ref({
+  totalRevenues: 0,
+  totalCogs: 0,
+  totalExpenses: 0,
+  revenuesList: [],
+  cogsList: [],
+  expensesList: []
+});
+
+const netProfit = computed(() => {
+  return reportData.value.totalRevenues - reportData.value.totalCogs - reportData.value.totalExpenses;
+});
+
+const formatCurrency = (val) => {
+  if (!val && val !== 0) return '0.00 EGP';
+  return parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
+};
+
+const fetchReport = async () => {
+  loading.value = true;
+  globalError.value = '';
+  try {
+    const params = {
+      from_date: filters.value.from,
+      to_date: filters.value.to,
+      category: filters.value.category,
+      module: filters.value.module
+    };
+    const res = await axios.get('/api/v1/reports/profit-loss', { params });
+    
+    if (res && res.data && res.data.data) {
+       reportData.value = res.data.data;
+    } else {
+       throw new Error('Invalid response format');
+    }
+  } catch (error) {
+    globalError.value = 'حدث خطأ في جلب تقرير الأرباح والخسائر. تأكد من صحة التواريخ.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchReport();
+});
+</script>

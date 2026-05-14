@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Response Format</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .code {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <h1>🧪 اختبار API Response Format</h1>
+
+            <div class="card">
+                <h3>اختبار تحويل البيانات:</h3>
+
+                <div style="margin: 20px 0;">
+                    <button @click="testFullApiFormat">اختبار Full API Format</button>
+                    <button @click="testMapBooking">اختبار mapBooking فقط</button>
+                    <button @click="clearLogs">مسح السجل</button>
+                </div>
+
+                <div v-if="result" style="margin-top: 20px;">
+                    <h4>النتيجة:</h4>
+                    <div class="code">{{ JSON.stringify(result, null, 2) }}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>سجل العمليات:</h3>
+                <div class="code">
+                    <div v-for="(log, idx) in logs" :key="idx" :style="{ color: log.color }">
+                        [{{ log.time }}] {{ log.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        // Duplicate mapBooking function from flightStore.js
+        function mapBooking(b) {
+            const mapped = {
+                id: b.id,
+                bookingNumber: b.booking_number || b.bookingNumber || '',
+                systemType: b.system_type || b.systemType || 'manual',
+                status: (b.status || 'pending').toLowerCase(),
+                createdAt: b.created_at || b.createdAt || null,
+                updatedAt: b.updated_at || b.updatedAt || null,
+                customer: b.customer ? {
+                    id: b.customer.id,
+                    name: b.customer.name || b.customer.full_name || '',
+                    phone: b.customer.phone || '',
+                    email: b.customer.email || '',
+                } : null,
+                employee: b.employee ? {
+                    id: b.employee.id,
+                    name: b.employee.user?.name || '',
+                } : null,
+                account: b.account ? {
+                    id: b.account.id,
+                    name: b.account.name || '',
+                } : null,
+                segments: (b.segments || []).map(s => ({
+                    id: s.id,
+                    airline: s.airline_name || s.airline || '',
+                    flightNumber: s.flight_number || '',
+                    from: s.from_airport || s.from || '',
+                    to: s.to_airport || s.to || '',
+                    departureDate: s.departure_date ? new Date(s.departure_date).toISOString().split('T')[0] : '',
+                    departureTime: s.departure_time || '',
+                    arrivalTime: s.arrival_time || '',
+                    baggage: s.baggage_allowance || s.baggage || '',
+                    flightClass: s.flight_class || 'economy',
+                })) || [{
+                    from: b.from_airport || '',
+                    to: b.to_airport || '',
+                    airline: b.airline_name || '',
+                    departureDate: b.departure_date || '',
+                    departureTime: b.departure_time || '',
+                    arrivalTime: b.arrival_time || '',
+                }],
+                passengers: (b.passengers || []).map(p => ({
+                    id: p.id,
+                    name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+                    type: (p.passenger_type || p.type || 'adult').toLowerCase(),
+                    passportNumber: p.passport_number || '',
+                    dateOfBirth: p.date_of_birth || '',
+                })),
+                payments: (b.payments || []).map(p => ({
+                    id: p.id,
+                    amount: parseFloat(p.amount || 0),
+                    paymentMethod: p.payment_method || '',
+                    createdAt: p.created_at || '',
+                })),
+                refund: b.refund ? {
+                    id: b.refund.id,
+                    refundAmount: parseFloat(b.refund.refund_amount || 0),
+                    airlinePenalty: parseFloat(b.refund.airline_penalty || 0),
+                    officePenalty: parseFloat(b.refund.office_penalty || 0),
+                    status: b.refund.status || '',
+                } : null,
+                pricing: {
+                    purchasePrice: parseFloat(b.purchase_price || b.pricing?.purchasePrice || 0),
+                    sellingPrice: parseFloat(b.selling_price || b.pricing?.sellingPrice || 0),
+                    profit: parseFloat(b.profit || b.pricing?.profit || 0),
+                    currency: b.currency || b.pricing?.currency || 'EGP',
+                },
+                route: b.route || `${b.from_airport || ''} → ${b.to_airport || ''}`,
+                airlineName: b.airline_name || '',
+                tripDetails: b.trip_details || '',
+                notes: b.notes || '',
+                pnr: b.pnr || '',
+                totalPaid: parseFloat(b.total_paid || 0),
+                remaining: parseFloat(b.remaining || 0),
+                createdBy: b.created_by_name || '',
+            };
+
+            return mapped;
+        }
+
+        createApp({
+            setup() {
+                const logs = ref([]);
+                const result = ref(null);
+
+                const addLog = (message, color = '#94a3b8') => {
+                    const time = new Date().toLocaleTimeString('ar-EG');
+                    logs.value.unshift({ message, color, time });
+                    if (logs.value.length > 50) logs.value.pop();
+                };
+
+                const clearLogs = () => {
+                    logs.value = [];
+                    result.value = null;
+                    addLog('تم مسح السجل', '#10b981');
+                };
+
+                // Full API response format (matches Laravel ApiResponse + Resource)
+                const testFullApiFormat = () => {
+                    addLog('🧪 بدء اختبار Full API Format...', '#3b82f6');
+
+                    // This is what the Laravel API returns
+                    const apiResponse = {
+                        status: true,
+                        message: "Booking retrieved successfully.",
+                        data: {
+                            id: 227,
+                            booking_number: "FLT-69F51E96562D7",
+                            system_type: "amadeus",
+                            system_type_label: "Amadeus",
+                            pnr: "ABC123",
+                            airline_name: "EgyptAir",
+                            from_airport: "CAI",
+                            to_airport: "DXB",
+                            route: "CAI → DXB",
+                            departure_date: "2026-05-10",
+                            return_date: null,
+                            departure_time: "14:20",
+                            arrival_time: "17:55",
+                            passengers_count: 1,
+                            trip_details: "رحلة مباشرة",
+                            purchase_price: 500.0,
+                            selling_price: 900.0,
+                            profit: 400.0,
+                            profit_margin: "44.44%",
+                            currency: "EGP",
+                            status: "pending",
+                            status_label: "قيد الانتظار",
+                            total_paid: 0.0,
+                            remaining: 900.0,
+                            account: {
+                                id: 1,
+                                name: "الرئيسي"
+                            },
+                            customer: {
+                                id: 621,
+                                name: "YOUSSEF",
+                                phone: "0123588998787"
+                            },
+                            employee: {
+                                id: 5,
+                                name: "Admin User"
+                            },
+                            passengers: [
+                                {
+                                    id: 490,
+                                    name: "YOUSSEF TEST",
+                                    type: "adult",
+                                    passport_number: "A12345678",
+                                    date_of_birth: "1990-01-01"
+                                }
+                            ],
+                            segments: [
+                                {
+                                    id: 25,
+                                    airline_name: "EgyptAir",
+                                    flight_number: "MS123",
+                                    from_airport: "CAI",
+                                    to_airport: "DXB",
+                                    departure_date: "2026-05-10",
+                                    departure_time: "14:20",
+                                    arrival_time: "17:55",
+                                    baggage_allowance: "23kg",
+                                    flight_class: "economy"
+                                }
+                            ],
+                            payments: [],
+                            refund: null,
+                            notes: "ملاحظات الاختبار",
+                            created_by_id: 1,
+                            created_by_name: "Admin",
+                            created_at: "2026-05-02 20:39:46",
+                            updated_at: "2026-05-02 20:39:46"
+                        }
+                    };
+
+                    addLog('✅ API Response structure:', '#10b981');
+                    addLog('  - response.status: ' + apiResponse.status, '#94a3b8');
+                    addLog('  - response.message: ' + apiResponse.message, '#94a3b8');
+                    addLog('  - response.data exists: ' + !!apiResponse.data, '#94a3b8');
+                    addLog('  - response.data.id: ' + apiResponse.data.id, '#94a3b8');
+
+                    // Simulate what fetchBookingById does
+                    if (!apiResponse.status) {
+                        addLog('❌ ERROR: Invalid API response structure', '#ef4444');
+                        return;
+                    }
+
+                    const rawData = apiResponse.data;
+                    addLog('📦 Extracted rawData:', '#f59e0b');
+                    addLog('  - rawData.id: ' + rawData.id, '#94a3b8');
+                    addLog('  - rawData.booking_number: ' + rawData.booking_number, '#94a3b8');
+
+                    if (!rawData) {
+                        addLog('❌ ERROR: No booking data received', '#ef4444');
+                        return;
+                    }
+
+                    addLog('🔄 Calling mapBooking...', '#f59e0b');
+                    const mappedBooking = mapBooking(rawData);
+
+                    addLog('✅ Mapped booking:', '#10b981');
+                    addLog('  - mappedBooking.id: ' + mappedBooking.id + ' (type: ' + typeof mappedBooking.id + ')', '#94a3b8');
+                    addLog('  - mappedBooking.bookingNumber: ' + mappedBooking.bookingNumber, '#94a3b8');
+                    addLog('  - mappedBooking.customer: ' + mappedBooking.customer?.name, '#94a3b8');
+                    addLog('  - mappedBooking.segments.length: ' + mappedBooking.segments.length, '#94a3b8');
+                    addLog('  - mappedBooking.passengers.length: ' + mappedBooking.passengers.length, '#94a3b8');
+
+                    // Validation
+                    if (!mappedBooking.id) {
+                        addLog('❌❌ ERROR: mappedBooking.id is falsy!', '#ef4444');
+                        addLog('❌ This will cause "الحجز غير موجود" error!', '#ef4444');
+                    } else {
+                        addLog('✅✅ SUCCESS: Booking is valid and ready to use!', '#10b981');
+                    }
+
+                    result.value = mappedBooking;
+                };
+
+                const testMapBooking = () => {
+                    addLog('🧪 بدء اختبار mapBooking فقط...', '#3b82f6');
+
+                    const simpleData = {
+                        id: 227,
+                        booking_number: "FLT-TEST"
+                    };
+
+                    const mapped = mapBooking(simpleData);
+
+                    addLog('✅ mapped.id: ' + mapped.id, '#10b981');
+                    addLog('✅ mapped.bookingNumber: ' + mapped.bookingNumber, '#10b981');
+
+                    result.value = mapped;
+                };
+
+                return {
+                    logs,
+                    result,
+                    testFullApiFormat,
+                    testMapBooking,
+                    clearLogs
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

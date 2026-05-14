@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@source '../js/**/*.vue';
+@source '../js/**/*.js';
+
+@theme {
+    --color-bg-deep: #020810;
+    --color-card-bg: #0A1528;
+    --color-input-bg: #0C1830;
+    --color-gold: #D4A843;
+    --color-success: #10D98C;
+    --color-error: #F04545;
+    --color-warning: #F5A623;
+    --color-text-main: #EEF2FF;
+    --color-text-muted: #8BA4C8;
+    --color-text-dark: #3D5478;
+    /* Airline / ops accent (skyline) */
+    --color-sky: #38BDF8;
+    --color-sky-deep: #0C4A6E;
+    --color-panel-elevated: #0d1830;
+
+    --font-sans: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'IBM Plex Sans Arabic', sans-serif;
+    --font-mono: 'IBM Plex Sans Arabic', monospace;
+}
+
+@layer base {
+    :root {
+        /* Add legacy variable names for compatibility */
+        --bg-deep: #020810;
+        --card-bg: #0A1528;
+        --input-bg: #0C1830;
+        --gold: #D4A843;
+        --success: #10D98C;
+        --error: #F04545;
+        --warning: #F5A623;
+        --text-main: #EEF2FF;
+        --text-muted: #8BA4C8;
+        --text-dark: #3D5478;
+
+        /* Additional aliases for Flight/Bus/Finance pages */
+        --bg-card: #0A1528;
+        --bg-input: #0C1830;
+    }
+
+    body {
+        @apply bg-bg-deep text-text-main font-sans;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        @apply font-display font-extrabold;
+    }
+}
+
+@layer utilities {
+    /* Custom utility classes for Flight/Bus/Finance pages */
+    .bg-card {
+        background-color: var(--bg-card);
+    }
+
+    .bg-input {
+        background-color: var(--bg-input);
+    }
+
+    .text-white {
+        color: var(--text-main);
+    }
+
+    .text-muted {
+        color: var(--text-muted);
+    }
+}
+
+@layer components {
+    .btn-gold {
+        @apply bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-gold/20 active:scale-95;
+    }
+
+    .btn-airline {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold transition-all;
+        @apply bg-gradient-to-l from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-500/25;
+        @apply hover:from-sky-400 hover:to-cyan-400 hover:shadow-sky-500/35 active:scale-[0.98];
+    }
+
+    .btn-airline-ghost {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold transition-all;
+        @apply border border-white/15 bg-white/5 text-text-main hover:bg-white/10 hover:border-white/25;
+    }
+
+    .card-midnight {
+        @apply bg-card-bg border border-white/10 rounded-3xl p-6 shadow-2xl;
+    }
+
+    .flight-panel {
+        @apply relative overflow-hidden rounded-2xl border border-white/10 bg-card-bg/95 p-6 sm:p-8 shadow-2xl;
+        @apply backdrop-blur-xl;
+        box-shadow:
+            0 0 0 1px rgba(56, 189, 248, 0.06),
+            0 25px 50px -12px rgba(0, 0, 0, 0.55);
+    }
+
+    .flight-panel::before {
+        content: '';
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.5), rgba(212, 168, 67, 0.6), transparent);
+        opacity: 0.85;
+        pointer-events: none;
+    }
+
+    .flight-panel__title {
+        @apply text-xl sm:text-2xl font-extrabold tracking-tight text-text-main;
+    }
+
+    .flight-panel__subtitle {
+        @apply mt-1 text-sm text-text-muted leading-relaxed;
+    }
+
+    .flight-input {
+        @apply w-full rounded-xl border border-white/10 bg-input-bg px-4 py-3 text-text-main placeholder:text-text-muted/70;
+        @apply outline-none transition-all focus:border-gold/60 focus:ring-2 focus:ring-gold/20;
+    }
+
+    .flight-select {
+        @apply w-full rounded-xl border border-white/10 bg-input-bg px-4 py-3 text-text-main;
+        @apply outline-none transition-all focus:border-gold/60 focus:ring-2 focus:ring-gold/20;
+        appearance: none;
+        cursor: pointer;
+        color-scheme: dark;
+    }
+
+    .flight-select option {
+        background-color: rgb(15 23 42);
+        color: rgb(248 250 252);
+        font-weight: 600;
+        padding: 0.35rem 0.5rem;
+    }
+
+    /**
+     * قوائم منسدلة داكنة للوحة التشغيل (فوري وغيرها) — يصلح خلفية القائمة البيضاء مع نص فاتح غير مقروء.
+     * color-scheme: dark يوجّه المتصفح لعرض native dropdown بألوان داكنة حيث يدعم ذلك.
+     */
+    .form-select-dark {
+        @apply w-full rounded-xl border border-white/10 bg-input-bg px-4 py-3 text-text-main;
+        @apply outline-none transition-all focus:border-gold/60 focus:ring-2 focus:ring-gold/20;
+        color-scheme: dark;
+        cursor: pointer;
+    }
+
+    .form-select-dark option,
+    .form-select-dark optgroup {
+        background-color: var(--color-card-bg);
+        color: var(--color-text-main);
+    }
+
+    .form-select-dark option:disabled {
+        color: var(--color-text-muted);
+        opacity: 0.75;
+    }
+
+    .flight-hero {
+        @apply relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-bl from-sky-950/40 via-card-bg to-card-bg p-6 sm:p-8 mb-8;
+        box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+    }
+
+    .flight-hero::after {
+        content: '';
+        position: absolute;
+        inset: -40% auto auto -20%;
+        width: 55%;
+        height: 120%;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.12), transparent 65%);
+        pointer-events: none;
+    }
+
+    .flight-stepper {
+        @apply flex flex-wrap items-center gap-2 sm:gap-3;
+    }
+
+    .flight-step {
+        @apply flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-text-muted;
+        @apply transition-colors;
+    }
+
+    .flight-step--active {
+        @apply border-gold/40 bg-gold/15 text-gold;
+    }
+
+    .flight-step--done {
+        @apply border-success/30 bg-success/10 text-success;
+    }
+
+    .dashboard-kpi {
+        @apply relative overflow-hidden rounded-2xl border border-white/10 bg-card-bg/95 p-5 sm:p-6;
+        @apply backdrop-blur-xl transition-all duration-300;
+        @apply hover:-translate-y-0.5 hover:border-sky-500/30 hover:shadow-[0_20px_40px_-15px_rgba(56,189,248,0.25)];
+    }
+
+    .dashboard-kpi__icon {
+        @apply flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-600 text-white shadow-lg shadow-sky-500/20;
+    }
+
+    .input-midnight {
+        @apply bg-input-bg border border-white/10 rounded-xl px-4 py-3 focus:border-gold outline-none transition-all;
+    }
+}
+
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+.animate-shimmer {
+    background: linear-gradient(90deg, #0A1528 25%, #0C1830 50%, #0A1528 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+}
+

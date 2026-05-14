@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Flight Show Page</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-pending { background: #fef3c7; color: #854d0e; }
+        .status-confirmed { background: #d1fae5; color: #065f46; }
+        .section-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+            margin-bottom: 15px;
+        }
+        .segment {
+            background: #334155;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: right;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            background: #1e293b;
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
+        }
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .success {
+            color: #10b981;
+        }
+        .profit {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .profit-positive { color: #10b981; }
+        .profit-negative { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <h1>✈️ عرض تفاصيل حجز الطيران</h1>
+
+            <div v-if="loading" class="loading">
+                <p>جاري التحميل...</p>
+            </div>
+
+            <div v-else-if="error" class="error">
+                <p>{{ error }}</p>
+                <button @click="fetchBooking" style="margin-top: 10px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                    إعادة المحاولة
+                </button>
+            </div>
+
+            <div v-else-if="booking">
+                <!-- Header -->
+                <div class="card">
+                    <div class="header">
+                        <div>
+                            <h2 style="font-size: 28px; margin: 0;">{{ booking.bookingNumber }}</h2>
+                            <p style="color: #94a3b8; margin: 5px 0 0 0;">تم الإنشاء: {{ booking.createdAt }}</p>
+                        </div>
+                        <div class="status" :class="'status-' + booking.status">
+                            {{ booking.status }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customer Info -->
+                <div class="card">
+                    <h3 class="section-title">👤 العميل</h3>
+                    <p><strong>الاسم:</strong> {{ booking.customer?.name }}</p>
+                    <p><strong>الهاتف:</strong> {{ booking.customer?.phone }}</p>
+                </div>
+
+                <!-- Pricing -->
+                <div class="card">
+                    <h3 class="section-title">💰 المالية</h3>
+                    <p><strong>سعر الشراء:</strong> {{ booking.pricing?.purchasePrice }} {{ booking.pricing?.currency }}</p>
+                    <p><strong>سعر البيع:</strong> {{ booking.pricing?.sellingPrice }} {{ booking.pricing?.currency }}</p>
+                    <p><strong>صافي الربح:</strong>
+                        <span class="profit" :class="booking.pricing?.profit >= 0 ? 'profit-positive' : 'profit-negative'">
+                            {{ booking.pricing?.profit >= 0 ? '+' : '' }}{{ booking.pricing?.profit }}
+                        </span>
+                    </p>
+                </div>
+
+                <!-- Segments -->
+                <div class="card">
+                    <h3 class="section-title">✈️ مسار الرحلة ({{ booking.segments?.length || 0 }})</h3>
+                    <div v-if="booking.segments && booking.segments.length > 0">
+                        <div v-for="(segment, idx) in booking.segments" :key="idx" class="segment">
+                            <p><strong>رحلة {{ idx + 1 }}:</strong></p>
+                            <p><strong>رقم الرحلة:</strong> {{ segment.flightNumber }}</p>
+                            <p><strong>من:</strong> {{ segment.from }} → <strong>إلى:</strong> {{ segment.to }}</p>
+                            <p><strong>الخطوط:</strong> {{ segment.airline }}</p>
+                            <p><strong>تاريخ المغادرة:</strong> {{ segment.departureDate }}</p>
+                            <p><strong>وقت المغادرة:</strong> {{ segment.departureTime }}</p>
+                            <p><strong>وقت الوصول:</strong> {{ segment.arrivalTime }}</p>
+                            <p><strong>الأمتعة:</strong> {{ segment.baggage || 'غير محدد' }}</p>
+                        </div>
+                    </div>
+                    <p v-else style="color: #94a3b8;">لا توجد قطع رحلة</p>
+                </div>
+
+                <!-- Passengers -->
+                <div class="card">
+                    <h3 class="section-title">👥 المسافرون ({{ booking.passengers?.length || 0 }})</h3>
+                    <table v-if="booking.passengers && booking.passengers.length > 0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>الاسم</th>
+                                <th>النوع</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(pax, idx) in booking.passengers" :key="idx">
+                                <td>{{ idx + 1 }}</td>
+                                <td>{{ pax.name }}</td>
+                                <td>{{ pax.type }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-else style="color: #94a3b8;">لا يوجد مسافرون</p>
+                </div>
+
+                <!-- Payments -->
+                <div class="card">
+                    <h3 class="section-title">💳 المدفوعات ({{ booking.payments?.length || 0 }})</h3>
+                    <div v-if="booking.payments && booking.payments.length > 0">
+                        <div v-for="(payment, idx) in booking.payments" :key="idx" class="segment">
+                            <p><strong>المبلغ:</strong> {{ payment.amount }} {{ booking.pricing?.currency }}</p>
+                            <p><strong>طريقة الدفع:</strong> {{ payment.paymentMethod }}</p>
+                        </div>
+                    </div>
+                    <p v-else style="color: #94a3b8;">لا توجد مدفوعات</p>
+                </div>
+
+                <!-- Additional Info -->
+                <div class="card">
+                    <h3 class="section-title">📝 معلومات إضافية</h3>
+                    <p><strong>PNR:</strong> {{ booking.pnr || 'N/A' }}</p>
+                    <p><strong>نوع النظام:</strong> {{ booking.systemType }}</p>
+                    <p><strong>الملاحظات:</strong> {{ booking.notes || 'لا توجد ملاحظات' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    loading: true,
+                    error: null,
+                    booking: null
+                }
+            },
+            mounted() {
+                this.fetchBooking();
+            },
+            methods: {
+                async fetchBooking() {
+                    this.loading = true;
+                    this.error = null;
+
+                    try {
+                        // محاكاة استجابة API
+                        const mockResponse = {
+                            id: 226,
+                            bookingNumber: 'FLT-69F50F923C5EE',
+                            systemType: 'Amadeus',
+                            status: 'pending',
+                            createdAt: '2026-05-01T20:39:46.000000Z',
+                            pnr: null,
+                            customer: {
+                                id: 621,
+                                name: 'YOUSSEF',
+                                phone: '0123588998787',
+                                email: ''
+                            },
+                            segments: [{
+                                id: 25,
+                                airline: 'Manual',
+                                flightNumber: 'RET4343',
+                                from: 'RET',
+                                to: 'RYTRY',
+                                departureDate: '2026-05-02',
+                                departureTime: '23:39',
+                                arrivalTime: '23:39',
+                                baggage: ''
+                            }],
+                            passengers: [{
+                                id: 490,
+                                name: 'TTREDG',
+                                type: 'adult',
+                                passportNumber: ''
+                            }],
+                            payments: [],
+                            refund: null,
+                            pricing: {
+                                purchasePrice: 500,
+                                sellingPrice: 900,
+                                profit: 400,
+                                currency: 'EGP'
+                            },
+                            notes: null,
+                            totalPaid: 0,
+                            remaining: 900
+                        };
+
+                        // محاكاة delay
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        this.booking = mockResponse;
+                    } catch (err) {
+                        this.error = 'فشل تحميل بيانات الحجز: ' + err.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

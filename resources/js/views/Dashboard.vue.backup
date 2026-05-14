@@ -1,0 +1,336 @@
+<template>
+  <div class="space-y-8 animate-in fade-in duration-700">
+    <!-- Page Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+          لوحة التحكم
+        </h1>
+        <p class="text-text-muted mt-1">نظرة عامة على جميع عمليات النظام</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button
+          @click="refreshData"
+          :disabled="isRefreshing"
+          class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 disabled:opacity-50"
+        >
+          <RefreshCw :class="['w-4 h-4', isRefreshing && 'animate-spin']" />
+          تحديث
+        </button>
+        <button
+          @click="exportReport"
+          class="px-4 py-2 bg-gold hover:bg-gold/90 text-black rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-gold/20"
+        >
+          <Download class="w-4 h-4" />
+          تصدير التقرير
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Cards Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <StatCard
+        v-for="(stat, index) in store.statsCards"
+        :key="index"
+        :label="stat.label"
+        :value="stat.value"
+        :format="stat.format"
+        :icon="stat.icon"
+        :trend="stat.trend"
+        :trend-color="stat.trendColor"
+      />
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Left Column (2/3) -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Revenue Chart Section -->
+        <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="font-display font-extrabold text-lg text-text-main">
+                الإيرادات والمصروفات
+              </h3>
+              <p class="text-xs text-text-muted mt-1">آخر 6 أشهر</p>
+            </div>
+            <div class="flex items-center gap-4 text-xs">
+              <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-gold"></div>
+                <span class="text-text-muted">الإيرادات</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-error"></div>
+                <span class="text-text-muted">المصروفات</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Simple Chart Visualization (Placeholder) -->
+          <div class="h-64 flex items-end justify-around gap-2 px-4">
+            <div
+              v-for="(month, index) in chartData"
+              :key="index"
+              class="flex-1 flex flex-col items-center gap-2 group"
+            >
+              <!-- Revenue Bar -->
+              <div class="w-full flex flex-col-reverse gap-1 items-center h-48">
+                <div
+                  class="w-full bg-gold/80 rounded-t-lg transition-all hover:bg-gold group-hover:shadow-lg group-hover:shadow-gold/20"
+                  :style="{ height: `${(month.revenue / 300000) * 100}%` }"
+                ></div>
+                <div
+                  class="w-full bg-error/80 rounded-t-lg transition-all hover:bg-error group-hover:shadow-lg group-hover:shadow-error/20"
+                  :style="{ height: `${(month.expense / 300000) * 100}%` }"
+                ></div>
+              </div>
+              <span class="text-xs text-text-muted">{{ month.label }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bookings Distribution -->
+        <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="font-display font-extrabold text-lg text-text-main">
+                توزيع الحجوزات
+              </h3>
+              <p class="text-xs text-text-muted mt-1">حسب نوع الخدمة</p>
+            </div>
+          </div>
+
+          <!-- Simple Bar Chart -->
+          <div class="space-y-4">
+            <div
+              v-for="(item, index) in bookingsDistribution"
+              :key="index"
+              class="flex items-center gap-4"
+            >
+              <div class="w-24 text-sm text-text-muted">{{ item.label }}</div>
+              <div class="flex-1 h-8 bg-input-bg rounded-lg overflow-hidden">
+                <div
+                  class="h-full rounded-lg transition-all hover:opacity-80"
+                  :class="item.bgClass"
+                  :style="{ width: `${item.percentage}%` }"
+                ></div>
+              </div>
+              <div class="w-16 text-right font-mono font-bold text-sm">{{ item.count }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Feed -->
+        <ActivityFeed
+          :activities="store.recent_activities"
+          :loading="store.loading.recent_activities"
+        />
+      </div>
+
+      <!-- Right Column (1/3) -->
+      <div class="space-y-6">
+        <!-- Alerts -->
+        <Alerts :alerts="store.alerts" />
+
+        <!-- Top Customers -->
+        <TopCustomers
+          :customers="store.top_customers"
+          :loading="store.loading.top_customers"
+        />
+
+        <!-- Quick Stats -->
+        <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+          <h3 class="font-display font-extrabold text-lg text-text-main mb-4">
+            إحصائيات سريعة
+          </h3>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-gold/10 rounded-lg">
+                  <Users class="w-4 h-4 text-gold" />
+                </div>
+                <span class="text-sm text-text-muted">إجمالي العملاء</span>
+              </div>
+              <span class="font-mono font-bold text-gold">
+                {{ store.overview.total_customers }}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-blue-500/10 rounded-lg">
+                  <Briefcase class="w-4 h-4 text-blue-500" />
+                </div>
+                <span class="text-sm text-text-muted">إجمالي الموظفين</span>
+              </div>
+              <span class="font-mono font-bold text-blue-500">
+                {{ store.overview.total_employees }}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-warning/10 rounded-lg">
+                  <FileText class="w-4 h-4 text-warning" />
+                </div>
+                <span class="text-sm text-text-muted">فواتير معلقة</span>
+              </div>
+              <span class="font-mono font-bold text-warning">
+                {{ store.overview.pending_invoices }}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-error/10 rounded-lg">
+                  <AlertCircle class="w-4 h-4 text-error" />
+                </div>
+                <span class="text-sm text-text-muted">فواتير متأخرة</span>
+              </div>
+              <span class="font-mono font-bold text-error">
+                {{ store.overview.overdue_invoices }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { useDashboardStore } from '@/stores/dashboardStore';
+import StatCard from '@/components/dashboard/StatCard.vue';
+import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
+import Alerts from '@/components/dashboard/Alerts.vue';
+import TopCustomers from '@/components/dashboard/TopCustomers.vue';
+import {
+  RefreshCw,
+  Download,
+  Users,
+  Briefcase,
+  FileText,
+  AlertCircle,
+} from 'lucide-vue-next';
+
+const store = useDashboardStore();
+const isRefreshing = ref(false);
+
+// Chart data (mock data for visualization)
+const chartData = computed(() => {
+  const data = store.revenueChartData;
+  return data.labels.map((label, index) => ({
+    label,
+    revenue: data.datasets[0].data[index] || 0,
+    expense: data.datasets[1].data[index] || 0,
+  }));
+});
+
+// Bookings distribution for display
+const bookingsDistribution = computed(() => {
+  const distribution = store.bookingsDistribution;
+  const total = distribution.data.reduce((a, b) => a + b, 0);
+
+  return distribution.labels.map((label, index) => ({
+    label,
+    count: distribution.data[index],
+    percentage: total > 0 ? (distribution.data[index] / total) * 100 : 0,
+    bgClass: [
+      'bg-gold/80',
+      'bg-teal-400/80',
+      'bg-blue-400/80',
+      'bg-success/80',
+    ][index],
+  }));
+});
+
+const refreshData = async () => {
+  isRefreshing.value = true;
+  try {
+    await store.fetchFullDashboard();
+    if (window.addToast) {
+      window.addToast('تم تحديث البيانات بنجاح', 'success');
+    }
+  } catch (error) {
+    if (window.addToast) {
+      window.addToast('فشل تحديث البيانات', 'error');
+    }
+  } finally {
+    isRefreshing.value = false;
+  }
+};
+
+const exportReport = () => {
+  // TODO: Implement report export
+  if (window.addToast) {
+    window.addToast('سيتم إضافة تصدير التقارير قريباً', 'info');
+  }
+};
+
+onMounted(async () => {
+  await store.fetchFullDashboard();
+});
+</script>
+
+<style scoped>
+.bg-card-bg {
+  background-color: var(--card-bg);
+}
+
+.text-text-main {
+  color: var(--text-main);
+}
+
+.text-text-muted {
+  color: var(--text-muted);
+}
+
+.text-gold {
+  color: var(--gold);
+}
+
+.bg-gold {
+  background-color: var(--gold);
+}
+
+.bg-gold\/10 {
+  background-color: rgba(212, 168, 67, 0.1);
+}
+
+.bg-gold\/80 {
+  background-color: rgba(212, 168, 67, 0.8);
+}
+
+.bg-error {
+  background-color: var(--error);
+}
+
+.bg-error\/10 {
+  background-color: rgba(240, 69, 69, 0.1);
+}
+
+.bg-error\/80 {
+  background-color: rgba(240, 69, 69, 0.8);
+}
+
+.bg-input-bg {
+  background-color: var(--input-bg);
+}
+
+.bg-white\/5 {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.border-white\/10 {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.font-display {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+
+.font-mono {
+  font-family: 'IBM Plex Sans Arabic', monospace;
+}
+</style>

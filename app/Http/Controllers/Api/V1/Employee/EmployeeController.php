@@ -1,0 +1,192 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1\Employee;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Employee\StoreEmployeeRequest;
+use App\Http\Requests\Employee\UpdateEmployeeRequest;
+use App\Enums\EmploymentStatus;
+use App\Models\Employee;
+use App\Services\Employee\EmployeeService;
+use App\Services\Employee\EmployeeAttendanceService;
+use App\Services\Employee\EmployeeBonusService;
+use App\Http\Resources\Employee\EmployeeResource;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+
+class EmployeeController extends Controller
+{
+    protected EmployeeService $employeeService;
+    protected EmployeeAttendanceService $attendanceService;
+    protected EmployeeBonusService $bonusService;
+
+    public function __construct(
+        EmployeeService $employeeService,
+        EmployeeAttendanceService $attendanceService,
+        EmployeeBonusService $bonusService
+    ) {
+        $this->employeeService = $employeeService;
+        $this->attendanceService = $attendanceService;
+        $this->bonusService = $bonusService;
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Employee::class);
+
+        $filters = [
+            'search' => $request->search,
+            'status' => $request->status,
+            'employment_type' => $request->employment_type,
+        ];
+
+        $employees = $this->employeeService->getAllEmployees($filters)
+            ->paginate(min($request->per_page ?? 15, 100));
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employees retrieved successfully',
+            'data' => EmployeeResource::collection($employees)->response()->getData(true),
+        ]);
+    }
+
+    public function store(StoreEmployeeRequest $request): JsonResponse
+    {
+        $this->authorize('create', Employee::class);
+
+        $employee = $this->employeeService->createEmployee($request->validated());
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee created successfully',
+            'data' => new EmployeeResource($employee),
+        ], 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        $employee = $this->employeeService->getEmployeeById($id);
+
+        $this->authorize('view', $employee);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee retrieved successfully',
+            'data' => new EmployeeResource($employee),
+        ]);
+    }
+
+    public function update(UpdateEmployeeRequest $request, int $id): JsonResponse
+    {
+        $employee = Employee::findOrFail($id);
+
+        $this->authorize('update', $employee);
+
+        $employee = $this->employeeService->updateEmployee($employee, $request->validated());
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee updated successfully',
+            'data' => new EmployeeResource($employee),
+        ]);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $employee = Employee::findOrFail($id);
+
+        $this->authorize('delete', $employee);
+
+        $this->employeeService->deleteEmployee($employee);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee deleted successfully',
+        ]);
+    }
+
+    public function referenceData(): JsonResponse
+    {
+        $this->authorize('viewAny', Employee::class);
+
+        $departments = Employee::query()
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->orderBy('department')
+            ->pluck('department')
+            ->map(fn (string $d) => ['value' => $d, 'label' => $d])
+            ->values();
+
+        $statusLabels = [
+            'active' => 'نشط',
+            'on_leave' => 'في إجازة',
+            'terminated' => 'منتهي',
+            'resigned' => 'مستقيل',
+        ];
+
+        $employmentStatuses = collect(EmploymentStatus::cases())->map(function (EmploymentStatus $s) use ($statusLabels) {
+            return [
+                'value' => $s->value,
+                'label' => $statusLabels[$s->value] ?? $s->name,
+            ];
+        })->values();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee reference data retrieved successfully',
+            'data' => [
+                'departments' => $departments,
+                'employment_statuses' => $employmentStatuses,
+            ],
+        ]);
+    }
+
+    public function getStats(Request $request, int $id): JsonResponse
+    {
+        $this->authorize('view', Employee::class);
+
+        $request->validate([
+            'from_date' => 'required|date',
+            'to_date' => 'required|date|after_or_equal:from_date',
+        ]);
+
+        $stats = $this->employeeService->getEmployeeStats(
+            $id,
+            $request->from_date,
+            $request->to_date
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee statistics retrieved successfully',
+            'data' => $stats,
+        ]);
+    }
+
+    public function transactions(int $id): JsonResponse
+    {
+        $employee = Employee::findOrFail($id);
+        
+        // Fetch transactions created by this employee's user_id
+        if (!$employee->user_id) {
+            return response()->json([
+                'status' => true,
+                'message' => 'No user account linked to this employee',
+                'data' => [],
+            ]);
+        }
+
+        $transactions = \Illuminate\Support\Facades\DB::table('transactions')
+            ->where('created_by', $employee->user_id)
+            ->orderBy('created_at', 'desc')
+            ->limit(50)
+            ->get();
+            
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee transactions retrieved successfully',
+            'data' => $transactions,
+        ]);
+    }
+}

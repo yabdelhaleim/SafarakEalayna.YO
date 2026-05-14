@@ -1,0 +1,1326 @@
+{
+    "timestamp": "2026-04-29 16:39:25",
+    "total_operations": 6,
+    "passed": 0,
+    "failed": 6,
+    "success_rate": 0,
+    "created_ids": [],
+    "operations_by_type": {
+        "CREATE": {
+            "passed": 0,
+            "failed": 6
+        }
+    },
+    "results": [
+        {
+            "module": "Customers",
+            "operation": "CREATE: إنشاء عميل جديد",
+            "method": "POST",
+            "url": "\/customers",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/customers. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "module": "Accounts",
+            "operation": "CREATE: إنشاء حساب بنكي",
+            "method": "POST",
+            "url": "\/finance\/accounts",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/finance\/accounts. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "module": "Bus",
+            "operation": "CREATE: إنشاء شركة حافلات",
+            "method": "POST",
+            "url": "\/bus\/companies",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/bus\/companies. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "module": "Service",
+            "operation": "CREATE: إنشاء خدمة جديدة",
+            "method": "POST",
+            "url": "\/service\/services",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/service\/services. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "module": "Online",
+            "operation": "CREATE: إنشاء نوع خدمة أونلاين",
+            "method": "POST",
+            "url": "\/online\/service-types",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/online\/service-types. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "module": "Employee",
+            "operation": "CREATE: إنشاء موظف جديد",
+            "method": "POST",
+            "url": "\/employee\/employees",
+            "http_code": 500,
+            "success": false,
+            "response": {
+                "status": "error",
+                "message": "The POST method is not supported for route api\/v1\/employee\/employees. Supported methods: GET, HEAD.",
+                "data": null,
+                "errors": {
+                    "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                    "line": 130,
+                    "trace": [
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 115,
+                            "function": "requestMethodNotAllowed",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ],
+                                "POST"
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\AbstractRouteCollection.php",
+                            "line": 41,
+                            "function": "getRouteForMethods",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                [
+                                    "GET",
+                                    "HEAD"
+                                ]
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\RouteCollection.php",
+                            "line": 196,
+                            "function": "handleMatchedRoute",
+                            "class": "Illuminate\\Routing\\AbstractRouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                null
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 777,
+                            "function": "match",
+                            "class": "Illuminate\\Routing\\RouteCollection",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 764,
+                            "function": "findRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php",
+                            "line": 753,
+                            "function": "dispatchToRoute",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php",
+                            "line": 200,
+                            "function": "dispatch",
+                            "class": "Illuminate\\Routing\\Router",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 180,
+                            "function": "Illuminate\\Foundation\\Http\\{closure}",
+                            "class": "Illuminate\\Foundation\\Http\\Kernel",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\livewire\\livewire\\src\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware.php",
+                            "line": 19,
+                            "function": "Illuminate\\Pipeline\\{closure}",
+                            "class": "Illuminate\\Pipeline\\Pipeline",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                }
+                            ]
+                        },
+                        {
+                            "file": "C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php",
+                            "line": 219,
+                            "function": "handle",
+                            "class": "Livewire\\Features\\SupportDisablingBackButtonCache\\DisableBackButtonCacheMiddleware",
+                            "type": "->",
+                            "args": [
+                                {
+                                    "attributes": [],
+                                    "request": [],
+                                    "query": [],
+                                    "server": [],
+                                    "files": [],
+                                    "cookies": [],
+                                    "headers": []
+                                },
+                                []
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "errors": [
+        {
+            "module": "Customers",
+            "operation": "CREATE: إنشاء عميل جديد",
+            "url": "\/customers",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/customers. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        },
+        {
+            "module": "Accounts",
+            "operation": "CREATE: إنشاء حساب بنكي",
+            "url": "\/finance\/accounts",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/finance\\\/accounts. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        },
+        {
+            "module": "Bus",
+            "operation": "CREATE: إنشاء شركة حافلات",
+            "url": "\/bus\/companies",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/bus\\\/companies. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        },
+        {
+            "module": "Service",
+            "operation": "CREATE: إنشاء خدمة جديدة",
+            "url": "\/service\/services",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/service\\\/services. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        },
+        {
+            "module": "Online",
+            "operation": "CREATE: إنشاء نوع خدمة أونلاين",
+            "url": "\/online\/service-types",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/online\\\/service-types. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        },
+        {
+            "module": "Employee",
+            "operation": "CREATE: إنشاء موظف جديد",
+            "url": "\/employee\/employees",
+            "http_code": 500,
+            "error": "HTTP 500",
+            "response": "{\"status\":\"error\",\"message\":\"The POST method is not supported for route api\\\/v1\\\/employee\\\/employees. Supported methods: GET, HEAD.\",\"data\":null,\"errors\":{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":130,\"trace\":[{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":115,\"function\":\"requestMethodNotAllowed\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"],\"POST\"]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\AbstractRouteCollection.php\",\"line\":41,\"function\":\"getRouteForMethods\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},[\"GET\",\"HEAD\"]]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\RouteCollection.php\",\"line\":196,\"function\":\"handleMatchedRoute\",\"class\":\"Illuminate\\\\Routing\\\\AbstractRouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},null]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":777,\"function\":\"match\",\"class\":\"Illuminate\\\\Routing\\\\RouteCollection\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":764,\"function\":\"findRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Routing\\\\Router.php\",\"line\":753,\"function\":\"dispatchToRoute\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Foundation\\\\Http\\\\Kernel.php\",\"line\":200,\"function\":\"dispatch\",\"class\":\"Illuminate\\\\Routing\\\\Router\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":180,\"function\":\"Illuminate\\\\Foundation\\\\Http\\\\{closure}\",\"class\":\"Illuminate\\\\Foundation\\\\Http\\\\Kernel\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\livewire\\\\livewire\\\\src\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware.php\",\"line\":19,\"function\":\"Illuminate\\\\Pipeline\\\\{closure}\",\"class\":\"Illuminate\\\\Pipeline\\\\Pipeline\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}}]},{\"file\":\"C:\\\\travile\\\\SafarakEalayna\\\\vendor\\\\laravel\\\\framework\\\\src\\\\Illuminate\\\\Pipeline\\\\Pipeline.php\",\"line\":219,\"function\":\"handle\",\"class\":\"Livewire\\\\Features\\\\SupportDisablingBackButtonCache\\\\DisableBackButtonCacheMiddleware\",\"type\":\"->\",\"args\":[{\"attributes\":{},\"request\":{},\"query\":{},\"server\":{},\"files\":{},\"cookies\":{},\"headers\":{}},{}]}]}}"
+        }
+    ]
+}

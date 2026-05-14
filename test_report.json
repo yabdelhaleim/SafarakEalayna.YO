@@ -1,0 +1,189 @@
+{
+    "timestamp": "2026-04-29 16:35:49",
+    "total_tests": 20,
+    "passed": 20,
+    "failed": 0,
+    "results": [
+        {
+            "name": "Health Check",
+            "method": "GET",
+            "url": "\/health",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Accounts",
+            "method": "GET",
+            "url": "\/finance\/accounts",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Transactions",
+            "method": "GET",
+            "url": "\/finance\/transactions",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Transfers",
+            "method": "GET",
+            "url": "\/finance\/transfers",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Flight Bookings",
+            "method": "GET",
+            "url": "\/flight\/bookings",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Flight Passengers",
+            "method": "GET",
+            "url": "\/flight\/passengers",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Flight Payments",
+            "method": "GET",
+            "url": "\/flight\/payments",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Bus Companies",
+            "method": "GET",
+            "url": "\/bus\/companies",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Bus Inventory",
+            "method": "GET",
+            "url": "\/bus\/inventories",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Bus Bookings",
+            "method": "GET",
+            "url": "\/bus\/bookings",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Services",
+            "method": "GET",
+            "url": "\/service\/services",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Service Orders",
+            "method": "GET",
+            "url": "\/service\/orders",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Service Payments",
+            "method": "GET",
+            "url": "\/service\/payments",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Online Service Types",
+            "method": "GET",
+            "url": "\/online\/service-types",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Online Transactions",
+            "method": "GET",
+            "url": "\/online\/transactions",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Employees",
+            "method": "GET",
+            "url": "\/employee\/employees",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Employee Bonuses",
+            "method": "GET",
+            "url": "\/employee\/bonuses",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "Financial Summary",
+            "method": "GET",
+            "url": "\/reports\/financial\/summary",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "Transaction Report",
+            "method": "GET",
+            "url": "\/reports\/transactions",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        },
+        {
+            "name": "List Customers",
+            "method": "GET",
+            "url": "\/customers",
+            "http_code": 200,
+            "success": true,
+            "response": null,
+            "curl_error": ""
+        }
+    ],
+    "errors": []
+}

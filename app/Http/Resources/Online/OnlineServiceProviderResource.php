@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Http\Resources\Online;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class OnlineServiceProviderResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'code' => $this->code,
+            'name' => $this->name_ar,
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
+            'description' => $this->description_ar,
+            'description_ar' => $this->description_ar,
+            'description_en' => $this->description_en,
+            'color' => $this->color,
+            'icon' => $this->icon,
+            'contact_phone' => $this->contact_phone,
+            'contact_account' => $this->contact_account,
+            'metadata' => $this->metadata,
+            'default_purchase_account' => $this->whenLoaded('defaultPurchaseAccount', fn () => $this->defaultPurchaseAccount ? [
+                'id' => $this->defaultPurchaseAccount->id,
+                'name' => $this->defaultPurchaseAccount->name,
+                'type' => $this->defaultPurchaseAccount->type,
+            ] : null),
+            'default_purchase_account_id' => $this->default_purchase_account_id,
+            'is_active' => (bool) $this->is_active,
+            'order' => (int) $this->order,
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
+        ];
+    }
+}

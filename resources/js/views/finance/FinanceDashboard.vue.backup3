@@ -1,0 +1,803 @@
+<template>
+  <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <!-- Header -->
+    <div class="bg-black/20 backdrop-blur-sm border-b border-white/10">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 class="text-3xl font-extrabold text-white tracking-tight">
+              الحسابات والمعاملات المالية
+            </h1>
+            <p class="text-gray-400 mt-1">إدارة شاملة للحسابات والمعاملات والتحويلات</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <router-link
+              to="/finance/transactions/create"
+              class="px-4 py-2 bg-gold hover:bg-gold/90 text-black rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-gold/20"
+            >
+              <Plus class="w-4 h-4" />
+              معاملة جديدة
+            </router-link>
+            <router-link
+              to="/finance/transfers/create"
+              class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-semibold transition-all flex items-center gap-2"
+            >
+              <ArrowRightLeft class="w-4 h-4" />
+              تحويل
+            </router-link>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <!-- Date Range Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">من تاريخ</label>
+            <input
+              v-model="filters.date_from"
+              type="date"
+              class="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-white"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">إلى تاريخ</label>
+            <input
+              v-model="filters.date_to"
+              type="date"
+              class="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-white"
+            />
+          </div>
+
+          <!-- Account Type Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">نوع الحساب</label>
+            <select
+              v-model="filters.account_type"
+              class="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-white"
+            >
+              <option value="">الكل</option>
+              <option value="bank">بنوك</option>
+              <option value="treasury">خزينة</option>
+              <option value="cash">كاش</option>
+              <option value="wallet">محافظ إلكترونية</option>
+            </select>
+          </div>
+
+          <!-- Transaction Type Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">نوع المعاملة</label>
+            <select
+              v-model="filters.transaction_type"
+              class="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-white"
+            >
+              <option value="">الكل</option>
+              <option value="income">دخل</option>
+              <option value="expense">مصروف</option>
+              <option value="transfer">تحويل</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-4">
+          <button
+            @click="applyFilters"
+            class="px-6 py-2 bg-gold hover:bg-gold/90 text-black rounded-xl font-semibold transition-all"
+          >
+            تطبيق الفلاتر
+          </button>
+          <button
+            @click="resetFilters"
+            class="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-semibold transition-all"
+          >
+            إعادة تعيين
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Total Balance -->
+        <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-gold/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/10">
+          <div class="flex justify-between items-start mb-4">
+            <div class="p-3 bg-gold/10 rounded-xl text-gold group-hover:scale-110 transition-transform">
+              <Wallet class="w-6 h-6" />
+            </div>
+            <span class="text-xs font-bold px-2 py-1 rounded-full bg-gold/10 text-gold">
+              إجمالي
+            </span>
+          </div>
+          <div>
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-1">الرصيد الكلي</div>
+            <div class="text-2xl font-bold font-mono group-hover:text-gold transition-colors">
+              {{ formatCurrency(stats.total_balance) }}
+            </div>
+            <div class="text-xs text-gray-500 mt-1">جنيه مصري</div>
+          </div>
+        </div>
+
+        <!-- Total Income -->
+        <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-success/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-success/10">
+          <div class="flex justify-between items-start mb-4">
+            <div class="p-3 bg-success/10 rounded-xl text-success group-hover:scale-110 transition-transform">
+              <TrendingUp class="w-6 h-6" />
+            </div>
+            <span class="text-xs font-bold px-2 py-1 rounded-full bg-success/10 text-success">
+              +12%
+            </span>
+          </div>
+          <div>
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-1">إجمالي الدخل</div>
+            <div class="text-2xl font-bold font-mono group-hover:text-success transition-colors">
+              {{ formatCurrency(stats.total_income) }}
+            </div>
+            <div class="text-xs text-gray-500 mt-1">جنيه مصري</div>
+          </div>
+        </div>
+
+        <!-- Total Expense -->
+        <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-error/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-error/10">
+          <div class="flex justify-between items-start mb-4">
+            <div class="p-3 bg-error/10 rounded-xl text-error group-hover:scale-110 transition-transform">
+              <TrendingDown class="w-6 h-6" />
+            </div>
+            <span class="text-xs font-bold px-2 py-1 rounded-full bg-error/10 text-error">
+              -8%
+            </span>
+          </div>
+          <div>
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-1">إجمالي المصروف</div>
+            <div class="text-2xl font-bold font-mono group-hover:text-error transition-colors">
+              {{ formatCurrency(stats.total_expense) }}
+            </div>
+            <div class="text-xs text-gray-500 mt-1">جنيه مصري</div>
+          </div>
+        </div>
+
+        <!-- Net Profit -->
+        <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-purple/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple/10">
+          <div class="flex justify-between items-start mb-4">
+            <div :class="[
+              'p-3 rounded-xl group-hover:scale-110 transition-transform',
+              isProfitable ? 'bg-purple/10 text-purple' : 'bg-error/10 text-error'
+            ]">
+              <DollarSign class="w-6 h-6" />
+            </div>
+            <span :class="[
+              'text-xs font-bold px-2 py-1 rounded-full',
+              isProfitable ? 'bg-purple/10 text-purple' : 'bg-error/10 text-error'
+            ]">
+              {{ isProfitable ? 'ربح' : 'خسارة' }}
+            </span>
+          </div>
+          <div>
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-1">صافي الربح</div>
+            <div :class="[
+              'text-2xl font-bold font-mono group-hover:text-purple transition-colors',
+              !isProfitable && 'text-error'
+            ]">
+              {{ formatCurrency(Math.abs(stats.net_profit)) }}
+            </div>
+            <div class="text-xs text-gray-500 mt-1">جنيه مصري</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column (2/3) -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- Account Cards with Transaction Preview -->
+          <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h3 class="text-lg font-bold text-white">الحسابات البنكية والخزينة</h3>
+                <p class="text-xs text-gray-400 mt-1">نظرة عامة مع آخر المعاملات</p>
+              </div>
+              <router-link
+                to="/finance/accounts"
+                class="text-sm text-gold hover:underline font-semibold"
+              >
+                عرض الكل
+              </router-link>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Bank Accounts -->
+              <div
+                v-for="account in bankAccounts"
+                :key="account.id"
+                class="p-5 bg-white/5 border border-white/10 rounded-xl hover:border-gold/30 transition-all group"
+              >
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="p-3 bg-blue/10 rounded-xl">
+                      <Building2 class="w-5 h-5 text-blue" />
+                    </div>
+                    <div>
+                      <div class="font-bold text-white">{{ account.name }}</div>
+                      <div class="text-xs text-gray-400">{{ getAccountTypeLabel(account.type) }}</div>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-xl font-bold text-white">{{ formatCurrency(account.balance) }}</div>
+                    <div class="text-xs text-gray-400">{{ account.currency }}</div>
+                  </div>
+                </div>
+
+                <!-- Last 5 Transactions Preview -->
+                <div v-if="account.recent_transactions && account.recent_transactions.length > 0" class="space-y-2 pt-4 border-t border-white/10">
+                  <div class="text-xs text-gray-400 mb-2">آخر المعاملات</div>
+                  <div
+                    v-for="(transaction, idx) in account.recent_transactions.slice(0, 3)"
+                    :key="idx"
+                    class="flex items-center justify-between text-sm py-2 border-b border-white/5 last:border-0"
+                  >
+                    <div class="flex items-center gap-2">
+                      <div :class="[
+                        'w-6 h-6 rounded flex items-center justify-center',
+                        transaction.type === 'income' ? 'bg-success/10' : 'bg-error/10'
+                      ]">
+                        <ArrowUpRight v-if="transaction.type === 'income'" class="w-3 h-3 text-success" />
+                        <ArrowDownRight v-else class="w-3 h-3 text-error" />
+                      </div>
+                      <div>
+                        <div class="text-white text-xs">{{ transaction.description }}</div>
+                        <div class="text-gray-500 text-[10px]">{{ formatDate(transaction.created_at) }}</div>
+                      </div>
+                    </div>
+                    <div :class="[
+                      'font-bold text-xs',
+                      transaction.type === 'income' ? 'text-success' : 'text-error'
+                    ]">
+                      {{ transaction.type === 'income' ? '+' : '-' }}
+                      {{ formatCurrency(transaction.amount) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cash/ Treasury Accounts -->
+              <div
+                v-for="account in cashAccounts"
+                :key="account.id"
+                class="p-5 bg-white/5 border border-white/10 rounded-xl hover:border-gold/30 transition-all group"
+              >
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="p-3 bg-gold/10 rounded-xl">
+                      <Wallet class="w-5 h-5 text-gold" />
+                    </div>
+                    <div>
+                      <div class="font-bold text-white">{{ account.name }}</div>
+                      <div class="text-xs text-gray-400">{{ getAccountTypeLabel(account.type) }}</div>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-xl font-bold text-white">{{ formatCurrency(account.balance) }}</div>
+                    <div class="text-xs text-gray-400">{{ account.currency }}</div>
+                  </div>
+                </div>
+
+                <!-- Last 5 Transactions Preview -->
+                <div v-if="account.recent_transactions && account.recent_transactions.length > 0" class="space-y-2 pt-4 border-t border-white/10">
+                  <div class="text-xs text-gray-400 mb-2">آخر المعاملات</div>
+                  <div
+                    v-for="(transaction, idx) in account.recent_transactions.slice(0, 3)"
+                    :key="idx"
+                    class="flex items-center justify-between text-sm py-2 border-b border-white/5 last:border-0"
+                  >
+                    <div class="flex items-center gap-2">
+                      <div :class="[
+                        'w-6 h-6 rounded flex items-center justify-center',
+                        transaction.type === 'income' ? 'bg-success/10' : 'bg-error/10'
+                      ]">
+                        <ArrowUpRight v-if="transaction.type === 'income'" class="w-3 h-3 text-success" />
+                        <ArrowDownRight v-else class="w-3 h-3 text-error" />
+                      </div>
+                      <div>
+                        <div class="text-white text-xs">{{ transaction.description }}</div>
+                        <div class="text-gray-500 text-[10px]">{{ formatDate(transaction.created_at) }}</div>
+                      </div>
+                    </div>
+                    <div :class="[
+                      'font-bold text-xs',
+                      transaction.type === 'income' ? 'text-success' : 'text-error'
+                    ]">
+                      {{ transaction.type === 'income' ? '+' : '-' }}
+                      {{ formatCurrency(transaction.amount) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Full Transactions Table -->
+          <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h3 class="text-lg font-bold text-white">جميع المعاملات</h3>
+                <p class="text-xs text-gray-400 mt-1">سجل كامل للمعاملات المالية</p>
+              </div>
+              <router-link
+                to="/finance/transactions"
+                class="text-sm text-gold hover:underline font-semibold"
+              >
+                عرض الكل
+              </router-link>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">التاريخ</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">النوع</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">المبلغ</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">الحساب</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">الوصف</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">الرصيد</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <tr
+                    v-for="(transaction, index) in transactions"
+                    :key="index"
+                    class="hover:bg-white/5 transition-colors"
+                  >
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ formatDate(transaction.created_at) }}</td>
+                    <td class="px-4 py-3">
+                      <span :class="[
+                        'px-2 py-1 rounded-full text-xs font-bold',
+                        transaction.type === 'income' ? 'bg-success/10 text-success' :
+                        transaction.type === 'expense' ? 'bg-error/10 text-error' :
+                        'bg-purple/10 text-purple'
+                      ]">
+                        {{ getTransactionTypeLabel(transaction.type) }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm font-mono font-bold" :class="[
+                      transaction.type === 'income' ? 'text-success' : 'text-error'
+                    ]">
+                      {{ transaction.type === 'income' ? '+' : '-' }}
+                      {{ formatCurrency(transaction.amount) }}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ transaction.account?.name || '-' }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ transaction.description }}</td>
+                    <td class="px-4 py-3 text-sm font-mono text-white">{{ formatCurrency(transaction.running_balance) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="pagination.total > pagination.per_page" class="flex items-center justify-between mt-6 pt-6 border-t border-white/10">
+              <div class="text-sm text-gray-400">
+                عرض {{ (pagination.current_page - 1) * pagination.per_page + 1 }}
+                إلى {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }}
+                من {{ pagination.total }} معاملة
+              </div>
+              <div class="flex gap-2">
+                <button
+                  @click="goToPage(pagination.current_page - 1)"
+                  :disabled="pagination.current_page === 1"
+                  class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  السابق
+                </button>
+                <button
+                  @click="goToPage(pagination.current_page + 1)"
+                  :disabled="pagination.current_page === pagination.last_page"
+                  class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column (1/3) -->
+        <div class="space-y-6">
+          <!-- Quick Stats -->
+          <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BarChart3 class="w-5 h-5 text-gold" />
+              إحصائيات سريعة
+            </h3>
+
+            <div class="space-y-3">
+              <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-blue/10 rounded-lg">
+                    <Building2 class="w-4 h-4 text-blue" />
+                  </div>
+                  <span class="text-sm text-gray-400">عدد البنوك</span>
+                </div>
+                <span class="font-mono font-bold text-white">{{ bankAccounts.length }}</span>
+              </div>
+
+              <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-gold/10 rounded-lg">
+                    <Wallet class="w-4 h-4 text-gold" />
+                  </div>
+                  <span class="text-sm text-gray-400">الخزينة</span>
+                </div>
+                <span class="font-mono font-bold text-white">{{ cashAccounts.length }}</span>
+              </div>
+
+              <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-purple/10 rounded-lg">
+                    <CreditCard class="w-4 h-4 text-purple" />
+                  </div>
+                  <span class="text-sm text-gray-400">المحافظ</span>
+                </div>
+                <span class="font-mono font-bold text-white">{{ walletAccounts.length }}</span>
+              </div>
+
+              <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-info/10 rounded-lg">
+                    <FileText class="w-4 h-4 text-info" />
+                  </div>
+                  <span class="text-sm text-gray-400">المعاملات اليوم</span>
+                </div>
+                <span class="font-mono font-bold text-white">{{ todayTransactionsCount }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Income vs Expense -->
+          <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <PieChart class="w-5 h-5 text-gold" />
+              الدخل مقابل المصروف
+            </h3>
+
+            <div class="space-y-4">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-gray-400">الدخل</span>
+                  <span class="text-sm font-bold text-success">{{ formatCurrency(stats.total_income) }}</span>
+                </div>
+                <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-success to-emerald-400 rounded-full transition-all"
+                    :style="{ width: `${incomePercentage}%` }"
+                  ></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-gray-400">المصروف</span>
+                  <span class="text-sm font-bold text-error">{{ formatCurrency(stats.total_expense) }}</span>
+                </div>
+                <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-error to-red-400 rounded-full transition-all"
+                    :style="{ width: `${expensePercentage}%` }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Spending Accounts -->
+          <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <TrendingUp class="w-5 h-5 text-gold" />
+              أعلى الحسابات نشاطاً
+            </h3>
+
+            <div class="space-y-3">
+              <div
+                v-for="(account, index) in topAccounts"
+                :key="index"
+                class="flex items-center justify-between p-3 bg-white/5 rounded-xl"
+              >
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-gold/10 rounded-lg flex items-center justify-center font-bold text-gold text-sm">
+                    {{ index + 1 }}
+                  </div>
+                  <div>
+                    <div class="font-bold text-white text-sm">{{ account.name }}</div>
+                    <div class="text-xs text-gray-400">{{ account.transaction_count }} معاملة</div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="font-bold text-white text-sm">{{ formatCurrency(account.total_amount) }}</div>
+                  <div class="text-xs text-gray-400">إجمالي</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import axios from 'axios';
+import {
+  Plus,
+  ArrowRightLeft,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Building2,
+  ArrowUpRight,
+  ArrowDownRight,
+  BarChart3,
+  PieChart,
+  FileText,
+  CreditCard,
+} from 'lucide-vue-next';
+
+// Filters
+const filters = ref({
+  date_from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  date_to: new Date().toISOString().split('T')[0],
+  account_type: '',
+  transaction_type: '',
+});
+
+// Data
+const accounts = ref([]);
+const transactions = ref([]);
+const stats = ref({
+  total_balance: 0,
+  total_income: 0,
+  total_expense: 0,
+  net_profit: 0,
+});
+
+const pagination = ref({
+  total: 0,
+  current_page: 1,
+  last_page: 1,
+  per_page: 15,
+});
+
+// Computed
+const isProfitable = computed(() => stats.value.net_profit > 0);
+
+const bankAccounts = computed(() => {
+  return accounts.value.filter(a => a.type === 'bank');
+});
+
+const cashAccounts = computed(() => {
+  return accounts.value.filter(a => a.type === 'treasury' || a.type === 'cash');
+});
+
+const walletAccounts = computed(() => {
+  return accounts.value.filter(a => a.type === 'wallet');
+});
+
+const incomePercentage = computed(() => {
+  const total = stats.value.total_income + stats.value.total_expense;
+  return total > 0 ? ((stats.value.total_income / total) * 100).toFixed(0) : 0;
+});
+
+const expensePercentage = computed(() => {
+  const total = stats.value.total_income + stats.value.total_expense;
+  return total > 0 ? ((stats.value.total_expense / total) * 100).toFixed(0) : 0;
+});
+
+const todayTransactionsCount = computed(() => {
+  const today = new Date().toISOString().split('T')[0];
+  return transactions.value.filter(t => t.created_at.startsWith(today)).length;
+});
+
+const topAccounts = computed(() => {
+  return accounts.value
+    .map(a => ({
+      ...a,
+      transaction_count: a.recent_transactions?.length || 0,
+      total_amount: a.recent_transactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0,
+    }))
+    .sort((a, b) => b.transaction_count - a.transaction_count)
+    .slice(0, 5);
+});
+
+// Methods
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('ar-EG', {
+    style: 'currency',
+    currency: 'EGP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+};
+
+const formatDate = (date) => {
+  if (!date) return '-';
+  return new Date(date).toLocaleDateString('ar-EG');
+};
+
+const getAccountTypeLabel = (type) => {
+  const labels = {
+    bank: 'بنك',
+    treasury: 'خزينة',
+    cash: 'كاش',
+    wallet: 'محفظة إلكترونية',
+  };
+  return labels[type] || type;
+};
+
+const getTransactionTypeLabel = (type) => {
+  const labels = {
+    income: 'دخل',
+    expense: 'مصروف',
+    transfer: 'تحويل',
+  };
+  return labels[type] || type;
+};
+
+const applyFilters = async () => {
+  await fetchData();
+};
+
+const resetFilters = () => {
+  filters.value = {
+    date_from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    date_to: new Date().toISOString().split('T')[0],
+    account_type: '',
+    transaction_type: '',
+  };
+  fetchData();
+};
+
+const goToPage = (page) => {
+  pagination.value.current_page = page;
+  fetchData();
+};
+
+const fetchData = async () => {
+  try {
+    // Fetch accounts with recent transactions
+    const accountsRes = await axios.get('/api/v1/finance/accounts', {
+      params: {
+        limit: 10,
+        with_recent_transactions: true,
+        transactions_limit: 5,
+      }
+    });
+    accounts.value = accountsRes.data?.data || [];
+
+    // Fetch transactions
+    const transactionsRes = await axios.get('/api/v1/finance/transactions', {
+      params: {
+        date_from: filters.value.date_from,
+        date_to: filters.value.date_to,
+        account_type: filters.value.account_type,
+        transaction_type: filters.value.transaction_type,
+        page: pagination.value.current_page,
+        per_page: pagination.value.per_page,
+      }
+    });
+    transactions.value = transactionsRes.data?.data || [];
+    pagination.value = transactionsRes.data?.pagination || pagination.value;
+
+    // Fetch stats
+    const statsRes = await axios.get('/api/v1/finance/stats');
+    stats.value = statsRes.data?.data || stats.value;
+
+  } catch (error) {
+    console.error('Failed to fetch finance data:', error);
+    // Use mock data as fallback
+    useMockData();
+  }
+};
+
+const useMockData = () => {
+  // Mock accounts
+  accounts.value = [
+    {
+      id: 1,
+      name: 'البنك الأهلي',
+      type: 'bank',
+      balance: 250000,
+      currency: 'EGP',
+      recent_transactions: [
+        { type: 'income', amount: 50000, description: 'حجز طيران', created_at: new Date().toISOString() },
+        { type: 'expense', amount: 15000, description: 'مصروفات تشغيل', created_at: new Date(Date.now() - 86400000).toISOString() },
+        { type: 'income', amount: 35000, description: 'حجز آخر', created_at: new Date(Date.now() - 172800000).toISOString() },
+      ]
+    },
+    {
+      id: 2,
+      name: 'بنك مصر',
+      type: 'bank',
+      balance: 180000,
+      currency: 'EGP',
+      recent_transactions: [
+        { type: 'income', amount: 40000, description: 'تحويل من عميل', created_at: new Date().toISOString() },
+        { type: 'expense', amount: 12000, description: 'دفع فواتير', created_at: new Date(Date.now() - 86400000).toISOString() },
+      ]
+    },
+    {
+      id: 3,
+      name: 'الخزينة الرئيسية',
+      type: 'treasury',
+      balance: 120000,
+      currency: 'EGP',
+      recent_transactions: [
+        { type: 'income', amount: 25000, description: 'دفع نقدی', created_at: new Date().toISOString() },
+        { type: 'expense', amount: 8000, description: 'سحب نقدي', created_at: new Date(Date.now() - 86400000).toISOString() },
+        { type: 'income', amount: 18000, description: 'إيداع', created_at: new Date(Date.now() - 172800000).toISOString() },
+      ]
+    },
+    {
+      id: 4,
+      name: 'خزينة فرع 2',
+      type: 'cash',
+      balance: 45000,
+      currency: 'EGP',
+      recent_transactions: [
+        { type: 'income', amount: 10000, description: 'بيع تذاكر', created_at: new Date().toISOString() },
+      ]
+    },
+  ];
+
+  // Mock transactions
+  transactions.value = [
+    {
+      created_at: new Date().toISOString(),
+      type: 'income',
+      amount: 50000,
+      account: { name: 'البنك الأهلي' },
+      description: 'حجز طيران #BK-2024-0123',
+      running_balance: 250000,
+    },
+    {
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+      type: 'expense',
+      amount: 15000,
+      account: { name: 'البنك الأهلي' },
+      description: 'مصروفات تشغيل',
+      running_balance: 200000,
+    },
+    {
+      created_at: new Date(Date.now() - 172800000).toISOString(),
+      type: 'income',
+      amount: 35000,
+      account: { name: 'البنك الأهلي' },
+      description: 'حجز آخر',
+      running_balance: 185000,
+    },
+  ];
+
+  // Mock stats
+  stats.value = {
+    total_balance: 595000,
+    total_income: 168000,
+    total_expense: 35000,
+    net_profit: 133000,
+  };
+};
+
+onMounted(async () => {
+  await fetchData();
+});
+</script>
+
+<style scoped>
+.bg-card-bg {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+}
+</style>
