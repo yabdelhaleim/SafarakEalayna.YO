@@ -161,7 +161,10 @@ class AccountService
     {
         return DB::transaction(function () use ($account) {
             if ($account->balance != 0.00) {
-                throw new \Exception('Cannot deactivate an account with non-zero balance.');
+                throw new \Illuminate\Validation\ValidationException(
+                    \Illuminate\Support\Facades\Validator::make([], []),
+                    new \Illuminate\Support\MessageBag(['account' => 'Cannot deactivate an account with non-zero balance.'])
+                );
             }
 
             $account->fill(['is_active' => false]);

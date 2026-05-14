@@ -2,13 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceItem extends Model
 {
-    #[Fillable([
+    protected $fillable = [
         'invoice_id',
         'description',
         'details',
@@ -20,7 +19,7 @@ class InvoiceItem extends Model
         'total',
         'item_type',
         'item_id',
-    ])]
+    ];
 
     protected function casts(): array
     {

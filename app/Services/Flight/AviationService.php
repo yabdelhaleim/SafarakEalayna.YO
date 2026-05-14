@@ -317,7 +317,9 @@ class AviationService
      */
     public function getReport(array $filters): array
     {
-        $query = FlightBooking::with(['pricing', 'payments']);
+        $query = FlightBooking::with(['pricing', 'payments'])
+            ->whereNotNull('booking_channel_type')
+            ->whereIn('booking_channel_type', array_column(\App\Enums\BookingChannelType::cases(), 'value'));
 
         if (isset($filters['date_from'])) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
@@ -332,11 +334,11 @@ class AviationService
         $bookings = $query->get();
 
         $totalRevenue = $bookings->sum(function ($b) {
-            return $b->pricing->selling_price_egp ?? $b->pricing->selling_price;
+            return $b->pricing?->selling_price_egp ?? $b->pricing?->selling_price ?? $b->selling_price ?? 0;
         });
 
         $totalProfit = $bookings->sum(function ($b) {
-            return $b->pricing->profit_egp ?? $b->pricing->profit;
+            return $b->pricing?->profit_egp ?? $b->pricing?->profit ?? $b->profit ?? 0;
         });
 
         return [
