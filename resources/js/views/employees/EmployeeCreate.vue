@@ -9,7 +9,7 @@
         <ArrowRight class="w-5 h-5 text-text-muted" />
       </router-link>
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
           موظف جديد
         </h1>
         <p class="text-text-muted mt-1">إضافة موظف جديد للنظام</p>

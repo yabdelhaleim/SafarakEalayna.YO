@@ -9,7 +9,7 @@
         <ArrowRight class="w-5 h-5 text-text-muted" />
       </router-link>
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
           تفاصيل الموظف
         </h1>
         <p class="text-text-muted mt-1">موظف #{{ id }}</p>
@@ -224,6 +224,7 @@
             سحب من الراتب (سلفة)
           </button>
         </div>
+      </div>
       <!-- Employee Operations (Transactions) -->
       <div class="bg-card-bg border border-white/10 rounded-2xl p-6">
         <h3 class="font-display font-extrabold text-xl text-text-main mb-6 flex items-center gap-2">

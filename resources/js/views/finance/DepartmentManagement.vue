@@ -8,7 +8,7 @@
             <LayoutDashboard v-if="isTourism" class="w-6 h-6" />
             <Briefcase v-else class="w-6 h-6" />
           </div>
-          <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+          <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
             {{ title }}
           </h1>
         </div>
@@ -96,7 +96,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
-              <tr class="text-[10px] text-text-muted uppercase bg-white/5 border-b border-white/5">
+              <tr class="text-[10px] text-text-muted uppercase bg-white/5 border-b border-white/5 whitespace-nowrap">
                 <th class="px-6 py-4">التاريخ</th>
                 <th class="px-6 py-4">الموديول</th>
                 <th class="px-6 py-4">الحساب</th>
@@ -141,7 +141,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
-              <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10">
+              <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10 whitespace-nowrap">
                 <th class="px-6 py-5">المورد</th>
                 <th class="px-6 py-5">التصنيف</th>
                 <th class="px-6 py-5">رصيد الحساب</th>
@@ -195,7 +195,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
-              <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10">
+              <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10 whitespace-nowrap">
                 <th class="px-6 py-5">العميل</th>
                 <th class="px-6 py-5">رقم الهاتف</th>
                 <th class="px-6 py-5">العمليات المعلقة</th>

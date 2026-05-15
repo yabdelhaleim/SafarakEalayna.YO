@@ -45,7 +45,7 @@
                 id="email"
                 v-model="form.email"
                 type="email"
-                class="flight-input !bg-input-bg !text-text-main placeholder:!text-text-muted/80"
+                class="flight-input !bg-input-bg !pl-12 !text-text-main placeholder:!text-text-muted/80"
                 :class="errors.email ? '!border-error/50 !ring-2 !ring-error/25' : ''"
                 placeholder="admin@admin.com"
                 required
@@ -68,7 +68,7 @@
                 id="password"
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
-                class="flight-input !bg-input-bg !pr-12 !text-text-main placeholder:!text-text-muted/80"
+                class="flight-input !bg-input-bg !pl-12 !pr-12 !text-text-main placeholder:!text-text-muted/80"
                 :class="errors.password ? '!border-error/50 !ring-2 !ring-error/25' : ''"
                 placeholder="••••••••"
                 required

@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-extrabold text-white tracking-tight">برامج الحج والعمرة</h1>
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight">برامج الحج والعمرة</h1>
         <p class="text-muted mt-1">إشاء وإدارة برامج الحج والعمرة</p>
       </div>
       <router-link :to="{ name: 'hajj.programs.create' }"

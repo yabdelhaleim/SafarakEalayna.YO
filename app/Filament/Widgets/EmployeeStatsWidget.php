@@ -11,6 +11,11 @@ class EmployeeStatsWidget extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
 
+    public static function canView(): bool
+    {
+        return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
+    }
+
     protected function getStats(): array
     {
         $thisMonth = now()->month;

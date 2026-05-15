@@ -55,24 +55,24 @@ Route::prefix('v1')->middleware([
         Route::get('flight-booking-reference', [\App\Http\Controllers\Api\V1\SettingController::class, 'flightBookingReference']);
     });
 
-    // Dashboard API
-    Route::get('dashboard', [\App\Http\Controllers\Api\V1\DashboardController::class, 'index']);
+    // Dashboard API (Admin Only)
+    Route::middleware('admin')->get('dashboard', [\App\Http\Controllers\Api\V1\DashboardController::class, 'index']);
 
-    // Finance API
-        Route::prefix('finance')->group(function () {
-            Route::apiResource('accounts', \App\Http\Controllers\Api\V1\Finance\AccountController::class)->except(['destroy'])->names('finance_accounts');
-            Route::get('treasuries/get-overview', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getOverview']);
-            Route::get('treasuries/get-module-accounts/{module}', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getModuleAccounts']);
-            Route::apiResource('treasuries', \App\Http\Controllers\Api\V1\Finance\TreasuryController::class)->names('finance_treasuries');
-            Route::apiResource('currencies', \App\Http\Controllers\Api\V1\Finance\CurrencyController::class)->names('finance_currencies');
-            Route::apiResource('approvals', \App\Http\Controllers\Api\V1\Finance\ApprovalController::class);
-            Route::apiResource('audits', \App\Http\Controllers\Api\V1\Finance\AuditController::class);
+    // Finance API (Admin Only)
+    Route::prefix('finance')->middleware('admin')->group(function () {
+        Route::apiResource('accounts', \App\Http\Controllers\Api\V1\Finance\AccountController::class)->except(['destroy'])->names('finance_accounts');
+        Route::get('treasuries/get-overview', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getOverview']);
+        Route::get('treasuries/get-module-accounts/{module}', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getModuleAccounts']);
+        Route::apiResource('treasuries', \App\Http\Controllers\Api\V1\Finance\TreasuryController::class)->names('finance_treasuries');
+        Route::apiResource('currencies', \App\Http\Controllers\Api\V1\Finance\CurrencyController::class)->names('finance_currencies');
+        Route::apiResource('approvals', \App\Http\Controllers\Api\V1\Finance\ApprovalController::class);
+        Route::apiResource('audits', \App\Http\Controllers\Api\V1\Finance\AuditController::class);
 
-            // Account specific routes
-            Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
-            Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
-            Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
-        });
+        // Account specific routes
+        Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
+        Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
+        Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
+    });
 
     // Flights API
         Route::prefix('flight')->group(function () {
@@ -174,6 +174,14 @@ Route::prefix('v1')->middleware([
 
             Route::post('bookings/{busBooking}/pay', [\App\Http\Controllers\Api\V1\Bus\BusBookingController::class, 'pay']);
             Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [\App\Http\Controllers\Api\V1\Bus\BusBookingController::class, 'cancel']);
+
+            // Bus Refund System
+            Route::prefix('refunds')->group(function () {
+                Route::get('/treasuries', [\App\Http\Controllers\Api\V1\Bus\BusRefundController::class, 'treasuries']);
+                Route::post('/', [\App\Http\Controllers\Api\V1\Bus\BusRefundController::class, 'store']);
+                Route::get('/{id}', [\App\Http\Controllers\Api\V1\Bus\BusRefundController::class, 'show']);
+                Route::post('/{id}/process', [\App\Http\Controllers\Api\V1\Bus\BusRefundController::class, 'process']);
+            });
         });
 
     // Wallet & Transfers API
@@ -257,8 +265,8 @@ Route::prefix('v1')->middleware([
             Route::apiResource('reports', \App\Http\Controllers\Api\V1\Employee\EmployeeReportController::class)->names('employee_reports');
         });
 
-    // Reports API
-    Route::prefix('reports')->group(function () {
+    // Reports API (Admin Only)
+    Route::prefix('reports')->middleware('admin')->group(function () {
         Route::get('financial/summary', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'financialSummary']);
         Route::get('financial/accounts-balance', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'accountsBalance']);
         Route::get('transactions', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'transactions']);
@@ -334,6 +342,6 @@ Route::prefix('v1')->middleware([
     // Suppliers API
     Route::apiResource('suppliers', \App\Http\Controllers\Api\V1\SupplierController::class);
 
-    // Users Management API
-    Route::apiResource('users', \App\Http\Controllers\Api\V1\UserController::class);
+    // Users Management API (Admin Only)
+    Route::apiResource('users', \App\Http\Controllers\Api\V1\UserController::class)->middleware('admin');
 });

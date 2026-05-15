@@ -243,7 +243,7 @@
 
         <!-- Filters Bar -->
         <div class="px-5 py-4 sm:px-6 space-y-4">
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-3">
             <!-- Search -->
             <div class="flex-1 min-w-[240px] relative">
               <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />

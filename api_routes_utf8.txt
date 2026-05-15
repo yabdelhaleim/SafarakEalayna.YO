@@ -1,0 +1,283 @@
+﻿
+  GET|HEAD        api/user ......................................................................... routes/api.php:28
+  POST            api/v1/auth/login .................................................... Api\Auth\AuthController@login
+  POST            api/v1/auth/logout .................................................. Api\Auth\AuthController@logout
+  GET|HEAD        api/v1/auth/me .......................................................... Api\Auth\AuthController@me
+  PUT             api/v1/auth/profile .......................................... Api\Auth\AuthController@updateProfile
+  POST            api/v1/auth/register .............................................. Api\Auth\AuthController@register
+  GET|HEAD        api/v1/bus/bookings ..................... bus_bookings.index ÔÇ║ Api\V1\Bus\BusBookingController@index
+  POST            api/v1/bus/bookings ..................... bus_bookings.store ÔÇ║ Api\V1\Bus\BusBookingController@store
+  GET|HEAD        api/v1/bus/bookings/stats .................................... Api\V1\Bus\BusBookingController@stats
+  GET|HEAD        api/v1/bus/bookings/{busBooking} .......... bus_bookings.show ÔÇ║ Api\V1\Bus\BusBookingController@show
+  DELETE          api/v1/bus/bookings/{busBooking} .... bus_bookings.destroy ÔÇ║ Api\V1\Bus\BusBookingController@destroy
+  POST|PATCH      api/v1/bus/bookings/{busBooking}/cancel ..................... Api\V1\Bus\BusBookingController@cancel
+  POST            api/v1/bus/bookings/{busBooking}/pay ........................... Api\V1\Bus\BusBookingController@pay
+  GET|HEAD        api/v1/bus/companies ....................... companies.index ÔÇ║ Api\V1\Bus\BusCompanyController@index
+  POST            api/v1/bus/companies ....................... companies.store ÔÇ║ Api\V1\Bus\BusCompanyController@store
+  GET|HEAD        api/v1/bus/companies/{company} ............... companies.show ÔÇ║ Api\V1\Bus\BusCompanyController@show
+  PUT|PATCH       api/v1/bus/companies/{company} ........... companies.update ÔÇ║ Api\V1\Bus\BusCompanyController@update
+  DELETE          api/v1/bus/companies/{company} ......... companies.destroy ÔÇ║ Api\V1\Bus\BusCompanyController@destroy
+  POST            api/v1/bus/companies/{company}/pay-debt .................... Api\V1\Bus\BusCompanyController@payDebt
+  GET|HEAD        api/v1/bus/companies/{company}/statement ................. Api\V1\Bus\BusCompanyController@statement
+  GET|HEAD        api/v1/bus/dashboard ....................................... Api\V1\Bus\BusDashboardController@index
+  GET|HEAD        api/v1/bus/inventories ................. inventories.index ÔÇ║ Api\V1\Bus\BusInventoryController@index
+  POST            api/v1/bus/inventories ................. inventories.store ÔÇ║ Api\V1\Bus\BusInventoryController@store
+  GET|HEAD        api/v1/bus/inventories/available ....................... Api\V1\Bus\BusInventoryController@available
+  GET|HEAD        api/v1/bus/inventories/{busInventory} .... inventories.show ÔÇ║ Api\V1\Bus\BusInventoryController@show
+  PUT|PATCH       api/v1/bus/inventories/{busInventory} inventories.update ÔÇ║ Api\V1\Bus\BusInventoryController@update
+  DELETE          api/v1/bus/inventories/{busInventory} inventories.destroy ÔÇ║ Api\V1\Bus\BusInventoryController@destrÔÇª
+  POST            api/v1/bus/inventories/{busInventory}/pay-debt ........... Api\V1\Bus\BusInventoryController@payDebt
+  POST            api/v1/bus/refunds ............................................ Api\V1\Bus\BusRefundController@store
+  GET|HEAD        api/v1/bus/refunds/treasuries ............................ Api\V1\Bus\BusRefundController@treasuries
+  GET|HEAD        api/v1/bus/refunds/{id} ........................................ Api\V1\Bus\BusRefundController@show
+  POST            api/v1/bus/refunds/{id}/process ............................. Api\V1\Bus\BusRefundController@process
+  GET|HEAD        api/v1/bus/treasury/accounts/{account}/bus-transactions Api\V1\Bus\BusTreasuryController@accountBusÔÇª
+  GET|HEAD        api/v1/bus/treasury/overview ............................. Api\V1\Bus\BusTreasuryController@overview
+  GET|HEAD        api/v1/customers ................................. customers.index ÔÇ║ Api\V1\CustomerController@index
+  POST            api/v1/customers ................................. customers.store ÔÇ║ Api\V1\CustomerController@store
+  GET|HEAD        api/v1/customers/{customer} ........................ customers.show ÔÇ║ Api\V1\CustomerController@show
+  PUT|PATCH       api/v1/customers/{customer} .................... customers.update ÔÇ║ Api\V1\CustomerController@update
+  DELETE          api/v1/customers/{customer} .................. customers.destroy ÔÇ║ Api\V1\CustomerController@destroy
+  GET|HEAD        api/v1/customers/{customer}/statement .......................... Api\V1\CustomerController@statement
+  GET|HEAD        api/v1/dashboard .................................................. Api\V1\DashboardController@index
+  GET|HEAD        api/v1/employee/attendances employee_attendances.index ÔÇ║ Api\V1\Employee\AttendanceController@index
+  POST            api/v1/employee/attendances employee_attendances.store ÔÇ║ Api\V1\Employee\AttendanceController@store
+  GET|HEAD        api/v1/employee/attendances/{attendance} employee_attendances.show ÔÇ║ Api\V1\Employee\AttendanceContÔÇª
+  PUT|PATCH       api/v1/employee/attendances/{attendance} employee_attendances.update ÔÇ║ Api\V1\Employee\AttendanceCoÔÇª
+  DELETE          api/v1/employee/attendances/{attendance} employee_attendances.destroy ÔÇ║ Api\V1\Employee\AttendanceCÔÇª
+  GET|HEAD        api/v1/employee/bonuses ..... employee_bonuses.index ÔÇ║ Api\V1\Employee\EmployeeBonusController@index
+  POST            api/v1/employee/bonuses ..... employee_bonuses.store ÔÇ║ Api\V1\Employee\EmployeeBonusController@store
+  POST            api/v1/employee/bonuses/bonus ........................ Api\V1\Employee\EmployeeBonusController@bonus
+  POST            api/v1/employee/bonuses/deduction ................ Api\V1\Employee\EmployeeBonusController@deduction
+  POST            api/v1/employee/bonuses/draw .......................... Api\V1\Employee\EmployeeBonusController@draw
+  GET|HEAD        api/v1/employee/bonuses/employee-summary/{id} Api\V1\Employee\EmployeeBonusController@employeeSummaÔÇª
+  GET|HEAD        api/v1/employee/bonuses/summary ............ Api\V1\Employee\EmployeeBonusController@activitySummary
+  GET|HEAD        api/v1/employee/bonuses/{bonus} employee_bonuses.show ÔÇ║ Api\V1\Employee\EmployeeBonusController@show
+  PUT|PATCH       api/v1/employee/bonuses/{bonus} employee_bonuses.update ÔÇ║ Api\V1\Employee\EmployeeBonusController@uÔÇª
+  DELETE          api/v1/employee/bonuses/{bonus} employee_bonuses.destroy ÔÇ║ Api\V1\Employee\EmployeeBonusController@ÔÇª
+  GET|HEAD        api/v1/employee/employees ...... employee_employees.index ÔÇ║ Api\V1\Employee\EmployeeController@index
+  POST            api/v1/employee/employees ...... employee_employees.store ÔÇ║ Api\V1\Employee\EmployeeController@store
+  GET|HEAD        api/v1/employee/employees/reference-data .......... Api\V1\Employee\EmployeeController@referenceData
+  GET|HEAD        api/v1/employee/employees/{employee} employee_employees.show ÔÇ║ Api\V1\Employee\EmployeeController@sÔÇª
+  PUT|PATCH       api/v1/employee/employees/{employee} employee_employees.update ÔÇ║ Api\V1\Employee\EmployeeControllerÔÇª
+  DELETE          api/v1/employee/employees/{employee} employee_employees.destroy ÔÇ║ Api\V1\Employee\EmployeeControlleÔÇª
+  GET|HEAD        api/v1/employee/employees/{id}/transactions ........ Api\V1\Employee\EmployeeController@transactions
+  GET|HEAD        api/v1/employee/reports .... employee_reports.index ÔÇ║ Api\V1\Employee\EmployeeReportController@index
+  POST            api/v1/employee/reports .... employee_reports.store ÔÇ║ Api\V1\Employee\EmployeeReportController@store
+  GET|HEAD        api/v1/employee/reports/{report} employee_reports.show ÔÇ║ Api\V1\Employee\EmployeeReportController@sÔÇª
+  PUT|PATCH       api/v1/employee/reports/{report} employee_reports.update ÔÇ║ Api\V1\Employee\EmployeeReportControllerÔÇª
+  DELETE          api/v1/employee/reports/{report} employee_reports.destroy ÔÇ║ Api\V1\Employee\EmployeeReportControlleÔÇª
+  GET|HEAD        api/v1/fawry/dashboard ................................. Api\V1\Fawry\FawryDashboardController@index
+  GET|HEAD        api/v1/fawry/settings/all ................................. Api\V1\Fawry\FawrySettingsController@all
+  GET|HEAD        api/v1/fawry/settings/currencies ................... Api\V1\Fawry\FawrySettingsController@currencies
+  GET|HEAD        api/v1/fawry/settings/operation-types .......... Api\V1\Fawry\FawrySettingsController@operationTypes
+  GET|HEAD        api/v1/fawry/settings/payment-methods .......... Api\V1\Fawry\FawrySettingsController@paymentMethods
+  GET|HEAD        api/v1/fawry/transactions . fawry_transactions.index ÔÇ║ Api\V1\Fawry\FawryTransactionController@index
+  POST            api/v1/fawry/transactions . fawry_transactions.store ÔÇ║ Api\V1\Fawry\FawryTransactionController@store
+  GET|HEAD        api/v1/fawry/transactions/daily-summary ....... Api\V1\Fawry\FawryTransactionController@dailySummary
+  GET|HEAD        api/v1/fawry/transactions/{transaction} fawry_transactions.show ÔÇ║ Api\V1\Fawry\FawryTransactionContÔÇª
+  PUT|PATCH       api/v1/fawry/transactions/{transaction} fawry_transactions.update ÔÇ║ Api\V1\Fawry\FawryTransactionCoÔÇª
+  DELETE          api/v1/fawry/transactions/{transaction} fawry_transactions.destroy ÔÇ║ Api\V1\Fawry\FawryTransactionCÔÇª
+  GET|HEAD        api/v1/fawry/treasury/accounts/{account}/transactions Api\V1\Fawry\FawryTreasuryController@accountTÔÇª
+  GET|HEAD        api/v1/fawry/treasury/overview ....................... Api\V1\Fawry\FawryTreasuryController@overview
+  GET|HEAD        api/v1/finance/accounts ............ finance_accounts.index ÔÇ║ Api\V1\Finance\AccountController@index
+  POST            api/v1/finance/accounts ............ finance_accounts.store ÔÇ║ Api\V1\Finance\AccountController@store
+  GET|HEAD        api/v1/finance/accounts/{account} .... finance_accounts.show ÔÇ║ Api\V1\Finance\AccountController@show
+  PUT|PATCH       api/v1/finance/accounts/{account} finance_accounts.update ÔÇ║ Api\V1\Finance\AccountController@update
+  POST            api/v1/finance/accounts/{account}/deactivate ........... Api\V1\Finance\AccountController@deactivate
+  GET|HEAD        api/v1/finance/accounts/{account}/statement ............. Api\V1\Finance\AccountController@statement
+  GET|HEAD        api/v1/finance/approvals ................. approvals.index ÔÇ║ Api\V1\Finance\ApprovalController@index
+  POST            api/v1/finance/approvals ................. approvals.store ÔÇ║ Api\V1\Finance\ApprovalController@store
+  GET|HEAD        api/v1/finance/approvals/{approval} ........ approvals.show ÔÇ║ Api\V1\Finance\ApprovalController@show
+  PUT|PATCH       api/v1/finance/approvals/{approval} .... approvals.update ÔÇ║ Api\V1\Finance\ApprovalController@update
+  DELETE          api/v1/finance/approvals/{approval} .. approvals.destroy ÔÇ║ Api\V1\Finance\ApprovalController@destroy
+  GET|HEAD        api/v1/finance/audits .......................... audits.index ÔÇ║ Api\V1\Finance\AuditController@index
+  POST            api/v1/finance/audits .......................... audits.store ÔÇ║ Api\V1\Finance\AuditController@store
+  GET|HEAD        api/v1/finance/audits/{audit} .................... audits.show ÔÇ║ Api\V1\Finance\AuditController@show
+  PUT|PATCH       api/v1/finance/audits/{audit} ................ audits.update ÔÇ║ Api\V1\Finance\AuditController@update
+  DELETE          api/v1/finance/audits/{audit} .............. audits.destroy ÔÇ║ Api\V1\Finance\AuditController@destroy
+  GET|HEAD        api/v1/finance/currencies ....... finance_currencies.index ÔÇ║ Api\V1\Finance\CurrencyController@index
+  POST            api/v1/finance/currencies ....... finance_currencies.store ÔÇ║ Api\V1\Finance\CurrencyController@store
+  GET|HEAD        api/v1/finance/currencies/{currency} finance_currencies.show ÔÇ║ Api\V1\Finance\CurrencyController@shÔÇª
+  PUT|PATCH       api/v1/finance/currencies/{currency} finance_currencies.update ÔÇ║ Api\V1\Finance\CurrencyController@ÔÇª
+  DELETE          api/v1/finance/currencies/{currency} finance_currencies.destroy ÔÇ║ Api\V1\Finance\CurrencyControllerÔÇª
+  POST            api/v1/finance/transfers ................................. Api\V1\Finance\AccountController@transfer
+  GET|HEAD        api/v1/finance/treasuries ....... finance_treasuries.index ÔÇ║ Api\V1\Finance\TreasuryController@index
+  POST            api/v1/finance/treasuries ....... finance_treasuries.store ÔÇ║ Api\V1\Finance\TreasuryController@store
+  GET|HEAD        api/v1/finance/treasuries/get-module-accounts/{module} Api\V1\Finance\TreasuryController@getModuleAÔÇª
+  GET|HEAD        api/v1/finance/treasuries/get-overview ............... Api\V1\Finance\TreasuryController@getOverview
+  GET|HEAD        api/v1/finance/treasuries/{treasury} finance_treasuries.show ÔÇ║ Api\V1\Finance\TreasuryController@shÔÇª
+  PUT|PATCH       api/v1/finance/treasuries/{treasury} finance_treasuries.update ÔÇ║ Api\V1\Finance\TreasuryController@ÔÇª
+  DELETE          api/v1/finance/treasuries/{treasury} finance_treasuries.destroy ÔÇ║ Api\V1\Finance\TreasuryControllerÔÇª
+  GET|HEAD        api/v1/flight/airline-accounts ........................ Api\V1\Flight\AirlineAccountController@index
+  POST            api/v1/flight/airline-accounts ........................ Api\V1\Flight\AirlineAccountController@store
+  POST            api/v1/flight/airline-accounts/add-credit ......... Api\V1\Flight\AirlineAccountController@addCredit
+  GET|HEAD        api/v1/flight/airline-accounts/{accountId}/transactions Api\V1\Flight\AirlineAccountController@tranÔÇª
+  PUT             api/v1/flight/airline-accounts/{id} .................. Api\V1\Flight\AirlineAccountController@update
+  DELETE          api/v1/flight/airline-accounts/{id} ................. Api\V1\Flight\AirlineAccountController@destroy
+  GET|HEAD        api/v1/flight/airports ....................................... Api\V1\Flight\AirportController@index
+  GET|HEAD        api/v1/flight/airports/by-iata ........................... Api\V1\Flight\AirportController@getByIata
+  GET|HEAD        api/v1/flight/airports/grouped .................... Api\V1\Flight\AirportController@groupedByCountry
+  GET|HEAD        api/v1/flight/airports/popular ............................. Api\V1\Flight\AirportController@popular
+  GET|HEAD        api/v1/flight/airports/search ............................... Api\V1\Flight\AirportController@search
+  GET|HEAD        api/v1/flight/aviation ..................... aviation.index ÔÇ║ Api\V1\Flight\AviationController@index
+  POST            api/v1/flight/aviation ..................... aviation.store ÔÇ║ Api\V1\Flight\AviationController@store
+  GET|HEAD        api/v1/flight/aviation/{aviation} ............ aviation.show ÔÇ║ Api\V1\Flight\AviationController@show
+  PUT|PATCH       api/v1/flight/aviation/{aviation} ........ aviation.update ÔÇ║ Api\V1\Flight\AviationController@update
+  DELETE          api/v1/flight/aviation/{aviation} ...... aviation.destroy ÔÇ║ Api\V1\Flight\AviationController@destroy
+  GET|HEAD        api/v1/flight/booking-form/employees ............ Api\V1\Flight\FlightController@employeesForBooking
+  GET|HEAD        api/v1/flight/bookings ................ flight_bookings.index ÔÇ║ Api\V1\Flight\FlightController@index
+  POST            api/v1/flight/bookings ................ flight_bookings.store ÔÇ║ Api\V1\Flight\FlightController@store
+  GET|HEAD        api/v1/flight/bookings/{flightBooking} .. flight_bookings.show ÔÇ║ Api\V1\Flight\FlightController@show
+  PUT|PATCH       api/v1/flight/bookings/{flightBooking} flight_bookings.update ÔÇ║ Api\V1\Flight\FlightController@updaÔÇª
+  DELETE          api/v1/flight/bookings/{flightBooking} flight_bookings.destroy ÔÇ║ Api\V1\Flight\FlightController@desÔÇª
+  POST            api/v1/flight/bookings/{flightBooking}/cancel ................ Api\V1\Flight\FlightController@cancel
+  POST            api/v1/flight/bookings/{flightBooking}/confirm .............. Api\V1\Flight\FlightController@confirm
+  POST            api/v1/flight/bookings/{flightBooking}/payments .......... Api\V1\Flight\FlightController@addPayment
+  POST            api/v1/flight/bookings/{flightBooking}/prices .......... Api\V1\Flight\FlightController@updatePrices
+  POST            api/v1/flight/bookings/{flightBooking}/send-ticket-email Api\V1\Flight\FlightController@sendTicketEÔÇª
+  GET|HEAD        api/v1/flight/bookings/{id}/modifications Api\V1\Flight\ModificationController@bookingModifications
+  GET|HEAD        api/v1/flight/carriers ......... flight_carriers.index ÔÇ║ Api\V1\Flight\FlightCarrierController@index
+  POST            api/v1/flight/carriers ......... flight_carriers.store ÔÇ║ Api\V1\Flight\FlightCarrierController@store
+  GET|HEAD        api/v1/flight/carriers/{carrier} . flight_carriers.show ÔÇ║ Api\V1\Flight\FlightCarrierController@show
+  PUT|PATCH       api/v1/flight/carriers/{carrier} flight_carriers.update ÔÇ║ Api\V1\Flight\FlightCarrierController@updÔÇª
+  DELETE          api/v1/flight/carriers/{carrier} flight_carriers.destroy ÔÇ║ Api\V1\Flight\FlightCarrierController@deÔÇª
+  GET|HEAD        api/v1/flight/carriers/{carrier}/balance ............. Api\V1\Flight\FlightCarrierController@balance
+  GET|HEAD        api/v1/flight/carriers/{carrier}/groups ........... Api\V1\Flight\FlightGroupController@getByCarrier
+  GET|HEAD        api/v1/flight/dashboard .............................. Api\V1\Flight\FlightDashboardController@index
+  GET|HEAD        api/v1/flight/groups ............... flight_groups.index ÔÇ║ Api\V1\Flight\FlightGroupController@index
+  POST            api/v1/flight/groups ............... flight_groups.store ÔÇ║ Api\V1\Flight\FlightGroupController@store
+  GET|HEAD        api/v1/flight/groups/{group} ......... flight_groups.show ÔÇ║ Api\V1\Flight\FlightGroupController@show
+  PUT|PATCH       api/v1/flight/groups/{group} ..... flight_groups.update ÔÇ║ Api\V1\Flight\FlightGroupController@update
+  DELETE          api/v1/flight/groups/{group} ... flight_groups.destroy ÔÇ║ Api\V1\Flight\FlightGroupController@destroy
+  POST            api/v1/flight/modifications ............................. Api\V1\Flight\ModificationController@store
+  GET|HEAD        api/v1/flight/modifications/{id} ......................... Api\V1\Flight\ModificationController@show
+  POST            api/v1/flight/modifications/{id}/confirm .............. Api\V1\Flight\ModificationController@confirm
+  POST            api/v1/flight/modifications/{id}/reconcile .......... Api\V1\Flight\ModificationController@reconcile
+  PATCH           api/v1/flight/modifications/{id}/status .......... Api\V1\Flight\ModificationController@updateStatus
+  POST            api/v1/flight/refunds ......................................... Api\V1\Flight\RefundController@store
+  GET|HEAD        api/v1/flight/refunds/airline-credits ................ Api\V1\Flight\RefundController@airlineCredits
+  GET|HEAD        api/v1/flight/refunds/treasuries ......................... Api\V1\Flight\RefundController@treasuries
+  GET|HEAD        api/v1/flight/refunds/{id} ..................................... Api\V1\Flight\RefundController@show
+  POST            api/v1/flight/refunds/{id}/process .......................... Api\V1\Flight\RefundController@process
+  GET|HEAD        api/v1/flight/system-types .............................. Api\V1\Flight\FlightController@systemTypes
+  GET|HEAD        api/v1/flight/systems ............ flight_systems.index ÔÇ║ Api\V1\Flight\FlightSystemController@index
+  POST            api/v1/flight/systems ............ flight_systems.store ÔÇ║ Api\V1\Flight\FlightSystemController@store
+  GET|HEAD        api/v1/flight/systems/{system} ..... flight_systems.show ÔÇ║ Api\V1\Flight\FlightSystemController@show
+  PUT|PATCH       api/v1/flight/systems/{system} . flight_systems.update ÔÇ║ Api\V1\Flight\FlightSystemController@update
+  DELETE          api/v1/flight/systems/{system} flight_systems.destroy ÔÇ║ Api\V1\Flight\FlightSystemController@destroy
+  GET|HEAD        api/v1/flight/treasury/accounts/{account}/flight-transactions Api\V1\Flight\FlightTreasuryControlleÔÇª
+  GET|HEAD        api/v1/flight/treasury/overview .................... Api\V1\Flight\FlightTreasuryController@overview
+  POST            api/v1/flight/treasury/systems/{system}/recharge Api\V1\Flight\FlightTreasuryController@rechargeSysÔÇª
+  GET|HEAD        api/v1/flight/treasury/systems/{system}/transactions Api\V1\Flight\FlightTreasuryController@systemTÔÇª
+  GET|HEAD        api/v1/hajj-umra/bookings .......................................... Api\V1\HajjUmraController@index
+  POST            api/v1/hajj-umra/bookings .......................................... Api\V1\HajjUmraController@store
+  GET|HEAD        api/v1/hajj-umra/bookings/{hajjUmra} ................................ Api\V1\HajjUmraController@show
+  PUT|PATCH       api/v1/hajj-umra/bookings/{hajjUmra} .............................. Api\V1\HajjUmraController@update
+  DELETE          api/v1/hajj-umra/bookings/{hajjUmra} ............................. Api\V1\HajjUmraController@destroy
+  POST            api/v1/hajj-umra/bookings/{hajjUmra}/payments ................. Api\V1\HajjUmraController@addPayment
+  GET|HEAD        api/v1/hajj-umra/dashboard ....................... Api\V1\HajjUmra\HajjUmraDashboardController@index
+  GET|HEAD        api/v1/hajj-umra/executing-companies/dues Api\V1\HajjUmra\HajjUmraExecutingCompanyFinanceControllerÔÇª
+  POST            api/v1/hajj-umra/executing-companies/{company}/repay Api\V1\HajjUmra\HajjUmraExecutingCompanyFinancÔÇª
+  POST            api/v1/hajj-umra/executing-companies/{company}/withdraw Api\V1\HajjUmra\HajjUmraExecutingCompanyFinÔÇª
+  GET|HEAD        api/v1/hajj-umra/settings/accommodation-types Api\V1\HajjUmraReferenceController@accommodationTypes
+  GET|HEAD        api/v1/hajj-umra/settings/executing-companies Api\V1\HajjUmraReferenceController@executingCompanies
+  GET|HEAD        api/v1/hajj-umra/settings/programs ..................... Api\V1\HajjUmraReferenceController@programs
+  GET|HEAD        api/v1/hajj-umra/settings/statuses ..................... Api\V1\HajjUmraReferenceController@statuses
+  GET|HEAD        api/v1/hajj-umra/settings/trip-supervisors ...... Api\V1\HajjUmraReferenceController@tripSupervisors
+  GET|HEAD        api/v1/hajj-umra/treasury/accounts/{account}/transactions Api\V1\HajjUmra\HajjUmraTreasuryControlleÔÇª
+  GET|HEAD        api/v1/hajj-umra/treasury/overview ............. Api\V1\HajjUmra\HajjUmraTreasuryController@overview
+  GET|HEAD        api/v1/health .................................................................... routes/api.php:38
+  GET|HEAD        api/v1/invoices .................................... invoices.index ÔÇ║ Api\V1\InvoiceController@index
+  POST            api/v1/invoices .................................... invoices.store ÔÇ║ Api\V1\InvoiceController@store
+  GET|HEAD        api/v1/invoices/{invoice} ............................ invoices.show ÔÇ║ Api\V1\InvoiceController@show
+  PUT|PATCH       api/v1/invoices/{invoice} ........................ invoices.update ÔÇ║ Api\V1\InvoiceController@update
+  DELETE          api/v1/invoices/{invoice} ...................... invoices.destroy ÔÇ║ Api\V1\InvoiceController@destroy
+  GET|HEAD        api/v1/online/providers online_service_providers.index ÔÇ║ Api\V1\Online\OnlineServiceProviderControlÔÇª
+  POST            api/v1/online/providers online_service_providers.store ÔÇ║ Api\V1\Online\OnlineServiceProviderControlÔÇª
+  GET|HEAD        api/v1/online/providers/active ................ Api\V1\Online\OnlineServiceProviderController@active
+  GET|HEAD        api/v1/online/providers/{onlineServiceProvider} online_service_providers.show ÔÇ║ Api\V1\Online\OnlinÔÇª
+  PUT|PATCH       api/v1/online/providers/{onlineServiceProvider} online_service_providers.update ÔÇ║ Api\V1\Online\OnlÔÇª
+  DELETE          api/v1/online/providers/{onlineServiceProvider} online_service_providers.destroy ÔÇ║ Api\V1\Online\OnÔÇª
+  GET|HEAD        api/v1/online/service-types online_service_types.index ÔÇ║ Api\V1\Online\OnlineServiceTypeController@ÔÇª
+  POST            api/v1/online/service-types online_service_types.store ÔÇ║ Api\V1\Online\OnlineServiceTypeController@ÔÇª
+  GET|HEAD        api/v1/online/service-types/active ................ Api\V1\Online\OnlineServiceTypeController@active
+  GET|HEAD        api/v1/online/service-types/{onlineServiceType} online_service_types.show ÔÇ║ Api\V1\Online\OnlineSerÔÇª
+  PUT|PATCH       api/v1/online/service-types/{onlineServiceType} online_service_types.update ÔÇ║ Api\V1\Online\OnlineSÔÇª
+  DELETE          api/v1/online/service-types/{onlineServiceType} online_service_types.destroy ÔÇ║ Api\V1\Online\OnlineÔÇª
+  GET|HEAD        api/v1/online/settings/accounts .................... Api\V1\Online\OnlineSettingsController@accounts
+  GET|HEAD        api/v1/online/settings/all .............................. Api\V1\Online\OnlineSettingsController@all
+  GET|HEAD        api/v1/online/settings/customers .................. Api\V1\Online\OnlineSettingsController@customers
+  GET|HEAD        api/v1/online/settings/employees .................. Api\V1\Online\OnlineSettingsController@employees
+  GET|HEAD        api/v1/online/settings/payment-methods ....... Api\V1\Online\OnlineSettingsController@paymentMethods
+  GET|HEAD        api/v1/online/settings/providers .................. Api\V1\Online\OnlineSettingsController@providers
+  GET|HEAD        api/v1/online/settings/service-types ........... Api\V1\Online\OnlineSettingsController@serviceTypes
+  GET|HEAD        api/v1/online/settings/statuses .................... Api\V1\Online\OnlineSettingsController@statuses
+  GET|HEAD        api/v1/online/transactions online_transactions.index ÔÇ║ Api\V1\Online\OnlineTransactionController@inÔÇª
+  POST            api/v1/online/transactions online_transactions.store ÔÇ║ Api\V1\Online\OnlineTransactionController@stÔÇª
+  GET|HEAD        api/v1/online/transactions/daily-summary .... Api\V1\Online\OnlineTransactionController@dailySummary
+  GET|HEAD        api/v1/online/transactions/{onlineTransaction} online_transactions.show ÔÇ║ Api\V1\Online\OnlineTransÔÇª
+  PUT|PATCH       api/v1/online/transactions/{onlineTransaction} online_transactions.update ÔÇ║ Api\V1\Online\OnlineTraÔÇª
+  DELETE          api/v1/online/transactions/{onlineTransaction} online_transactions.destroy ÔÇ║ Api\V1\Online\OnlineTrÔÇª
+  GET|HEAD        api/v1/public/bus/companies ............................ Api\V1\Bus\BusCompanyController@publicIndex
+  GET|HEAD        api/v1/public/bus/inventories/available ................ Api\V1\Bus\BusInventoryController@available
+  GET|HEAD        api/v1/reports/bank-ledger-reconciliation Api\V1\Reports\FinancialReportController@bankLedgerReconcÔÇª
+  GET|HEAD        api/v1/reports/cash-flow-realtime ........ Api\V1\Reports\FinancialReportController@cashFlowRealtime
+  GET|HEAD        api/v1/reports/customer-debts ......... Api\V1\Reports\FinancialReportController@customerDebtsReport
+  GET|HEAD        api/v1/reports/customer-ledger-balances Api\V1\Reports\FinancialReportController@customerLedgerBalaÔÇª
+  GET|HEAD        api/v1/reports/financial/accounts-balance .......... Api\V1\Reports\ReportController@accountsBalance
+  GET|HEAD        api/v1/reports/financial/summary .................. Api\V1\Reports\ReportController@financialSummary
+  GET|HEAD        api/v1/reports/ledger-reconciliation/latest Api\V1\Reports\FinancialReportController@latestLedgerReÔÇª
+  GET|HEAD        api/v1/reports/profit ........................ Api\V1\Reports\FinancialReportController@profitReport
+  GET|HEAD        api/v1/reports/profit-by-module ............ Api\V1\Reports\FinancialReportController@profitByModule
+  GET|HEAD        api/v1/reports/profit-loss .............................. Api\V1\Reports\ReportController@profitLoss
+  GET|HEAD        api/v1/reports/sales ......................................... Api\V1\Reports\ReportController@sales
+  GET|HEAD        api/v1/reports/summary ................... Api\V1\Reports\FinancialReportController@financialSummary
+  GET|HEAD        api/v1/reports/supplier-debts ......... Api\V1\Reports\FinancialReportController@supplierDebtsReport
+  GET|HEAD        api/v1/reports/transactions ........................... Api\V1\Reports\ReportController@transactions
+  GET|HEAD        api/v1/reports/treasury .................... Api\V1\Reports\FinancialReportController@treasuryReport
+  GET|HEAD        api/v1/settings/account-types ................................ Api\V1\SettingController@accountTypes
+  GET|HEAD        api/v1/settings/currencies ..................................... Api\V1\SettingController@currencies
+  GET|HEAD        api/v1/settings/flight-booking-reference ........... Api\V1\SettingController@flightBookingReference
+  GET|HEAD        api/v1/settings/operation-types ............................ Api\V1\SettingController@operationTypes
+  GET|HEAD        api/v1/settings/payment-methods ............................ Api\V1\SettingController@paymentMethods
+  GET|HEAD        api/v1/settings/transaction-modules .................... Api\V1\SettingController@transactionModules
+  GET|HEAD        api/v1/settings/transaction-types ........................ Api\V1\SettingController@transactionTypes
+  GET|HEAD        api/v1/settings/trip-types ...................................... Api\V1\SettingController@tripTypes
+  GET|HEAD        api/v1/suppliers ................................. suppliers.index ÔÇ║ Api\V1\SupplierController@index
+  POST            api/v1/suppliers ................................. suppliers.store ÔÇ║ Api\V1\SupplierController@store
+  GET|HEAD        api/v1/suppliers/{supplier} ........................ suppliers.show ÔÇ║ Api\V1\SupplierController@show
+  PUT|PATCH       api/v1/suppliers/{supplier} .................... suppliers.update ÔÇ║ Api\V1\SupplierController@update
+  DELETE          api/v1/suppliers/{supplier} .................. suppliers.destroy ÔÇ║ Api\V1\SupplierController@destroy
+  GET|HEAD        api/v1/users ............................................. users.index ÔÇ║ Api\V1\UserController@index
+  POST            api/v1/users ............................................. users.store ÔÇ║ Api\V1\UserController@store
+  GET|HEAD        api/v1/users/{user} ........................................ users.show ÔÇ║ Api\V1\UserController@show
+  PUT|PATCH       api/v1/users/{user} .................................... users.update ÔÇ║ Api\V1\UserController@update
+  DELETE          api/v1/users/{user} .................................. users.destroy ÔÇ║ Api\V1\UserController@destroy
+  GET|HEAD        api/v1/visa/agents/dues ................................ Api\V1\Visa\VisaAgentFinanceController@dues
+  POST            api/v1/visa/agents/{agent}/repay ...................... Api\V1\Visa\VisaAgentFinanceController@repay
+  POST            api/v1/visa/agents/{agent}/withdraw ................ Api\V1\Visa\VisaAgentFinanceController@withdraw
+  GET|HEAD        api/v1/visa/bookings ................................................... Api\V1\VisaController@index
+  POST            api/v1/visa/bookings ................................................... Api\V1\VisaController@store
+  GET|HEAD        api/v1/visa/bookings/{visa} ............................................. Api\V1\VisaController@show
+  PUT|PATCH       api/v1/visa/bookings/{visa} ........................................... Api\V1\VisaController@update
+  DELETE          api/v1/visa/bookings/{visa} .......................................... Api\V1\VisaController@destroy
+  POST            api/v1/visa/bookings/{visa}/payments .............................. Api\V1\VisaController@addPayment
+  GET|HEAD        api/v1/visa/settings/agents .......................... Api\V1\HajjUmraReferenceController@visaAgents
+  GET|HEAD        api/v1/visa/settings/durations .................... Api\V1\HajjUmraReferenceController@visaDurations
+  GET|HEAD        api/v1/visa/settings/statuses .......................... Api\V1\HajjUmraReferenceController@statuses
+  GET|HEAD        api/v1/visa/treasury/accounts/{account}/transactions Api\V1\Visa\VisaTreasuryController@accountVisaÔÇª
+  GET|HEAD        api/v1/visa/treasury/overview .......................... Api\V1\Visa\VisaTreasuryController@overview
+  GET|HEAD        api/v1/wallet/dashboard ............................ Api\V1\Wallet\TransferDashboardController@index
+  GET|HEAD        api/v1/wallet/transactions wallet_transactions.index ÔÇ║ Api\V1\Wallet\WalletTransactionController@inÔÇª
+  POST            api/v1/wallet/transactions wallet_transactions.store ÔÇ║ Api\V1\Wallet\WalletTransactionController@stÔÇª
+  GET|HEAD        api/v1/wallet/transactions/daily-summary wallet.transactions.daily-summary ÔÇ║ Api\V1\Wallet\WalletTrÔÇª
+  GET|HEAD        api/v1/wallet/transactions/{transaction} wallet_transactions.show ÔÇ║ Api\V1\Wallet\WalletTransactionÔÇª
+  PUT|PATCH       api/v1/wallet/transactions/{transaction} wallet_transactions.update ÔÇ║ Api\V1\Wallet\WalletTransactiÔÇª
+  DELETE          api/v1/wallet/transactions/{transaction} wallet_transactions.destroy ÔÇ║ Api\V1\Wallet\WalletTransactÔÇª
+  GET|HEAD        api/v1/wallet/treasury/accounts/{account}/transactions Api\V1\Wallet\TransferTreasuryController@accÔÇª
+  GET|HEAD        api/v1/wallet/treasury/overview .................. Api\V1\Wallet\TransferTreasuryController@overview
+  GET|HEAD        api/v1/wallet/types .................. wallet.types.index ÔÇ║ Api\V1\Wallet\WalletTypeController@index
+
+                                                                                                  Showing [279] routes
+

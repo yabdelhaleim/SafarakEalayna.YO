@@ -308,11 +308,31 @@
               </div>
             </div>
              <div class="space-y-2">
+                <label class="text-xs font-bold text-text-muted">نوع حساب الإيداع</label>
+                <div class="flex flex-wrap gap-2 mb-2" dir="rtl">
+                  <button
+                    v-for="chip in settlementCategoryChips"
+                    :key="chip.id"
+                    type="button"
+                    @click="settlementCategoryUi = chip.id"
+                    :class="[
+                      'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all text-[10px] font-bold',
+                      settlementCategoryUi === chip.id
+                        ? 'bg-white/10 border-gold text-gold'
+                        : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                    ]"
+                  >
+                    <component :is="chip.icon" :class="['h-3 w-3', chip.iconClass]" />
+                    {{ chip.label }}
+                  </button>
+                </div>
+
                 <label class="text-xs font-bold text-text-muted">حساب الإيداع</label>
                 <select v-model="newPayment.account_id" class="w-full rounded-xl border border-white/10 bg-input-bg p-3 text-sm text-text-main outline-none focus:border-gold/50">
                   <option :value="null">حساب التسوية الافتراضي</option>
-                  <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
+                  <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
                 </select>
+                <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-1">لا توجد حسابات متاحة في هذا التصنيف.</p>
               </div>
           </div>
 
@@ -345,6 +365,9 @@ import {
   Plane,
   X,
   Info,
+  Banknote,
+  Wallet as WalletIcon,
+  Landmark,
 } from 'lucide-vue-next';
 
 const store = useHajjUmraStore();
@@ -354,6 +377,27 @@ const id = computed(() => route.params.id);
 const booking = computed(() => store.currentBooking);
 const showAddPayment = ref(false);
 const showPrintModal = ref(false);
+
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: WalletIcon, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  const accounts = store.accounts || [];
+  if (settlementCategoryUi.value === 'cash') {
+    return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return accounts.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return accounts.filter(a => a.type === 'bank');
+  }
+  return accounts;
+});
 
 const printOptions = ref({
   logo: true,
@@ -490,7 +534,7 @@ const submitPayment = async () => {
 onMounted(async () => {
   await Promise.all([
     store.fetchBookingById(id.value),
-    store.fetchAccounts(),
+    store.fetchAccounts({ module: 'hajj' }),
     store.fetchSettings(),
   ]);
 });

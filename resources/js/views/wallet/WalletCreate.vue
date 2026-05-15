@@ -9,7 +9,7 @@
         <ArrowRight class="w-6 h-6" />
       </router-link>
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
           عملية محفظة جديدة
         </h1>
         <p class="text-text-muted mt-1">

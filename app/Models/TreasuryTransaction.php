@@ -28,6 +28,7 @@ class TreasuryTransaction extends Model
         'flight_booking_id',
         'hajj_umra_booking_id',
         'visa_booking_id',
+        'bus_booking_id',
         'agent_name',
         'reference_number',
         'ledger_transaction_id',
@@ -50,6 +51,11 @@ class TreasuryTransaction extends Model
     public function booking(): BelongsTo
     {
         return $this->belongsTo(FlightBooking::class, 'flight_booking_id');
+    }
+
+    public function busBooking(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Bus\BusBooking::class, 'bus_booking_id');
     }
 
     public function account(): BelongsTo

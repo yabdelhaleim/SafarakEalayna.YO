@@ -92,6 +92,11 @@ class BusBooking extends Model
         return $this->hasMany(\App\Models\Bus\BusPayment::class, 'booking_id');
     }
 
+    public function refundRequests(): HasMany
+    {
+        return $this->hasMany(BusRefundRequest::class, 'bus_booking_id');
+    }
+
     public function scopeByStatus(Builder $query, BusBookingStatus $status): Builder
     {
         return $query->where('status', $status->value);

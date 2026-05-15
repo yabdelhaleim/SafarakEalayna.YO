@@ -14,7 +14,12 @@ class RecentActivitiesWidget extends BaseWidget
 
     protected static ?string $heading = 'آخر النشاطات';
 
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 5;
+
+    public static function canView(): bool
+    {
+        return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
+    }
 
     protected static ?string $pollingInterval = '60s';
 

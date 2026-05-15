@@ -3,7 +3,7 @@
     <!-- Header & Actions -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-extrabold text-white tracking-tight">طلبات التأشيرات</h1>
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight">طلبات التأشيرات</h1>
         <p class="text-muted mt-1">إدارة ومراقبة جميع طلبات التأشيرات</p>
       </div>
       <router-link :to="{ name: 'visa.create' }"
@@ -35,7 +35,7 @@
     </div>
 
     <!-- Filters Bar -->
-    <div class="p-4 bg-card border border-white/10 rounded-2xl flex flex-wrap items-center gap-4">
+    <div class="p-4 bg-card border border-white/10 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-4">
       <div class="flex-1 min-w-[240px] relative">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
         <input

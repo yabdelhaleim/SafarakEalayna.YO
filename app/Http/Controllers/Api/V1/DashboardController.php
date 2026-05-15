@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
 use Illuminate\Http\Request;
@@ -18,45 +19,28 @@ class DashboardController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        // TODO: Re-enable authorization when auth is working
-        // $this->authorize('viewAny', \App\Models\Customer::class);
-
-        $from = $request->from_date ?? now()->startOfMonth()->toDateString();
-        $to = $request->to_date ?? now()->endOfMonth()->toDateString();
+        $from = $request->from_date ?? $request->date_from ?? now()->startOfMonth()->toDateString();
+        $to = $request->to_date ?? $request->date_to ?? now()->endOfMonth()->toDateString();
 
         $dashboard = $this->dashboardService->getFullDashboard(
-            $request->query('date_from'),
-            $request->query('date_to'),
+            $from,
+            $to,
             $request->query('carrier_id'),
             $request->query('system_type'),
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Dashboard data retrieved successfully',
-            'data' => $dashboard,
-        ]);
+        return ApiResponse::success('Dashboard data retrieved successfully', $dashboard);
     }
 
     public function overview(Request $request): JsonResponse
     {
-        // TODO: Re-enable authorization when auth is working
-        // $this->authorize('viewAny', \App\Models\Customer::class);
-
         $overview = $this->dashboardService->getOverview();
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Overview retrieved successfully',
-            'data' => $overview,
-        ]);
+        return ApiResponse::success('Overview retrieved successfully', $overview);
     }
 
     public function financial(Request $request): JsonResponse
     {
-        // TODO: Re-enable authorization when auth is working
-        // $this->authorize('viewAny', \App\Models\Customer::class);
-
         $request->validate([
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
@@ -67,18 +51,11 @@ class DashboardController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Financial stats retrieved successfully',
-            'data' => $financial,
-        ]);
+        return ApiResponse::success('Financial stats retrieved successfully', $financial);
     }
 
     public function bookings(Request $request): JsonResponse
     {
-        // TODO: Re-enable authorization when auth is working
-        // $this->authorize('viewAny', \App\Models\Customer::class);
-
         $request->validate([
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
@@ -89,26 +66,15 @@ class DashboardController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Bookings stats retrieved successfully',
-            'data' => $bookings,
-        ]);
+        return ApiResponse::success('Bookings stats retrieved successfully', $bookings);
     }
 
     public function recentActivities(Request $request): JsonResponse
     {
-        // TODO: Re-enable authorization when auth is working
-        // $this->authorize('viewAny', \App\Models\Customer::class);
-
         $limit = min($request->limit ?? 10, 50);
 
         $activities = $this->dashboardService->getRecentActivities($limit);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Recent activities retrieved successfully',
-            'data' => $activities,
-        ]);
+        return ApiResponse::success('Recent activities retrieved successfully', $activities);
     }
 }

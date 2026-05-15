@@ -242,14 +242,36 @@
 
               <div class="space-y-6">
                 <div>
+                  <label class="block text-sm font-semibold text-white mb-2">نوع حساب التحصيل</label>
+                  <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+                    <button
+                      v-for="chip in settlementCategoryChips"
+                      :key="chip.id"
+                      type="button"
+                      @click="settlementCategoryUi = chip.id"
+                      :class="[
+                        'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                        settlementCategoryUi === chip.id
+                          ? 'bg-white/10 border-gold text-gold'
+                          : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                      ]"
+                    >
+                      <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+                      {{ chip.label }}
+                    </button>
+                  </div>
+
                   <label class="block text-xs text-muted mb-2">حساب التسوية *</label>
                   <select v-model="form.account_id"
                     class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
                     <option :value="null">— اختر حساب —</option>
-                    <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
+                    <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
                       {{ acc.name }} — {{ acc.code }}
                     </option>
                   </select>
+                  <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-2">
+                    لا توجد حسابات متاحة في هذا التصنيف.
+                  </p>
                 </div>
 
                 <label class="flex items-center gap-3 p-4 bg-input border border-white/10 rounded-xl cursor-pointer hover:border-gold/50 transition-all">
@@ -393,7 +415,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
 import { useRouter } from 'vue-router';
-import { ArrowLeft, Check, Loader2, Search, Plus, TrendingUp, TrendingDown } from 'lucide-vue-next';
+import { 
+  ArrowLeft, Check, Loader2, Search, Plus, TrendingUp, TrendingDown,
+  Banknote, Wallet, Landmark
+} from 'lucide-vue-next';
 
 const store = useVisaStore();
 const router = useRouter();
@@ -403,6 +428,27 @@ const isSaving = ref(false);
 const customerSearch = ref('');
 const showNewCustomerForm = ref(false);
 const addPayment = ref(false);
+
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  const accounts = store.accounts || [];
+  if (settlementCategoryUi.value === 'cash') {
+    return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return accounts.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return accounts.filter(a => a.type === 'bank');
+  }
+  return accounts;
+});
 
 const newCustomer = ref({
   full_name: '',
@@ -604,7 +650,7 @@ const saveBooking = async () => {
 onMounted(async () => {
   await Promise.all([
     store.fetchSettings(),
-    store.fetchAccounts(),
+    store.fetchAccounts({ module: 'visa' }),
     store.fetchCustomers(),
   ]);
 });

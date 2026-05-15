@@ -33,22 +33,33 @@ class AccountController extends Controller
             ->where('name', 'not like', '%عميل%')
             ->where('name', 'not like', '%شركة%')
             ->where('name', 'not like', '%مورد%')
+            ->where('name', 'not like', '%إقفال%')
+            ->where('name', 'not like', '%(نظام)%')
             ->where('name', 'not like', '%ذممة%')
             ->where('name', 'not like', '%sad%')
             ->get();
 
+        // Calculate Statistics efficiently using aggregate query
         $performance = [];
-        $activeModules = \App\Models\Transaction::select('module')->distinct()->pluck('module');
-        foreach ($activeModules as $m) {
-            $moduleKey = ($m instanceof \App\Enums\TransactionModule) ? $m->value : (string)$m;
+        $moduleStats = \App\Models\Transaction::select('module', 'type', \Illuminate\Support\Facades\DB::raw('SUM(amount) as total'))
+            ->groupBy('module', 'type')
+            ->get();
+
+        foreach ($moduleStats as $stat) {
+            $moduleKey = ($stat->module instanceof \App\Enums\TransactionModule) ? $stat->module->value : (string)$stat->module;
             if (empty($moduleKey)) continue;
-            $income = \App\Models\Transaction::where('module', $moduleKey)->where('type', 'income')->sum('amount');
-            $expense = \App\Models\Transaction::where('module', $moduleKey)->where('type', 'expense')->sum('amount');
-            $performance[$moduleKey] = [
-                'income' => (float) $income,
-                'expense' => (float) $expense,
-                'profit' => (float) ($income - $expense),
-            ];
+
+            if (!isset($performance[$moduleKey])) {
+                $performance[$moduleKey] = ['income' => 0.0, 'expense' => 0.0, 'profit' => 0.0];
+            }
+
+            if ($stat->type === 'income') {
+                $performance[$moduleKey]['income'] = (float) $stat->total;
+            } elseif ($stat->type === 'expense') {
+                $performance[$moduleKey]['expense'] = (float) $stat->total;
+            }
+            
+            $performance[$moduleKey]['profit'] = $performance[$moduleKey]['income'] - $performance[$moduleKey]['expense'];
         }
 
         $liquidity = [
@@ -68,10 +79,8 @@ class AccountController extends Controller
             'created_by_name' => $t->createdBy?->name,
         ]);
 
-        return response()->json([
-            'status' => true,
-            'message' => __('accounts.list_success'),
-            'data' => AccountResource::collection($accounts),
+        return ApiResponse::success(__('accounts.list_success'), [
+            'items' => AccountResource::collection($accounts),
             'stats' => [
                 'total_balance' => (float) $allOfficeAccounts->sum('balance'),
                 'active_count' => $allOfficeAccounts->where('is_active', true)->count(),
@@ -80,7 +89,7 @@ class AccountController extends Controller
                 'recent_transactions' => $recentTransactions,
                 'deficit_accounts' => $allOfficeAccounts->where('balance', '<', 0)->values(),
             ]
-        ], 200);
+        ]);
     }
 
     public function store(StoreAccountRequest $request): JsonResponse
@@ -115,15 +124,11 @@ class AccountController extends Controller
     {
         $data = $this->accountService->getAccountStatement($account, $request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Account statement retrieved.',
-            'data' => [
-                'items' => AccountEntryResource::collection($data['items']),
-                'pagination' => $data['pagination'],
-                'stats' => $data['stats']
-            ]
-        ], 200);
+        return ApiResponse::success('Account statement retrieved.', [
+            'items' => AccountEntryResource::collection($data['items']),
+            'pagination' => $data['pagination'],
+            'stats' => $data['stats']
+        ]);
     }
 
     public function transfer(StoreTransferRequest $request): JsonResponse

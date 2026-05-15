@@ -12,6 +12,11 @@ class FinancialStatsWidget extends BaseWidget
 
     protected static ?int $sort = 2;
 
+    public static function canView(): bool
+    {
+        return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
+    }
+
     protected function getStats(): array
     {
         $currentMonth = now()->month;

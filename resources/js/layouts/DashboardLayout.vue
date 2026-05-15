@@ -6,7 +6,7 @@
       <div
         v-if="isSidebarOpen && isMobile"
         class="backdrop"
-        @click="closeSidebar"
+        @click="isSidebarOpen = false"
         aria-hidden="true"
       />
     </transition>
@@ -124,11 +124,7 @@
             </div>
           </div>
 
-          <router-link v-if="authStore.isAdmin" to="/finance/tourism-management" class="nl nl-management-tourism" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-            <span class="nl-t">إدارة قسم السياحة</span>
-            <span class="nl-badge badge-success">شامل</span>
-          </router-link>
+          <!-- Management link removed, moved to Filament -->
         </div>
 
         <!-- OFFICE ACCOUNTS -->
@@ -189,70 +185,14 @@
             </div>
           </div>
 
-          <router-link v-if="hasPermission('manage_treasury')" to="/suppliers" class="nl" active-class="nl-active">
-            <span class="nl-i text-purple-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
-            <span class="nl-t">الموردون</span>
-          </router-link>
-
-          <router-link v-if="authStore.isAdmin" to="/finance/office-management" class="nl nl-management-office" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
-            <span class="nl-t">إدارة قسم المكتب</span>
-            <span class="nl-badge badge-purple">شامل</span>
-          </router-link>
+          <!-- Management link removed, moved to Filament -->
         </div>
 
-        <!-- FINANCE & TREASURY (OUTSIDE) -->
-        <div class="nav-grp" v-if="hasPermission('manage_treasury') || hasPermission('view_dashboard')">
-          <span class="grp-label text-gold">الخزائن والمالية</span>
-          <router-link v-if="hasPermission('manage_treasury')" to="/finance/accounts" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20M6 14h2"/></svg></span>
-            <span class="nl-t">الحسابات والخزائن</span>
-          </router-link>
-          <router-link v-if="hasPermission('manage_treasury')" to="/treasury" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
-            <span class="nl-t">الخزينة العامة</span>
-          </router-link>
-          <router-link v-if="hasPermission('manage_treasury')" to="/accounts" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
-            <span class="nl-t">كشف الحساب</span>
-          </router-link>
-          
-          <router-link v-if="hasPermission('manage_treasury')" to="/finance/expenses" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 10h20M6 14h2"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></span>
-            <span class="nl-t">المصروفات</span>
-          </router-link>
-          
-          <router-link v-if="hasPermission('view_dashboard') || hasPermission('manage_treasury')" to="/finance/profit-loss" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
-            <span class="nl-t">الأرباح والخسائر</span>
-          </router-link>
-        </div>
+        <!-- Finance administration moved to Filament -->
 
-        <!-- ADMIN & REPORTS -->
-        <div class="nav-grp" v-if="hasPermission('manage_employees') || hasPermission('view_dashboard') || authStore.isAdmin">
-          <span class="grp-label grp-label--sub">الإدارة والتقارير</span>
-          
 
-          <router-link v-if="hasPermission('manage_employees')" to="/employees" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 17v-1.5a3 3 0 00-3-3H7a3 3 0 00-3 3V17"/><circle cx="10" cy="6.5" r="3"/></svg></span>
-            <span class="nl-t">الموظفين</span>
-          </router-link>
+        <!-- No more management here, moved to Filament -->
 
-          <router-link v-if="hasPermission('manage_employees')" to="/attendance" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="16" height="15" rx="2"/><path d="M13 1.5v3M7 1.5v3M2 8h16M7 12l2 2 4-4"/></svg></span>
-            <span class="nl-t">الحضور والانصراف</span>
-          </router-link>
-
-          <router-link v-if="authStore.isAdmin" to="/users" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 17v-1.5a3 3 0 00-3-3H5a3 3 0 00-3 3V17"/><circle cx="8" cy="7" r="3"/><path d="M19 17v-1.5a3 3 0 00-2.25-2.9M13 4.1a3 3 0 010 5.8"/></svg></span>
-            <span class="nl-t">إدارة المستخدمين</span>
-          </router-link>
-
-          <router-link v-if="hasPermission('view_dashboard')" to="/reports" class="nl" active-class="nl-active">
-            <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 17V9M10 17V5M5 17v-4M2 17h16"/></svg></span>
-            <span class="nl-t">التقارير الشاملة</span>
-          </router-link>
-        </div>
 
       </nav>
 
@@ -283,7 +223,7 @@
           </div>
         </div>
 
-        <div class="tb-end">
+        <div class="tb-end gap-2 sm:gap-4">
           <div class="hdr-search">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="9" r="6.5"/><path d="M17 17l-3.5-3.5"/></svg>
             <input type="search" placeholder="بحث سريع..." aria-label="بحث" />
@@ -369,7 +309,7 @@ const flightStore = useFlightStore();
 const DESKTOP = 1024;
 const windowWidth   = ref(window.innerWidth);
 const isMobile      = computed(() => windowWidth.value < DESKTOP);
-const isSidebarOpen = ref(windowWidth.value >= DESKTOP);
+const isSidebarOpen = ref(window.innerWidth >= DESKTOP);
 const isTourismOpen = ref(route.path.startsWith('/flights') || route.path.startsWith('/hajj-umra') || route.path.startsWith('/visas'));
 const isOfficeSubOpen = ref(route.path.startsWith('/bus') || route.path.startsWith('/fawry') || route.path.startsWith('/online'));
 
@@ -382,8 +322,18 @@ const isOnlineOpen = ref(route.path.startsWith('/online'));
 const isWalletOpen = ref(route.path.startsWith('/wallet'));
 
 function onResize() {
+  const oldMobile = isMobile.value;
   windowWidth.value = window.innerWidth;
-  if (windowWidth.value >= DESKTOP) isSidebarOpen.value = true;
+  const newMobile = isMobile.value;
+
+  // If transitioning from mobile to desktop, ensure sidebar is open
+  if (oldMobile && !newMobile) {
+    isSidebarOpen.value = true;
+  }
+  // If transitioning from desktop to mobile, ensure sidebar is closed
+  else if (!oldMobile && newMobile) {
+    isSidebarOpen.value = false;
+  }
 }
 const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value; };
 const closeSidebar  = () => { isSidebarOpen.value = false; };
@@ -395,6 +345,22 @@ const toasts = ref([]);
 watch(() => flightStore.toasts, (newToasts) => {
   toasts.value = [...newToasts];
 }, { deep: true });
+
+// Auto-close sidebar on route change (Mobile only)
+watch(() => route.path, () => {
+  if (isMobile.value) {
+    isSidebarOpen.value = false;
+  }
+});
+
+// Prevent body scroll when sidebar is open on mobile
+watch(isSidebarOpen, (isOpen) => {
+  if (isMobile.value) {
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  } else {
+    document.body.style.overflow = '';
+  }
+}, { immediate: true });
 
 function addToast(message, type = 'success', description = null) {
   flightStore.addToast(message, type);
@@ -415,19 +381,30 @@ async function handleLogout() {
   router.push('/login');
 }
 
+const handleEsc = (e) => {
+  if (e.key === 'Escape' && isSidebarOpen.value && isMobile.value) {
+    isSidebarOpen.value = false;
+  }
+};
+
 onMounted(async () => {
   window.addEventListener('resize', onResize, { passive: true });
+  window.addEventListener('keydown', handleEsc);
+
   window.addEventListener('show-toast', ({ detail }) =>
     addToast(detail.message, detail.type, detail.description)
   );
   // Initialize auth - load user data if token exists
   await authStore.initAuth();
 });
-onUnmounted(() => window.removeEventListener('resize', onResize));
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize);
+  window.removeEventListener('keydown', handleEsc);
+});
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+/* Font is imported once in app.css to avoid duplication and multiple network requests */
 
 :root {
   --sb-w:   270px;
@@ -874,6 +851,11 @@ html { direction: rtl; height: 100%; }
 .t-toast-leave-to     { opacity: 0; transform: scale(.94); }
 @media (max-width: 640px) {
   .toast-rack { left: 10px; right: 10px; width: auto; bottom: 10px; }
+  .top-bar { padding: 0 10px; gap: 6px; }
+  .breadcrumb { display: none; }
+  .tb-start { gap: 6px; }
+  .tb-end { gap: 6px; }
+  .hdr-btn { width: 32px; height: 32px; }
 }
 .dropdown-content-styled {
   display: flex;

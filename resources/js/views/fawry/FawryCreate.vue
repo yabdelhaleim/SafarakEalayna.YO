@@ -9,7 +9,7 @@
         <ArrowRight class="w-6 h-6" />
       </router-link>
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
           معاملة فورية جديدة
         </h1>
         <p class="text-text-muted mt-1">
@@ -314,6 +314,25 @@
         </div>
 
         <div class="mt-6">
+          <label class="block text-sm font-semibold text-text-main mb-2">نوع حساب التحصيل</label>
+          <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+            <button
+              v-for="chip in settlementCategoryChips"
+              :key="chip.id"
+              type="button"
+              @click="settlementCategoryUi = chip.id"
+              :class="[
+                'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                settlementCategoryUi === chip.id
+                  ? 'bg-white/10 border-gold text-gold'
+                  : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+              ]"
+            >
+              <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+              {{ chip.label }}
+            </button>
+          </div>
+
           <label class="block text-sm font-medium text-text-muted mb-2">
             حساب التسوية / الخزينة <span class="text-error">*</span>
           </label>
@@ -323,10 +342,13 @@
             class="form-select-dark"
           >
             <option value="">اختر الحساب</option>
-            <option v-for="acc in settlementAccounts" :key="acc.id" :value="acc.id">
+            <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
               {{ acc.name }}
             </option>
           </select>
+          <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-1">
+            لا توجد حسابات متاحة في هذا التصنيف.
+          </p>
           <p v-if="selectedPaymentMethod?.defaultAccountId && form.account_id == selectedPaymentMethod.defaultAccountId" class="text-xs text-text-muted mt-1">
             مُقترَح تلقائياً من إعدادات طريقة الدفع؛ يمكنك تغييره.
           </p>
@@ -409,11 +431,11 @@ import {
   ArrowRight,
   User,
   CreditCard,
-  Banknote,
-  Wallet,
-  FileText,
   Check,
   Loader2,
+  Banknote,
+  Wallet,
+  Landmark,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -449,6 +471,26 @@ const roundMoney = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // Customers
 const customers = ref([]);
 const settlementAccounts = ref([]);
+
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  if (settlementCategoryUi.value === 'cash') {
+    return settlementAccounts.value.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return settlementAccounts.value.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return settlementAccounts.value.filter(a => a.type === 'bank');
+  }
+  return settlementAccounts.value;
+});
 
 // Computed
 const calculatedProfit = computed(() => {

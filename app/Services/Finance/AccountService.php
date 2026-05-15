@@ -46,6 +46,8 @@ class AccountService
               ->where('name', 'not like', '%عميل%')
               ->where('name', 'not like', '%شركة%')
               ->where('name', 'not like', '%مورد%')
+              ->where('name', 'not like', '%إقفال%')
+              ->where('name', 'not like', '%(نظام)%')
               ->where('name', 'not like', '%ذممة%')
               ->where('name', 'not like', '%sad%');
         });
@@ -70,7 +72,12 @@ class AccountService
             if ($filters['module'] === 'general') {
                 $query->whereNull('module');
             } else {
-                $query->where('module', $filters['module']);
+                $module = $filters['module'];
+                $query->where(function ($q) use ($module) {
+                    $q->where('module', $module)
+                      ->orWhere('module_type', $module)
+                      ->orWhere('module_type', $module . 's'); // handles 'flight' vs 'flights'
+                });
             }
         }
 

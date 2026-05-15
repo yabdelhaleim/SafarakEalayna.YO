@@ -551,6 +551,43 @@ export const useBusStore = defineStore('bus', {
       }
     },
 
+    async fetchRefundTreasuries(currency = '') {
+      try {
+        const res = await axios.get('/api/v1/bus/refunds/treasuries', { params: { currency } });
+        return res.data?.data || [];
+      } catch (e) {
+        console.error('fetchRefundTreasuries', e);
+        return [];
+      }
+    },
+
+    async createRefund(payload) {
+      this.loading.create = true;
+      try {
+        const res = await axios.post('/api/v1/bus/refunds', payload);
+        return res.data?.data || res.data;
+      } catch (e) {
+        console.error('createRefund', e);
+        throw e;
+      } finally {
+        this.loading.create = false;
+      }
+    },
+
+    async processRefund(id) {
+      this.loading.update = true;
+      try {
+        const res = await axios.post(`/api/v1/bus/refunds/${id}/process`);
+        await this.fetchStats();
+        return res.data?.data || res.data;
+      } catch (e) {
+        console.error('processRefund', e);
+        throw e;
+      } finally {
+        this.loading.update = false;
+      }
+    },
+
     addToast(message, type = 'success') {
       if (window.addToast) window.addToast(message, type);
     },

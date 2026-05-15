@@ -9,19 +9,19 @@
             <span class="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse"></span>
             لوحة القيادة الذكية الموحدة
           </div>
-          <h1 class="text-3xl font-black tracking-tight text-white sm:text-4xl">
+          <h1 class="text-xl font-black tracking-tight text-white sm:text-3xl lg:text-4xl">
             نظام المراقبة والتحكم المالي
           </h1>
           <p class="mt-2 max-w-2xl text-sm leading-relaxed text-gray-300">
             متابعة حية وشاملة لقطاعي <span class="text-amber-400 font-bold">السياحة</span> و<span class="text-sky-400 font-bold">المكتب</span>، مع تحليل السيولة النقدية وحركة الخزائن من واقع السجلات المحاسبية الفعلية.
           </p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
             @click="refreshData"
             :disabled="isRefreshing"
-            class="flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition-all disabled:opacity-50"
+            class="flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition-all disabled:opacity-50"
           >
             <RefreshCw :class="['h-4 w-4', isRefreshing && 'animate-spin']" />
             تحديث البيانات الحية
@@ -29,7 +29,7 @@
           <button
             type="button"
             @click="exportReport"
-            class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-xl transition-all"
+            class="flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-xl transition-all"
           >
             <Download class="h-4 w-4" />
             تصدير التقرير المالي

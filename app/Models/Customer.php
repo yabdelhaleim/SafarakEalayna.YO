@@ -32,6 +32,7 @@ class Customer extends Model
 
     protected $casts = [
         'customer_tier' => \App\Enums\CustomerTier::class,
+        'type' => \App\Enums\CustomerType::class,
         'passport_expiry' => 'date',
         'date_of_birth' => 'date',
     ];

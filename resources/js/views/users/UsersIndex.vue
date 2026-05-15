@@ -6,7 +6,7 @@
       <div class="absolute top-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none"></div>
       
       <div class="relative z-10">
-        <h1 class="text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
           <ShieldCheck class="w-10 h-10 text-indigo-400" />
           إدارة الصلاحيات والمستخدمين
         </h1>

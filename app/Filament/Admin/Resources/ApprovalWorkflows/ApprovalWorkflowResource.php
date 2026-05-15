@@ -21,7 +21,7 @@ class ApprovalWorkflowResource extends Resource
 {
     protected static ?string $model = ApprovalWorkflow::class;
 
-    protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-clipboard-check';
+    protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
     protected static string|\UnitEnum|null $navigationGroup = 'الإعدادات';
 

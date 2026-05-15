@@ -34,7 +34,7 @@
     <div class="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8 mt-8">
     <!-- Filters Bar -->
     <div class="flight-panel !p-4 sm:!p-5">
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-wrap items-center gap-3">
         <!-- Search -->
         <div class="flex-1 min-w-[240px] relative">
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />

@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
           حجوزات الباصات
         </h1>
         <p class="text-text-muted mt-1">
@@ -86,7 +86,7 @@
     </div>
 
     <!-- Filters Bar -->
-    <div class="p-4 bg-card-bg border border-white/10 rounded-2xl flex flex-wrap items-center gap-4">
+    <div class="p-4 bg-card-bg border border-white/10 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-4">
       <div class="flex-1 min-w-[240px] relative">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <input
@@ -391,6 +391,25 @@
 
           <!-- الحساب -->
           <div>
+            <label class="block text-sm font-semibold text-text-main mb-2">طريقة الدفع *</label>
+            <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+              <button
+                v-for="chip in settlementCategoryChips"
+                :key="chip.id"
+                type="button"
+                @click="settlementCategoryUi = chip.id"
+                :class="[
+                  'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                  settlementCategoryUi === chip.id
+                    ? 'bg-white/10 border-gold text-gold'
+                    : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                ]"
+              >
+                <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+                {{ chip.label }}
+              </button>
+            </div>
+            
             <label class="block text-sm font-semibold text-text-main mb-2">
               الحساب * <span class="text-text-muted text-xs font-normal">(سيُخصم منه المبلغ)</span>
             </label>
@@ -400,12 +419,12 @@
               class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm"
             >
               <option value="">اختر الحساب</option>
-              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">
+              <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
                 {{ acc.name }}
               </option>
             </select>
-            <p v-if="accounts.length === 0 && !loadingAccounts" class="text-xs text-error mt-1">
-              لا توجد حسابات متاحة
+            <p v-if="filteredAccounts.length === 0 && !loadingAccounts" class="text-xs text-error mt-1">
+              لا توجد حسابات متاحة في هذا التصنيف
             </p>
           </div>
 
@@ -450,13 +469,31 @@ import axios from 'axios';
 import {
   Plus, Search, Bus, CheckCircle, Clock, DollarSign,
   MapPin, ArrowRight, Users, Eye, CreditCard, XCircle,
+  Banknote, Wallet, Landmark,
 } from 'lucide-vue-next';
 
 const store = useBusStore();
 
 // ─── Accounts ──────────────────────────────────────────────
-const accounts = ref([]);
-const loadingAccounts = ref(false);
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  if (settlementCategoryUi.value === 'cash') {
+    return accounts.value.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return accounts.value.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return accounts.value.filter(a => a.type === 'bank');
+  }
+  return accounts.value;
+});
 
 const fetchAccounts = async () => {
   loadingAccounts.value = true;

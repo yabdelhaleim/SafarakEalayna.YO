@@ -26,6 +26,9 @@
 }
 
 @layer base {
+    html, body {
+        @apply overflow-x-hidden;
+    }
     :root {
         /* Add legacy variable names for compatibility */
         --bg-deep: #020810;
@@ -42,14 +45,6 @@
         /* Additional aliases for Flight/Bus/Finance pages */
         --bg-card: #0A1528;
         --bg-input: #0C1830;
-    }
-
-    body {
-        @apply bg-bg-deep text-text-main font-sans;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-        @apply font-display font-extrabold;
     }
 }
 
@@ -119,7 +114,7 @@
     }
 
     .flight-input {
-        @apply w-full rounded-xl border border-white/10 bg-input-bg px-4 py-3 text-text-main placeholder:text-text-muted/70;
+        @apply w-full rounded-xl border border-white/10 bg-input-bg px-4 py-3.5 sm:py-3 text-text-main placeholder:text-text-muted/70;
         @apply outline-none transition-all focus:border-gold/60 focus:ring-2 focus:ring-gold/20;
     }
 

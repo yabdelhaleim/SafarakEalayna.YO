@@ -155,6 +155,15 @@
               <CreditCard class="mb-0.5 ml-2 inline h-4 w-4" />
               تسديد دفعة
             </button>
+            <button
+              v-if="booking.status !== 'cancelled' && booking.status !== 'refunded'"
+              type="button"
+              class="btn-airline-ghost border-gold/30 text-gold"
+              @click="showRefundModal = true"
+            >
+              <RotateCcw class="mb-0.5 ml-2 inline h-4 w-4" />
+              استرجاع مالي
+            </button>
           </div>
         </div>
       </div>
@@ -333,8 +342,17 @@
             <XCircle class="mb-0.5 ml-2 inline h-4 w-4" />
             إلغاء الحجز
           </button>
+          <button
+            v-if="booking.status !== 'cancelled' && booking.status !== 'refunded'"
+            type="button"
+            class="flex-1 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 font-bold text-gold transition hover:bg-gold/20 sm:flex-none"
+            @click="showRefundModal = true"
+          >
+            <RotateCcw class="mb-0.5 ml-2 inline h-4 w-4" />
+            استرجاع مالي
+          </button>
         </div>
-        <p v-if="booking.payments?.length && booking.status !== 'cancelled'" class="mt-3 text-xs text-text-muted">
+        <p v-if="booking.payments?.length && booking.status !== 'cancelled' && booking.status !== 'refunded'" class="mt-3 text-xs text-text-muted">
           لا يمكن إلغاء الحجز بعد تسجيل دفعات؛ تعديل مالي يتم من الإدارة.
         </p>
       </div>
@@ -362,7 +380,24 @@
             />
           </div>
           <div>
-            <label class="mb-2 block text-sm text-text-muted">طريقة الدفع</label>
+            <label class="mb-2 block text-sm text-text-muted text-right">طريقة الدفع</label>
+            <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+              <button
+                v-for="chip in settlementCategoryChips"
+                :key="chip.id"
+                type="button"
+                @click="settlementCategoryUi = chip.id"
+                :class="[
+                  'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                  settlementCategoryUi === chip.id
+                    ? 'bg-white/10 border-gold text-gold'
+                    : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                ]"
+              >
+                <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+                {{ chip.label }}
+              </button>
+            </div>
             <select v-model="paymentForm.payment_method" required class="flight-select">
               <option value="cash">نقدي</option>
               <option value="bank_transfer">تحويل بنكي</option>
@@ -373,14 +408,16 @@
             </select>
           </div>
           <div>
-            <label class="mb-2 block text-sm text-text-muted">حساب التحصيل</label>
+            <label class="mb-2 block text-sm text-text-muted text-right">حساب التحصيل</label>
             <select v-model="paymentForm.account_id" required class="flight-select">
               <option value="">— اختر الحساب —</option>
-              <option v-for="acc in settlementAccounts" :key="acc.id" :value="acc.id">
+              <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
                 {{ acc.name }}
               </option>
             </select>
-            <p v-if="!settlementAccounts.length" class="mt-2 text-xs text-warning">لم تُحمَّل حسابات. أضفها من لوحة Filament.</p>
+            <p v-if="!filteredAccounts.length" class="mt-2 text-xs text-warning text-right">
+              لا توجد حسابات متوفرة في هذا القسم.
+            </p>
           </div>
           <div>
             <label class="mb-2 block text-sm text-text-muted">ملاحظات</label>
@@ -453,6 +490,18 @@
         </div>
       </div>
     </div>
+    <div
+      v-if="showRefundModal && booking"
+      class="no-print fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      @click.self="showRefundModal = false"
+    >
+      <div class="w-full max-w-4xl max-h-[95vh] overflow-y-auto">
+        <BusRefundWizard 
+          :initial-booking="booking" 
+          @completed="onRefundCompleted" 
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -468,8 +517,13 @@ import {
   CreditCard,
   Printer,
   XCircle,
+  RotateCcw,
   BusFront,
+  Banknote,
+  Wallet,
+  Landmark,
 } from 'lucide-vue-next';
+import BusRefundWizard from '@/components/bus/BusRefundWizard.vue';
 
 const route = useRoute();
 const store = useBusStore();
@@ -479,6 +533,7 @@ const booking = ref(null);
 const loadError = ref('');
 const loadingDetail = ref(true);
 const showPaymentModal = ref(false);
+const showRefundModal = ref(false);
 const settlementAccounts = ref([]);
 
 const printOptions = ref({
@@ -512,12 +567,16 @@ const statusLabels = {
   pending: 'معلق',
   paid: 'مدفوع',
   cancelled: 'ملغي',
+  refunded: 'مسترد',
+  partially_refunded: 'مسترد جزئياً',
 };
 
 const statusStyles = {
   pending: 'bg-warning/15 text-warning',
   paid: 'bg-success/15 text-success',
   cancelled: 'bg-error/15 text-error',
+  refunded: 'bg-gold/15 text-gold',
+  partially_refunded: 'bg-blue-400/15 text-blue-400',
 };
 
 const paymentStatusLabels = {
@@ -569,10 +628,35 @@ const getPaymentMethodLabel = (method) => {
   return labels[method] || method;
 };
 
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  if (settlementCategoryUi.value === 'cash') {
+    return settlementAccounts.value.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return settlementAccounts.value.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return settlementAccounts.value.filter(a => a.type === 'bank');
+  }
+  return settlementAccounts.value;
+});
+
 const loadAccounts = async () => {
   try {
     const res = await axios.get('/api/v1/finance/accounts', {
-      params: { per_page: 100, types: 'cashbox,wallet,bank,treasury', is_active: 1 },
+      params: { 
+        per_page: 100, 
+        types: 'cashbox,wallet,bank,treasury', 
+        is_active: 1,
+        module: 'bus'
+      },
     });
     let raw = res.data?.data;
     if (raw && !Array.isArray(raw) && Array.isArray(raw.data)) raw = raw.data;
@@ -672,6 +756,12 @@ const confirmCancel = async () => {
   } catch {
     store.addToast(store.errors?.message || 'فشل الإلغاء', 'error');
   }
+};
+
+const onRefundCompleted = async () => {
+  showRefundModal.value = false;
+  store.addToast('تمت معالجة الاسترجاع بنجاح');
+  await load();
 };
 
 onMounted(load);

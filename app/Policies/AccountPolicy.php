@@ -12,7 +12,7 @@ class AccountPolicy
      */
     protected function canUseFilamentAccounts(User $user): bool
     {
-        return (bool) $user->is_active && ($user->isAdmin() || $user->isEmployee());
+        return (bool) $user->is_active && in_array($user->role, ['admin', 'owner'], true);
     }
 
     /**

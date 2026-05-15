@@ -2,7 +2,7 @@
   <div class="space-y-8 animate-in fade-in duration-700">
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-extrabold text-text-main tracking-tight">أنواع الخدمات الأونلاين</h1>
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">أنواع الخدمات الأونلاين</h1>
         <p class="text-text-muted mt-1">
           إدارة وتعريف أنواع الخدمات (تصريح سفر، تجديد رخصة، فواتير...). البيانات تُدار من فيليمنت أيضاً.
         </p>

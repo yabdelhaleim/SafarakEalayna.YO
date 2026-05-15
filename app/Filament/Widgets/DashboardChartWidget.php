@@ -11,6 +11,11 @@ class DashboardChartWidget extends ChartWidget
 
     protected static ?int $sort = 3;
 
+    public static function canView(): bool
+    {
+        return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
+    }
+
     protected static string $color = 'info';
 
     protected int | string | array $columnSpan = 'full';

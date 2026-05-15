@@ -234,19 +234,19 @@ class DashboardService
         $busOps = $this->buildBusOperationsDashboard($from, $to);
 
         // Hajj Stats
-        $hajjBookings = \App\Models\HajjUmraBooking::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $hajjBookings = \App\Models\HajjUmraBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
         $hajjCount = (clone $hajjBookings)->count();
         $hajjRevenue = (float) (clone $hajjBookings)->sum('selling_price');
         $hajjProfit = (float) (clone $hajjBookings)->sum('profit');
 
         // Online Stats
-        $onlineTx = \App\Models\Online\OnlineTransaction::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $onlineTx = \App\Models\Online\OnlineTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
         $onlineCount = (clone $onlineTx)->count();
         $onlineRevenue = (float) (clone $onlineTx)->sum('selling_price');
         $onlineProfit = (float) (clone $onlineTx)->sum('profit');
 
         // Fawry Stats
-        $fawryTx = \App\Models\Fawry\FawryTransaction::whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $fawryTx = \App\Models\Fawry\FawryTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
         $fawryCount = (clone $fawryTx)->count();
         $fawryRevenue = (float) (clone $fawryTx)->sum('selling_price');
         $fawryProfit = (float) (clone $fawryTx)->sum('profit');
@@ -335,11 +335,11 @@ class DashboardService
 
         $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
-        $bookingQuery = BusBooking::query()->whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $bookingQuery = BusBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
 
         $totalBookingsRange = (clone $bookingQuery)->count();
-        $todayBookings = BusBooking::whereDate('created_at', $today)->count();
-        $yesterdayBookings = BusBooking::whereDate('created_at', $yesterday)->count();
+        $todayBookings = BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])->count();
+        $yesterdayBookings = BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->count();
 
         $nonCancelledScope = fn ($q) => (clone $q)->where('status', '!=', BusBookingStatus::Cancelled);
 
@@ -349,27 +349,27 @@ class DashboardService
         $cancelled = (clone $bookingQuery)->where('status', BusBookingStatus::Cancelled)->count();
 
         $pendingPayments = (float) BusBooking::query()
-            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled)
             ->selectRaw('COALESCE(SUM(total_price - paid_amount), 0) as aggregate')
             ->value('aggregate');
 
-        $todayRevenue = (float) BusBooking::whereDate('created_at', $today)
+        $todayRevenue = (float) BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled)
             ->sum('total_price');
-        $yesterdayRevenue = (float) BusBooking::whereDate('created_at', $yesterday)
+        $yesterdayRevenue = (float) BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled)
             ->sum('total_price');
 
-        $todayProfit = (float) BusBooking::whereDate('created_at', $today)
+        $todayProfit = (float) BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled)
             ->sum('profit');
-        $yesterdayProfit = (float) BusBooking::whereDate('created_at', $yesterday)
+        $yesterdayProfit = (float) BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled)
             ->sum('profit');
 
         $activeCompanies = (int) BusBooking::query()
-            ->whereBetween(DB::raw('DATE(bus_bookings.created_at)'), [$from, $to])
+            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->selectRaw('COUNT(DISTINCT bus_inventories.company_id) as c')
             ->value('c');
@@ -377,7 +377,7 @@ class DashboardService
         $companyRows = DB::table('bus_bookings')
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->join('bus_companies', 'bus_inventories.company_id', '=', 'bus_companies.id')
-            ->whereRaw('DATE(bus_bookings.created_at) BETWEEN ? AND ?', [$from, $to])
+            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('bus_companies.id', 'bus_companies.name')
             ->selectRaw('bus_companies.id as company_id, bus_companies.name as company_name, COUNT(bus_bookings.id) as booking_count, SUM(bus_bookings.total_price) as revenue_sum, SUM(bus_bookings.profit) as profit_sum')
@@ -407,24 +407,30 @@ class DashboardService
             $end = $start->copy();
         }
         $days = min(14, $start->diffInDays($end) + 1);
+        $busStats = BusBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue, SUM(profit) as profit')
+            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->groupBy('date')
+            ->get()
+            ->keyBy('date');
+
         for ($i = 0; $i < $days; $i++) {
             $d = $start->copy()->addDays($i)->toDateString();
             Carbon::setLocale('ar');
             $label = Carbon::parse($d)->translatedFormat('D j M');
-            $cnt = BusBooking::whereDate('created_at', $d)->count();
-            $rev = (float) BusBooking::whereDate('created_at', $d)
-                ->where('status', '!=', BusBookingStatus::Cancelled)
-                ->sum('total_price');
-            $prof = (float) BusBooking::whereDate('created_at', $d)
-                ->where('status', '!=', BusBookingStatus::Cancelled)
-                ->sum('profit');
+            
+            $stat = $busStats->get($d);
+            $cnt = $stat ? (int) $stat->count : 0;
+            $rev = $stat ? (float) $stat->revenue : 0.0;
+            $prof = $stat ? (float) $stat->profit : 0.0;
+
             $bookingsChart[] = ['label' => $label, 'count' => $cnt];
             $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
         }
 
         $topRoutes = DB::table('bus_bookings')
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
-            ->whereRaw('DATE(bus_bookings.created_at) BETWEEN ? AND ?', [$from, $to])
+            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->whereNotNull('bus_inventories.route')
             ->groupBy('bus_inventories.route')
@@ -440,7 +446,7 @@ class DashboardService
             ->all();
 
         $busRecent = BusBooking::with(['customer', 'inventory'])
-            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->orderByDesc('created_at')
             ->limit(8)
             ->get()
@@ -487,7 +493,7 @@ class DashboardService
     {
         $today = now()->toDateString();
 
-        $bookingQuery = FlightBooking::query()->whereBetween(DB::raw('DATE(created_at)'), [$from, $to]);
+        $bookingQuery = FlightBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
         if ($carrierId) {
             $bookingQuery->where('flight_carrier_id', (int) $carrierId);
         }
@@ -500,7 +506,7 @@ class DashboardService
         }
 
         $totalBookingsRange = (clone $bookingQuery)->count();
-        $todayBookings = FlightBooking::whereDate('created_at', $today)
+        $todayBookings = FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->count();
@@ -510,21 +516,21 @@ class DashboardService
 
         $paidSub = '(SELECT COALESCE(SUM(amount),0) FROM flight_payments WHERE flight_payments.flight_booking_id = flight_bookings.id)';
         $outstanding = (float) DB::table('flight_bookings')
-            ->whereRaw('DATE(created_at) BETWEEN ? AND ?', [$from, $to])
+            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->whereRaw("selling_price - {$paidSub} > 0.01")
             ->sum(DB::raw("selling_price - {$paidSub}"));
 
         $yesterday = Carbon::parse($today)->subDay()->toDateString();
-        $todayBookingsYesterday = FlightBooking::whereDate('created_at', $yesterday)->count();
+        $todayBookingsYesterday = FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->count();
         $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
-        $todayRevenue = (float) FlightBooking::whereDate('created_at', $today)->sum('selling_price');
-        $yesterdayRevenue = (float) FlightBooking::whereDate('created_at', $yesterday)->sum('selling_price');
+        $todayRevenue = (float) FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])->sum('selling_price');
+        $yesterdayRevenue = (float) FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->sum('selling_price');
 
-        $todayProfit = (float) FlightBooking::whereDate('created_at', $today)->sum('profit');
-        $yesterdayProfit = (float) FlightBooking::whereDate('created_at', $yesterday)->sum('profit');
+        $todayProfit = (float) FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])->sum('profit');
+        $yesterdayProfit = (float) FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->sum('profit');
 
         $cancelled = (clone $bookingQuery)->where('status', 'CANCELLED')->count();
 
@@ -565,7 +571,7 @@ class DashboardService
         $systemPerformanceList = $systems->map(function (FlightSystem $s) use ($from, $to, $carrierId) {
             $base = FlightBooking::query()
                 ->where('flight_system_id', $s->id)
-                ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+                ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
                 ->when($carrierId, fn ($b) => $b->where('flight_carrier_id', (int) $carrierId));
 
             $bookings = (clone $base)->count();
@@ -585,7 +591,7 @@ class DashboardService
         $carrierPerformanceList = $carriers->map(function (FlightCarrier $c) use ($from, $to, $systemType) {
             $base = FlightBooking::query()
                 ->where('flight_carrier_id', $c->id)
-                ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+                ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
                 ->when($systemType !== null && $systemType !== '', fn ($b) => is_numeric($systemType) ? $b->where('flight_system_id', (int) $systemType) : $b->where('system_type', $systemType));
 
             $bookings = (clone $base)->count();
@@ -616,29 +622,31 @@ class DashboardService
             $end = $start->copy();
         }
         $days = min(14, $start->diffInDays($end) + 1);
+        $flightStats = FlightBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue, SUM(profit) as profit')
+            ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+            ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+            ->groupBy('date')
+            ->get()
+            ->keyBy('date');
+
         for ($i = 0; $i < $days; $i++) {
             $d = $start->copy()->addDays($i)->toDateString();
             Carbon::setLocale('ar');
             $label = Carbon::parse($d)->translatedFormat('D j M');
-            $cnt = FlightBooking::whereDate('created_at', $d)
-                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
-                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
-                ->count();
-            $rev = (float) FlightBooking::whereDate('created_at', $d)
-                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
-                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
-                ->sum('selling_price');
-            $prof = (float) FlightBooking::whereDate('created_at', $d)
-                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
-                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
-                ->sum('profit');
+
+            $stat = $flightStats->get($d);
+            $cnt = $stat ? (int) $stat->count : 0;
+            $rev = $stat ? (float) $stat->revenue : 0.0;
+            $prof = $stat ? (float) $stat->profit : 0.0;
+
             $bookingsChart[] = ['label' => $label, 'count' => $cnt];
             $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
         }
 
         $topRoutes = FlightBooking::query()
             ->selectRaw('from_airport, to_airport, COUNT(*) as c, SUM(selling_price) as revenue, SUM(profit) as profit')
-            ->whereBetween(DB::raw('DATE(created_at)'), [$from, $to])
+            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->whereNotNull('from_airport')
             ->whereNotNull('to_airport')
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))

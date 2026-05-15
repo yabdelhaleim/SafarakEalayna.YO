@@ -6,7 +6,7 @@
       >
         <div class="min-w-0 flex-1">
           <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/90">المالية</p>
-          <h1 class="mt-1 text-3xl font-black tracking-tight text-text-main sm:text-4xl">
+          <h1 class="mt-1 text-xl font-black tracking-tight text-text-main sm:text-3xl lg:text-4xl">
             الحسابات والمعاملات
           </h1>
           <p class="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">

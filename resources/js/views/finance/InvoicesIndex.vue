@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-8 animate-in fade-in duration-700">
     <div>
-      <h1 class="text-4xl font-extrabold text-text-main tracking-tight">الفواتير</h1>
+      <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">الفواتير</h1>
       <p class="text-text-muted mt-1">إدارة ومتابعة الفواتير</p>
     </div>
 
