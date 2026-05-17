@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Base;
+namespace App\Filament\Resources;
 use BackedEnum;
 
 use Filament\Resources\Resource;
