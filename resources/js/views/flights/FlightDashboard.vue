@@ -64,10 +64,10 @@
       <template v-else-if="data">
 
         <!-- KPI Cards -->
-        <section class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+        <section :class="['grid gap-5', isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2']">
 
           <!-- Monthly Revenue -->
-          <div class="group relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 transition hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 transition hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -102,7 +102,7 @@
           </div>
 
           <!-- Cashboxes -->
-          <div class="group relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-6 transition hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-6 transition hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/15 blur-2xl group-hover:bg-amber-500/25 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -120,7 +120,7 @@
           </div>
 
           <!-- Banks -->
-          <div class="group relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 to-transparent p-6 transition hover:border-sky-500/40 hover:shadow-lg hover:shadow-sky-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 to-transparent p-6 transition hover:border-sky-500/40 hover:shadow-lg hover:shadow-sky-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-sky-500/15 blur-2xl group-hover:bg-sky-500/25 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -138,7 +138,7 @@
           </div>
 
           <!-- Wallets -->
-          <div class="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-500/10 to-transparent p-6 transition hover:border-teal-500/40 hover:shadow-lg hover:shadow-teal-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-500/10 to-transparent p-6 transition hover:border-teal-500/40 hover:shadow-lg hover:shadow-teal-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-teal-500/15 blur-2xl group-hover:bg-teal-500/25 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -181,7 +181,7 @@
                     <th class="px-5 py-4 font-bold">العميل</th>
                     <th class="px-5 py-4 font-bold">المسار</th>
                     <th class="px-5 py-4 font-bold">السعر</th>
-                    <th class="px-5 py-4 font-bold">الربح</th>
+                    <th v-if="isAdmin" class="px-5 py-4 font-bold">الربح</th>
                     <th class="px-5 py-4 font-bold">التاريخ</th>
                   </tr>
                 </thead>
@@ -207,7 +207,7 @@
                     <td class="px-5 py-3.5 font-mono font-bold text-white text-sm">
                       {{ fmt(booking.pricing?.sellingPrice || 0) }}
                     </td>
-                    <td class="px-5 py-3.5">
+                    <td v-if="isAdmin" class="px-5 py-3.5">
                       <span :class="['font-mono font-bold text-sm', (booking.pricing?.profit || 0) >= 0 ? 'text-emerald-400' : 'text-red-400']">
                         {{ (booking.pricing?.profit || 0) >= 0 ? '+' : '' }}{{ fmt(booking.pricing?.profit || 0) }}
                       </span>
@@ -233,7 +233,7 @@
           <div class="space-y-6">
 
             <!-- Total Liquidity Card -->
-            <div class="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/60 to-transparent p-6 text-center relative overflow-hidden">
+            <div v-if="isAdmin" class="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/60 to-transparent p-6 text-center relative overflow-hidden">
               <div class="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent pointer-events-none"></div>
               <div class="relative">
                 <div class="flex items-center justify-center gap-2 mb-4">
@@ -266,6 +266,7 @@
                   <span class="text-xs font-bold text-indigo-200">الحجوزات</span>
                 </router-link>
                 <router-link
+                  v-if="isAdmin"
                   :to="{ name: 'flights.treasury' }"
                   class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-amber-500/10 bg-amber-500/5 p-4 transition hover:border-amber-500/30 hover:bg-amber-500/10"
                 >
@@ -273,7 +274,7 @@
                   <span class="text-xs font-bold text-amber-200">الخزينة</span>
                 </router-link>
                 <a
-                  href="/admin"
+                  :href="'/admin?token=' + authStore.token"
                   target="_blank"
                   class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-teal-500/10 bg-teal-500/5 p-4 transition hover:border-teal-500/30 hover:bg-teal-500/10"
                 >
@@ -284,7 +285,7 @@
             </div>
 
             <!-- Balance Breakdown -->
-            <div class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
+            <div v-if="isAdmin" class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
               <h2 class="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">توزيع الأرصدة</h2>
 
               <div class="flex items-center justify-between py-2 border-b border-white/5">
@@ -336,8 +337,9 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   Plane,
   RefreshCw,
@@ -359,6 +361,8 @@ import {
 import { Wallet as Vault } from 'lucide-vue-next';
 
 const store = useFlightStore();
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 const data = ref(null);
 const loading = ref(true);
 const lastUpdated = ref('—');

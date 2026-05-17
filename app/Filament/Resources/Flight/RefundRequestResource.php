@@ -281,7 +281,7 @@ class RefundRequestResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\Action::make('process')
+                \Filament\Actions\Action::make('process')
                     ->label('معالجة وترحيل')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
@@ -308,11 +308,11 @@ class RefundRequestResource extends Resource
                         }
                     }),
 
-                Tables\Actions\EditAction::make(),
+                \Filament\Actions\EditAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

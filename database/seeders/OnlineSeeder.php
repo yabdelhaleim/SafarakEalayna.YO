@@ -25,49 +25,49 @@ class OnlineSeeder extends Seeder
         // Step 1: Create 4 online service types
         $serviceTypes = [
             [
-                'name' => 'Fawry',
-                'fee_type' => 'fixed',
-                'fee_value' => 5.00,
+                'code' => 'fawry',
+                'name_ar' => 'فوري',
+                'name_en' => 'Fawry',
                 'is_active' => true,
-                'notes' => 'Seeded service type',
                 'created_by' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'name' => 'InstaPay',
-                'fee_type' => 'percentage',
-                'fee_value' => 1.50,
+                'code' => 'instapay',
+                'name_ar' => 'إنستاباي',
+                'name_en' => 'InstaPay',
                 'is_active' => true,
-                'notes' => 'Seeded service type',
                 'created_by' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'name' => 'Vodafone Cash',
-                'fee_type' => 'fixed',
-                'fee_value' => 3.00,
+                'code' => 'vodafone_cash',
+                'name_ar' => 'فودافون كاش',
+                'name_en' => 'Vodafone Cash',
                 'is_active' => true,
-                'notes' => 'Seeded service type',
                 'created_by' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'name' => 'Bill Payment',
-                'fee_type' => 'fixed',
-                'fee_value' => 2.00,
+                'code' => 'bill_payment',
+                'name_ar' => 'دفع الفواتير',
+                'name_en' => 'Bill Payment',
                 'is_active' => true,
-                'notes' => 'Seeded service type',
                 'created_by' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
         ];
 
-        DB::table('online_service_types')->insert($serviceTypes);
-        $serviceTypeIds = DB::table('online_service_types')->pluck('id', 'id')->toArray();
+        foreach ($serviceTypes as $type) {
+            DB::table('online_service_types')->updateOrInsert(['code' => $type['code']], $type);
+        }
+        $serviceTypeIds = DB::table('online_service_types')->pluck('id')->toArray();
+        $providerIds = DB::table('online_service_providers')->pluck('id')->toArray();
+        $customers = DB::table('customers')->get()->toArray();
 
         // Step 2: Create 500 online transactions
         $transactions = [];
@@ -77,8 +77,13 @@ class OnlineSeeder extends Seeder
         for ($i = 1; $i <= 500; $i++) {
             $typeId = $serviceTypeIds[array_rand($serviceTypeIds)];
             $serviceType = DB::table('online_service_types')->where('id', $typeId)->first();
+            $providerId = $providerIds[array_rand($providerIds)];
 
-            $customerId = $customerIds[array_rand($customerIds)];
+            $customerObj = $customers[array_rand($customers)];
+            $customerId = $customerObj->id;
+            $customerName = $customerObj->full_name;
+            $customerPhone = $customerObj->phone;
+
             $employeeId = $employeeIds[array_rand($employeeIds)];
             $createdBy = $employeeIds[array_rand($employeeIds)];
             $createdAt = $twelveMonthsAgo->copy()->addDays(rand(0, 365));
@@ -95,11 +100,12 @@ class OnlineSeeder extends Seeder
 
             $amount = rand(5000, 500000) / 100; // 50-5000
 
-            // Compute fee based on type
-            if ($serviceType->fee_type === 'fixed') {
-                $fee = (float) $serviceType->fee_value;
+            // Compute random fee
+            $isFixed = rand(0, 1);
+            if ($isFixed) {
+                $fee = rand(2, 10);
             } else {
-                $fee = round($amount * $serviceType->fee_value / 100, 2);
+                $fee = round($amount * (rand(1, 3) / 100), 2);
             }
 
             $totalCollected = $amount + $fee;
@@ -109,13 +115,19 @@ class OnlineSeeder extends Seeder
 
             $onlineTransactions[] = [
                 'id' => $i,
-                'type_id' => $typeId,
+                'service_type_id' => $typeId,
+                'provider_id' => $providerId,
                 'customer_id' => $customerId,
+                'customer_name' => $customerName,
+                'customer_phone' => $customerPhone,
+                'customer_country' => 'Egypt',
                 'employee_id' => $employeeId,
-                'amount' => $amount,
-                'fee' => $fee,
-                'total_collected' => $totalCollected,
-                'wallet_account_id' => $walletAccountId,
+                'purchase_price' => $amount,
+                'selling_price' => $totalCollected,
+                'profit' => $fee,
+                'payment_method' => 'wallet',
+                'account_id' => $walletAccountId,
+                'reference_number' => 'REF-' . rand(100000, 999999),
                 'expense_transaction_id' => null,
                 'income_transaction_id' => null,
                 'status' => $status->value,
@@ -140,7 +152,7 @@ class OnlineSeeder extends Seeder
                     'from_account_id' => $walletAccountId,
                     'to_account_id' => null,
                     'created_by' => $createdBy,
-                    'notes' => "Online operation payout: {$serviceType->name}",
+                    'notes' => "Online operation payout: " . ($serviceType->name_ar ?? 'Service'),
                     'created_at' => $createdAt,
                     'updated_at' => $createdAt,
                 ];
@@ -158,7 +170,7 @@ class OnlineSeeder extends Seeder
                     'from_account_id' => null,
                     'to_account_id' => $walletAccountId,
                     'created_by' => $createdBy,
-                    'notes' => "Online operation collection: {$serviceType->name}",
+                    'notes' => "Online operation collection: " . ($serviceType->name_ar ?? 'Service'),
                     'created_at' => $createdAt,
                     'updated_at' => $createdAt,
                 ];
@@ -172,10 +184,14 @@ class OnlineSeeder extends Seeder
         // Insert all transactions and update wallet balances
         DB::transaction(function () use ($onlineTransactions, $transactions) {
             if (!empty($transactions)) {
-                DB::table('transactions')->insert($transactions);
+                foreach ($transactions as $transaction) {
+                    DB::table('transactions')->updateOrInsert(['id' => $transaction['id']], $transaction);
+                }
             }
 
-            DB::table('online_transactions')->insert($onlineTransactions);
+            foreach ($onlineTransactions as $ot) {
+                DB::table('online_transactions')->updateOrInsert(['id' => $ot['id']], $ot);
+            }
 
                 // Group by account and calculate net balance changes
                 $accountChanges = [];
@@ -224,7 +240,12 @@ class OnlineSeeder extends Seeder
                     }
                     unset($entry);
 
-                    DB::table('account_entries')->insert($changes['entries']);
+                    foreach ($changes['entries'] as $entry) {
+                        DB::table('account_entries')->updateOrInsert([
+                            'account_id' => $entry['account_id'],
+                            'transaction_id' => $entry['transaction_id'],
+                        ], $entry);
+                    }
                     DB::table('accounts')->where('id', $accountId)->update(['balance' => $currentBalance]);
                 }
         });

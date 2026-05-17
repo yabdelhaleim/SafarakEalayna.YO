@@ -42,6 +42,8 @@ class BonusSeeder extends Seeder
         $transactions = [];
         $accountEntries = [];
 
+        $maxTransactionId = DB::table('transactions')->max('id') ?? 0;
+
         foreach ($employeeIds as $employeeId) {
             $employee = DB::table('employees')->where('id', $employeeId)->first();
 
@@ -53,7 +55,7 @@ class BonusSeeder extends Seeder
                 $createdBy = $adminId;
                 $createdAt = $twelveMonthsAgo->copy()->addDays(rand(0, 365));
 
-                $transactionId = count($transactions) + 1;
+                $transactionId = $maxTransactionId + count($transactions) + 1;
 
                 $transactions[] = [
                     'id' => $transactionId,
@@ -101,7 +103,7 @@ class BonusSeeder extends Seeder
                 $createdBy = $adminId;
                 $createdAt = $twelveMonthsAgo->copy()->addDays(rand(0, 365));
 
-                $transactionId = count($transactions) + 1;
+                $transactionId = $maxTransactionId + count($transactions) + 1;
 
                 $transactions[] = [
                     'id' => $transactionId,
@@ -144,23 +146,28 @@ class BonusSeeder extends Seeder
 
         // Insert all data
         DB::transaction(function () use ($bonuses, $transactions, $accountEntries, $mainCashboxId) {
-            // Insert bonuses
-            DB::table('employee_bonuses')->insert($bonuses);
+            // 1. Insert/Update transactions first (so transaction_id exists in transactions table)
+            foreach ($transactions as $transaction) {
+                DB::table('transactions')->updateOrInsert(['id' => $transaction['id']], $transaction);
+            }
 
-            // Update transaction related_ids
-            foreach ($bonuses as $index => $bonus) {
-                $transactionId = $bonus['transaction_id'];
-                $bonusId = $index + 1;
+            // 2. Insert/Update bonuses (foreign key transaction_id is satisfied)
+            foreach ($bonuses as $bonus) {
+                DB::table('employee_bonuses')->updateOrInsert([
+                    'transaction_id' => $bonus['transaction_id']
+                ], $bonus);
 
+                $bonusId = DB::table('employee_bonuses')
+                    ->where('transaction_id', $bonus['transaction_id'])
+                    ->value('id');
+
+                // 3. Update transaction related_id with the generated bonus id
                 DB::table('transactions')
-                    ->where('id', $transactionId)
+                    ->where('id', $bonus['transaction_id'])
                     ->update(['related_id' => $bonusId]);
             }
 
-            // Insert transactions
-            DB::table('transactions')->insert($transactions);
-
-            // Insert account_entries and update account balance
+            // 4. Insert account_entries and update account balance
             $currentBalance = DB::table('accounts')->where('id', $mainCashboxId)->value('balance');
 
             foreach ($accountEntries as &$entry) {
@@ -169,7 +176,12 @@ class BonusSeeder extends Seeder
             }
             unset($entry);
 
-            DB::table('account_entries')->insert($accountEntries);
+            foreach ($accountEntries as $entry) {
+                DB::table('account_entries')->updateOrInsert([
+                    'account_id' => $entry['account_id'],
+                    'transaction_id' => $entry['transaction_id'],
+                ], $entry);
+            }
             DB::table('accounts')->where('id', $mainCashboxId)->update(['balance' => $currentBalance]);
         });
 

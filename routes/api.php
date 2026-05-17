@@ -58,20 +58,25 @@ Route::prefix('v1')->middleware([
     // Dashboard API (Admin Only)
     Route::middleware('admin')->get('dashboard', [\App\Http\Controllers\Api\V1\DashboardController::class, 'index']);
 
-    // Finance API (Admin Only)
-    Route::prefix('finance')->middleware('admin')->group(function () {
-        Route::apiResource('accounts', \App\Http\Controllers\Api\V1\Finance\AccountController::class)->except(['destroy'])->names('finance_accounts');
-        Route::get('treasuries/get-overview', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getOverview']);
-        Route::get('treasuries/get-module-accounts/{module}', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getModuleAccounts']);
-        Route::apiResource('treasuries', \App\Http\Controllers\Api\V1\Finance\TreasuryController::class)->names('finance_treasuries');
-        Route::apiResource('currencies', \App\Http\Controllers\Api\V1\Finance\CurrencyController::class)->names('finance_currencies');
-        Route::apiResource('approvals', \App\Http\Controllers\Api\V1\Finance\ApprovalController::class);
-        Route::apiResource('audits', \App\Http\Controllers\Api\V1\Finance\AuditController::class);
+    // Finance API
+    Route::prefix('finance')->group(function () {
+        // Accounts listing is accessible to all authenticated users (to record payments)
+        Route::get('accounts', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'index'])->name('finance_accounts.index');
 
-        // Account specific routes
-        Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
-        Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
-        Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
+        Route::middleware('admin')->group(function () {
+            Route::apiResource('accounts', \App\Http\Controllers\Api\V1\Finance\AccountController::class)->except(['index', 'destroy'])->names('finance_accounts');
+            Route::get('treasuries/get-overview', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getOverview']);
+            Route::get('treasuries/get-module-accounts/{module}', [\App\Http\Controllers\Api\V1\Finance\TreasuryController::class, 'getModuleAccounts']);
+            Route::apiResource('treasuries', \App\Http\Controllers\Api\V1\Finance\TreasuryController::class)->names('finance_treasuries');
+            Route::apiResource('currencies', \App\Http\Controllers\Api\V1\Finance\CurrencyController::class)->names('finance_currencies');
+            Route::apiResource('approvals', \App\Http\Controllers\Api\V1\Finance\ApprovalController::class);
+            Route::apiResource('audits', \App\Http\Controllers\Api\V1\Finance\AuditController::class);
+
+            // Account specific routes
+            Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
+            Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
+            Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
+        });
     });
 
     // Flights API
@@ -250,6 +255,7 @@ Route::prefix('v1')->middleware([
 
     // Employee API
         Route::prefix('employee')->group(function () {
+            Route::get('dashboard', [\App\Http\Controllers\Api\V1\Employee\EmployeeDashboardController::class, 'index']);
             Route::get('employees/reference-data', [\App\Http\Controllers\Api\V1\Employee\EmployeeController::class, 'referenceData']);
             Route::get('employees/{id}/transactions', [\App\Http\Controllers\Api\V1\Employee\EmployeeController::class, 'transactions']);
             Route::apiResource('employees', \App\Http\Controllers\Api\V1\Employee\EmployeeController::class)->names('employee_employees');

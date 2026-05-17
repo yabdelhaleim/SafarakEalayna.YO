@@ -70,7 +70,7 @@
             <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg></span>
             <span class="nl-t">لوحة التحكم</span>
           </router-link>
-          <a v-if="authStore.isAdmin" href="/admin" class="nl" target="_blank">
+          <a v-if="authStore.isAdmin" :href="'/admin?token=' + authStore.token" class="nl" target="_blank">
             <span class="nl-i"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8v2m2-2a2 2 0 100 4m0-4a2 2 0 110 4m-12 8v-2m4 0a2 2 0 100-4m0 4a2 2 0 110-4m12 2v-2M6 6a2 2 0 100 4m0-4a2 2 0 110 4m-6 4v-2m4 0a2 2 0 100-4m0 4a2 2 0 110-4m12 2v-2"/></svg></span>
             <span class="nl-t">لوحة التحكم الإدارية</span>
             <span class="nl-badge badge-red">إداري</span>
@@ -91,7 +91,7 @@
             <div v-show="isFlightsOpen" class="dropdown-content-styled">
               <router-link to="/flights/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/flights/list" class="nl-sub">قائمة الحجوزات</router-link>
-              <router-link to="/flights/treasury" class="nl-sub">خزينة وأرصدة</router-link>
+              <router-link v-if="isAdminOrOwner" to="/flights/treasury" class="nl-sub">إدارة القسم (مالية وأرصدة)</router-link>
             </div>
           </div>
 
@@ -106,7 +106,9 @@
               <router-link to="/hajj-umra/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/hajj-umra/list" class="nl-sub">قائمة الحجوزات</router-link>
               <router-link to="/hajj-umra/create" class="nl-sub">إنشاء حجز</router-link>
-              <router-link to="/hajj-umra/treasury" class="nl-sub">الخزينة والمالية</router-link>
+              <router-link v-if="isAdminOrOwner" to="/hajj-umra/treasury" class="nl-sub">إدارة القسم (مالية الحج والعمرة)</router-link>
+              <router-link v-if="isAdminOrOwner" to="/hajj-umra/programs" class="nl-sub">إدارة البرامج</router-link>
+              <router-link v-if="isAdminOrOwner" to="/hajj-umra/executing-companies" class="nl-sub">إدارة الشركات</router-link>
             </div>
           </div>
 
@@ -120,11 +122,10 @@
             <div v-show="isVisasOpen" class="dropdown-content-styled">
               <router-link to="/visas/list" class="nl-sub">قائمة التأشيرات</router-link>
               <router-link to="/visas/create" class="nl-sub">طلب جديد</router-link>
-              <router-link to="/visas/treasury" class="nl-sub">الخزينة والمالية</router-link>
+              <router-link v-if="isAdminOrOwner" to="/visas/treasury" class="nl-sub">إدارة القسم (مالية التأشيرات)</router-link>
+              <router-link v-if="isAdminOrOwner" to="/visas/agents-finance" class="nl-sub">إدارة الوكلاء</router-link>
             </div>
           </div>
-
-          <!-- Management link removed, moved to Filament -->
         </div>
 
         <!-- OFFICE ACCOUNTS -->
@@ -140,8 +141,11 @@
             </button>
             <div v-show="isBusOpen" class="dropdown-content-styled">
               <router-link to="/bus/dashboard" class="nl-sub">لوحة التحكم</router-link>
+              <router-link to="/bus/create" class="nl-sub">إنشاء حجز</router-link>
               <router-link to="/bus" class="nl-sub">قائمة الحجوزات</router-link>
-              <router-link to="/bus/treasury" class="nl-sub">الخزينة والمالية</router-link>
+              <router-link v-if="isAdminOrOwner" to="/bus/treasury" class="nl-sub">إدارة القسم (مالية الباصات)</router-link>
+              <router-link v-if="isAdminOrOwner" to="/bus/companies" class="nl-sub">إدارة الشركات</router-link>
+              <router-link v-if="isAdminOrOwner" to="/bus/inventory" class="nl-sub">إدارة الرحلات</router-link>
             </div>
           </div>
 
@@ -155,7 +159,7 @@
             <div v-show="isFawryOpen" class="dropdown-content-styled">
               <router-link to="/fawry/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/fawry/list" class="nl-sub">قائمة المعاملات</router-link>
-              <router-link to="/fawry/treasury" class="nl-sub">خزينة وأرصدة</router-link>
+              <router-link v-if="isAdminOrOwner" to="/fawry/treasury" class="nl-sub">إدارة القسم (مالية فوري)</router-link>
             </div>
           </div>
 
@@ -168,12 +172,14 @@
             </button>
             <div v-show="isOnlineOpen" class="dropdown-content-styled">
               <router-link to="/online" class="nl-sub">قائمة المعاملات</router-link>
-              <router-link to="/online/treasury" class="nl-sub">الخزنة والمالية</router-link>
+              <router-link v-if="isAdminOrOwner" to="/online/treasury" class="nl-sub">إدارة القسم (مالية الخدمات)</router-link>
+              <router-link v-if="isAdminOrOwner" to="/online/service-types" class="nl-sub">أنواع الخدمات</router-link>
+              <router-link v-if="isAdminOrOwner" to="/online/providers" class="nl-sub">مزودي الخدمات</router-link>
             </div>
           </div>
 
           <!-- Wallet Module -->
-          <div class="nav-dropdown" v-if="hasPermission('manage_treasury')">
+          <div class="nav-dropdown" v-if="(authStore.isAdmin || authStore.user?.role === 'owner') && hasPermission('manage_treasury')">
             <button @click="isWalletOpen = !isWalletOpen" class="nl" :class="{'nl-active': $route.path.startsWith('/wallet')}">
               <span class="nl-i text-purple-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg></span>
               <span class="nl-t" style="flex: 1; text-align: right;">المحافظ والتحويلات</span>
@@ -184,14 +190,53 @@
               <router-link to="/wallet" class="nl-sub">قائمة العمليات</router-link>
             </div>
           </div>
-
-          <!-- Management link removed, moved to Filament -->
         </div>
 
-        <!-- Finance administration moved to Filament -->
+        <!-- ADMINISTRATION & FINANCE -->
+        <div class="nav-grp" v-if="hasPermission('manage_finance') || hasPermission('manage_employees') || hasPermission('view_reports') || hasPermission('manage_users')">
+          <span class="grp-label text-sky-400">الإدارة والمالية</span>
 
+          <!-- Finance Module -->
+          <div class="nav-dropdown" v-if="(authStore.isAdmin || authStore.user?.role === 'owner') && hasPermission('manage_finance')">
+            <button @click="isFinanceOpen = !isFinanceOpen" class="nl" :class="{'nl-active': $route.path.startsWith('/finance')}">
+              <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>
+              <span class="nl-t" style="flex: 1; text-align: right;">المالية والحسابات</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: isFinanceOpen ? 'rotate(180deg)' : 'rotate(0deg)' }" style="width: 1rem; height: 1rem; transition: transform 0.2s; opacity: 0.5;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div v-show="isFinanceOpen" class="dropdown-content-styled">
+              <router-link to="/finance/dashboard" class="nl-sub">لوحة التحكم</router-link>
+              <router-link to="/finance/accounts" class="nl-sub">كشوف الحسابات</router-link>
+              <router-link to="/finance/treasury" class="nl-sub">الخزينة</router-link>
+              <router-link to="/finance/expenses" class="nl-sub">المصروفات</router-link>
+              <router-link to="/suppliers" class="nl-sub">الموردين</router-link>
+            </div>
+          </div>
 
-        <!-- No more management here, moved to Filament -->
+          <!-- Employees Module -->
+          <div class="nav-dropdown" v-if="hasPermission('manage_employees')">
+            <button @click="isEmployeesOpen = !isEmployeesOpen" class="nl" :class="{'nl-active': $route.path.startsWith('/employees')}">
+              <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
+              <span class="nl-t" style="flex: 1; text-align: right;">شؤون الموظفين</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: isEmployeesOpen ? 'rotate(180deg)' : 'rotate(0deg)' }" style="width: 1rem; height: 1rem; transition: transform 0.2s; opacity: 0.5;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div v-show="isEmployeesOpen" class="dropdown-content-styled">
+              <router-link to="/employees/list" class="nl-sub">قائمة الموظفين</router-link>
+              <router-link to="/employees/attendance" class="nl-sub">الحضور والغياب</router-link>
+            </div>
+          </div>
+
+          <!-- Reports Link -->
+          <router-link v-if="hasPermission('view_reports')" to="/reports" class="nl" active-class="nl-active">
+            <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z"/></svg></span>
+            <span class="nl-t">التقارير الشاملة</span>
+          </router-link>
+
+          <!-- Users Link -->
+          <router-link v-if="hasPermission('manage_users')" to="/users" class="nl" active-class="nl-active">
+            <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
+            <span class="nl-t">إدارة المستخدمين</span>
+          </router-link>
+        </div>
 
 
       </nav>
@@ -294,6 +339,20 @@ const authStore = useAuthStore();
 
 const hasPermission = (perm) => {
   if (authStore.isAdmin || authStore.user?.role === 'owner') return true;
+
+  // Specific permissions allowed for employees by default
+  const employeeAllowed = [
+    'manage_flights', 
+    'manage_hajj', 
+    'manage_online', 
+    'manage_bus', 
+    'manage_treasury'
+  ];
+
+  if (authStore.user?.role === 'employee' && employeeAllowed.includes(perm)) {
+    return true;
+  }
+
   return authStore.user?.permissions && authStore.user.permissions.includes(perm);
 };
 
@@ -320,6 +379,9 @@ const isBusOpen = ref(route.path.startsWith('/bus'));
 const isFawryOpen = ref(route.path.startsWith('/fawry'));
 const isOnlineOpen = ref(route.path.startsWith('/online'));
 const isWalletOpen = ref(route.path.startsWith('/wallet'));
+const isFinanceOpen = ref(route.path.startsWith('/finance'));
+const isEmployeesOpen = ref(route.path.startsWith('/employees'));
+const isAdminOrOwner = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 
 function onResize() {
   const oldMobile = isMobile.value;
@@ -907,5 +969,4 @@ html { direction: rtl; height: 100%; }
 
 .badge-success { background: var(--green); color: black; }
 .badge-purple { background: #a855f7; color: white; }
-
-</style>DashboardLayout updated at: Sat May  2 06:05:56 EST 2026
+</style>

@@ -6,7 +6,7 @@ use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
 use App\Models\Transaction;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup as ActionsBulkActionGroup;
+use Filament\Tables\Actions\BulkActionGroup as ActionsBulkActionGroup;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -151,11 +151,11 @@ class TransactionResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->recordActions([
-                \Filament\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
                 ActionsBulkActionGroup::make([
-                    \Filament\Actions\ExportBulkAction::make(),
+                    \Filament\Tables\Actions\ExportBulkAction::make(),
                 ]),
             ]);
     }

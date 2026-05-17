@@ -165,16 +165,24 @@ class FlightSeeder extends Seeder
         }
 
         DB::transaction(function () use ($bookings, $passengers, $payments, $transactions, $accountEntries, $flightCashboxId) {
-            DB::table('flight_bookings')->insert($bookings);
+            foreach ($bookings as $booking) {
+                DB::table('flight_bookings')->updateOrInsert(['id' => $booking['id']], $booking);
+            }
 
             if (!empty($passengers)) {
-                foreach (array_chunk($passengers, 100) as $chunk) {
-                    DB::table('passengers')->insert($chunk);
+                foreach ($passengers as $passenger) {
+                    DB::table('passengers')->updateOrInsert([
+                        'flight_booking_id' => $passenger['flight_booking_id'],
+                        'first_name' => $passenger['first_name'],
+                        'last_name' => $passenger['last_name'],
+                    ], $passenger);
                 }
             }
 
             if (!empty($transactions)) {
-                DB::table('transactions')->insert($transactions);
+                foreach ($transactions as $transaction) {
+                    DB::table('transactions')->updateOrInsert(['id' => $transaction['id']], $transaction);
+                }
             }
 
             if (!empty($accountEntries)) {
@@ -184,12 +192,22 @@ class FlightSeeder extends Seeder
                     $entry['balance_after'] = $currentBalance;
                 }
                 unset($entry);
-                DB::table('account_entries')->insert($accountEntries);
+                foreach ($accountEntries as $entry) {
+                    DB::table('account_entries')->updateOrInsert([
+                        'account_id' => $entry['account_id'],
+                        'transaction_id' => $entry['transaction_id'],
+                    ], $entry);
+                }
                 DB::table('accounts')->where('id', $flightCashboxId)->update(['balance' => $currentBalance]);
             }
 
             if (!empty($payments)) {
-                DB::table('flight_payments')->insert($payments);
+                foreach ($payments as $payment) {
+                    DB::table('flight_payments')->updateOrInsert([
+                        'flight_booking_id' => $payment['flight_booking_id'],
+                        'transaction_reference' => $payment['transaction_reference'],
+                    ], $payment);
+                }
             }
         });
 

@@ -57,11 +57,16 @@ class UserSeeder extends Seeder
             ];
         }
 
-        // Insert users
-        DB::table('users')->insert($users);
+        // Clear existing to avoid duplicate key errors during concurrent requests
+        // Using safe updateOrInsert to prevent duplicate primary keys
+        foreach ($users as $user) {
+            DB::table('users')->updateOrInsert(['id' => $user['id']], $user);
+        }
 
         // Insert employees
-        DB::table('employees')->insert($employees);
+        foreach ($employees as $employee) {
+            DB::table('employees')->updateOrInsert(['id' => $employee['id']], $employee);
+        }
 
         // Cache admin ID for other seeders
         cache(['seed_admin_id' => $adminId], now()->addHour());

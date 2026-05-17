@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Auth;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
@@ -27,12 +28,7 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'بيانات التسجيل غير صحيحة',
-                'errors' => $validator->errors(),
-                'data' => null,
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return ApiResponse::error('بيانات التسجيل غير صحيحة', $validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $user = User::create([
@@ -43,12 +39,8 @@ class AuthController extends Controller
             'is_active' => false, // يجب تفعيله من قبل الإدارة
         ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم التسجيل بنجاح. يرجى انتظار تفعيل الحساب من قبل الإدارة.',
-            'data' => [
-                'user' => new UserResource($user),
-            ],
+        return ApiResponse::success('تم التسجيل بنجاح. يرجى انتظار تفعيل الحساب من قبل الإدارة.', [
+            'user' => new UserResource($user),
         ], Response::HTTP_CREATED);
     }
 
@@ -57,33 +49,21 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'بيانات الاعتماد غير صحيحة',
-                'data' => null,
-            ], Response::HTTP_UNAUTHORIZED);
+            return ApiResponse::error('بيانات الاعتماد غير صحيحة', null, Response::HTTP_UNAUTHORIZED);
         }
 
         if (! $user->is_active) {
-            return response()->json([
-                'success' => false,
-                'message' => 'الحساب غير نشط',
-                'data' => null,
-            ], Response::HTTP_UNAUTHORIZED);
+            return ApiResponse::error('الحساب غير نشط', null, Response::HTTP_UNAUTHORIZED);
         }
 
         // حذف التوكن القديمة وإنشاء جديدة
         $user->tokens()->delete();
         $token = $user->createToken('auth-token')->plainTextToken;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تسجيل الدخول بنجاح',
-            'data' => [
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'user' => new UserResource($user->load('employee')),
-            ],
+        return ApiResponse::success('تم تسجيل الدخول بنجاح', [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => new UserResource($user->load('employee')),
         ]);
     }
 
@@ -91,20 +71,19 @@ class AuthController extends Controller
     {
         $request->user()->currentAccessToken()->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تسجيل الخروج بنجاح',
-            'data' => null,
-        ]);
+        // Safely log out from the standard web guard and clear session to complete Single Sign-Out
+        Auth::guard('web')->logout();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return ApiResponse::success('تم تسجيل الخروج بنجاح');
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'message' => '',
-            'data' => new UserResource($request->user()->load('employee')),
-        ]);
+        return ApiResponse::success('', new UserResource($request->user()->load('employee')));
     }
 
     /**
@@ -122,22 +101,13 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'بيانات التحديث غير صحيحة',
-                'errors' => $validator->errors(),
-                'data' => null,
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return ApiResponse::error('بيانات التحديث غير صحيحة', $validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // التحقق من كلمة المرور الحالية إذا أراد تغييرها
         if ($request->filled('password')) {
             if (!Hash::check($request->current_password, $user->password)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'كلمة المرور الحالية غير صحيحة',
-                    'data' => null,
-                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+                return ApiResponse::error('كلمة المرور الحالية غير صحيحة', null, Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             $user->password = Hash::make($request->password);
         }
@@ -146,12 +116,8 @@ class AuthController extends Controller
         $user->email = $request->email ?? $user->email;
         $user->save();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تحديث البيانات بنجاح',
-            'data' => [
-                'user' => new UserResource($user),
-            ],
+        return ApiResponse::success('تم تحديث البيانات بنجاح', [
+            'user' => new UserResource($user),
         ]);
     }
 }

@@ -21,6 +21,18 @@ export default defineConfig({
     },
     server: {
         host: '127.0.0.1',
+        watch: {
+            ignored: [
+                '**/storage/**',
+                '**/bootstrap/cache/**',
+                '**/vendor/**',
+                '**/safarakealayna*',
+                '**/*.db',
+                '**/*.sqlite',
+                '**/appDataDir/**',
+                '**/.gemini/**'
+            ],
+        },
         proxy: {
             '/api': {
                 target: 'http://127.0.0.1:8000',

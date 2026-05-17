@@ -744,25 +744,25 @@ class FlightBookingResource extends Resource
                     }),
             ])
             ->actions([
-                Tables\Actions\Action::make('refund')
+                \Filament\Actions\Action::make('refund')
                     ->label('إصدار استرجاع')
                     ->icon('heroicon-o-arrow-path-rounded-square')
                     ->color('warning')
                     ->url(fn (FlightBooking $record): string => RefundRequestResource::getUrl('create', ['flight_booking_id' => $record->id]))
                     ->visible(fn (FlightBooking $record): bool => ! in_array($record->status?->value ?? $record->status, ['CANCELLED', 'REFUNDED'])),
-                Tables\Actions\Action::make('modify')
+                \Filament\Actions\Action::make('modify')
                     ->label('طلب تعديل')
                     ->icon('heroicon-o-adjustments-horizontal')
                     ->color('info')
                     ->url(fn (FlightBooking $record): string => TicketModificationResource::getUrl('create', ['booking_id' => $record->id]))
                     ->visible(fn (FlightBooking $record): bool => ! in_array($record->status?->value ?? $record->status, ['CANCELLED', 'REFUNDED'])),
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\ViewAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

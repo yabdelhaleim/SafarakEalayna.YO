@@ -80,12 +80,14 @@ class EmployeeAttendanceResource extends Resource
                     ->sortable()
                     ->searchable(),
 
-                BadgeColumn::make('status', 'الحالة')
-                    ->colors([
-                        'success' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'present',
-                        'danger' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'absent',
-                        'warning' => fn ($state) => ($state instanceof \BackedEnum ? $state->value : $state) === 'late',
-                    ])
+                TextColumn::make('status', 'الحالة')
+                    ->badge()
+                    ->color(fn ($state) => match($state instanceof \BackedEnum ? $state->value : $state) {
+                        'present' => 'success',
+                        'absent' => 'danger',
+                        'late' => 'warning',
+                        default => 'gray',
+                    })
                     ->formatStateUsing(function ($state): string {
                         $val = $state instanceof \BackedEnum ? $state->value : $state;
                         return match($val) {
@@ -115,16 +117,21 @@ class EmployeeAttendanceResource extends Resource
             ])
             ->defaultSort('attendance_date', 'desc')
             ->actions([
-                \Filament\Tables\Actions\EditAction::make(),
-                \Filament\Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['employee.user', 'createdBy']);
     }
 
     public static function getRelations(): array
     {
         return [
-            'employee.user',
-            'createdBy',
+            //
         ];
     }
 

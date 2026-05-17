@@ -1,17 +1,18 @@
 <?php
 
-namespace App\Filament\Widgets;
+namespace App\Filament\Admin\Widgets;
 
 use App\Models\Customer;
-use App\Models\Employee\Employee;
+use App\Models\Employee;
 use App\Models\Invoice;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class QuickStatsWidget extends BaseWidget
 {
-    protected static ?string $pollingInterval = '30s';
+    protected ?string $pollingInterval = '30s';
 
     protected static ?int $sort = 1;
 
@@ -22,10 +23,30 @@ class QuickStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $customersCount = Customer::count();
-        $employeesCount = Employee::where('is_active', true)->count();
-        $invoicesCount = Invoice::count();
-        $pendingTasks = DB::table('tasks')->where('status', 'pending')->count() ?? 0;
+        $customersCount = 0;
+        $employeesCount = 0;
+        $invoicesCount = 0;
+        
+        if (Schema::hasTable('customers')) {
+            $customersCount = Customer::count();
+        }
+        
+        if (Schema::hasTable('employees')) {
+            $employeesCount = Employee::where('status', 'active')->count();
+        }
+        
+        if (Schema::hasTable('invoices')) {
+            $invoicesCount = Invoice::count();
+        }
+
+        $pendingTasks = 0;
+        try {
+            if (Schema::hasTable('tasks')) {
+                $pendingTasks = DB::table('tasks')->where('status', 'pending')->count();
+            }
+        } catch (\Throwable $e) {
+            $pendingTasks = 0;
+        }
 
         return [
             Stat::make('العملاء', number_format($customersCount))
@@ -38,7 +59,7 @@ class QuickStatsWidget extends BaseWidget
                 ]),
 
             Stat::make('الموظفين النشطين', number_format($employeesCount))
-                ->description('من أصل ' . Employee::count() . ' موظف')
+                ->description('من أصل ' . (Schema::hasTable('employees') ? Employee::count() : 0) . ' موظف')
                 ->descriptionIcon('heroicon-o-briefcase')
                 ->color('success')
                 ->chart([5, 8, 6, 9, 7, 10, 8])
@@ -47,7 +68,7 @@ class QuickStatsWidget extends BaseWidget
                 ]),
 
             Stat::make('الفواتير', number_format($invoicesCount))
-                ->description('هذا الشهر')
+                ->description('إجمالي الفواتير')
                 ->descriptionIcon('heroicon-o-document-text')
                 ->color('warning')
                 ->chart([10, 15, 12, 18, 14, 20, 16])

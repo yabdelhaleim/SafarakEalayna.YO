@@ -93,8 +93,8 @@ class PayrollResource extends Resource
                 SelectFilter::make('year')->label('السنة')->options([2024 => '2024', 2025 => '2025', 2026 => '2026']),
             ])
             ->actions([
-                \Filament\Actions\ViewAction::make(),
-                \Filament\Actions\Action::make('pay')
+                \Filament\Tables\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\Action::make('pay')
                     ->label('صرف الراتب')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')

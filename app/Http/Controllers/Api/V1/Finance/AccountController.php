@@ -79,17 +79,23 @@ class AccountController extends Controller
             'created_by_name' => $t->createdBy?->name,
         ]);
 
-        return ApiResponse::success(__('accounts.list_success'), [
+        $data = [
             'items' => AccountResource::collection($accounts),
-            'stats' => [
+        ];
+
+        // Only include sensitive financial statistics for admins
+        if ($request->user() && ($request->user()->role === 'admin' || $request->user()->role === 'owner')) {
+            $data['stats'] = [
                 'total_balance' => (float) $allOfficeAccounts->sum('balance'),
                 'active_count' => $allOfficeAccounts->where('is_active', true)->count(),
                 'performance' => $performance,
                 'liquidity' => $liquidity,
                 'recent_transactions' => $recentTransactions,
                 'deficit_accounts' => $allOfficeAccounts->where('balance', '<', 0)->values(),
-            ]
-        ]);
+            ];
+        }
+
+        return ApiResponse::success(__('accounts.list_success'), $data);
     }
 
     public function store(StoreAccountRequest $request): JsonResponse

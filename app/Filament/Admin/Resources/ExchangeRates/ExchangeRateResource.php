@@ -4,7 +4,7 @@ namespace App\Filament\Admin\Resources\ExchangeRates;
 
 use App\Models\ExchangeRate;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup as ActionsBulkActionGroup;
+use Filament\Tables\Actions\BulkActionGroup as ActionsBulkActionGroup;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction; // غالباً محتاجها كمان
 use Filament\Forms\Components\DatePicker;
@@ -117,12 +117,12 @@ class ExchangeRateResource extends Resource
             ])
             ->defaultSort('effective_date', 'desc')
             ->recordActions([
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+                \Filament\Tables\Actions\EditAction::make(),
+                \Filament\Tables\Actions\DeleteAction::make(),
             ])
             ->toolbarActions([
                 ActionsBulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                    \Filament\Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

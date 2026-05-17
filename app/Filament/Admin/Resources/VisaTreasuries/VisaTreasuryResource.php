@@ -8,7 +8,7 @@ use App\Models\Account;
 use App\Models\VisaBooking;
 use BackedEnum;
 use UnitEnum;
-use Filament\Actions\Action;
+use Filament\Tables\Actions\Action;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;

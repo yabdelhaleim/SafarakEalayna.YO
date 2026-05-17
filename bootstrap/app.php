@@ -22,8 +22,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Enable Sanctum stateful API for SPA token authentication
-        $middleware->statefulApi();
+        // Disabled Sanctum stateful API to allow pure token-based auth for SPA
+        // $middleware->statefulApi();
+
+        $middleware->web(append: [
+            \App\Http\Middleware\AuthenticateWithApiToken::class,
+        ]);
 
         $middleware->alias([
             'admin' => EnsureIsAdmin::class,
@@ -36,102 +40,98 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('ledger:reconcile')->dailyAt('03:10');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Report exceptions to log and potentially notify admin
+        $exceptions->report(function (Throwable $e) {
+            // If it's a critical error and we're in production, we could send a notification
+            // but for now, we just ensure it's logged properly without leaking to UI.
+        });
+
         $exceptions->render(function (Throwable $e, Request $request) {
-            // Only handle API requests with JSON responses.
-            // Some clients (or tools) may omit the Accept: application/json header.
-            // For any /api/* path, always return JSON to avoid SPA HTML fallbacks.
-            $isApiPath = $request->is('api/*');
+            $isApiPath = $request->is('api/*') || $request->expectsJson();
+            $isFilamentPath = $request->is('admin/*');
 
-            if (! $request->expectsJson() && ! $isApiPath) {
-                return null;
-            }
-
-            // Case 1: AuthenticationException
-            if ($e instanceof \Illuminate\Auth\AuthenticationException) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'غير مصرح لك بالوصول.',
-                    'data' => null,
-                    'errors' => null,
-                ], 401);
-            }
-
-            // Case 2: ValidationException
-            if ($e instanceof ValidationException) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'فشل التحقق من صحة البيانات.',
-                    'data' => null,
-                    'errors' => $e->errors(),
-                ], 422);
-            }
-
-            // Case 3: ModelNotFoundException
-            if ($e instanceof NotFoundHttpException && $e->getPrevious() instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
-                $modelException = $e->getPrevious();
-                $modelName = last(explode('\\', $modelException->getModel()));
-
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'السجل المطلوب غير موجود.',
-                    'data' => null,
-                    'errors' => null,
-                ], 404);
-            }
-
-            // Case 4: QueryException
-            if ($e instanceof QueryException) {
-                \Log::error('Database query error', [
-                    'message' => $e->getMessage(),
-                    'sql' => $e->getSql(),
-                ]);
-
-                if (config('app.debug')) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Database query error: ' . $e->getMessage(),
-                        'data' => null,
-                        'errors' => [
-                            'sql' => $e->getSql(),
-                            'bindings' => $e->getBindings(),
-                        ],
-                    ], 500);
+            // Helper to get friendly messages
+            $getFriendlyMessage = function (Throwable $e, int $statusCode) {
+                if ($e instanceof ValidationException) {
+                    return 'بيانات المدخلات غير صالحة.';
                 }
 
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'حدث خطأ في قاعدة البيانات، يرجى المحاولة لاحقًا.',
-                    'data' => null,
-                    'errors' => null,
-                ], 500);
-            }
+                if (config('app.debug')) {
+                    return $e->getMessage();
+                }
 
-            // Case 5: General Exception (catch-all)
-            \Log::error('Unhandled exception', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+                return match ($statusCode) {
+                    401 => 'غير مصرح لك بالوصول. يرجى تسجيل الدخول.',
+                    403 => 'ليس لديك الصلاحية للقيام بهذا الإجراء.',
+                    404 => 'المورد المطلوب غير موجود.',
+                    405 => 'طريقة الطلب غير مسموح بها.',
+                    419 => 'انتهت صلاحية الجلسة، يرجى إعادة المحاولة.',
+                    422 => 'بيانات المدخلات غير صالحة.',
+                    429 => 'طلبات كثيرة جداً، يرجى المحاولة لاحقاً.',
+                    500 => 'حدث خطأ داخلي في الخادم، يرجى المحاولة لاحقاً.',
+                    503 => 'الخدمة غير متوفرة حالياً (صيانة).',
+                    default => 'حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً.',
+                };
+            };
 
-            if (config('app.debug')) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $e->getMessage(),
+            // Handle API / JSON requests
+            if ($isApiPath) {
+                $statusCode = 500;
+                if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                    $statusCode = $e->getStatusCode();
+                } elseif ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                    $statusCode = 401;
+                } elseif ($e instanceof \Illuminate\Validation\ValidationException) {
+                    $statusCode = 422;
+                } elseif ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException || $e instanceof NotFoundHttpException) {
+                    $statusCode = 404;
+                } elseif ($e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                    $statusCode = 403;
+                }
+
+                if ($statusCode >= 500) {
+                    \Log::error('API Error: ' . $e->getMessage(), [
+                        'exception' => get_class($e),
+                        'path' => $request->fullUrl(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+
+                $response = [
+                    'status' => false,
+                    'message' => $getFriendlyMessage($e, $statusCode),
                     'data' => null,
-                    'errors' => [
+                ];
+
+                if ($e instanceof ValidationException) {
+                    $response['errors'] = $e->errors();
+                }
+
+                if (config('app.debug')) {
+                    $response['debug'] = [
+                        'message' => $e->getMessage(),
+                        'exception' => get_class($e),
                         'file' => $e->getFile(),
                         'line' => $e->getLine(),
-                        'trace' => collect($e->getTrace())->take(10)->toArray(),
-                    ],
-                ], 500);
+                        'trace' => collect($e->getTrace())->take(5)->toArray(),
+                    ];
+                }
+
+                return response()->json($response, $statusCode);
             }
 
-            return response()->json([
-                'status' => 'error',
-                'message' => 'حدث خطأ غير متوقع.',
-                'data' => null,
-                'errors' => null,
-            ], 500);
+            // Handle Filament Exceptions (Livewire)
+            if ($isFilamentPath && !config('app.debug')) {
+                // For non-JSON filament requests, we still want to avoid raw errors.
+                // Filament/Livewire usually handles this, but if it bubbles up here:
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    return null; // Let Filament handle validation
+                }
+                
+                // If it's a 404/403, Laravel's default handler will use our custom views.
+                // But for 500, we want to ensure it looks professional.
+            }
+
+            return null;
         });
     })->create();

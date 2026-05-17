@@ -1,15 +1,16 @@
 <?php
 
-namespace App\Filament\Widgets;
+namespace App\Filament\Admin\Widgets;
 
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use App\Models\Employee\EmployeeAttendance;
+use App\Models\EmployeeAttendance;
 use App\Models\Employee\EmployeeBonus;
+use Illuminate\Support\Facades\Schema;
 
 class EmployeeStatsWidget extends BaseWidget
 {
-    protected static ?string $pollingInterval = '15s';
+    protected ?string $pollingInterval = '15s';
 
     public static function canView(): bool
     {
@@ -18,6 +19,10 @@ class EmployeeStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
+        if (!Schema::hasTable('employee_attendances')) {
+            return [];
+        }
+
         $thisMonth = now()->month;
         $thisYear = now()->year;
 
@@ -38,15 +43,20 @@ class EmployeeStatsWidget extends BaseWidget
             ->count();
 
         // إحصائيات المكافآت هذا الشهر
-        $totalBonuses = EmployeeBonus::whereMonth('created_at', $thisMonth)
-            ->whereYear('created_at', $thisYear)
-            ->where('type', 'bonus')
-            ->sum('amount') ?? 0;
+        $totalBonuses = 0;
+        $totalDeductions = 0;
+        
+        if (Schema::hasTable('employee_bonuses')) {
+            $totalBonuses = EmployeeBonus::whereMonth('created_at', $thisMonth)
+                ->whereYear('created_at', $thisYear)
+                ->where('type', 'bonus')
+                ->sum('amount') ?? 0;
 
-        $totalDeductions = EmployeeBonus::whereMonth('created_at', $thisMonth)
-            ->whereYear('created_at', $thisYear)
-            ->where('type', 'deduction')
-            ->sum('amount') ?? 0;
+            $totalDeductions = EmployeeBonus::whereMonth('created_at', $thisMonth)
+                ->whereYear('created_at', $thisYear)
+                ->where('type', 'deduction')
+                ->sum('amount') ?? 0;
+        }
 
         $netBonuses = $totalBonuses - $totalDeductions;
         $totalDays = $presentDays + $absentDays + $lateDays;

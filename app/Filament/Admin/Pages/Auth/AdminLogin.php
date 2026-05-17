@@ -46,7 +46,7 @@ class AdminLogin extends BaseLogin
             return parent::getHeading();
         }
 
-        return 'سفارك إلينا';
+        return 'سفارك إلينا — الإدارة';
     }
 
     public function getSubheading(): string | Htmlable | null
@@ -55,6 +55,6 @@ class AdminLogin extends BaseLogin
             return parent::getSubheading();
         }
 
-        return 'لوحة إدارة — أدخل البريد وكلمة المرور (نفس بيانات التطبيق بعد تشغيل UserSeeder).';
+        return 'الوصول الحصري للمديرين والموظفين المعتمدين.';
     }
 }

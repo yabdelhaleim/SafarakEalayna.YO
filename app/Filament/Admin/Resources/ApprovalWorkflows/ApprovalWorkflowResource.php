@@ -152,15 +152,15 @@ class ApprovalWorkflowResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->recordActions([
-                \Filament\Actions\ViewAction::make(),
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\EditAction::make(),
+                \Filament\Tables\Actions\DeleteAction::make(),
             ])
             ->toolbarActions([
-                \Filament\Actions\CreateAction::make(),
+                \Filament\Tables\Actions\CreateAction::make(),
                 BulkActionGroup::make([
-                    \Filament\Actions\ExportBulkAction::make(),
-                    \Filament\Actions\DeleteBulkAction::make(),
+                    \Filament\Tables\Actions\ExportBulkAction::make(),
+                    \Filament\Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

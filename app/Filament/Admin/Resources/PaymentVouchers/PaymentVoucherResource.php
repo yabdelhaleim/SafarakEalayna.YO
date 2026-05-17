@@ -94,7 +94,7 @@ class PaymentVoucherResource extends Resource
                     ->options(Account::pluck('name', 'id')),
             ])
             ->actions([
-                \Filament\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([]);
     }

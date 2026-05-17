@@ -5,10 +5,10 @@ namespace App\Filament\Admin\Resources\TreasuryTransactions;
 use App\Filament\Admin\Resources\TreasuryTransactions\Pages\ManageTreasuryTransactions;
 use App\Models\TreasuryTransaction;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -95,7 +95,7 @@ class TreasuryTransactionResource extends Resource
                 //
             ])
             ->recordActions([
-                \Filament\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
             ]);

@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Filament\Widgets;
+namespace App\Filament\Admin\Widgets;
 
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class FinancialStatsWidget extends BaseWidget
 {
-    protected static ?string $pollingInterval = '30s';
+    protected ?string $pollingInterval = '30s';
 
     protected static ?int $sort = 2;
 
@@ -19,19 +20,28 @@ class FinancialStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $currentMonth = now()->month;
-        $currentYear = now()->year;
+        if (!Schema::hasTable('transactions')) {
+            return [];
+        }
+
+        $now = now();
+        $currentMonth = $now->month;
+        $currentYear = $now->year;
+
+        $previousMonth = $now->copy()->subMonth();
+        $prevMonth = $previousMonth->month;
+        $prevYear = $previousMonth->year;
 
         $income = DB::table('transactions')
             ->where('type', 'income')
-            ->whereMonth('date', $currentMonth)
-            ->whereYear('date', $currentYear)
+            ->whereMonth('created_at', $currentMonth)
+            ->whereYear('created_at', $currentYear)
             ->sum('amount') ?? 0;
 
         $expense = DB::table('transactions')
             ->where('type', 'expense')
-            ->whereMonth('date', $currentMonth)
-            ->whereYear('date', $currentYear)
+            ->whereMonth('created_at', $currentMonth)
+            ->whereYear('created_at', $currentYear)
             ->sum('amount') ?? 0;
 
         $profit = $income - $expense;
@@ -39,8 +49,8 @@ class FinancialStatsWidget extends BaseWidget
         // Get previous month data for comparison
         $previousMonthIncome = DB::table('transactions')
             ->where('type', 'income')
-            ->whereMonth('date', $currentMonth - 1)
-            ->whereYear('date', $currentMonth > 1 ? $currentYear : $currentYear - 1)
+            ->whereMonth('created_at', $prevMonth)
+            ->whereYear('created_at', $prevYear)
             ->sum('amount') ?? 0;
 
         $incomeGrowth = $previousMonthIncome > 0

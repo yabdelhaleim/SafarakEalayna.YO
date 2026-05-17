@@ -9,10 +9,10 @@ use App\Filament\Admin\Resources\OnlineServiceTypes\Pages\ListOnlineServiceTypes
 use App\Filament\Admin\Support\OnlineModuleNavigation;
 use App\Models\Online\OnlineServiceType;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;

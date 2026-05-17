@@ -16,21 +16,18 @@
   </div>
 
   <div v-else class="flight-booking flight-show mx-auto max-w-7xl space-y-8 pb-16">
-    <header class="flight-hero relative no-print">
-      <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div class="flex min-w-0 flex-1 items-start gap-4">
-          <router-link :to="{ name: 'flights.index' }" class="btn-airline-ghost shrink-0 rounded-xl p-2.5">
-            <ArrowRight class="h-5 w-5 text-sky-300" />
-          </router-link>
-          <div class="min-w-0">
-            <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/90">تفاصيل الحجز</p>
-            <div class="mt-1 flex flex-wrap items-center gap-3">
-              <h1 class="font-mono text-2xl font-black tracking-tight text-text-main sm:text-3xl">
-                {{ booking.bookingNumber }}
-              </h1>
+    <header class="flight-hero relative no-print overflow-visible">
+      <div class="relative z-10 flex flex-col gap-8">
+        <!-- Top Navigation & Status -->
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <router-link :to="{ name: 'flights.index' }" class="btn-airline-ghost h-11 w-11 shrink-0 rounded-2xl p-0 flex items-center justify-center">
+              <ArrowRight class="h-5 w-5 text-sky-300" />
+            </router-link>
+            <div class="flex flex-wrap items-center gap-2">
               <div
                 :class="[
-                  'rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wider',
+                  'rounded-full border px-4 py-1.5 text-[10px] font-black uppercase tracking-wider shadow-sm',
                   statusStyles[booking.status],
                 ]"
               >
@@ -39,90 +36,105 @@
               <div
                 v-if="booking.paymentStatusLabel"
                 :class="[
-                  'rounded-full border px-3 py-1 text-xs font-black tracking-wide',
+                  'rounded-full border px-4 py-1.5 text-[10px] font-black tracking-wide shadow-sm',
                   paymentStatusBadgeClass(booking.paymentStatus),
                 ]"
               >
                 {{ booking.paymentStatusLabel }}
               </div>
             </div>
-            <p class="mt-2 text-xs uppercase tracking-widest text-text-muted">
-              تم الإنشاء في {{ formatDate(booking.createdAt) }}
+          </div>
+
+          <div class="flex items-center gap-2">
+            <router-link
+              :to="{ name: 'flights.edit', params: { id: booking.id } }"
+              class="h-11 w-11 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+              title="تعديل البيانات"
+            >
+              <Edit class="h-5 w-5" />
+            </router-link>
+            <button
+              type="button"
+              class="h-11 w-11 flex items-center justify-center rounded-2xl bg-error/5 border border-error/20 text-error/70 hover:text-error hover:bg-error/10 transition-all"
+              @click="confirmDelete"
+              title="حذف الحجز"
+            >
+              <Trash2 class="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Title & Stats -->
+        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
+          <div class="min-w-0">
+            <p class="text-[10px] font-bold uppercase tracking-[0.3em] text-sky-400/80 mb-2">Electronic Ticket Service</p>
+            <h1 class="font-mono text-3xl font-black tracking-tighter text-text-main sm:text-4xl lg:text-5xl">
+              {{ booking.bookingNumber }}
+            </h1>
+            <p class="mt-4 flex items-center gap-2 text-xs font-medium text-text-muted">
+              <Calendar class="h-3.5 w-3.5 text-sky-400/50" />
+              تم إنشاء الحجز في {{ formatDate(booking.createdAt, true) }}
             </p>
-            <div class="mt-5 flex flex-wrap gap-2">
-              <span
-                class="inline-flex min-h-[2.25rem] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-text-muted"
-              >
-                <Users class="h-4 w-4 text-gold" />
-                {{ booking.passengers?.length || 0 }} مسافر
-              </span>
-              <span
-                class="inline-flex min-h-[2.25rem] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-text-muted"
-              >
-                <Plane class="h-4 w-4 text-sky-300" />
-                {{ ticketSegments.length }} مقطع
-              </span>
-              <span
-                class="inline-flex min-h-[2.25rem] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-text-muted"
-              >
-                <DollarSign class="h-4 w-4 text-success" />
-                {{ formatCurrency(booking.pricing?.sellingPrice) }}
-              </span>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <div class="flex flex-col items-center justify-center min-w-[100px] rounded-2xl border border-white/5 bg-white/5 p-3 backdrop-blur-md">
+              <Users class="h-5 w-5 text-gold mb-1" />
+              <span class="text-lg font-black text-white">{{ booking.passengers?.length || 0 }}</span>
+              <span class="text-[10px] font-bold text-text-muted uppercase tracking-wider">مسافر</span>
+            </div>
+            <div class="flex flex-col items-center justify-center min-w-[100px] rounded-2xl border border-white/5 bg-white/5 p-3 backdrop-blur-md">
+              <Plane class="h-5 w-5 text-sky-400 mb-1" />
+              <span class="text-lg font-black text-white">{{ ticketSegments.length }}</span>
+              <span class="text-[10px] font-bold text-text-muted uppercase tracking-wider">مقطع</span>
+            </div>
+            <div class="flex flex-col items-center justify-center min-w-[140px] rounded-2xl border border-white/5 bg-sky-500/10 p-3 backdrop-blur-md border-sky-500/20">
+              <DollarSign class="h-5 w-5 text-success mb-1" />
+              <span class="text-lg font-black text-white">{{ formatCurrency(booking.pricing?.sellingPrice) }}</span>
+              <span class="text-[10px] font-bold text-sky-300 uppercase tracking-wider">إجمالي البيع</span>
             </div>
           </div>
         </div>
 
-        <div class="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            class="btn-airline-ghost inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold sm:px-5"
-            @click="openPrintDialog"
-          >
-            <Printer class="h-4 w-4" />
-            طباعة / PDF
-          </button>
-          
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-3 pt-4 border-t border-white/5">
           <button
             v-if="booking.status === 'pending'"
             type="button"
-            class="bg-emerald-500 hover:bg-emerald-600 text-white inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-emerald-500/20 transition-all scale-105 active:scale-95"
+            class="bg-emerald-500 hover:bg-emerald-400 text-white inline-flex items-center gap-2.5 px-7 py-3 rounded-2xl text-sm font-black shadow-xl shadow-emerald-500/25 transition-all hover:-translate-y-0.5 active:scale-95"
             @click="runConfirmBooking"
           >
-            <CheckCircle class="h-4 w-4" />
+            <CheckCircle class="h-5 w-5" />
             تأكيد الحجز الآن
           </button>
+          
           <button
             v-if="booking.status !== 'cancelled' && booking.status !== 'refunded'"
             type="button"
-            class="bg-amber-500 hover:bg-amber-600 text-white inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-amber-500/20 transition-all scale-105 active:scale-95"
+            class="bg-amber-500 hover:bg-amber-400 text-white inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl text-sm font-black shadow-xl shadow-amber-500/25 transition-all hover:-translate-y-0.5 active:scale-95"
             @click="showRefundModal = true"
           >
-            <RefreshCw class="h-4 w-4" />
-            إصدار استرجاع للتذكرة
+            <RefreshCw class="h-5 w-5" />
+            إصدار استرجاع
           </button>
+          
           <button
             v-if="booking.status !== 'cancelled' && booking.status !== 'refunded'"
             type="button"
-            class="bg-cyan-500 hover:bg-cyan-600 text-white inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-cyan-500/20 transition-all scale-105 active:scale-95"
+            class="bg-cyan-500 hover:bg-cyan-400 text-white inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl text-sm font-black shadow-xl shadow-cyan-500/25 transition-all hover:-translate-y-0.5 active:scale-95"
             @click="showModificationModal = true"
           >
-            <Settings class="h-4 w-4" />
-            طلب تعديل التذكرة
+            <Settings class="h-5 w-5" />
+            تعديل التذكرة
           </button>
-          <router-link
-            :to="{ name: 'flights.edit', params: { id: booking.id } }"
-            class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-700 transition-all"
-            title="تعديل البيانات النصية والمسافرين"
-          >
-            <Edit class="h-4 w-4" />
-            تعديل البيانات
-          </router-link>
+
           <button
             type="button"
-            class="rounded-xl border border-transparent p-2.5 text-error transition-all hover:border-error/25 hover:bg-error/10"
-            @click="confirmDelete"
+            class="btn-airline-ghost inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl text-sm font-bold ml-auto"
+            @click="openPrintDialog"
           >
-            <Trash2 class="h-5 w-5" />
+            <Printer class="h-5 w-5 text-sky-300" />
+            طباعة / PDF
           </button>
         </div>
       </div>

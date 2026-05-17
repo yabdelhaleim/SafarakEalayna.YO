@@ -57,9 +57,9 @@
 
       <template v-else-if="data">
         <!-- KPI Cards -->
-        <section class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <section :class="['grid gap-5', isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2']">
           <!-- Today Revenue -->
-          <div class="group relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 transition hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 transition hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -77,7 +77,7 @@
           </div>
 
           <!-- Monthly Profit -->
-          <div class="group relative overflow-hidden rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 to-transparent p-6 transition hover:border-indigo-500/40 hover:shadow-lg hover:shadow-indigo-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 to-transparent p-6 transition hover:border-indigo-500/40 hover:shadow-lg hover:shadow-indigo-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-indigo-500/10 blur-2xl group-hover:bg-indigo-500/20 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -112,7 +112,7 @@
           </div>
 
           <!-- Total Liquidity -->
-          <div class="group relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-6 transition hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/10">
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-6 transition hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition"></div>
             <div class="relative">
               <div class="flex items-center justify-between mb-4">
@@ -151,7 +151,7 @@
                     <th class="px-5 py-4 font-bold">العميل</th>
                     <th class="px-5 py-4 font-bold">النوع</th>
                     <th class="px-5 py-4 font-bold">المبلغ</th>
-                    <th class="px-5 py-4 font-bold">الربح</th>
+                    <th v-if="isAdmin" class="px-5 py-4 font-bold">الربح</th>
                     <th class="px-5 py-4 font-bold">المسؤول</th>
                     <th class="px-5 py-4 font-bold">التاريخ</th>
                   </tr>
@@ -174,7 +174,7 @@
                     <td class="px-5 py-3.5 font-mono font-bold text-white text-sm">
                       {{ fmt(tx.selling_price) }}
                     </td>
-                    <td class="px-5 py-3.5 font-mono font-bold text-emerald-400 text-sm">
+                    <td v-if="isAdmin" class="px-5 py-3.5 font-mono font-bold text-emerald-400 text-sm">
                       +{{ fmt(tx.profit) }}
                     </td>
                     <td class="px-5 py-3.5 text-xs text-white/60">{{ tx.employee?.name || '—' }}</td>
@@ -202,6 +202,7 @@
                   <span class="text-xs font-bold text-emerald-200">عملية جديدة</span>
                 </router-link>
                 <router-link
+                  v-if="isAdmin"
                   :to="{ name: 'fawry.treasury' }"
                   class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-amber-500/10 bg-amber-500/5 p-4 transition hover:border-amber-500/30 hover:bg-amber-500/10"
                 >
@@ -212,7 +213,7 @@
             </div>
 
             <!-- Liquidity Breakdown -->
-            <div class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
+            <div v-if="isAdmin" class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
               <h2 class="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">توزيع السيولة</h2>
               <div class="flex items-center justify-between py-2 border-b border-white/5">
                 <div class="flex items-center gap-2">
@@ -258,8 +259,9 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { useFawryStore } from '@/stores/fawryStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   Bolt,
   RefreshCw,
@@ -275,6 +277,8 @@ import {
 import { Wallet as Vault } from 'lucide-vue-next';
 
 const store = useFawryStore();
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 const data = ref(null);
 const loading = ref(true);
 

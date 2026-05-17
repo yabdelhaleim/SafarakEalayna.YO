@@ -5,10 +5,10 @@ namespace App\Filament\Admin\Resources\FlightPayments;
 use App\Filament\Admin\Resources\FlightPayments\Pages\ManageFlightPayments;
 use App\Models\FlightPayment;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -102,7 +102,7 @@ class FlightPaymentResource extends Resource
                 //
             ])
             ->recordActions([
-                \Filament\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
             ]);

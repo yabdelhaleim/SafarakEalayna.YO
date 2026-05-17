@@ -99,37 +99,45 @@
           </button>
         </form>
 
-        <div class="mt-6 text-center text-sm text-text-muted">
-          ليس لديك حساب؟
-          <router-link to="/register" class="me-1 font-bold text-gold hover:underline"> إنشاء حساب جديد </router-link>
-        </div>
-
-        <div class="mt-6 rounded-xl border border-gold/25 bg-gold/5 p-4">
-          <div class="mb-3 flex items-center gap-2">
-            <Info class="h-4 w-4 shrink-0 text-gold" />
-            <span class="text-xs font-bold text-text-main">بيانات الدخول بعد التهيئة (UserSeeder)</span>
+        <!-- Professional Credentials Box -->
+        <div class="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 shadow-inner">
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gold/20 text-gold">
+              <Info class="h-5 w-5" />
+            </div>
+            <div>
+              <span class="block text-[10px] font-black uppercase tracking-widest text-text-main">بيانات الوصول السريع</span>
+              <span class="text-[9px] text-text-muted italic">لأغراض المراجعة والتدقيق</span>
+            </div>
           </div>
-          <p class="mb-3 text-[11px] leading-relaxed text-text-muted">
-            إن لم تعمل، نفّذ في المشروع:
-            <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-gold">php artisan migrate:fresh --seed</code>
-          </p>
-          <div class="space-y-2">
+          <div class="space-y-3">
             <button
               type="button"
-              class="flex w-full flex-col gap-1 rounded-lg border border-white/10 bg-card-bg/80 px-3 py-2.5 text-start transition-colors hover:border-gold/35 hover:bg-white/5 sm:flex-row sm:items-center sm:justify-between"
+              class="group flex w-full items-center justify-between rounded-xl border border-white/5 bg-card-bg/50 px-4 py-3 text-start transition-all hover:border-gold/30 hover:bg-gold/5"
               @click="fillAdmin"
             >
-              <span class="text-xs font-semibold text-text-muted">مدير النظام</span>
-              <code class="break-all font-mono text-[11px] text-gold sm:text-end">admin@admin.com — 11223311</code>
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-text-muted group-hover:text-text-main">مدير النظام</span>
+                <span class="text-[9px] text-text-muted/50 font-mono">Full Access</span>
+              </div>
+              <code class="font-mono text-[10px] text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/20">admin@admin.com</code>
             </button>
             <button
               type="button"
-              class="flex w-full flex-col gap-1 rounded-lg border border-white/10 bg-card-bg/80 px-3 py-2.5 text-start transition-colors hover:border-gold/35 hover:bg-white/5 sm:flex-row sm:items-center sm:justify-between"
+              class="group flex w-full items-center justify-between rounded-xl border border-white/5 bg-card-bg/50 px-4 py-3 text-start transition-all hover:border-gold/30 hover:bg-gold/5"
               @click="fillEmployee"
             >
-              <span class="text-xs font-semibold text-text-muted">موظف (مثال)</span>
-              <code class="break-all font-mono text-[11px] text-gold sm:text-end">employee1@office.com — password</code>
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-text-muted group-hover:text-text-main">موظف (مثال)</span>
+                <span class="text-[9px] text-text-muted/50 font-mono">Standard Ops</span>
+              </div>
+              <code class="font-mono text-[10px] text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/20">employee1@office.com</code>
             </button>
+          </div>
+          <div class="mt-4 pt-4 border-t border-white/5 text-center">
+            <span class="text-[10px] text-text-muted/60">
+              ⚠️ يتم إنشاء الحسابات الجديدة حصراً من داخل لوحة الإدارة.
+            </span>
           </div>
         </div>
       </div>

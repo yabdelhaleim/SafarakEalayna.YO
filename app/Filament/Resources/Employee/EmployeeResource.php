@@ -117,46 +117,46 @@ class EmployeeResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                BadgeColumn::make('employment_type', 'نوع التوظيف')
-                    ->colors([
+                TextColumn::make('employment_type', 'نوع التوظيف')
+                    ->badge()
+                    ->color(fn (string $state): string => match($state) {
                         'full_time' => 'success',
                         'part_time' => 'warning',
-                        'contract' => 'primary',
+                        'contract' => 'info',
                         'temporary' => 'gray',
-                    ])
+                        default => 'gray',
+                    })
                     ->formatStateUsing(fn (string $state): string => match($state) {
-                        return match($state) {
-                            'full_time' => 'دوام كامل',
-                            'part_time' => 'دوام جزئي',
-                            'contract' => 'عقد',
-                            'temporary' => 'مؤقت',
-                            default => $state,
-                        };
+                        'full_time' => 'دوام كامل',
+                        'part_time' => 'دوام جزئي',
+                        'contract' => 'عقد',
+                        'temporary' => 'مؤقت',
+                        default => $state,
                     }),
 
-                BadgeColumn::make('status', 'الحالة')
-                    ->colors([
+                TextColumn::make('status', 'الحالة')
+                    ->badge()
+                    ->color(fn (string $state): string => match($state) {
                         'active' => 'success',
                         'inactive' => 'danger',
-                    ])
+                        default => 'gray',
+                    })
                     ->formatStateUsing(fn (string $state): string => match($state) {
-                        return match($state) {
-                            'active' => 'نشط',
-                            'inactive' => 'غير نشط',
-                            default => $state,
-                        };
+                        'active' => 'نشط',
+                        'inactive' => 'غير نشط',
+                        default => $state,
                     }),
 
                 TextColumn::make('salary', 'الراتب')
-                    ->money('jod')
+                    ->money('EGP')
                     ->sortable(),
             ])
             ->filters([
                 //
             ])
             ->actions([
-                // Tables\Actions\EditAction::make(),
-                // Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\ViewAction::make(),
+                \Filament\Actions\EditAction::make(),
             ])
             ->defaultSort('id', 'desc');
     }
@@ -164,7 +164,7 @@ class EmployeeResource extends Resource
     public static function getRelations(): array
     {
         return [
-            'user',
+            // RelationManagers go here, not relation names
         ];
     }
 

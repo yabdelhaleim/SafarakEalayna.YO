@@ -117,16 +117,16 @@ class AccountResource extends Resource
                     }),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\Action::make('ledger')
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\Action::make('ledger')
                     ->label('كشف حساب (القيود)')
                     ->icon('heroicon-o-clipboard-document-list')
                     ->color('warning')
                     ->url(fn (Account $record) => '#') // To be implemented
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

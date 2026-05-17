@@ -1,13 +1,14 @@
 <?php
 
-namespace App\Filament\Widgets;
+namespace App\Filament\Admin\Widgets;
 
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardChartWidget extends ChartWidget
 {
-    protected static ?string $heading = 'إحصائيات شهرية';
+    protected ?string $heading = 'إحصائيات شهرية';
 
     protected static ?int $sort = 3;
 
@@ -16,12 +17,19 @@ class DashboardChartWidget extends ChartWidget
         return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
     }
 
-    protected static string $color = 'info';
+    protected string $color = 'info';
 
     protected int | string | array $columnSpan = 'full';
 
     protected function getData(): array
     {
+        if (!Schema::hasTable('transactions')) {
+            return [
+                'datasets' => [],
+                'labels' => [],
+            ];
+        }
+
         $months = [];
         $incomeData = [];
         $expenseData = [];
@@ -32,14 +40,14 @@ class DashboardChartWidget extends ChartWidget
 
             $income = DB::table('transactions')
                 ->where('type', 'income')
-                ->whereMonth('date', $date->month)
-                ->whereYear('date', $date->year)
+                ->whereMonth('created_at', $date->month)
+                ->whereYear('created_at', $date->year)
                 ->sum('amount') ?? 0;
 
             $expense = DB::table('transactions')
                 ->where('type', 'expense')
-                ->whereMonth('date', $date->month)
-                ->whereYear('date', $date->year)
+                ->whereMonth('created_at', $date->month)
+                ->whereYear('created_at', $date->year)
                 ->sum('amount') ?? 0;
 
             $incomeData[] = $income;

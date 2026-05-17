@@ -1,27 +1,47 @@
-<div class="mt-6 rounded-xl border border-primary-500/25 bg-primary-500/5 p-4">
-    <div class="mb-3 flex items-center gap-2">
-        <x-heroicon-o-information-circle class="h-4 w-4 shrink-0 text-primary-500" />
-        <span class="text-xs font-bold text-gray-900 dark:text-white">بيانات الدخول التجريبية</span>
+<div class="demo-box">
+    <!-- Header -->
+    <div class="demo-header">
+        <div class="demo-icon-wrapper">
+            <x-heroicon-o-key />
+        </div>
+        <div class="demo-title-container">
+            <span class="demo-title">بيانات الوصول السريع</span>
+            <span class="demo-subtitle">اضغط للتعبئة التلقائية السريعة</span>
+        </div>
     </div>
-    <div class="grid grid-cols-1 gap-2">
+
+    <!-- Buttons Grid -->
+    <div class="demo-buttons-grid">
         <button
             type="button"
             wire:click="fillAdminDemo"
-            class="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-start transition-colors hover:border-primary-500 hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            class="demo-btn"
         >
-            <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">مدير النظام</span>
-            <code class="font-mono text-[11px] text-primary-600 dark:text-primary-400">admin@admin.com</code>
+            <div class="demo-btn-info">
+                <span class="demo-btn-role">مدير النظام</span>
+                <span class="demo-btn-desc">Full Access Control</span>
+            </div>
+            <code class="demo-btn-badge">admin@admin.com</code>
         </button>
+        
         <button
             type="button"
             wire:click="fillEmployeeDemo"
-            class="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-start transition-colors hover:border-primary-500 hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            class="demo-btn"
         >
-            <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">موظف</span>
-            <code class="font-mono text-[11px] text-primary-600 dark:text-primary-400">employee1@office.com</code>
+            <div class="demo-btn-info">
+                <span class="demo-btn-role">موظف (مثال)</span>
+                <span class="demo-btn-desc">Standard Operations</span>
+            </div>
+            <code class="demo-btn-badge">employee1@office.com</code>
         </button>
     </div>
-    <p class="mt-2 text-[10px] text-gray-500 dark:text-gray-400 text-center italic">
-        * كلمة المرور الافتراضية هي <span class="font-bold">11223311</span> للمدير و <span class="font-bold">password</span> للموظف.
-    </p>
+    
+    <!-- Footer -->
+    <div class="demo-footer">
+        <p class="demo-footer-text">
+            <span class="demo-pulse-dot"></span>
+            كلمة المرور الافتراضية: <span class="text-white font-mono" style="color: #ffffff; font-weight: bold; margin: 0 4px;">11223311</span> للمدير و <span class="text-white font-mono" style="color: #ffffff; font-weight: bold; margin: 0 4px;">password</span> للموظف.
+        </p>
+    </div>
 </div>

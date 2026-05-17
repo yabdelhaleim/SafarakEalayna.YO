@@ -38,7 +38,7 @@
       </div>
 
       <!-- Main Pillars / Tabs Selection -->
-      <div class="mt-8 pt-6 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="relative z-10 mt-8 pt-6 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
           type="button"
           @click="activeTab = 'tourism'"

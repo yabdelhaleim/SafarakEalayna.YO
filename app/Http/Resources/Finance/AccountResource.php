@@ -13,7 +13,10 @@ class AccountResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'type' => $this->type,
-            'balance' => (float) $this->balance,
+            'balance' => $this->when(
+                $request->user()?->isAdmin() || $request->user()?->role === 'owner',
+                (float) $this->balance
+            ),
             'currency' => $this->currency,
             'is_active' => (bool) $this->is_active,
             'wallet_provider' => $this->wallet_provider instanceof \BackedEnum

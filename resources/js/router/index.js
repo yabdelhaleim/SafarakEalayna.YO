@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { h, resolveComponent } from 'vue';
+import { useAuthStore } from '@/stores/authStore';
 
 const routes = [
   {
@@ -28,7 +30,7 @@ const routes = [
       {
         path: '',
         name: 'dashboard.home',
-        component: () => import('@/views/Dashboard.vue'),
+        component: () => import('@/views/DashboardWrapper.vue'),
         meta: { title: 'لوحة التحكم' },
       },
     ],
@@ -76,7 +78,7 @@ const routes = [
         path: 'treasury',
         name: 'flights.treasury',
         component: () => import('@/views/flights/FlightTreasuryOverview.vue'),
-        meta: { title: 'خزينة وأرصدة الطيران' },
+        meta: { title: 'خزينة وأرصدة الطيران', permission: 'manage_finance' },
       },
       {
         path: ':id',
@@ -129,7 +131,7 @@ const routes = [
         path: 'treasury',
         name: 'hajj.treasury',
         component: () => import('@/views/hajjUmra/HajjUmraTreasury.vue'),
-        meta: { title: 'مالية وخزنة الحج والعمرة' },
+        meta: { title: 'مالية وخزنة الحج والعمرة', permission: 'manage_finance' },
       },
       {
         path: 'executing-companies',
@@ -152,7 +154,7 @@ const routes = [
       {
         path: 'programs',
         name: 'hajj.programs',
-        component: () => import('@/layouts/DashboardLayout.vue'),
+        component: { render: () => h(resolveComponent('router-view')) },
         meta: { title: 'برامج الحج والعمرة', requiresAuth: true },
         children: [
           {
@@ -192,7 +194,7 @@ const routes = [
         path: 'treasury',
         name: 'visa.treasury',
         component: () => import('@/views/visa/VisaTreasury.vue'),
-        meta: { title: 'خزينة التأشيرات' }
+        meta: { title: 'خزينة التأشيرات', permission: 'manage_finance' }
       },
       {
         path: 'agents-finance',
@@ -238,7 +240,7 @@ const routes = [
         path: 'treasury',
         name: 'bus.treasury',
         component: () => import('@/views/bus/BusTreasury.vue'),
-        meta: { title: 'خزينة ومالية الباص' },
+        meta: { title: 'خزينة ومالية الباص', permission: 'manage_finance' },
       },
       {
         path: 'list',
@@ -304,7 +306,7 @@ const routes = [
         path: 'treasury',
         name: 'wallet.treasury',
         component: () => import('@/views/wallet/TransferTreasury.vue'),
-        meta: { title: 'خزينة المحافظ' },
+        meta: { title: 'خزينة المحافظ', permission: 'manage_finance' },
       },
       {
         path: 'create',
@@ -330,7 +332,7 @@ const routes = [
         path: 'treasury',
         name: 'online.treasury',
         component: () => import('@/views/online/OnlineTreasury.vue'),
-        meta: { title: 'خزنة ومالية الخدمات الإلكترونية' },
+        meta: { title: 'خزنة ومالية الخدمات الإلكترونية', permission: 'manage_finance' },
       },
       {
         path: 'execute',
@@ -390,7 +392,7 @@ const routes = [
         path: 'treasury',
         name: 'fawry.treasury',
         component: () => import('@/views/fawry/FawryTreasury.vue'),
-        meta: { title: 'خزينة وأرصدة فوري' },
+        meta: { title: 'خزينة وأرصدة فوري', permission: 'manage_finance' },
       },
       {
         path: 'create',
@@ -417,21 +419,140 @@ const routes = [
 
 
 
-      // Suppliers - REMOVED
-      // {
-      //   path: '/suppliers',
-      //   name: 'suppliers.index',
-      //   component: () => import('@/layouts/DashboardLayout.vue'),
-      //   meta: { title: 'الموردين', requiresAuth: true },
-      //   children: [
-      //     {
-      //       path: '',
-      //       name: 'suppliers.list',
-      //       component: () => import('@/views/finance/SuppliersIndex.vue'),
-      //     },
-      //   ],
-      // },
+  // Employees Module
+  {
+    path: '/employees',
+    name: 'employees.index',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'شؤون الموظفين', requiresAuth: true, permission: 'manage_employees' },
+    redirect: { name: 'employees.list' },
+    children: [
+      {
+        path: 'list',
+        name: 'employees.list',
+        component: () => import('@/views/employees/EmployeeIndex.vue'),
+        meta: { title: 'قائمة الموظفين' },
+      },
+      {
+        path: 'attendance',
+        name: 'employees.attendance',
+        component: () => import('@/views/employees/AttendanceIndex.vue'),
+        meta: { title: 'سجل الحضور والغياب' },
+      },
+      {
+        path: 'create',
+        name: 'employees.create',
+        component: () => import('@/views/employees/EmployeeCreate.vue'),
+        meta: { title: 'إضافة موظف جديد' },
+      },
+      {
+        path: ':id',
+        name: 'employees.show',
+        component: () => import('@/views/employees/EmployeeShow.vue'),
+        props: true,
+      },
+    ],
+  },
 
+  // Finance Module
+  {
+    path: '/finance',
+    name: 'finance.index',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'المالية والحسابات', requiresAuth: true, permission: 'manage_finance' },
+    redirect: { name: 'finance.dashboard' },
+    children: [
+      {
+        path: 'dashboard',
+        name: 'finance.dashboard',
+        component: () => import('@/views/finance/FinanceDashboard.vue'),
+        meta: { title: 'لوحة التحكم المالية' },
+      },
+      {
+        path: 'accounts',
+        name: 'finance.accounts',
+        component: () => import('@/views/finance/AccountsIndex.vue'),
+        meta: { title: 'كشوف الحسابات' },
+      },
+      {
+        path: 'treasury',
+        name: 'finance.treasury',
+        component: () => import('@/views/finance/TreasuryOverview.vue'),
+        meta: { title: 'خزينة المكتب' },
+      },
+      {
+        path: 'expenses',
+        name: 'finance.expenses',
+        component: () => import('@/views/finance/ExpensesIndex.vue'),
+        meta: { title: 'المصروفات العامة' },
+      },
+      {
+        path: 'transactions',
+        name: 'finance.transactions',
+        component: () => import('@/views/finance/TransactionsIndex.vue'),
+        meta: { title: 'سجل المعاملات' },
+      },
+      {
+        path: 'transfers',
+        name: 'finance.transfers',
+        component: () => import('@/views/finance/TransfersIndex.vue'),
+        meta: { title: 'التحويلات المالية' },
+      },
+    ],
+  },
+
+  // Suppliers Module
+  {
+    path: '/suppliers',
+    name: 'suppliers.index',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'الموردين', requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'suppliers.list',
+        component: () => import('@/views/finance/SuppliersIndex.vue'),
+      },
+    ],
+  },
+
+  // Reports Module
+  {
+    path: '/reports',
+    name: 'reports.index',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'التقارير الشاملة', requiresAuth: true, permission: 'view_reports' },
+    children: [
+      {
+        path: '',
+        name: 'reports.list',
+        component: () => import('@/views/reports/ReportsIndex.vue'),
+      },
+    ],
+  },
+
+  // Users Module
+  {
+    path: '/users',
+    name: 'users.index',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'إدارة المستخدمين والصلاحيات', requiresAuth: true, permission: 'manage_users' },
+    children: [
+      {
+        path: '',
+        name: 'users.list',
+        component: () => import('@/views/users/UsersIndex.vue'),
+      },
+    ],
+  },
+
+  // Catch-all 404 route
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFound.vue'),
+    meta: { title: 'الصفحة غير موجودة' }
+  }
 ];
 
 const router = createRouter({
@@ -439,14 +560,35 @@ const router = createRouter({
   routes,
 });
 
-// Navigation Guard for authentication
 router.beforeEach(async (to, from) => {
-  const token = localStorage.getItem('auth_token');
+  const authStore = useAuthStore();
+  const initialToken = localStorage.getItem('auth_token');
 
-  // If route requires auth and user has no token → redirect to login
+  // Ensure auth is initialized to check permissions correctly
+  if (initialToken && !authStore.user) {
+    await authStore.initAuth();
+  }
+
+  // Get the fresh, updated token status from store (handles 401 logouts during initAuth)
+  const token = authStore.token;
+
+  // 1. Check if route requires auth
   if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!token) {
       return { name: 'login', query: { redirect: to.fullPath } };
+    }
+  }
+
+  // 2. Check Permissions
+  const requiredPermission = to.meta.permission || to.matched.find(r => r.meta.permission)?.meta.permission;
+  if (requiredPermission) {
+    const hasPerm = authStore.isAdmin || 
+                    authStore.user?.role === 'owner' || 
+                    (authStore.user?.permissions && authStore.user.permissions.includes(requiredPermission));
+    
+    if (!hasPerm) {
+      // Redirect to dashboard if not authorized
+      return { name: 'dashboard.home' };
     }
   }
 

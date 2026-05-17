@@ -15,6 +15,7 @@ use App\Filament\Admin\Support\FawryModuleNavigation;
 use App\Filament\Admin\Support\OnlineModuleNavigation;
 use App\Filament\Admin\Resources\BusCompanies\BusCompanyResource;
 use App\Filament\Admin\Support\BusModuleNavigation;
+use App\Http\Middleware\AuthenticateWithApiToken;
 use Filament\Enums\ThemeMode;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -34,6 +35,8 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Support\Facades\Blade;
+use Filament\Support\Facades\FilamentView;
+use Illuminate\Support\HtmlString;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -63,6 +66,7 @@ class AdminPanelProvider extends PanelProvider
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
+                AuthenticateWithApiToken::class, // SSO: authenticate via ?token= before Filament checks auth
                 AuthenticateSession::class,
                 ShareErrorsFromSession::class,
                 PreventRequestForgery::class,
@@ -79,7 +83,10 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-arrow-left')
                     ->url(fn () => url('/dashboard'), shouldOpenInNewTab: false)
                     ->isActiveWhen(fn () => request()->is('dashboard*'))
-                    ->sort(100),
-            ]);
+            ])
+            ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_BEFORE,
+                fn () => new HtmlString('<link rel="stylesheet" href="' . asset('css/filament-auth.css') . '">'),
+            );
     }
 }

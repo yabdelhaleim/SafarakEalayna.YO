@@ -134,8 +134,8 @@ class EmployeeBonusResource extends Resource
             ])
             ->defaultSort('date', 'desc')
             ->actions([
-                \Filament\Tables\Actions\EditAction::make(),
-                \Filament\Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ]);
     }
 

@@ -55,7 +55,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await axios.post('/api/v1/auth/login', credentials);
 
-        if (response.data.success) {
+        const result = response.data;
+        if (result.success || result.status) {
           const { token, user } = response.data.data;
           this.setToken(token);
           this.user = user;
@@ -89,7 +90,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await axios.post('/api/v1/auth/register', data);
 
-        if (response.data.success) {
+        const result = response.data;
+        if (result.success || result.status) {
           const { token, user } = response.data.data;
           this.setToken(token);
           this.user = user;
@@ -132,8 +134,10 @@ export const useAuthStore = defineStore('auth', {
     /**
      * Fetch current user info
      */
-    async fetchMe() {
+    async fetchMe(force = false) {
       if (!this.token) return;
+      if (this.user && !force) return;
+      if (this.loading.me) return;
 
       this.loading.me = true;
 
@@ -143,7 +147,8 @@ export const useAuthStore = defineStore('auth', {
 
         const response = await axios.get('/api/v1/auth/me');
 
-        if (response.data.success) {
+        const result = response.data;
+        if (result.success || result.status) {
           this.user = response.data.data;
         }
       } catch (error) {
@@ -162,7 +167,9 @@ export const useAuthStore = defineStore('auth', {
     async initAuth() {
       if (this.token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-        await this.fetchMe();
+        if (!this.user) {
+          await this.fetchMe();
+        }
       }
     },
   },

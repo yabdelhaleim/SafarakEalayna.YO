@@ -146,11 +146,35 @@ let datasetLoaded = false;
 
 const DATASET_URL = 'https://raw.githubusercontent.com/mwgg/Airports/master/airports.json';
 
+// Fallback airports if external dataset fails
+const FALLBACK_AIRPORTS = [
+  { iata_code: 'CAI', city_name_en: 'Cairo', city_name_ar: 'القاهرة', airport_name_ar: 'مطار القاهرة الدولي', country_name_en: 'Egypt', country_code: 'EG' },
+  { iata_code: 'JED', city_name_en: 'Jeddah', city_name_ar: 'جدة', airport_name_ar: 'مطار الملك عبد العزيز الدولي', country_name_en: 'Saudi Arabia', country_code: 'SA' },
+  { iata_code: 'RUH', city_name_en: 'Riyadh', city_name_ar: 'الرياض', airport_name_ar: 'مطار الملك خالد الدولي', country_name_en: 'Saudi Arabia', country_code: 'SA' },
+  { iata_code: 'DXB', city_name_en: 'Dubai', city_name_ar: 'دبي', airport_name_ar: 'مطار دبي الدولي', country_name_en: 'UAE', country_code: 'AE' },
+  { iata_code: 'DOH', city_name_en: 'Doha', city_name_ar: 'الدوحة', airport_name_ar: 'مطار حمد الدولي', country_name_en: 'Qatar', country_code: 'QA' },
+  { iata_code: 'KWI', city_name_en: 'Kuwait', city_name_ar: 'الكويت', airport_name_ar: 'مطار الكويت الدولي', country_name_en: 'Kuwait', country_code: 'KW' },
+  { iata_code: 'IST', city_name_en: 'Istanbul', city_name_ar: 'اسطنبول', airport_name_ar: 'مطار اسطنبول', country_name_en: 'Turkey', country_code: 'TR' },
+  { iata_code: 'LHR', city_name_en: 'London', city_name_ar: 'لندن', airport_name_ar: 'Heathrow Airport', country_name_en: 'UK', country_code: 'GB' },
+  { iata_code: 'JFK', city_name_en: 'New York', city_name_ar: 'نيويورك', airport_name_ar: 'JFK Airport', country_name_en: 'USA', country_code: 'US' },
+  { iata_code: 'MED', city_name_en: 'Medina', city_name_ar: 'المدينة المنورة', airport_name_ar: 'مطار الأمير محمد بن عبد العزيز', country_name_en: 'Saudi Arabia', country_code: 'SA' },
+  { iata_code: 'HBE', city_name_en: 'Alexandria', city_name_ar: 'الإسكندرية', airport_name_ar: 'مطار برج العرب', country_name_en: 'Egypt', country_code: 'EG' },
+  { iata_code: 'AMM', city_name_en: 'Amman', city_name_ar: 'عمان', airport_name_ar: 'مطار الملكة علياء', country_name_en: 'Jordan', country_code: 'JO' },
+  { iata_code: 'BEY', city_name_en: 'Beirut', city_name_ar: 'بيروت', airport_name_ar: 'مطار رفيق الحريري', country_name_en: 'Lebanon', country_code: 'LB' },
+  { iata_code: 'SHJ', city_name_en: 'Sharjah', city_name_ar: 'الشارقة', airport_name_ar: 'مطار الشارقة الدولي', country_name_en: 'UAE', country_code: 'AE' },
+];
+
 const loadDataset = async () => {
   if (datasetLoaded || loadingDataset) return;
   loadingDataset = true;
+  
   try {
-    const resp = await fetch(DATASET_URL);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+    const resp = await fetch(DATASET_URL, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const json = await resp.json();
     // Convert object keyed by ICAO to array, keep only those with IATA
     allAirports = Object.values(json)
@@ -166,14 +190,14 @@ const loadDataset = async () => {
         country_code: a.country || '',
         lat: a.lat,
         lon: a.lon,
-        // id is iata (no db id for external)
         id: null,
         _external: true,
       }));
+    
     datasetLoaded = true;
   } catch (err) {
-    console.warn('Airport dataset load failed, using local only', err);
-    allAirports = [];
+    console.warn('Airport dataset load failed, using fallbacks', err);
+    allAirports = FALLBACK_AIRPORTS;
     datasetLoaded = true;
   } finally {
     loadingDataset = false;

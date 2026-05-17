@@ -217,10 +217,10 @@ class InvoiceResource extends Resource
             ])
             ->defaultSort('invoice_date', 'desc')
             ->actions([
-                \Filament\Tables\Actions\ViewAction::make()
+                \Filament\Actions\ViewAction::make()
                     ->label('عرض'),
-                \Filament\Tables\Actions\EditAction::make(),
-                \Filament\Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ]);
     }
 

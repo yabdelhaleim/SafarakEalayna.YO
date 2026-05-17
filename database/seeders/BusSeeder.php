@@ -54,7 +54,9 @@ class BusSeeder extends Seeder
                 'updated_at' => now(),
             ];
         }
-        DB::table('bus_companies')->insert($companyData);
+        foreach ($companyData as $company) {
+            DB::table('bus_companies')->updateOrInsert(['name' => $company['name']], $company);
+        }
         $companyIds = DB::table('bus_companies')->pluck('id')->toArray();
 
         // Step 2: Create 20 inventories (12 cash, 8 deferred)
@@ -134,10 +136,14 @@ class BusSeeder extends Seeder
 
         DB::transaction(function () use ($inventories, $transactions, $accountEntries, $busCashboxId) {
             if (!empty($transactions)) {
-                DB::table('transactions')->insert($transactions);
+                foreach ($transactions as $transaction) {
+                    DB::table('transactions')->updateOrInsert(['id' => $transaction['id']], $transaction);
+                }
             }
 
-            DB::table('bus_inventories')->insert($inventories);
+            foreach ($inventories as $inventory) {
+                DB::table('bus_inventories')->updateOrInsert(['id' => $inventory['id']], $inventory);
+            }
 
             if (!empty($accountEntries)) {
                 $currentBalance = DB::table('accounts')->where('id', $busCashboxId)->value('balance');
@@ -149,7 +155,12 @@ class BusSeeder extends Seeder
                 }
                 unset($entry);
 
-                DB::table('account_entries')->insert($accountEntries);
+                foreach ($accountEntries as $entry) {
+                    DB::table('account_entries')->updateOrInsert([
+                        'account_id' => $entry['account_id'],
+                        'transaction_id' => $entry['transaction_id'],
+                    ], $entry);
+                }
                 DB::table('accounts')->where('id', $busCashboxId)->update(['balance' => $currentBalance]);
             }
         });
@@ -238,10 +249,14 @@ class BusSeeder extends Seeder
         // Insert bookings and update available_tickets
         DB::transaction(function () use ($bookings, $bookingTransactions, $bookingAccountEntries, $busCashboxId) {
             if (!empty($bookingTransactions)) {
-                DB::table('transactions')->insert($bookingTransactions);
+                foreach ($bookingTransactions as $transaction) {
+                    DB::table('transactions')->updateOrInsert(['id' => $transaction['id']], $transaction);
+                }
             }
 
-            DB::table('bus_bookings')->insert($bookings);
+            foreach ($bookings as $booking) {
+                DB::table('bus_bookings')->updateOrInsert(['id' => $booking['id']], $booking);
+            }
 
             if (!empty($bookingAccountEntries)) {
                 $currentBalance = DB::table('accounts')->where('id', $busCashboxId)->value('balance');
@@ -252,7 +267,12 @@ class BusSeeder extends Seeder
                 }
                 unset($entry);
 
-                DB::table('account_entries')->insert($bookingAccountEntries);
+                foreach ($bookingAccountEntries as $entry) {
+                    DB::table('account_entries')->updateOrInsert([
+                        'account_id' => $entry['account_id'],
+                        'transaction_id' => $entry['transaction_id'],
+                    ], $entry);
+                }
                 DB::table('accounts')->where('id', $busCashboxId)->update(['balance' => $currentBalance]);
             }
 

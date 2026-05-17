@@ -116,11 +116,11 @@ class AuditLogResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->recordActions([
-                \Filament\Actions\ViewAction::make(),
+                \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    \Filament\Actions\ExportBulkAction::make(),
+                    \Filament\Tables\Actions\ExportBulkAction::make(),
                 ]),
             ]);
     }

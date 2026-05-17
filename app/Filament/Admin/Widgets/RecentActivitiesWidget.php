@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Filament\Widgets;
+namespace App\Filament\Admin\Widgets;
 
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class RecentActivitiesWidget extends BaseWidget
 {
@@ -33,33 +33,35 @@ class RecentActivitiesWidget extends BaseWidget
                     ->limit(10)
             )
             ->columns([
-                TextColumn::make('id')
-                    ->label('الرقم')
+                TextColumn::make('booking_number')
+                    ->label('رقم الحجز')
                     ->sortable()
                     ->searchable()
                     ->weight('bold')
                     ->color('primary'),
 
-                TextColumn::make('customer.name')
+                TextColumn::make('customer.full_name')
                     ->label('العميل')
                     ->searchable()
                     ->sortable()
-                    ->description(fn ($record) => $record->customer?->email ?? '')
+                    ->description(fn ($record) => $record->customer?->phone ?? '')
                     ->weight('medium'),
 
-                BadgeColumn::make('status')
+                TextColumn::make('status')
                     ->label('الحالة')
-                    ->colors([
-                        'danger' => 'cancelled',
-                        'warning' => 'pending',
-                        'success' => 'confirmed',
-                        'info' => 'processing',
-                    ])
+                    ->badge()
+                    ->color(fn ($state): string => match (is_string($state) ? $state : ($state->value ?? (string) $state)) {
+                        'cancelled', 'CANCELLED' => 'danger',
+                        'pending', 'PENDING' => 'warning',
+                        'confirmed', 'CONFIRMED', 'issued', 'ISSUED' => 'success',
+                        'processing', 'PROCESSING' => 'info',
+                        default => 'gray',
+                    })
                     ->sortable()
                     ->weight('bold'),
 
-                TextColumn::make('total_price')
-                    ->label('السعر')
+                TextColumn::make('selling_price')
+                    ->label('سعر البيع')
                     ->money('egp')
                     ->sortable()
                     ->weight('semibold')
@@ -76,7 +78,7 @@ class RecentActivitiesWidget extends BaseWidget
             ->striped()
             ->paginated([5, 10, 25])
             ->defaultPaginationPageOption(5)
-            ->recordUrl(fn ($record) => route('filament.admin.resources.flight-bookings.edit', $record))
+            ->recordUrl(fn ($record) => \App\Filament\Admin\Resources\FlightBookings\FlightBookingResource::getUrl('edit', ['record' => $record]))
             ->emptyStateHeading('لا توجد نشاطات حديثة')
             ->emptyStateDescription('ابدأ بإضافة حجز جديد لرؤيته هنا')
             ->emptyStateIcon('heroicon-o-inbox');
