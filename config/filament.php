@@ -8,8 +8,8 @@ return [
             'id' => 'admin',
             'file' => 'App\\Filament\\AdminPanel',
             'login' => true,
-            'brand' => 'سفارك إليّنا',
-            'brandName' => 'سفارك إليّنا',
+            'brand' => 'سفرك علينا',
+            'brandName' => 'سفرك علينا',
             'favicon' => null,
             'hasDatabaseNotifications' => true,
             'hasDatabaseNotificationsMedia' => true,
@@ -53,9 +53,9 @@ return [
                 \App\Filament\Admin\Resources\Customers\CustomerResource::class,
 
                 // Employees
-                \App\Filament\Resources\Employee\EmployeeResource::class,
-                \App\Filament\Resources\Employee\EmployeeAttendanceResource::class,
-                \App\Filament\Resources\Employee\EmployeeBonusResource::class,
+                \App\Filament\Admin\Resources\Employees\EmployeeResource::class,
+                \App\Filament\Admin\Resources\EmployeeAttendances\EmployeeAttendanceResource::class,
+                \App\Filament\Admin\Resources\EmployeeBonuses\EmployeeBonusResource::class,
 
                 // Flight Bookings
                 \App\Filament\Admin\Resources\FlightBookings\FlightBookingResource::class,
@@ -67,7 +67,6 @@ return [
                 \App\Filament\Admin\Resources\BusInventories\BusInventoryResource::class,
                 \App\Filament\Admin\Resources\BusBookings\BusBookingResource::class,
                 \App\Filament\Admin\Resources\BusCompanyPayments\BusCompanyPaymentResource::class,
-                \App\Filament\Admin\Resources\BusTickets\BusTicketResource::class, // old simple tickets (legacy)
 
                 // Hajj & Umra
                 \App\Filament\Admin\Resources\Programs\ProgramResource::class,
@@ -75,15 +74,15 @@ return [
                 \App\Filament\Admin\Resources\VisaBookings\VisaBookingResource::class,
 
                 // Finance
-                \App\Filament\Resources\Invoice\InvoiceResource::class,
-                \App\Filament\Resources\Supplier\SupplierResource::class,
+                \App\Filament\Admin\Resources\Invoices\InvoiceResource::class,
+                \App\Filament\Admin\Resources\Suppliers\SupplierResource::class,
                 \App\Filament\Admin\Resources\Accounts\AccountResource::class,
                 \App\Filament\Admin\Resources\Transactions\TransactionResource::class,
                 \App\Filament\Admin\Resources\ExchangeRates\ExchangeRateResource::class,
                 \App\Filament\Admin\Resources\TreasuryTransactions\TreasuryTransactionResource::class,
 
                 // Online Services
-                \App\Filament\Admin\Resources\OnlineServices\OnlineServiceResource::class,
+                \App\Filament\Admin\Resources\OnlineServiceTypes\OnlineServiceTypeResource::class,
                 \App\Filament\Admin\Resources\FawryTransactions\FawryTransactionResource::class,
 
                 // Administration
@@ -91,7 +90,8 @@ return [
                 \App\Filament\Admin\Resources\AuditLogs\AuditLogResource::class,
             ],
             'pages' => [
-                \App\Filament\Pages\DashboardPage::class,
+                \App\Filament\Admin\Pages\Dashboard::class,
+                \App\Filament\Admin\Pages\FlightDashboard::class,
             ],
             'widgets' => [
                 // Widgets will be registered here

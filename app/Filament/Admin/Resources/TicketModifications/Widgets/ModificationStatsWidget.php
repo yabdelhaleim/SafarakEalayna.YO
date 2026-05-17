@@ -31,7 +31,7 @@ class ModificationStatsWidget extends BaseWidget
                     'class' => 'hover:scale-105 transition-transform duration-300'
                 ]),
 
-            Stat::make('غرامات الطيران', number_format((float) $totalFees, 2) . ' EGP')
+            Stat::make('غرامات الطيران', number_format((float) $totalFees, 2) . ' ج.م')
                 ->description('إجمالي الغرامات المخصومة')
                 ->descriptionIcon('heroicon-o-currency-dollar')
                 ->color('warning')
@@ -39,7 +39,7 @@ class ModificationStatsWidget extends BaseWidget
                     'class' => 'hover:scale-105 transition-transform duration-300'
                 ]),
 
-            Stat::make('أرباح العمولات', number_format((float) $totalCommissions, 2) . ' EGP')
+            Stat::make('أرباح العمولات', number_format((float) $totalCommissions, 2) . ' ج.م')
                 ->description('أرباح الوكالة الصافية من التعديلات')
                 ->descriptionIcon('heroicon-o-banknotes')
                 ->color('success')

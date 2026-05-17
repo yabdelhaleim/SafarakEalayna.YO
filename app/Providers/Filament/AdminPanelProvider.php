@@ -46,21 +46,64 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login(AdminLogin::class)
-            ->brandName('سفارك إلينا')
-            // ->viteTheme('resources/css/filament/admin/theme.css')
-
+            ->login(\App\Filament\Pages\Auth\Login::class)
+            ->brandName('سفرك علينا')
+            ->brandLogo(fn () => view('filament.logo'))
+            ->brandLogoHeight('3rem')
+            ->favicon(asset('images/favicon.ico'))
             ->colors([
-                'primary' => Color::Sky,
+                'primary' => Color::hex('#185FA5'),
+                'info'    => Color::hex('#378ADD'),
+                'success' => Color::hex('#1D9E75'),
+                'warning' => Color::hex('#BA7517'),
+                'danger'  => Color::hex('#A32D2D'),
+                'gray'    => Color::Slate,
             ])
-            ->darkMode(true, false)
-            ->defaultThemeMode(ThemeMode::Dark)
+            ->darkMode(false)
+            ->defaultThemeMode(ThemeMode::Light)
             ->maxContentWidth(Width::Full)
-            ->font('IBM Plex Sans Arabic')
+            ->font('Cairo', provider: \Filament\FontProviders\GoogleFontProvider::class)
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->sidebarCollapsibleOnDesktop()
+            ->sidebarWidth('260px')
+            ->collapsedSidebarWidth('68px')
+
             ->discoverResources(in: app_path('Filament/Admin/Resources'), for: 'App\Filament\Admin\Resources')
             ->discoverPages(in: app_path('Filament/Admin/Pages'), for: 'App\Filament\Admin\Pages')
             ->discoverWidgets(in: app_path('Filament/Admin/Widgets'), for: 'App\Filament\Admin\Widgets')
+
+            ->resources([
+                \App\Filament\Resources\FlightResource::class,
+                \App\Filament\Resources\BookingResource::class,
+                \App\Filament\Resources\CustomerResource::class,
+                \App\Filament\Resources\HotelResource::class,
+                \App\Filament\Resources\AirportResource::class,
+                \App\Filament\Resources\TreasuryResource::class,
+            ])
+            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
+            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
+
+            ->widgets([
+                \Filament\Widgets\AccountWidget::class,
+                \App\Filament\Widgets\StatsOverviewWidget::class,
+                \App\Filament\Widgets\BookingsChartWidget::class,
+                \App\Filament\Widgets\RecentBookingsWidget::class,
+                \App\Filament\Widgets\TopDestinationsWidget::class,
+            ])
+
+            ->navigationGroups([
+                NavigationGroup::make('الرئيسية')
+                    ->icon('heroicon-o-home'),
+                NavigationGroup::make('إدارة الرحلات')
+                    ->icon('heroicon-o-paper-airplane'),
+                NavigationGroup::make('الحجوزات والعملاء')
+                    ->icon('heroicon-o-ticket'),
+                NavigationGroup::make('التقارير المالية')
+                    ->icon('heroicon-o-currency-dollar'),
+                NavigationGroup::make('الإعدادات')
+                    ->icon('heroicon-o-cog-6-tooth')
+                    ->collapsed(),
+            ])
 
             ->middleware([
                 EncryptCookies::class,
@@ -87,6 +130,10 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::AUTH_LOGIN_FORM_BEFORE,
                 fn () => new HtmlString('<link rel="stylesheet" href="' . asset('css/filament-auth.css') . '">'),
+            )
+            ->renderHook(
+                PanelsRenderHook::STYLES_AFTER,
+                fn () => new HtmlString('<link rel="stylesheet" href="' . asset('css/filament-admin.css') . '">'),
             );
     }
 }

@@ -4,8 +4,8 @@ namespace App\Filament\Resources\Airport;
 
 use App\Models\Airport;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
@@ -13,7 +13,7 @@ class AirportResource extends Resource
 {
     protected static ?string $model = Airport::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-globe-alt';
 
     protected static ?string $navigationLabel = 'المطارات';
 
@@ -21,15 +21,15 @@ class AirportResource extends Resource
 
     protected static ?string $pluralModelLabel = 'المطارات';
 
-    protected static ?string $navigationGroup = 'الطيران';
+    protected static string|\UnitEnum|null $navigationGroup = 'الطيران';
 
     protected static ?int $navigationSort = 4;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
-            ->schema([
-                Forms\Components\Section::make('الكودات')
+        return $schema
+            ->components([
+                \Filament\Schemas\Components\Section::make('الكودات')
                     ->schema([
                         Forms\Components\TextInput::make('iata_code')
                             ->label('كود IATA')
@@ -50,7 +50,7 @@ class AirportResource extends Resource
                             ->helperText('كود ICAO مكون من 4 أحرف'),
                     ])->columns(2),
 
-                Forms\Components\Section::make('اسم المدينة')
+                \Filament\Schemas\Components\Section::make('اسم المدينة')
                     ->schema([
                         Forms\Components\TextInput::make('city_name_ar')
                             ->label('اسم المدينة (عربي)')
@@ -65,7 +65,7 @@ class AirportResource extends Resource
                             ->placeholder('مثال: Cairo, Jeddah, Kuwait'),
                     ])->columns(2),
 
-                Forms\Components\Section::make('اسم المطار')
+                \Filament\Schemas\Components\Section::make('اسم المطار')
                     ->schema([
                         Forms\Components\TextInput::make('airport_name_ar')
                             ->label('اسم المطار (عربي)')
@@ -80,7 +80,7 @@ class AirportResource extends Resource
                             ->placeholder('مثال: Cairo International Airport'),
                     ])->columns(2),
 
-                Forms\Components\Section::make('الدولة')
+                \Filament\Schemas\Components\Section::make('الدولة')
                     ->schema([
                         Forms\Components\TextInput::make('country_code')
                             ->label('كود الدولة')
@@ -104,7 +104,7 @@ class AirportResource extends Resource
                             ->placeholder('مثال: Egypt, Saudi Arabia, Kuwait'),
                     ])->columns(3),
 
-                Forms\Components\Section::make('معلومات إضافية')
+                \Filament\Schemas\Components\Section::make('معلومات إضافية')
                     ->schema([
                         Forms\Components\TextInput::make('latitude')
                             ->label('خط العرض')
@@ -126,7 +126,7 @@ class AirportResource extends Resource
                             ->helperText('منقة التوقيت حسب IANA'),
                     ])->columns(3),
 
-                Forms\Components\Section::make('الحالة')
+                \Filament\Schemas\Components\Section::make('الحالة')
                     ->schema([
                         Forms\Components\Toggle::make('is_active')
                             ->label('نشط')

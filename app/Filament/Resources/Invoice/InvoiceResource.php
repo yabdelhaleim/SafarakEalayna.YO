@@ -166,16 +166,14 @@ class InvoiceResource extends Resource
                         'overdue' => 'danger',
                         'cancelled' => 'gray',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match($state) {
-                        return match($state) {
-                            'draft' => 'مسودة',
-                            'sent' => 'مرسلة',
-                            'paid' => 'مدفوعة',
-                            'partially_paid' => 'مدفوعة جزئياً',
-                            'overdue' => 'متأخرة',
-                            'cancelled' => 'ملغاة',
-                            default => $state,
-                        };
+                    ->formatStateUsing(fn ($state): string => match($state instanceof \BackedEnum ? $state->value : (string) $state) {
+                        'draft' => 'مسودة',
+                        'sent' => 'مرسلة',
+                        'paid' => 'مدفوعة',
+                        'partially_paid' => 'مدفوعة جزئياً',
+                        'overdue' => 'متأخرة',
+                        'cancelled' => 'ملغاة',
+                        default => $state instanceof \BackedEnum ? $state->value : (string) $state,
                     }),
 
                 TextColumn::make('total_amount', 'الإجمالي')

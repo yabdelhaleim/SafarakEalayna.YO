@@ -257,11 +257,11 @@ class FlightBookingResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('selling_price')
                     ->label('البيع')
-                    ->numeric(decimalPlaces: 2)
+                    ->money('egp')
                     ->sortable(),
                 TextColumn::make('profit')
                     ->label('الربح')
-                    ->numeric(decimalPlaces: 2)
+                    ->money('egp')
                     ->sortable()
                     ->color(fn ($state): string => (float) $state >= 0 ? 'success' : 'danger'),
                 TextColumn::make('departure_date')

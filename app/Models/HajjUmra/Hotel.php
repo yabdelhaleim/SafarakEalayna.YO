@@ -19,10 +19,24 @@ class Hotel extends Model
         'account_id',
         'notes',
         'is_active',
+        'country',
+        'stars',
+        'price_per_night',
+        'total_rooms',
+        'available_rooms',
+        'contact_phone',
+        'contact_email',
+        'description',
+        'amenities',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'stars' => 'integer',
+        'price_per_night' => 'decimal:2',
+        'total_rooms' => 'integer',
+        'available_rooms' => 'integer',
+        'amenities' => 'array',
     ];
 
     public function account(): BelongsTo

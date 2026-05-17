@@ -97,12 +97,10 @@ class EmployeeBonusResource extends Resource
                         'bonus' => 'success',
                         'deduction' => 'danger',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match($state) {
-                        return match($state) {
-                            'bonus' => 'مكافأة',
-                            'deduction' => 'خصم',
-                            default => $state,
-                        };
+                    ->formatStateUsing(fn ($state): string => match($state instanceof \BackedEnum ? $state->value : (string) $state) {
+                        'bonus' => 'مكافأة',
+                        'deduction' => 'خصم',
+                        default => $state instanceof \BackedEnum ? $state->value : (string) $state,
                     }),
 
                 TextColumn::make('amount', 'المبلغ')

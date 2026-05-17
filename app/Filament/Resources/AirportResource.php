@@ -5,8 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AirportResource\Pages;
 use App\Models\Airport;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
@@ -14,7 +14,7 @@ class AirportResource extends Resource
 {
     protected static ?string $model = Airport::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-map-pin';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-map-pin';
 
     protected static ?string $navigationLabel = 'المطارات';
 
@@ -26,11 +26,11 @@ class AirportResource extends Resource
 
     protected static ?int $navigationSort = 5;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
-            ->schema([
-                Forms\Components\Section::make('معلومات المطار')
+        return $schema
+            ->components([
+                \Filament\Schemas\Components\Section::make('معلومات المطار')
                     ->description('بيانات المطار الأساسية')
                     ->schema([
                         Forms\Components\Grid::make(3)
@@ -210,6 +210,6 @@ class AirportResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        return static::getModel()::active()->count();
+        return cache()->remember('airports_active_count', now()->addMinutes(5), fn () => static::getModel()::active()->count());
     }
 }

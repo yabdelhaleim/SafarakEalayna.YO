@@ -1,0 +1,111 @@
+/* Modern Theme for Safarak Ealayna (سفرك علينا) */
+
+/* ===== Sidebar أزرق داكن ===== */
+.fi-sidebar {
+    background-color: #042C53 !important;
+    border-color: rgba(255,255,255,0.08) !important;
+    border-right: none !important;
+}
+
+.fi-sidebar-nav-groups {
+    padding: 0.5rem;
+}
+
+/* عناصر التنقل */
+.fi-sidebar-item-button {
+    color: #B5D4F4 !important;
+    border-radius: 0.5rem !important;
+    transition: all 0.15s ease !important;
+    margin: 0.25rem 0.75rem !important;
+}
+
+.fi-sidebar-item-button:hover {
+    background-color: rgba(255,255,255,0.08) !important;
+    color: white !important;
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-button,
+.fi-sidebar-item-button.fi-active {
+    background-color: #185FA5 !important;
+    color: white !important;
+}
+
+/* عنوان المجموعات */
+.fi-sidebar-group-label {
+    color: #85B7EB !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    padding: 0.5rem 1rem !important;
+}
+
+/* ===== Header شريط علوي أبيض ===== */
+.fi-topbar {
+    background-color: white !important;
+    border-bottom: 1px solid #EEF2F7 !important;
+    box-shadow: 0 1px 3px rgba(4, 44, 83, 0.06) !important;
+}
+
+/* ===== الخلفية العامة ===== */
+.fi-main {
+    background-color: #F8FAFD !important;
+}
+
+/* ===== البطاقات والأقسام ===== */
+.fi-wi-stats-overview-stat-card, .fi-section, .fi-ta-ctn {
+    background-color: white !important;
+    border: 1px solid #EEF2F7 !important;
+    border-radius: 0.75rem !important;
+    box-shadow: 0 1px 4px rgba(4, 44, 83, 0.04) !important;
+    transition: all 0.2s ease !important;
+}
+
+.fi-section-header {
+    border-bottom: 1px solid #EEF2F7 !important;
+    padding: 1rem 1.25rem !important;
+}
+
+.fi-wi-stats-overview-stat-card:hover {
+    box-shadow: 0 4px 16px rgba(24, 95, 165, 0.1) !important;
+    transform: translateY(-1px);
+}
+
+/* ===== الأزرار الرئيسية ===== */
+.fi-btn-primary {
+    background: linear-gradient(135deg, #185FA5, #378ADD) !important;
+    border: none !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+}
+
+.fi-btn-primary:hover {
+    background: linear-gradient(135deg, #0C447C, #185FA5) !important;
+}
+
+/* ===== الجداول ===== */
+.fi-table-header {
+    background-color: #F8FAFD !important;
+    border-bottom: 1px solid #EEF2F7 !important;
+}
+
+.fi-table-row:hover td {
+    background-color: #EDF4FC !important;
+}
+
+/* Airplane icon animation */
+@keyframes plane-fly {
+    0% { transform: rotate(0deg) translate(0, 0); }
+    25% { transform: rotate(2deg) translate(2px, -2px); }
+    75% { transform: rotate(-1deg) translate(-1px, 1px); }
+    100% { transform: rotate(0deg) translate(0, 0); }
+}
+
+.fi-sidebar-header svg, .fi-topbar-header svg {
+    animation: plane-fly 4s ease-in-out infinite;
+}
+
+/* Font Arabic (Cairo & IBM Plex Sans Arabic) */
+* {
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', sans-serif !important;
+}

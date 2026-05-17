@@ -1,0 +1,81 @@
+/* Modern Sidebar */
+.fi-sidebar {
+    border-right: 1px solid rgba(0, 0, 0, 0.05) !important;
+    background-color: white !important;
+}
+
+.dark .fi-sidebar {
+    border-right-color: rgba(255, 255, 255, 0.05) !important;
+    background-color: #0f172a !important;
+}
+
+.fi-sidebar-item-button {
+    border-radius: 0.75rem !important;
+    margin: 0.25rem 0.75rem !important;
+    transition: all 0.2s ease !important;
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-button {
+    background-color: rgba(37, 99, 235, 0.1) !important;
+    color: #2563eb !important;
+}
+
+/* Modern Topbar */
+.fi-topbar {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(12px) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+.dark .fi-topbar {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Modern Widgets/Cards */
+.fi-wi-stats-overview-stat-card, .fi-section, .fi-ta-ctn {
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    border-radius: 1.25rem !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05) !important;
+    transition: all 0.3s ease !important;
+}
+
+.fi-wi-stats-overview-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Custom Primary Colors */
+.fi-btn-color-primary {
+    border-radius: 0.75rem !important;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
+}
+
+/* Glassmorphism & Modern Touches */
+.fi-wi-stats-overview-stat-card, .fi-section, .fi-ta-ctn {
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(0, 0, 0, 0.03) !important;
+}
+
+.fi-sidebar-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+    padding-bottom: 1rem !important;
+}
+
+/* Airplane icon animation */
+@keyframes plane-fly {
+    0% { transform: rotate(0deg) translate(0, 0); }
+    25% { transform: rotate(2deg) translate(2px, -2px); }
+    75% { transform: rotate(-1deg) translate(-1px, 1px); }
+    100% { transform: rotate(0deg) translate(0, 0); }
+}
+
+.fi-logo svg {
+    animation: plane-fly 4s ease-in-out infinite;
+}
+
+/* RTL Improvements */
+[dir="rtl"] .fi-sidebar {
+    border-left: 1px solid rgba(0, 0, 0, 0.05) !important;
+    border-right: none !important;
+}

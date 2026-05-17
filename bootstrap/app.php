@@ -90,16 +90,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
 
                 if ($statusCode >= 500) {
-                    \Log::error('API Error: ' . $e->getMessage(), [
+                    \Log::critical('CRITICAL API ERROR: ' . $e->getMessage(), [
                         'exception' => get_class($e),
                         'path' => $request->fullUrl(),
+                        'user_id' => auth()->id() ?? 'guest',
+                        'payload' => $request->all(),
                         'trace' => $e->getTraceAsString(),
                     ]);
                 }
 
                 $response = [
-                    'status' => false,
+                    'status' => 'error',
                     'message' => $getFriendlyMessage($e, $statusCode),
+                    'code' => $statusCode,
                     'data' => null,
                 ];
 

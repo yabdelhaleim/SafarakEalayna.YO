@@ -16,6 +16,7 @@ class Customer extends Model
     protected $fillable = [
         'account_id',
         'full_name',
+        'name',
         'phone',
         'email',
         'national_id',
@@ -28,6 +29,12 @@ class Customer extends Model
         'notes',
         'type',
         'created_by',
+        'nationality',
+        'gender',
+        'address',
+        'status',
+        'total_spent',
+        'bookings_count',
     ];
 
     protected $casts = [
@@ -35,7 +42,13 @@ class Customer extends Model
         'type' => \App\Enums\CustomerType::class,
         'passport_expiry' => 'date',
         'date_of_birth' => 'date',
+        'total_spent' => 'decimal:2',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
 
     public function ledgerAccount(): BelongsTo
     {

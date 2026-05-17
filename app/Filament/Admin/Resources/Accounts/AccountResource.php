@@ -19,7 +19,7 @@ class AccountResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'الحسابات والمالية';
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية';
 
     protected static ?string $navigationLabel = 'جميع الحسابات';
 

@@ -29,12 +29,12 @@ class TransferCashboxResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('module_type', 'wallet_transfer')
-            ->where('type', AccountType::Cash);
+            ->where('type', AccountType::Cashbox);
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Cash, 'wallet_transfer');
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Cashbox, 'wallet_transfer');
     }
 
     public static function table(Table $table): Table

@@ -154,9 +154,9 @@ class VisaBookingResource extends Resource
                     ->formatStateUsing(fn ($s) => $s instanceof VisaType ? $s->label() : (VisaType::tryFrom((string) $s)?->label() ?? '-')),
                 TextColumn::make('visaDetail.entry_type')->label('الدخول')->toggleable()
                     ->formatStateUsing(fn ($s) => $s instanceof VisaEntryType ? $s->label() : (VisaEntryType::tryFrom((string) $s)?->label() ?? '-')),
-                TextColumn::make('purchase_price')->label('الشراء')->money('EGP')->sortable(),
-                TextColumn::make('selling_price')->label('البيع')->money('EGP')->sortable(),
-                TextColumn::make('profit')->label('الربح')->money('EGP')->color('success')->sortable(),
+                TextColumn::make('purchase_price')->label('الشراء')->money('egp')->sortable(),
+                TextColumn::make('selling_price')->label('البيع')->money('egp')->sortable(),
+                TextColumn::make('profit')->label('الربح')->money('egp')->color('success')->sortable(),
                 TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()

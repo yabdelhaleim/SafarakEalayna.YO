@@ -1,48 +1,6 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>الصفحة غير موجودة | 404</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Outfit:wght@400;700;900&family=Noto+Sans+Arabic:wght@400;700;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Outfit', 'Noto Sans Arabic', sans-serif; }
-    </style>
-</head>
-<body class="bg-[#0a1628] text-white min-h-screen flex items-center justify-center p-6 overflow-hidden">
-    <!-- Decorative background -->
-    <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-sky-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
-        <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/3"></div>
-    </div>
+@extends('errors.layout')
 
-    <div class="relative z-10 text-center max-w-2xl mx-auto">
-        <div class="mb-8">
-            <h1 class="text-[150px] font-black leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/10 opacity-20">404</h1>
-            <div class="mt-[-80px]">
-                <div class="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-sky-500/20 border border-sky-500/30 mb-6">
-                    <svg class="w-10 h-10 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 9.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                </div>
-                <h2 class="text-3xl sm:text-4xl font-black mb-4">عذراً، الصفحة غير موجودة</h2>
-                <p class="text-gray-400 text-lg mb-10 leading-relaxed">المسار الذي تحاول الوصول إليه قد تم نقله أو حذفه، أو ربما كتبت العنوان بشكل غير صحيح.</p>
-                
-                <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <a href="/dashboard" class="w-full sm:w-auto px-8 py-4 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-2xl transition-all hover:scale-105 shadow-xl shadow-sky-600/20">
-                        العودة للوحة التحكم
-                    </a>
-                    <button onclick="window.history.back()" class="w-full sm:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold rounded-2xl transition-all">
-                        رجوع للخلف
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="pt-12 border-t border-white/5 text-gray-500 text-xs uppercase tracking-widest">
-            Safarak Ealayna &copy; {{ date('Y') }} • Professional Management System
-        </div>
-    </div>
-</body>
-</html>
+@section('title', 'الصفحة غير موجودة')
+@section('code', '404')
+@section('message', 'عذراً، لم نجد هذه الصفحة')
+@section('description', 'يبدو أنك سلكت مساراً غير صحيح في رحلتك. الصفحة التي تبحث عنها غير موجودة أو تم نقلها.')

@@ -21,7 +21,7 @@ class RecentActivitiesWidget extends BaseWidget
         return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
     }
 
-    protected static ?string $pollingInterval = '60s';
+    protected ?string $pollingInterval = '60s';
 
     public function table(Table $table): Table
     {

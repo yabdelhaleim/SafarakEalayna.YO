@@ -15,6 +15,33 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(\App\Support\Finance\PostingContextRegistry::class);
+
+        $aliases = [
+            'Action',
+            'BulkActionGroup',
+            'DeleteAction',
+            'DeleteBulkAction',
+            'EditAction',
+            'ForceDeleteAction',
+            'ForceDeleteBulkAction',
+            'RestoreAction',
+            'RestoreBulkAction',
+            'ViewAction',
+            'ExportBulkAction',
+            'ActionGroup',
+            'BulkAction',
+            'CreateAction',
+            'ImportAction',
+            'ExportAction',
+        ];
+
+        foreach ($aliases as $alias) {
+            $target = "Filament\\Actions\\{$alias}";
+            $source = "Filament\\Tables\\Actions\\{$alias}";
+            if (!class_exists($source) && class_exists($target)) {
+                class_alias($target, $source);
+            }
+        }
     }
 
     /**

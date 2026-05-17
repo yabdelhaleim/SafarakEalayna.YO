@@ -5,8 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\TreasuryResource\Pages;
 use App\Models\Treasury;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
@@ -14,7 +14,7 @@ class TreasuryResource extends Resource
 {
     protected static ?string $model = Treasury::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-banknotes';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-banknotes';
 
     protected static ?string $navigationLabel = 'خزائن الاسترجاع';
 
@@ -26,11 +26,11 @@ class TreasuryResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
-            ->schema([
-                Forms\Components\Section::make('معلومات الخزينة')
+        return $schema
+            ->components([
+                \Filament\Schemas\Components\Section::make('معلومات الخزينة')
                     ->description('إعدادات وتفاصيل خزينة الاسترجاع المستقلة')
                     ->schema([
                         Forms\Components\Grid::make(2)

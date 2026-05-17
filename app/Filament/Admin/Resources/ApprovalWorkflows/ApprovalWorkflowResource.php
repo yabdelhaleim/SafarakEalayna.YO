@@ -158,7 +158,7 @@ class ApprovalWorkflowResource extends Resource
             ])
             ->toolbarActions([
                 \Filament\Tables\Actions\CreateAction::make(),
-                BulkActionGroup::make([
+                \Filament\Tables\Actions\BulkActionGroup::make([
                     \Filament\Tables\Actions\ExportBulkAction::make(),
                     \Filament\Tables\Actions\DeleteBulkAction::make(),
                 ]),

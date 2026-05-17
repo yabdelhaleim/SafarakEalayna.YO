@@ -6,7 +6,7 @@ use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
 use App\Models\Transaction;
 use BackedEnum;
-use Filament\Tables\Actions\BulkActionGroup as ActionsBulkActionGroup;
+use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -17,7 +17,6 @@ use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Filament\Tables\Actions\BulkActionGroup;
 
 class TransactionResource extends Resource
 {
@@ -25,7 +24,7 @@ class TransactionResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-arrows-right-left';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'الحسابات والمالية';
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية';
 
     protected static ?string $navigationLabel = 'دفتر العمليات';
     protected static ?string $pluralLabel = 'العمليات المالية';
@@ -113,7 +112,7 @@ class TransactionResource extends Resource
                     }),
 
                 TextColumn::make('amount', 'المبلغ')
-                    ->money('jod')
+                    ->money('egp')
                     ->sortable()
                     ->color(fn ($record) => $record->type === 'expense' ? 'danger' : 'success'),
 
@@ -154,7 +153,7 @@ class TransactionResource extends Resource
                 \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
-                ActionsBulkActionGroup::make([
+                BulkActionGroup::make([
                     \Filament\Tables\Actions\ExportBulkAction::make(),
                 ]),
             ]);
@@ -163,7 +162,7 @@ class TransactionResource extends Resource
     public static function getWidgets(): array
     {
         return [
-            \App\Filament\Admin\Widgets\GeneralFinanceStats::class,
+            \App\Filament\Admin\Widgets\FinancialStatsWidget::class,
         ];
     }
 

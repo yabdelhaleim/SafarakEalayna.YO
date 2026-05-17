@@ -24,7 +24,7 @@ class EmployeeAttendanceResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-calendar-days';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'شؤون الموظفين';
+    protected static string|\UnitEnum|null $navigationGroup = 'الموظفين';
 
     protected static ?string $navigationLabel = 'الحضور والانصراف';
     protected static ?string $pluralLabel = 'سجلات الحضور';

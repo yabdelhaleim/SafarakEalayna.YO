@@ -31,7 +31,7 @@ class CustomerResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-users';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'الشركاء والعملاء';
+    protected static string|\UnitEnum|null $navigationGroup = 'العملاء';
 
     protected static ?string $navigationLabel = 'العملاء';
     protected static ?string $pluralLabel = 'العملاء';

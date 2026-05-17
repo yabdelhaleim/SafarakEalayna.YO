@@ -119,7 +119,7 @@ class AuditLogResource extends Resource
                 \Filament\Tables\Actions\ViewAction::make(),
             ])
             ->toolbarActions([
-                BulkActionGroup::make([
+                \Filament\Tables\Actions\BulkActionGroup::make([
                     \Filament\Tables\Actions\ExportBulkAction::make(),
                 ]),
             ]);

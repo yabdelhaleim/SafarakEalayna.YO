@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\Base;
 use BackedEnum;
 
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables\Table;
 
 abstract class BaseResource extends Resource
@@ -13,9 +13,9 @@ abstract class BaseResource extends Resource
 
     protected static ?int $navigationSort = 100;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([]);
+        return $schema->components([]);
     }
 
     public static function table(Table $table): Table

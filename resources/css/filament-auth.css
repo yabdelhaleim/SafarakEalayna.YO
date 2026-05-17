@@ -1,43 +1,77 @@
+:root {
+    --primary-blue: #2563eb;
+    --primary-blue-hover: #1d4ed8;
+    --bg-light: #f8fafc;
+}
+
 .fi-body {
-    background-color: #0f172a;
+    background-color: var(--bg-light);
     background-image: 
-        radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(245, 158, 11, 0.1) 0px, transparent 50%),
-        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+        radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.05) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(37, 99, 235, 0.05) 0px, transparent 50%);
+    background-attachment: fixed;
 }
 
 .fi-auth-card {
-    background-color: rgba(30, 41, 59, 0.7) !important;
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 1.5rem !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    background-color: white !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    border-radius: 2rem !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+    padding: 0.5rem !important;
 }
 
 .fi-auth-header-heading {
-    color: #f8fafc !important;
-    font-weight: 900 !important;
+    color: #1e293b !important;
+    font-weight: 800 !important;
     letter-spacing: -0.025em !important;
 }
 
 .fi-btn {
-    border-radius: 0.75rem !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border-radius: 1rem !important;
+    font-weight: 600 !important;
+    padding: 0.75rem 1.5rem !important;
+    transition: all 0.3s ease !important;
 }
 
 .fi-btn-color-primary {
-    background-image: linear-gradient(to bottom right, #0ea5e9, #0891b2) !important;
-    box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.3) !important;
+    background-color: var(--primary-blue) !important;
+    background-image: none !important;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
 }
 
 .fi-btn-color-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 20px 25px -5px rgba(14, 165, 233, 0.4) !important;
+    background-color: var(--primary-blue-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important;
 }
 
 .fi-input-wrp {
-    background-color: rgba(15, 23, 42, 0.5) !important;
-    border-radius: 0.75rem !important;
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 1rem !important;
+    transition: all 0.2s ease !important;
+}
+
+.fi-input-wrp:focus-within {
+    background-color: white !important;
+    border-color: var(--primary-blue) !important;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1) !important;
+}
+
+.dark .fi-body {
+    background-color: #0f172a;
+}
+
+.dark .fi-auth-card {
+    background-color: #1e293b !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .fi-auth-header-heading {
+    color: white !important;
+}
+
+.dark .fi-input-wrp {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
 }

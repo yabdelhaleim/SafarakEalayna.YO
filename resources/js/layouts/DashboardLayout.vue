@@ -290,7 +290,20 @@
 
       <!-- Page -->
       <main class="page-body">
-        <router-view v-slot="{ Component }">
+        <div v-if="error" class="vue-error-boundary glass rounded-3xl p-12 text-center max-w-lg mx-auto my-12 shadow-2xl shadow-red-500/10 border border-red-500/20">
+            <div class="w-20 h-20 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-10 h-10">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-slate-100 mb-4">عذراً، حدث خطأ غير متوقع</h3>
+            <p class="text-slate-400 mb-8 leading-relaxed">واجهنا صعوبة في عرض هذه الصفحة حالياً. يمكنك محاولة تحديث الصفحة أو العودة للرئيسية.</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button @click="error = null; window.location.reload()" class="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-all">تحديث الصفحة</button>
+                <router-link to="/dashboard" @click="error = null" class="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700">الرئيسية</router-link>
+            </div>
+        </div>
+        <router-view v-else v-slot="{ Component }">
           <transition name="t-page">
             <keep-alive :max="20">
               <component
@@ -336,6 +349,13 @@ import { useFlightStore } from '@/stores/flightStore';
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
+
+const error = ref(null);
+import { onErrorCaptured } from 'vue';
+onErrorCaptured((err) => {
+  error.value = err;
+  return false; // Prevent error from bubbling up further
+});
 
 const hasPermission = (perm) => {
   if (authStore.isAdmin || authStore.user?.role === 'owner') return true;

@@ -12,7 +12,7 @@ class ManageTransactions extends ManageRecords
     protected function getHeaderWidgets(): array
     {
         return [
-            \App\Filament\Admin\Widgets\GeneralFinanceStats::class,
+            \App\Filament\Admin\Widgets\FinancialStatsWidget::class,
         ];
     }
 }

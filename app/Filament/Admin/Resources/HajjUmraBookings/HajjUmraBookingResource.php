@@ -175,9 +175,9 @@ class HajjUmraBookingResource extends Resource
                     ->badge()
                     ->formatStateUsing(fn (?string $s) => $s === 'hajj' ? 'حج' : ($s === 'umra' ? 'عمرة' : '-'))
                     ->color(fn (?string $s) => $s === 'hajj' ? 'success' : 'info'),
-                TextColumn::make('purchase_price')->label('الشراء')->money('EGP')->sortable(),
-                TextColumn::make('selling_price')->label('البيع')->money('EGP')->sortable(),
-                TextColumn::make('profit')->label('الربح')->money('EGP')->color('success')->sortable(),
+                TextColumn::make('purchase_price')->label('الشراء')->money('egp')->sortable(),
+                TextColumn::make('selling_price')->label('البيع')->money('egp')->sortable(),
+                TextColumn::make('profit')->label('الربح')->money('egp')->color('success')->sortable(),
                 TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
