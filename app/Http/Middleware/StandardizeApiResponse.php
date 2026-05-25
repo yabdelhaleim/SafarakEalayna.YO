@@ -37,8 +37,17 @@ class StandardizeApiResponse
                 }
             }
 
+            // Extract message and errors safely before altering the keys
+            $messageText = $data['message'] ?? ($isSuccess ? 'Success' : 'Error');
+            $errorsData = $data['errors'] ?? null;
+
             // Extract actual data
             $actualData = $data['data'] ?? $data;
+            if (isset($data['success']) || isset($data['message']) || isset($data['errors'])) {
+                // If it is an error or validation payload, do not wrap the outer keys inside 'data'
+                unset($data['success'], $data['message'], $data['errors']);
+                $actualData = isset($data['data']) ? $data['data'] : (!empty($data) ? $data : null);
+            }
             
             // Exception for pagination
             if (isset($data['items']) && isset($data['pagination'])) {
@@ -50,9 +59,9 @@ class StandardizeApiResponse
 
             $formatted = [
                 'success' => $isSuccess,
-                'message' => $data['message'] ?? ($isSuccess ? 'Success' : 'Error'),
+                'message' => $messageText,
                 'data' => $actualData,
-                'errors' => $data['errors'] ?? null,
+                'errors' => $errorsData,
             ];
 
             $response->setData($formatted);

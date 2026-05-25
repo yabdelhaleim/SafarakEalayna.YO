@@ -19,12 +19,18 @@ const CACHE_TTL = 15000; // 15 seconds
 // Request cancellation tracking on route change
 let activeRequests = [];
 window.cancelPendingRequests = () => {
-    activeRequests.forEach(cancel => {
+    activeRequests.forEach(item => {
         try {
-            cancel();
+            // Do not abort login/logout/register requests on page changes
+            if (item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register'))) {
+                return;
+            }
+            item.cancel();
         } catch (e) {}
     });
-    activeRequests = [];
+    activeRequests = activeRequests.filter(item => {
+        return item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register'));
+    });
 };
 
 // ✅ Fix 3: بيقرأ التوكن من localStorage في كل request مش مرة واحدة بس
@@ -40,8 +46,9 @@ axios.interceptors.request.use((config) => {
             controller.abort();
         } catch (e) {}
     };
-    activeRequests.push(cancel);
-    config.cancelTokenTracker = cancel;
+    const requestItem = { cancel, url: config.url };
+    activeRequests.push(requestItem);
+    config.cancelTokenTracker = requestItem;
 
     if (config.method === 'get') {
         const key = config.url + '?' + new URLSearchParams(config.params || {}).toString();
@@ -66,6 +73,12 @@ axios.interceptors.request.use((config) => {
         }
     }
 
+    // Enforce JSON headers so FormRequest works correctly in Laravel
+    config.headers['Accept'] = 'application/json';
+    if (config.data && typeof config.data === 'object') {
+        config.headers['Content-Type'] = 'application/json';
+    }
+
     const token = localStorage.getItem('auth_token');
     if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;
@@ -78,7 +91,10 @@ axios.interceptors.request.use((config) => {
 let isRedirectingToLogin = false; // ✅ منع redirect مكرر
 
 // Custom adapter wrapper to handle promise deduplication for GET requests
-const originalAdapter = axios.defaults.adapter || axios.defaults.adapter;
+const originalAdapter = typeof axios.getAdapter === 'function' 
+    ? axios.getAdapter(axios.defaults.adapter) 
+    : (typeof axios.defaults.adapter === 'function' ? axios.defaults.adapter : null);
+
 axios.defaults.adapter = async (config) => {
     if (config.method === 'get' && !config.adapter) {
         const key = config.url + '?' + new URLSearchParams(config.params || {}).toString();
@@ -87,7 +103,7 @@ axios.defaults.adapter = async (config) => {
             return pendingPromises.get(key);
         }
         
-        const promise = originalAdapter(config).then(response => {
+        const promise = (originalAdapter ? originalAdapter(config) : Promise.reject(new Error('No adapter found'))).then(response => {
             apiCache.set(key, {
                 data: response.data,
                 headers: response.headers,
@@ -108,7 +124,7 @@ axios.defaults.adapter = async (config) => {
     if (config.adapter && config.adapter !== axios.defaults.adapter) {
         return config.adapter(config);
     }
-    return originalAdapter(config);
+    return originalAdapter ? originalAdapter(config) : Promise.reject(new Error('No adapter found'));
 };
 axios.interceptors.response.use(
     (response) => {

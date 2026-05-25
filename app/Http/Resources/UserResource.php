@@ -16,11 +16,11 @@ class UserResource extends JsonResource
             'role' => $this->role,
             'is_active' => $this->is_active,
             'permissions' => $this->getUserPermissions(),
-            'employee' => $this->whenLoaded('employee', fn () => [
+            'employee' => $this->whenLoaded('employee', fn () => $this->employee ? [
                 'id' => $this->employee->id,
                 'salary' => $this->employee->salary,
                 'status' => $this->employee->status,
-            ]),
+            ] : null),
             'created_at' => $this->created_at?->toDateTimeString(),
         ];
     }
