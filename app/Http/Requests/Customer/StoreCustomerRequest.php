@@ -24,6 +24,9 @@ class StoreCustomerRequest extends FormRequest
             'affiliation' => 'nullable|string|max:100',
             'customer_tier' => 'nullable|in:STANDARD,PREMIUM',
             'notes' => 'nullable|string|max:1000',
+            'type' => 'nullable|string|max:50',
+            'whatsapp_number' => 'nullable|string|max:50',
+            'travel_country' => 'nullable|string|max:100',
         ];
     }
 

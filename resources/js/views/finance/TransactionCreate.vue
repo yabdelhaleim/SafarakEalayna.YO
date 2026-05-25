@@ -178,7 +178,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useFinanceStore } from '@/stores/financeStore';
 import {
   ArrowRight,
@@ -191,6 +191,7 @@ import {
 } from 'lucide-vue-next';
 
 const router = useRouter();
+const route = useRoute();
 const store = useFinanceStore();
 
 const form = ref({
@@ -246,14 +247,22 @@ onMounted(async () => {
   await store.fetchSettingsMeta();
   await store.fetchAccounts();
   const types = store.transactionTypes;
-  if (types.length) {
+  
+  if (route.query.type) {
+    form.value.type = route.query.type;
+  } else if (types.length) {
     const has = types.some((t) => t.value === form.value.type);
     if (!has) form.value.type = types[0].value;
   }
+
   const mods = store.transactionModules;
   if (mods.length) {
     const hasM = mods.some((m) => m.value === form.value.module);
     if (!hasM) form.value.module = mods[0].value;
+  }
+
+  if (route.query.account_id) {
+    form.value.account_id = Number(route.query.account_id);
   }
 });
 </script>

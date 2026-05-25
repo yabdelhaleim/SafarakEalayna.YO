@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Employee;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\Employee\EmployeeAttendanceService;
 use App\Http\Resources\Employee\EmployeeAttendanceResource;
@@ -30,11 +31,11 @@ class AttendanceController extends Controller
             ->orderBy('attendance_date', 'desc')
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance records retrieved successfully',
-            'data' => EmployeeAttendanceResource::collection($attendances)->response()->getData(true),
-        ]);
+        return ApiResponse::paginated(
+            'Attendance records retrieved successfully',
+            EmployeeAttendanceResource::collection($attendances),
+            $attendances
+        );
     }
 
     public function store(Request $request): JsonResponse
@@ -50,11 +51,11 @@ class AttendanceController extends Controller
 
         $attendance = $this->attendanceService->recordAttendance($request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance recorded successfully',
-            'data' => new EmployeeAttendanceResource($attendance->load('employee')),
-        ], 201);
+        return ApiResponse::success(
+            'Attendance recorded successfully',
+            new EmployeeAttendanceResource($attendance->load('employee')),
+            201
+        );
     }
 
     public function show(int $id): JsonResponse
@@ -63,11 +64,10 @@ class AttendanceController extends Controller
 
         $this->authorize('view', $attendance);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance record retrieved successfully',
-            'data' => new EmployeeAttendanceResource($attendance),
-        ]);
+        return ApiResponse::success(
+            'Attendance record retrieved successfully',
+            new EmployeeAttendanceResource($attendance)
+        );
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -83,11 +83,10 @@ class AttendanceController extends Controller
 
         $attendance = $this->attendanceService->updateAttendance($attendance, $request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance updated successfully',
-            'data' => new EmployeeAttendanceResource($attendance->load('employee')),
-        ]);
+        return ApiResponse::success(
+            'Attendance updated successfully',
+            new EmployeeAttendanceResource($attendance->load('employee'))
+        );
     }
 
     public function destroy(int $id): JsonResponse
@@ -98,10 +97,9 @@ class AttendanceController extends Controller
 
         $this->attendanceService->deleteAttendance($attendance);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance deleted successfully',
-        ]);
+        return ApiResponse::success(
+            'Attendance deleted successfully'
+        );
     }
 
     public function getEmployeeAttendance(Request $request, int $employeeId): JsonResponse
@@ -119,11 +117,10 @@ class AttendanceController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee attendance retrieved successfully',
-            'data' => EmployeeAttendanceResource::collection($attendances),
-        ]);
+        return ApiResponse::success(
+            'Employee attendance retrieved successfully',
+            EmployeeAttendanceResource::collection($attendances)
+        );
     }
 
     public function getAttendanceSummary(Request $request, int $employeeId): JsonResponse
@@ -141,11 +138,10 @@ class AttendanceController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance summary retrieved successfully',
-            'data' => $summary,
-        ]);
+        return ApiResponse::success(
+            'Attendance summary retrieved successfully',
+            $summary
+        );
     }
 
     public function getDailyAttendance(Request $request): JsonResponse
@@ -158,10 +154,9 @@ class AttendanceController extends Controller
 
         $attendances = $this->attendanceService->getDailyAttendance($request->date);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Daily attendance retrieved successfully',
-            'data' => EmployeeAttendanceResource::collection($attendances),
-        ]);
+        return ApiResponse::success(
+            'Daily attendance retrieved successfully',
+            EmployeeAttendanceResource::collection($attendances)
+        );
     }
 }

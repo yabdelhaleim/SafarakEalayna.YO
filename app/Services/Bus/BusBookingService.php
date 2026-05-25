@@ -216,6 +216,14 @@ class BusBookingService
                     }
                 }
 
+                // ✅ Record sale on customer ledger (Debt)
+                $this->recordSaleToCustomer(
+                    $booking,
+                    (int) $customerId,
+                    $totalPrice,
+                    Auth::id() ?? 1
+                );
+
                 Log::info('Bus booking created', [
                     'booking_id' => $booking->id,
                     'inventory_id' => $inventory->id,
@@ -295,9 +303,11 @@ class BusBookingService
 
                 $transactionId = null;
                 if ($accountId) {
+                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
                     $transaction = $this->transactionService->recordIncome([
                         'amount' => $data['amount'],
                         'to_account_id' => $accountId,
+                        'contra_account_id' => $customerAccount->id,
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
@@ -410,6 +420,24 @@ class BusBookingService
                     }
                 }
 
+                // ✅ Reverse sale to customer
+                $customer = $booking->customer;
+                if ($customer && $customer->account_id) {
+                    $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+                    if ($clearingAccountId) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $booking->total_price,
+                            'from_account_id' => $customer->account_id,
+                            'to_account_id' => $clearingAccountId,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+                            'allow_from_negative' => true,
+                        ]);
+                    }
+                }
+
                 Log::info('Bus booking cancelled', [
                     'booking_id' => $booking->id,
                     'inventory_id' => $inventory->id,
@@ -478,6 +506,45 @@ class BusBookingService
                 $inventory->increment('available_tickets', $booking->quantity);
                 $inventory->save();
 
+                // ✅ Reverse company cost if it was recorded
+                $company = $booking->inventory?->company;
+                if ($company && $company->account_id) {
+                    $costPerTicket = $booking->inventory->cost_per_ticket;
+                    $totalCost = $costPerTicket * $booking->quantity;
+                    $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
+
+                    if ($clearingAccountId && $totalCost > 0) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $totalCost,
+                            'from_account_id' => $clearingAccountId, // Debit clearing (reverse)
+                            'to_account_id' => $company->account_id, // Credit company (reverse/increase balance)
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'إلغاء تكلفة حجز باص #' . $booking->id,
+                            'allow_from_negative' => true,
+                        ]);
+                    }
+                }
+
+                // ✅ Reverse sale to customer
+                $customer = $booking->customer;
+                if ($customer && $customer->account_id) {
+                    $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+                    if ($clearingAccountId) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $booking->total_price,
+                            'from_account_id' => $customer->account_id,
+                            'to_account_id' => $clearingAccountId,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+                            'allow_from_negative' => true,
+                        ]);
+                    }
+                }
+
                 $booking->delete();
 
                 Log::info('Bus booking deleted', [
@@ -498,5 +565,85 @@ class BusBookingService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Ensures the customer has a ledger account. Creates one if missing.
+     */
+    protected function ensureCustomerAccount(int $customerId): \App\Models\Account
+    {
+        $customer = \App\Models\Customer::findOrFail($customerId);
+
+        if ($customer->account_id) {
+            $account = \App\Models\Account::find($customer->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        // Create new account for customer
+        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+            $account = \App\Models\Account::create([
+                'name' => 'حساب العميل: ' . $customer->full_name,
+                'type' => \App\Enums\AccountType::Customer,
+                'balance' => 0,
+                'currency' => 'EGP',
+                'is_active' => true,
+                'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                'module_type' => 'tourism',
+                'is_module_vault' => false,
+                'notes' => 'حساب تلقائي للعميل #' . $customer->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            $customer->update(['account_id' => $account->id]);
+
+            Log::info('Customer ledger account created automatically (Bus module)', [
+                'customer_id' => $customer->id,
+                'account_id' => $account->id,
+            ]);
+
+            return $account;
+        }));
+    }
+
+    /**
+     * Record the sale as a debt on the customer ledger.
+     */
+    protected function recordSaleToCustomer(BusBooking $booking, int $customerId, float $sellingPrice, int $userId): void
+    {
+        $customerAccount = $this->ensureCustomerAccount($customerId);
+        $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+
+        if ($clearingAccountId === null) {
+            Log::warning('No bus clearing account configured for income. Skipping sale journal.');
+            return;
+        }
+
+        if ($clearingAccountId === $customerAccount->id) {
+            return;
+        }
+
+        $tx = $this->transactionService->recordJournalTransfer([
+            'amount' => $sellingPrice,
+            'from_account_id' => $clearingAccountId,
+            'to_account_id' => $customerAccount->id,
+            'allow_from_negative' => true,
+            'module' => TransactionModule::Bus->value,
+            'related_type' => BusBooking::class,
+            'related_id' => $booking->id,
+            'notes' => 'حجز باص (مديونية) — حجز #' . $booking->id,
+            'created_by' => $userId,
+        ]);
+
+        // Optional: save $tx->id to a field like sale_gl_transaction_id if it exists, 
+        // but since BusBooking doesn't have it by default, we just record it.
+
+        Log::info('Bus sale recorded on customer ledger', [
+            'booking_id' => $booking->id,
+            'customer_id' => $customerId,
+            'account_id' => $customerAccount->id,
+            'amount' => $sellingPrice
+        ]);
     }
 }

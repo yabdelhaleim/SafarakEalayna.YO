@@ -271,6 +271,13 @@ export const useFlightStore = defineStore('flight', {
             }
           : null,
         flightCarrier: b.flight_carrier || null,
+        flightGroup: b.flight_group
+          ? {
+              id: b.flight_group.id,
+              name: b.flight_group.name,
+              code: b.flight_group.code,
+            }
+          : null,
         airlineName: b.airline_name || '',
         tripDetails: b.trip_details || '',
         notes: b.notes || '',
@@ -290,7 +297,7 @@ export const useFlightStore = defineStore('flight', {
       try {
         const response = await axios.get(`/api/v1/flight/bookings/${id}`);
 
-        if (!response.data?.status) {
+        if (!response.data?.success && !response.data?.status) {
           throw new Error('Invalid API response structure');
         }
 
@@ -560,6 +567,18 @@ export const useFlightStore = defineStore('flight', {
         payload.purchase_price ??
         0;
 
+      const bookingSource = payload.booking_source || 'direct';
+      let bookingChannelType = 'SIGN';
+      let purchaseBalanceSource = 'carrier';
+
+      if (bookingSource === 'group') {
+        bookingChannelType = 'GROUP';
+        purchaseBalanceSource = 'group';
+      } else if (bookingSource === 'system') {
+        bookingChannelType = 'SYSTEM';
+        purchaseBalanceSource = 'system';
+      }
+
       const data = {
         customer_id: payload.customer?.id || payload.customerId || payload.customer_id,
         system_type: payload.systemType || payload.system_type || 'manual',
@@ -586,7 +605,8 @@ export const useFlightStore = defineStore('flight', {
         flight_system_id: payload.flight_system_id || payload.flightSystemId || null,
         flight_carrier_id: payload.flight_carrier_id || payload.flightCarrierId || null,
         flight_group_id: payload.flight_group_id || payload.flightGroupId || null,
-        purchase_balance_source: payload.purchase_balance_source || payload.purchaseBalanceSource || null,
+        purchase_balance_source: purchaseBalanceSource,
+        booking_channel_type: bookingChannelType,
         pnr: payload.pnr || null,
         employee_id: payload.employee_id || payload.employeeId || null,
         baggage_allowance_kg: payload.baggage_allowance_kg ?? payload.baggageAllowanceKg ?? null,
@@ -824,6 +844,22 @@ export const useFlightStore = defineStore('flight', {
       this.loading.groups = true;
       try {
         const response = await axios.get(`/api/v1/flight/carriers/${carrierId}/groups`);
+        this.groups = response.data?.data || [];
+        return this.groups;
+      } catch (error) {
+        console.error('Failed to fetch groups', error);
+        this.errors.groups = 'فشل تحميل المجموعات';
+        this.groups = [];
+        return [];
+      } finally {
+        this.loading.groups = false;
+      }
+    },
+
+    async fetchGroups() {
+      this.loading.groups = true;
+      try {
+        const response = await axios.get('/api/v1/flight/groups');
         this.groups = response.data?.data || [];
         return this.groups;
       } catch (error) {

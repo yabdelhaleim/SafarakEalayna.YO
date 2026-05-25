@@ -93,9 +93,13 @@ export const useOnlineStore = defineStore('online', {
      * MASTER DATA — comes from Filament; never hardcode in Vue
      * =========================================================== */
     async fetchAllSettings() {
+      if (this.loading.settings) return;
       this.loading.settings = true;
+      const controller = new AbortController();
       try {
-        const response = await axios.get('/api/v1/online/settings/all');
+        const response = await axios.get('/api/v1/online/settings/all', {
+          signal: controller.signal,
+        });
         const data = ENVELOPE(response) ?? {};
         this.serviceTypes = (data.service_types ?? []).map(this.normalizeMaster);
         this.providers = (data.providers ?? []).map(this.normalizeMaster);
@@ -103,6 +107,7 @@ export const useOnlineStore = defineStore('online', {
         this.accounts = data.accounts ?? [];
         this.statuses = data.statuses ?? [];
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('fetchAllSettings failed', error);
         this.addToast('فشل تحميل إعدادات الخدمات الأونلاين', 'error');
       } finally {
@@ -280,13 +285,18 @@ export const useOnlineStore = defineStore('online', {
      * TRANSACTIONS — full CRUD against /transactions
      * =========================================================== */
     async fetchTransactions(params = {}) {
+      if (this.loading.transactions) return;
       this.loading.transactions = true;
+      const controller = new AbortController();
       try {
         const merged = { ...this.filters, ...params };
         Object.keys(merged).forEach((k) => {
           if (merged[k] === '' || merged[k] === null) delete merged[k];
         });
-        const response = await axios.get('/api/v1/online/transactions', { params: merged });
+        const response = await axios.get('/api/v1/online/transactions', {
+          params: merged,
+          signal: controller.signal,
+        });
         const payload = ENVELOPE(response) ?? {};
         this.transactions = payload.items ?? [];
         this.pagination = {
@@ -296,6 +306,7 @@ export const useOnlineStore = defineStore('online', {
           per_page: payload.pagination?.per_page ?? 15,
         };
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('fetchTransactions failed', error);
         this.transactions = [];
       } finally {

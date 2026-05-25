@@ -64,7 +64,7 @@ export const useEmployeeStore = defineStore('employee', {
   getters: {
     // Filtered employees
     filteredEmployees: (state) => {
-      let filtered = [...state.employees];
+      let filtered = Array.isArray(state.employees) ? [...state.employees] : [];
 
       if (state.filters.search) {
         const query = state.filters.search.toLowerCase();
@@ -95,18 +95,21 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Active employees
     activeEmployees: (state) => {
-      return state.employees.filter((e) => e.is_active);
+      const employees = Array.isArray(state.employees) ? state.employees : [];
+      return employees.filter((e) => e.is_active);
     },
 
     // Employees on leave
     employeesOnLeave: (state) => {
-      return state.employees.filter((e) => e.status === 'on_leave');
+      const employees = Array.isArray(state.employees) ? state.employees : [];
+      return employees.filter((e) => e.status === 'on_leave');
     },
 
     // Present today
     presentToday: (state) => {
       const today = new Date().toDateString();
-      return state.attendance.filter((a) =>
+      const attendance = Array.isArray(state.attendance) ? state.attendance : [];
+      return attendance.filter((a) =>
         new Date(a.date).toDateString() === today && a.present
       );
     },
@@ -114,8 +117,10 @@ export const useEmployeeStore = defineStore('employee', {
     // Absent today
     absentToday: (state) => {
       const today = new Date().toDateString();
-      return state.employees.filter((e) => {
-        const attendance = state.attendance.find((a) =>
+      const employees = Array.isArray(state.employees) ? state.employees : [];
+      const attendanceList = Array.isArray(state.attendance) ? state.attendance : [];
+      return employees.filter((e) => {
+        const attendance = attendanceList.find((a) =>
           a.employee_id === e.id && new Date(a.date).toDateString() === today
         );
         return !attendance || !attendance.present;
@@ -125,8 +130,16 @@ export const useEmployeeStore = defineStore('employee', {
 
   actions: {
     async fetchEmployeeReferenceData() {
+      if (this.fetchReferenceDataController) {
+        this.fetchReferenceDataController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchReferenceDataController = controller;
+
       try {
-        const response = await axios.get('/api/v1/employee/employees/reference-data');
+        const response = await axios.get('/api/v1/employee/employees/reference-data', {
+          signal: controller.signal
+        });
         const data = response.data?.data || {};
         this.departmentsList = data.departments || [];
         const rawStatuses = data.employment_statuses || [];
@@ -140,6 +153,9 @@ export const useEmployeeStore = defineStore('employee', {
                 : 'error',
         }));
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch employee reference data:', error);
         this.departmentsList = [];
         this.employmentStatusesList = [];
@@ -148,29 +164,43 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Fetch Employees
     async fetchEmployees(params = {}) {
+      if (this.fetchEmployeesController) {
+        this.fetchEmployeesController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchEmployeesController = controller;
+
       this.loading.employees = true;
       this.errors = {};
+      this.employees = []; // Reset before fetching
 
       try {
         const response = await axios.get('/api/v1/employee/employees', {
           params,
+          signal: controller.signal
         });
         const data = response.data?.data || response.data;
         this.employees = data.items || (Array.isArray(data) ? data : []);
         await this.fetchEmployeeReferenceData();
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch employees:', error);
         this.errors = {
           fetch: error.response?.data?.message || 'Failed to load employees',
         };
         this.employees = [];
       } finally {
-        this.loading.employees = false;
+        if (this.fetchEmployeesController === controller) {
+          this.loading.employees = false;
+        }
       }
     },
 
     // Create Employee
     async createEmployee(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -192,6 +222,7 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Update Employee
     async updateEmployee(id, payload) {
+      if (this.loading.update) return;
       this.loading.update = true;
       this.errors = {};
 
@@ -215,6 +246,7 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Delete Employee
     async deleteEmployee(id) {
+      if (this.loading.delete) return;
       this.loading.delete = true;
       this.errors = {};
 
@@ -233,28 +265,42 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Fetch Attendance
     async fetchAttendance(params = {}) {
+      if (this.fetchAttendanceController) {
+        this.fetchAttendanceController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchAttendanceController = controller;
+
       this.loading.attendance = true;
       this.errors = {};
+      this.attendance = []; // Reset before fetching
 
       try {
         const response = await axios.get('/api/v1/employee/attendances', {
           params,
+          signal: controller.signal
         });
         const data = response.data?.data || response.data;
         this.attendance = data.items || (Array.isArray(data) ? data : []);
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch attendance:', error);
         this.errors = {
           fetch: error.response?.data?.message || 'Failed to load attendance',
         };
         this.attendance = [];
       } finally {
-        this.loading.attendance = false;
+        if (this.fetchAttendanceController === controller) {
+          this.loading.attendance = false;
+        }
       }
     },
 
     // Mark Attendance
     async markAttendance(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -276,6 +322,7 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Add Bonus
     async addBonus(employeeId, payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -297,6 +344,7 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Add Deduction
     async addDeduction(employeeId, payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -320,13 +368,13 @@ export const useEmployeeStore = defineStore('employee', {
     async fetchStats() {
       try {
         const stats = {
-          total_employees: this.employees.length,
-          active_employees: this.employees.filter((e) => e.is_active).length,
+          total_employees: Array.isArray(this.employees) ? this.employees.length : 0,
+          active_employees: Array.isArray(this.employees) ? this.employees.filter((e) => e.is_active).length : 0,
           present_today: this.presentToday.length,
           absent_today: this.absentToday.length,
-          total_bonuses: this.bonuses.reduce((sum, b) => sum + (b.amount || 0), 0),
-          total_deductions: this.deductions.reduce((sum, d) => sum + (d.amount || 0), 0),
-          net_payroll: this.employees.reduce((sum, e) => sum + (e.salary || 0), 0),
+          total_bonuses: Array.isArray(this.bonuses) ? this.bonuses.reduce((sum, b) => sum + (b.amount || 0), 0) : 0,
+          total_deductions: Array.isArray(this.deductions) ? this.deductions.reduce((sum, d) => sum + (d.amount || 0), 0) : 0,
+          net_payroll: Array.isArray(this.employees) ? this.employees.reduce((sum, e) => sum + (e.salary || 0), 0) : 0,
         };
         this.stats = stats;
       } catch (error) {
@@ -364,6 +412,49 @@ export const useEmployeeStore = defineStore('employee', {
       if (window.addToast) {
         window.addToast(message, type);
       }
+    },
+
+    reset() {
+      this.employees = [];
+      this.currentEmployee = null;
+      this.attendance = [];
+      this.bonuses = [];
+      this.deductions = [];
+      this.stats = {
+        total_employees: 0,
+        active_employees: 0,
+        present_today: 0,
+        absent_today: 0,
+        total_bonuses: 0,
+        total_deductions: 0,
+        net_payroll: 0,
+      };
+      this.loading = {
+        employees: false,
+        attendance: false,
+        bonuses: false,
+        create: false,
+        update: false,
+        delete: false,
+      };
+      this.errors = {};
+      this.filters = {
+        search: '',
+        department: '',
+        status: '',
+        date_from: '',
+        date_to: '',
+        page: 1,
+        per_page: 15,
+      };
+      this.pagination = {
+        total: 0,
+        current_page: 1,
+        last_page: 1,
+        per_page: 15,
+      };
+      this.departmentsList = [];
+      this.employmentStatusesList = [];
     },
   },
 });

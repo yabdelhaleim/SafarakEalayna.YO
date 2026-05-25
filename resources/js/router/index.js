@@ -75,6 +75,12 @@ const routes = [
         component: () => import('@/views/flights/FlightCreate.vue'),
       },
       {
+        path: 'customers',
+        name: 'flights.customers',
+        component: () => import('@/views/flights/FlightCustomersIndex.vue'),
+        meta: { title: 'عملاء الطيران' },
+      },
+      {
         path: 'treasury',
         name: 'flights.treasury',
         component: () => import('@/views/flights/FlightTreasuryOverview.vue'),
@@ -262,6 +268,12 @@ const routes = [
         meta: { title: 'شركات الباصات' },
       },
       {
+        path: 'customers',
+        name: 'bus.customers',
+        component: () => import('@/views/bus/BusCustomerIndex.vue'),
+        meta: { title: 'عملاء الباصات' },
+      },
+      {
         path: 'companies/:id/statement',
         name: 'bus.companies.statement',
         component: () => import('@/views/bus/BusCompanyStatement.vue'),
@@ -415,7 +427,11 @@ const routes = [
     ],
   },
 
-  // Treasury
+  // Treasury redirect fallback
+  {
+    path: '/treasury',
+    redirect: '/finance/treasury'
+  },
 
 
 
@@ -450,6 +466,13 @@ const routes = [
         name: 'employees.show',
         component: () => import('@/views/employees/EmployeeShow.vue'),
         props: true,
+      },
+      {
+        path: ':id/edit',
+        name: 'employees.edit',
+        component: () => import('@/views/employees/EmployeeEdit.vue'),
+        props: true,
+        meta: { title: 'تعديل بيانات الموظف' },
       },
     ],
   },
@@ -498,6 +521,72 @@ const routes = [
         component: () => import('@/views/finance/TransfersIndex.vue'),
         meta: { title: 'التحويلات المالية' },
       },
+      {
+        path: 'transfers/create',
+        name: 'finance.transfers.create',
+        component: () => import('@/views/finance/TransferCreate.vue'),
+        meta: { title: 'تحويل أموال' },
+      },
+      {
+        path: 'transfers/history',
+        name: 'finance.transfers.history',
+        component: () => import('@/views/finance/TransferHistory.vue'),
+        meta: { title: 'سجل التحويلات' },
+      },
+      {
+        path: 'transactions/create',
+        name: 'finance.transactions.create',
+        component: () => import('@/views/finance/TransactionCreate.vue'),
+        meta: { title: 'معاملة مالية جديدة' },
+      },
+      {
+        path: 'transactions/:id',
+        name: 'finance.transactions.show',
+        component: () => import('@/views/finance/TransactionShow.vue'),
+        meta: { title: 'تفاصيل المعاملة' },
+      },
+      {
+        path: 'account-statement/:id?',
+        name: 'finance.accounts.statement.detail',
+        component: () => import('@/views/finance/AccountStatement.vue'),
+        meta: { title: 'كشف حساب تفصيلي' },
+      },
+      {
+        path: 'invoices',
+        name: 'finance.invoices',
+        component: () => import('@/views/finance/InvoicesIndex.vue'),
+        meta: { title: 'الفواتير' },
+      },
+      {
+        path: 'profit-loss',
+        name: 'finance.profit-loss',
+        component: () => import('@/views/finance/ProfitLoss.vue'),
+        meta: { title: 'بيان الأرباح والخسائر' },
+      },
+      {
+        path: 'department/tourism',
+        name: 'finance.department.tourism',
+        component: () => import('@/views/finance/TourismManagement.vue'),
+        meta: { title: 'المركز المالي للسياحة' },
+      },
+      {
+        path: 'department/office',
+        name: 'finance.department.office',
+        component: () => import('@/views/finance/OfficeManagement.vue'),
+        meta: { title: 'المركز المالي للمكتب' },
+      },
+      {
+        path: 'operations/tourism',
+        name: 'finance.operations.tourism',
+        component: () => import('@/views/finance/TourismOperations.vue'),
+        meta: { title: 'دفتر قيود السياحة' },
+      },
+      {
+        path: 'operations/office',
+        name: 'finance.operations.office',
+        component: () => import('@/views/finance/OfficeOperations.vue'),
+        meta: { title: 'دفتر قيود المكتب' },
+      },
     ],
   },
 
@@ -527,6 +616,11 @@ const routes = [
         path: '',
         name: 'reports.list',
         component: () => import('@/views/reports/ReportsIndex.vue'),
+      },
+      {
+        path: 'debts',
+        name: 'reports.debts',
+        component: () => import('@/views/reports/DebtsIndex.vue'),
       },
     ],
   },
@@ -561,6 +655,9 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to, from) => {
+  if (typeof window.cancelPendingRequests === 'function') {
+    window.cancelPendingRequests();
+  }
   const authStore = useAuthStore();
   const initialToken = localStorage.getItem('auth_token');
 
@@ -599,7 +696,7 @@ router.beforeEach(async (to, from) => {
 
   // Update page title
   if (to.meta.title) {
-    document.title = `${to.meta.title} | سفارك إلينا`;
+    document.title = `${to.meta.title} | سفرك علينا`;
   }
 
   // Return true to continue navigation

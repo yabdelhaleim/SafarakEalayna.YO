@@ -13,7 +13,6 @@ class ApiResponse
         int $statusCode = 200
     ): JsonResponse {
         return response()->json([
-            'status' => true,
             'success' => true,
             'message' => $message,
             'data' => $data,
@@ -37,7 +36,6 @@ class ApiResponse
         }
 
         return response()->json([
-            'status' => false,
             'success' => false,
             'message' => $message,
             'data' => null,
@@ -51,7 +49,6 @@ class ApiResponse
         LengthAwarePaginator $paginator
     ): JsonResponse {
         return response()->json([
-            'status' => true,
             'success' => true,
             'message' => $message,
             'data' => [

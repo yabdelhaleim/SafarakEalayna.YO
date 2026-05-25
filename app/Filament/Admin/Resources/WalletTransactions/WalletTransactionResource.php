@@ -97,8 +97,7 @@ class WalletTransactionResource extends Resource
                             ->getOptionLabelFromRecordUsing(fn (Customer $record): string => filled($record->full_name)
                                 ? $record->full_name
                                 : (filled($record->phone) ? 'عميل — '.$record->phone : 'عميل #'.$record->getKey()))
-                            ->searchable()
-                            ->preload()
+                            ->searchable(['full_name', 'phone'])
                             ->nullable()
                             ->live()
                             ->afterStateUpdated(function ($state, Set $set): void {
@@ -191,8 +190,7 @@ class WalletTransactionResource extends Resource
                                     ? $record->user->name
                                     : 'موظف #'.$record->getKey();
                             })
-                            ->searchable()
-                            ->preload()
+                            ->searchable(['full_name'])
                             ->nullable(),
 
                         Textarea::make('notes')

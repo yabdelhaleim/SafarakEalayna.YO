@@ -141,8 +141,9 @@ class BusRefundService
                     'currency' => $refundRequest->refund_currency,
                     'balance_before' => $treasury->current_balance - $refundRequest->refund_amount,
                     'balance_after' => $treasury->current_balance,
+                    'agent_name' => $booking?->customer?->full_name ?? 'System',
                     'reason' => 'استرجاع حجز باص',
-                    'bus_booking_id' => $booking->id, // We should ensure this field exists in treasury_transactions
+                    'bus_booking_id' => $booking->id,
                     'type' => 'credit',
                     'exchange_rate' => $refundRequest->refund_exchange_rate,
                     'base_amount' => $refundRequest->base_currency_refund,

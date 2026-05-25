@@ -11,7 +11,7 @@
             'edit',
             ['record' => $account],
         ),
-        AccountType::Wallet => \App\Filament\Admin\Resources\WalletAccounts\WalletAccountResource::getUrl(
+        AccountType::Wallet => \App\Filament\Admin\Resources\FlightWallets\FlightWalletResource::getUrl(
             'edit',
             ['record' => $account],
         ),

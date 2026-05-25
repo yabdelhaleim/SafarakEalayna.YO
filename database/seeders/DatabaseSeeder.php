@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             // ServiceSeeder::class, // tables were dropped in 2026_05_06 migration
             OnlineSeeder::class,
             BonusSeeder::class,
+            ProgramSeeder::class,
         ]);
 
         $this->command->info('═══════════════════════════════════════');

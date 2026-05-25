@@ -12,14 +12,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement("ALTER TABLE accounts MODIFY COLUMN module_type VARCHAR(50) NOT NULL DEFAULT 'tourism'");
+        Schema::table('accounts', function (Blueprint $table) {
+            $table->string('module_type', 50)->default('tourism')->change();
+        });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        DB::statement("ALTER TABLE accounts MODIFY COLUMN module_type ENUM('tourism', 'office') NOT NULL DEFAULT 'tourism'");
+        Schema::table('accounts', function (Blueprint $table) {
+            $table->string('module_type', 50)->default('tourism')->change();
+        });
     }
 };

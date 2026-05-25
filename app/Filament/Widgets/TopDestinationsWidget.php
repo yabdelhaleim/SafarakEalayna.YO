@@ -10,6 +10,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 class TopDestinationsWidget extends BaseWidget
 {
     protected static ?int $sort = 4;
+    protected static bool $isLazy = true;
     protected static ?string $heading = 'الرحلات النشطة وتوفر المقاعد';
 
     public function table(Table $table): Table

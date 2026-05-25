@@ -75,7 +75,7 @@ class UpdateFlightBookingRequest extends FormRequest
             'flight_system_id' => 'sometimes|nullable|integer|exists:flight_systems,id',
             'flight_carrier_id' => 'sometimes|nullable|integer|exists:flight_carriers,id',
             'flight_group_id' => 'sometimes|nullable|integer|exists:flight_groups,id',
-            'purchase_balance_source' => 'sometimes|nullable|string|in:carrier,system',
+            'purchase_balance_source' => 'sometimes|nullable|string|in:carrier,system,group',
             'baggage_allowance_kg' => 'sometimes|nullable|numeric|min:0',
             'notes' => 'sometimes|nullable|string|max:1000',
             'agent_name' => 'sometimes|nullable|string|max:150',

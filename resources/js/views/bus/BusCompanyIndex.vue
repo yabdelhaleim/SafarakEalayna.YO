@@ -1,4 +1,4 @@
-<template>
+  <template>
   <div class="space-y-8 animate-in fade-in duration-700 pb-16">
     <!-- Header -->
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -279,7 +279,8 @@ const activeCompanies = computed(() => {
 
 const loadAccounts = async () => {
     try {
-        const res = await axios.get('/api/v1/accounts?per_page=100');
+        const res =await axios.get('/api/v1/finance/accounts', { params: { per_page: 100 } })
+
         accounts.value = res.data?.data?.items || res.data?.data || [];
         // For payments, usually we use accounts with module_type 'bus' or general treasury
         treasuryAccounts.value = accounts.value.filter(a => ['cashbox', 'bank', 'wallet', 'treasury'].includes(String(a.type?.value || a.type).toLowerCase()));

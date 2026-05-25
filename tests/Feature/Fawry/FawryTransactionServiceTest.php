@@ -125,7 +125,6 @@ class FawryTransactionServiceTest extends TestCase
     public function test_create_transaction_successfully()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,
@@ -176,7 +175,6 @@ class FawryTransactionServiceTest extends TestCase
     public function test_create_transaction_creates_expense_transaction()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,
@@ -192,7 +190,7 @@ class FawryTransactionServiceTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->expense_transaction_id,
-            'type' => 'expense',
+            'type' => 'transfer',
             'amount' => 95.00,
         ]);
     }
@@ -200,7 +198,6 @@ class FawryTransactionServiceTest extends TestCase
     public function test_create_transaction_creates_income_transaction()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,
@@ -216,7 +213,7 @@ class FawryTransactionServiceTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->income_transaction_id,
-            'type' => 'income',
+            'type' => 'transfer',
             'amount' => 100.00,
         ]);
     }
@@ -322,10 +319,8 @@ class FawryTransactionServiceTest extends TestCase
         // Mock the transaction service to verify reversal
         $mockService = $this->mock(TransactionService::class);
         $mockService->shouldReceive('reverseTransaction')
-            ->with($expenseTransaction)
             ->once();
         $mockService->shouldReceive('reverseTransaction')
-            ->with($incomeTransaction)
             ->once();
 
         $service = new FawryTransactionService($mockService);

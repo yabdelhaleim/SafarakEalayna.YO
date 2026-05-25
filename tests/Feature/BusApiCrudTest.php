@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\Employee;
 use App\Models\User;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -50,7 +51,7 @@ class BusApiCrudTest extends TestCase
             'is_active' => true,
         ]);
         $createCompany->assertCreated()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Bus company created successfully.')
             ->assertJsonStructure(['data' => ['id', 'name', 'phone']]);
         $companyId = (int) $createCompany->json('data.id');
@@ -58,7 +59,7 @@ class BusApiCrudTest extends TestCase
         // --- Company: index (paginated)
         $indexCompanies = $this->getJson('/api/v1/bus/companies?per_page=5');
         $indexCompanies->assertOk()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonStructure([
                 'data' => [
                     'items',
@@ -93,13 +94,13 @@ class BusApiCrudTest extends TestCase
             'notes' => 'رحلة تجريبية',
         ]);
         $createInv->assertCreated()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonStructure(['data' => ['id', 'route', 'selling_price', 'payment_type']]);
         $inventoryId = (int) $createInv->json('data.id');
 
         // --- Inventory: index
         $indexInv = $this->getJson("/api/v1/bus/inventories?company_id={$companyId}");
-        $indexInv->assertOk()->assertJsonPath('status', true);
+        $indexInv->assertOk()->assertJsonPath('success', true);
 
         // --- Inventory: show
         $showInv = $this->getJson("/api/v1/bus/inventories/{$inventoryId}");
@@ -121,13 +122,13 @@ class BusApiCrudTest extends TestCase
             'quantity' => 2,
         ]);
         $createBooking->assertCreated()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonStructure(['data' => ['id', 'quantity', 'total_price']]);
         $bookingId = (int) $createBooking->json('data.id');
 
         // --- Booking: index
         $indexBookings = $this->getJson('/api/v1/bus/bookings?inventory_id='.$inventoryId);
-        $indexBookings->assertOk()->assertJsonPath('status', true);
+        $indexBookings->assertOk()->assertJsonPath('success', true);
 
         // --- Booking: show
         $showBooking = $this->getJson("/api/v1/bus/bookings/{$bookingId}");
@@ -136,18 +137,18 @@ class BusApiCrudTest extends TestCase
         // --- Booking: destroy (pending only)
         $delBooking = $this->deleteJson("/api/v1/bus/bookings/{$bookingId}");
         $delBooking->assertOk()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Booking deleted successfully.');
 
         // --- Inventory: destroy (no bookings)
         $delInv = $this->deleteJson("/api/v1/bus/inventories/{$inventoryId}");
         $delInv->assertOk()
-            ->assertJsonPath('status', true);
+            ->assertJsonPath('success', true);
 
         // --- Company: destroy
         $delCompany = $this->deleteJson("/api/v1/bus/companies/{$companyId}");
         $delCompany->assertOk()
-            ->assertJsonPath('status', true)
+            ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Bus company deleted successfully.');
     }
 
@@ -183,9 +184,11 @@ class BusApiCrudTest extends TestCase
             'account_id' => $account->id,
         ]);
         $fail->assertStatus(422)
-            ->assertJsonPath('status', false);
+            ->assertJsonPath('success', false);
 
-        $account->update(['balance' => 10_000]);
+        LedgerBalanceMutationGuard::run(function () use ($account) {
+            $account->update(['balance' => 10_000]);
+        });
 
         $ok = $this->postJson('/api/v1/bus/inventories', [
             'company_id' => $companyId,
@@ -197,7 +200,7 @@ class BusApiCrudTest extends TestCase
             'payment_type' => 'cash',
             'account_id' => $account->id,
         ]);
-        $ok->assertCreated()->assertJsonPath('status', true);
+        $ok->assertCreated()->assertJsonPath('success', true);
 
         $inventoryId = (int) $ok->json('data.id');
         $this->deleteJson("/api/v1/bus/inventories/{$inventoryId}")->assertOk();

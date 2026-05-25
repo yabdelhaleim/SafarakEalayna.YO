@@ -95,9 +95,14 @@ export const useVisaStore = defineStore('visa', {
     },
 
     async fetchBookings(filters = {}) {
+      if (this.loading.list) return;
       this.loading.list = true;
+      const controller = new AbortController();
       try {
-        const { data } = await axios.get('/api/v1/visa/bookings', { params: filters });
+        const { data } = await axios.get('/api/v1/visa/bookings', {
+          params: filters,
+          signal: controller.signal,
+        });
         const items = (data?.data?.items ?? []).map((b) => this._enrich(b));
         this.bookings = items;
         const p = data?.data?.pagination ?? {};
@@ -108,6 +113,7 @@ export const useVisaStore = defineStore('visa', {
           perPage: p.per_page ?? 15,
         };
       } catch (e) {
+        if (axios.isCancel(e)) return;
         console.error('fetchBookings visa failed', e);
         this.errors = { fetch: 'فشل تحميل طلبات التأشيرة' };
         this.bookings = [];

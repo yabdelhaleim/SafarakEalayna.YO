@@ -183,7 +183,10 @@
     <!-- ==================== PILLAR 1: TOURISM ==================== -->
     <template v-if="activeTab === 'tourism'">
       <!-- Total Aggregate KPI overview for Tourism -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <KPICardSkeleton v-for="i in 3" :key="`t-kpi-${i}`" />
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/20 rounded-2xl p-5 relative overflow-hidden">
           <div class="absolute -left-4 -bottom-4 text-amber-500/5 text-7xl font-black select-none">✈️</div>
           <div class="text-xs font-bold text-amber-400 mb-1">إجمالي إيرادات قطاع السياحة</div>
@@ -232,7 +235,20 @@
           </div>
         </div>
 
-        <!-- Carrier balances cards -->
+        <div v-if="isLoading()" class="space-y-6">
+          <GridSkeleton :count="4" itemHeight="100px" />
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
+            <div class="lg:col-span-2">
+              <ChartSkeleton height="250px" />
+            </div>
+            <div class="space-y-4">
+              <TextLineSkeleton :lines="4" />
+              <TextLineSkeleton :lines="4" />
+            </div>
+          </div>
+        </div>
+        <template v-else>
+          <!-- Carrier balances cards -->
         <div v-if="carrierBalanceCards.length" class="space-y-3">
           <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">أرصدة أنظمة وشركات الطيران (B2B)</h4>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -311,6 +327,7 @@
             </div>
           </div>
         </div>
+        </template>
       </div>
 
       <!-- Subdivision: Hajj & Umra module summary block -->
@@ -325,7 +342,10 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div v-if="isLoading()" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KPICardSkeleton v-for="i in 3" :key="`h-kpi-${i}`" />
+        </div>
+        <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
             <div class="text-xs text-gray-400">إجمالي مبيعات البرامج</div>
             <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(tourismSummary.hajj.revenue) }}</div>
@@ -345,7 +365,10 @@
     <!-- ==================== PILLAR 2: OFFICE ==================== -->
     <template v-if="activeTab === 'office'">
       <!-- Total Aggregate KPI overview for Office -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <KPICardSkeleton v-for="i in 3" :key="`o-kpi-${i}`" />
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-sky-500/20 rounded-2xl p-5 relative overflow-hidden">
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">🏢</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي إيرادات حسابات المكتب</div>
@@ -389,7 +412,16 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div v-if="isLoading()" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <ChartSkeleton height="250px" />
+          </div>
+          <div class="space-y-4">
+            <TextLineSkeleton :lines="4" />
+            <TextLineSkeleton :lines="2" />
+          </div>
+        </div>
+        <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Bus Chart -->
           <div class="lg:col-span-2 bg-white/5 border border-white/5 rounded-2xl p-5">
             <h4 class="text-sm font-bold text-white mb-4">نشاط حجز الباص اليومي</h4>
@@ -434,7 +466,10 @@
       </div>
 
       <!-- Fawry & Online modules parallel preview -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <GridSkeleton :count="2" itemHeight="200px" />
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Fawry -->
         <div class="bg-card-bg border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
           <div>
@@ -506,7 +541,14 @@
         </div>
 
         <!-- Progress Distribution Bar -->
-        <div class="space-y-2">
+        <template v-if="isLoading()">
+          <TextLineSkeleton :lines="2" heightClass="h-4" gapClass="gap-4" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+            <KPICardSkeleton v-for="i in 3" :key="`tr-kpi-${i}`" />
+          </div>
+        </template>
+        <template v-else>
+          <div class="space-y-2">
           <div class="flex justify-between text-xs font-bold text-gray-300">
             <span>إجمالي المركز المالي للأرصدة:</span>
             <span class="text-emerald-400 font-mono text-base">{{ formatCurrency(treasurySummary.total) }}</span>
@@ -550,10 +592,19 @@
             <div class="text-[10px] text-purple-400 mt-1 font-bold">{{ treasurySummary.total > 0 ? ((treasurySummary.wallet / treasurySummary.total) * 100).toFixed(1) : 0 }}% من السيولة</div>
           </div>
         </div>
+        </template>
       </div>
 
       <!-- Financial flow and client overview -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div v-if="isLoading()" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2">
+          <GridSkeleton :count="2" itemHeight="150px" />
+        </div>
+        <div>
+          <TextLineSkeleton :lines="6" heightClass="h-10" />
+        </div>
+      </div>
+      <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Income vs expense stats -->
         <div class="lg:col-span-2 bg-card-bg border border-white/10 rounded-3xl p-6 space-y-4">
           <h4 class="text-base font-bold text-white flex items-center gap-2">
@@ -613,8 +664,12 @@
         <Clock class="w-4 h-4 text-amber-400" />
         سجل أحدث الحركات العامة بالنظام
       </h3>
-      <div v-if="!recentActivity.length" class="text-xs text-gray-500 py-3 text-center">لا توجد حركات مسجلة مؤخراً</div>
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div v-if="isLoading()">
+        <TableSkeleton :rows="3" :columns="2" />
+      </div>
+      <template v-else>
+        <div v-if="!recentActivity.length" class="text-xs text-gray-500 py-3 text-center">لا توجد حركات مسجلة مؤخراً</div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div
           v-for="(act, idx) in recentActivity.slice(0, 6)"
           :key="idx"
@@ -627,8 +682,9 @@
             <div class="text-xs text-white font-medium truncate">{{ act.description }}</div>
             <div class="text-[10px] text-gray-500 mt-0.5">{{ act.time }}</div>
           </div>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
 
   </div>
@@ -638,6 +694,13 @@
 import { ref, computed, onMounted } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
 import axios from 'axios';
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TableSkeleton from '@/components/skeletons/TableSkeleton.vue';
+import ChartSkeleton from '@/components/skeletons/ChartSkeleton.vue';
+import GridSkeleton from '@/components/skeletons/GridSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
+
 import {
   RefreshCw,
   Download,
@@ -654,7 +717,8 @@ import {
 } from 'lucide-vue-next';
 
 const flightStore = useFlightStore();
-const isRefreshing = ref(false);
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
+const isRefreshing = computed(() => isLoading());
 
 // Active layout view mapping: 'tourism' | 'office' | 'treasury'
 const activeTab = ref('tourism');
@@ -732,14 +796,7 @@ const formatCompactNumber = (amount) => {
 };
 
 const refreshData = async () => {
-  isRefreshing.value = true;
-  try {
-    await fetchDashboardData();
-  } catch (error) {
-    console.error('Failed to refresh:', error);
-  } finally {
-    isRefreshing.value = false;
-  }
+  await fetchDashboardData();
 };
 
 const applyFilters = async () => {
@@ -761,6 +818,7 @@ const exportReport = () => {
 };
 
 const fetchDashboardData = async () => {
+  setLoading();
   try {
     // Attempt store synchronizations safely
     if (flightStore && typeof flightStore.fetchFlightBookingReference === 'function') {
@@ -809,8 +867,10 @@ const fetchDashboardData = async () => {
     busBookingsChart.value = data.bus_bookings_chart || [];
     busCompanyPerformance.value = data.bus_company_performance || [];
 
+    setSuccess();
   } catch (error) {
     console.error('Failed to fetch unified dashboard data:', error);
+    setError(error);
   }
 };
 

@@ -99,12 +99,14 @@ class VisaBooking extends Model
     public function getRemainingAmountAttribute(): float
     {
         return (float) $this->selling_price + (float) ($this->service_fee ?? 0)
-            - (float) $this->payments()->sum('amount');
+            - $this->paid_amount;
     }
 
     public function getPaidAmountAttribute(): float
     {
-        return (float) $this->payments()->sum('amount');
+        return $this->relationLoaded('payments')
+            ? (float) $this->payments->sum('amount')
+            : (float) $this->payments()->sum('amount');
     }
 
     public function getIsFullyPaidAttribute(): bool

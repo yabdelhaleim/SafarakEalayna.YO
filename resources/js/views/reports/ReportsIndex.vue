@@ -1,7 +1,25 @@
 <template>
-  <div class="space-y-8 animate-in fade-in duration-700 pb-12">
+  <div class="space-y-8 animate-in fade-in duration-700 pb-12 print:space-y-6">
+    <!-- Professional Print Header (Visible only on print) -->
+    <div class="hidden print:block print:mb-8">
+      <div class="flex items-center justify-between border-b-2 border-black pb-4">
+        <div>
+          <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+          <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
+        </div>
+        <div class="text-right">
+          <h1 class="text-xl font-black text-black">مركز التقارير والقيادة الموحد</h1>
+          <p class="text-[10px] font-bold text-black mt-1">تاريخ الطباعة: {{ new Date().toLocaleString('ar-EG') }}</p>
+        </div>
+      </div>
+      
+      <div class="mt-4 text-xs text-black">
+        <p><span class="font-black">الفترة الزمنية للتقرير:</span> من {{ filters.from_date || 'البداية' }} إلى {{ filters.to_date || 'اليوم' }}</p>
+      </div>
+    </div>
+
     <!-- Header with Date Filters -->
-    <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 bg-card-bg border border-white/10 p-6 rounded-3xl relative overflow-hidden">
+    <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 bg-card-bg border border-white/10 p-6 rounded-3xl relative overflow-hidden print:hidden">
       <!-- Background Glow -->
       <div class="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
       
@@ -16,6 +34,13 @@
       </div>
 
       <div class="flex items-center gap-3 relative z-10">
+        <button 
+          @click="printReport"
+          class="p-2.5 rounded-xl border border-white/10 bg-white/5 text-text-muted hover:text-gold transition-all duration-300 hover:bg-white/10"
+          title="طباعة التقرير"
+        >
+          <Printer class="w-5 h-5" />
+        </button>
         <input 
           type="date" 
           v-model="filters.from_date"
@@ -110,11 +135,11 @@
       </div>
 
       <!-- Main Hub Navigation (The Portals) -->
-      <h2 class="text-2xl font-bold text-white mt-10 mb-6 flex items-center gap-2">
+      <h2 class="text-2xl font-bold text-white mt-10 mb-6 flex items-center gap-2 print:hidden">
         <Compass class="w-6 h-6 text-gold" />
         مداخل التقارير التفصيلية
       </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 print:hidden">
         
         <!-- P&L Portal -->
         <router-link to="/finance/profit-loss" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
@@ -156,7 +181,7 @@
         </router-link>
 
         <!-- Treasury Portal -->
-        <router-link to="/treasury" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
+        <router-link to="/finance/treasury" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
           <div class="absolute inset-0 bg-gradient-to-br from-emerald-600/80 to-teal-900/90 z-0"></div>
           <div class="relative z-10 p-6 flex flex-col h-full justify-between">
             <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform shadow-xl">
@@ -193,49 +218,68 @@
           </div>
         </router-link>
 
+        <!-- Debts & Receivables Portal -->
+        <router-link to="/reports/debts" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
+          <div class="absolute inset-0 bg-gradient-to-br from-purple-600/80 to-fuchsia-900/90 z-0"></div>
+          <div class="relative z-10 p-6 flex flex-col h-full justify-between">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform shadow-xl">
+              <Scale class="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-purple-200 transition-colors">الديون والمديونيات</h3>
+              <p class="text-white/70 text-sm font-medium leading-relaxed">
+                متابعة أرصدة العملاء والموردين وشركات الطيران والباصات والوكلاء وتصفيتها.
+              </p>
+            </div>
+          </div>
+          <div class="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 group-hover:-translate-x-2 transition-all">
+            <ArrowLeft class="w-6 h-6 text-white" />
+          </div>
+        </router-link>
+
       </div>
 
       <!-- Quick Distribution Analytics -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 print:grid-cols-1 print:gap-4 print:mt-4">
         <!-- Treasuries Mini-Breakdown -->
-        <div class="bg-card-bg border border-white/10 rounded-3xl p-8">
-          <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <Building2 class="w-5 h-5 text-indigo-400" />
+        <div class="bg-card-bg border border-white/10 rounded-3xl p-8 print:w-full print:border-black print:bg-white print:text-black print:p-6 print:rounded-2xl">
+          <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2 print:text-black print:mb-4">
+            <Building2 class="w-5 h-5 text-indigo-400 print:text-black" />
             توزيع السيولة المالية
           </h3>
-          <div class="space-y-6">
+          <div class="space-y-6 print:space-y-4">
             <div>
-              <div class="flex justify-between text-sm mb-2">
-                <span class="text-white/70">النقدية (Cashbox)</span>
-                <span class="font-mono font-bold text-white">{{ formatCurrency(accountsData.total_cashbox) }}</span>
+              <div class="flex justify-between text-sm mb-2 print:text-black">
+                <span class="text-white/70 print:text-black">النقدية (Cashbox)</span>
+                <span class="font-mono font-bold text-white print:text-black">{{ formatCurrency(accountsData.total_cashbox) }}</span>
               </div>
-              <div class="h-3 bg-white/5 rounded-full overflow-hidden">
-                <div class="h-full bg-emerald-500 rounded-full" :style="{ width: getPercentage(accountsData.total_cashbox, accountsData.grand_total) + '%' }"></div>
+              <div class="h-3 bg-white/5 rounded-full overflow-hidden print:bg-gray-200">
+                <div class="h-full bg-emerald-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_cashbox, accountsData.grand_total) + '%' }"></div>
               </div>
             </div>
             <div>
-              <div class="flex justify-between text-sm mb-2">
-                <span class="text-white/70">البنوك (Banks)</span>
-                <span class="font-mono font-bold text-white">{{ formatCurrency(accountsData.total_bank) }}</span>
+              <div class="flex justify-between text-sm mb-2 print:text-black">
+                <span class="text-white/70 print:text-black">البنوك (Banks)</span>
+                <span class="font-mono font-bold text-white print:text-black">{{ formatCurrency(accountsData.total_bank) }}</span>
               </div>
-              <div class="h-3 bg-white/5 rounded-full overflow-hidden">
-                <div class="h-full bg-blue-500 rounded-full" :style="{ width: getPercentage(accountsData.total_bank, accountsData.grand_total) + '%' }"></div>
+              <div class="h-3 bg-white/5 rounded-full overflow-hidden print:bg-gray-200">
+                <div class="h-full bg-blue-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_bank, accountsData.grand_total) + '%' }"></div>
               </div>
             </div>
             <div>
-              <div class="flex justify-between text-sm mb-2">
-                <span class="text-white/70">المحافظ الإلكترونية (Wallets)</span>
-                <span class="font-mono font-bold text-white">{{ formatCurrency(accountsData.total_wallet) }}</span>
+              <div class="flex justify-between text-sm mb-2 print:text-black">
+                <span class="text-white/70 print:text-black">المحافظ الإلكترونية (Wallets)</span>
+                <span class="font-mono font-bold text-white print:text-black">{{ formatCurrency(accountsData.total_wallet) }}</span>
               </div>
-              <div class="h-3 bg-white/5 rounded-full overflow-hidden">
-                <div class="h-full bg-purple-500 rounded-full" :style="{ width: getPercentage(accountsData.total_wallet, accountsData.grand_total) + '%' }"></div>
+              <div class="h-3 bg-white/5 rounded-full overflow-hidden print:bg-gray-200">
+                <div class="h-full bg-purple-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_wallet, accountsData.grand_total) + '%' }"></div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Notice / Empty state for future charts -->
-        <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/20 rounded-3xl p-8 flex flex-col items-center justify-center text-center">
+        <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/20 rounded-3xl p-8 flex flex-col items-center justify-center text-center print:hidden">
           <div class="w-20 h-20 rounded-full bg-indigo-500/10 flex items-center justify-center mb-6">
             <Activity class="w-10 h-10 text-indigo-400" />
           </div>
@@ -266,7 +310,9 @@ import {
   Building2,
   Activity,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Printer,
+  Scale
 } from 'lucide-vue-next';
 
 // Filters
@@ -330,6 +376,10 @@ const fetchDashboardData = async () => {
   }
 };
 
+const printReport = () => {
+  window.print();
+};
+
 onMounted(() => {
   fetchDashboardData();
 });
@@ -347,5 +397,83 @@ onMounted(() => {
 }
 .font-display {
   font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+
+@media print {
+  /* Scope local layout adjustments inside print */
+  .grid {
+    gap: 1.5rem !important;
+  }
+}
+</style>
+
+<style>
+@media print {
+  /* Global overrides for background and base layout during printing */
+  body, html, #app, .app-shell, .main-zone, .page-body {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  .sidebar, .top-bar, .toast-rack, .backdrop {
+    display: none !important;
+  }
+
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Target the KPIs cards to be print-friendly */
+  .grid-cols-4 > div,
+  .grid-cols-1 > div {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+  }
+
+  .grid-cols-4 > div *,
+  .grid-cols-1 > div * {
+    color: #000000 !important;
+  }
+
+  /* Specific color contrast overrides for printed values */
+  .text-success,
+  .text-emerald-500 {
+    color: #166534 !important; /* Forest green */
+    font-weight: bold !important;
+  }
+  
+  .text-rose-400,
+  .text-rose-500 {
+    color: #991b1b !important; /* Crimson */
+    font-weight: bold !important;
+  }
+
+  .text-blue-400,
+  .text-blue-500 {
+    color: #1e3a8a !important; /* Navy blue */
+    font-weight: bold !important;
+  }
+
+  .text-gold {
+    color: #b45309 !important; /* Dark amber/gold */
+    font-weight: bold !important;
+  }
 }
 </style>

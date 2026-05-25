@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\FlightTreasuries;
 
+use App\Filament\Admin\Concerns\BelongsToFlightModuleNavigation;
 use App\Filament\Admin\Resources\FlightTreasuries\Pages\CreateFlightTreasury;
 use App\Filament\Admin\Resources\FlightTreasuries\Pages\EditFlightTreasury;
 use App\Filament\Admin\Resources\FlightTreasuries\Pages\ListFlightTreasuries;
@@ -16,6 +17,7 @@ use Filament\Tables\Table;
 
 class FlightTreasuryResource extends Resource
 {
+    use BelongsToFlightModuleNavigation;
     protected static ?string $model = Account::class;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-banknotes';
@@ -30,7 +32,7 @@ class FlightTreasuryResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 9;
 
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {

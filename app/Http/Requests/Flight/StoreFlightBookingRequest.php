@@ -83,7 +83,7 @@ class StoreFlightBookingRequest extends FormRequest
             'flight_system_id' => 'nullable|integer|exists:flight_systems,id',
             'flight_carrier_id' => 'nullable|integer|exists:flight_carriers,id',
             'flight_group_id' => 'nullable|integer|exists:flight_groups,id',
-            'purchase_balance_source' => 'nullable|string|in:carrier,system',
+            'purchase_balance_source' => 'nullable|string|in:carrier,system,group',
             'cabin_class' => 'nullable|string|in:economy,premium_economy,business,first',
             'notes' => 'nullable|string|max:1000',
             'passengers' => 'nullable|array|min:1',

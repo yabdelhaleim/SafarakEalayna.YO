@@ -91,8 +91,7 @@ class OnlineTransactionResource extends Resource
                                 ->getOptionLabelFromRecordUsing(fn (Customer $record): string => filled($record->full_name)
                                     ? $record->full_name
                                     : (filled($record->phone) ? 'عميل — '.$record->phone : 'عميل #'.$record->getKey()))
-                                ->searchable()
-                                ->preload(),
+                                ->searchable(['full_name', 'phone']),
 
                             TextInput::make('customer_name')
                                 ->label('اسم العميل')
@@ -124,8 +123,7 @@ class OnlineTransactionResource extends Resource
                                     ? $record->user->name
                                     : 'موظف #'.$record->getKey();
                             })
-                            ->searchable()
-                            ->preload(),
+                            ->searchable(['full_name']),
                     ]),
 
                 Section::make('التسعير')
@@ -178,8 +176,7 @@ class OnlineTransactionResource extends Resource
                                 ->getOptionLabelFromRecordUsing(fn (Account $record): string => filled($record->name)
                                     ? $record->name
                                     : 'حساب #'.$record->getKey())
-                                ->searchable()
-                                ->preload()
+                                ->searchable(['name'])
                                 ->required(),
 
                             TextInput::make('reference_number')
@@ -206,6 +203,11 @@ class OnlineTransactionResource extends Resource
                             ->visible(fn ($get) => $get('status') === OnlineTransactionStatus::Failed->value),
                     ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->with(['serviceType', 'provider', 'customer', 'employee', 'account']);
     }
 
     public static function table(Table $table): Table

@@ -35,7 +35,7 @@
             </svg>
           </div>
           <div class="logo-text">
-            <span class="logo-name">سفارك إلينا</span>
+            <span class="logo-name">سفرك علينا</span>
             <span class="logo-tag">إدارة السفر والسياحة</span>
           </div>
         </div>
@@ -91,6 +91,7 @@
             <div v-show="isFlightsOpen" class="dropdown-content-styled">
               <router-link to="/flights/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/flights/list" class="nl-sub">قائمة الحجوزات</router-link>
+              <router-link to="/flights/customers" class="nl-sub">عملاء الطيران</router-link>
               <router-link v-if="isAdminOrOwner" to="/flights/treasury" class="nl-sub">إدارة القسم (مالية وأرصدة)</router-link>
             </div>
           </div>
@@ -143,6 +144,7 @@
               <router-link to="/bus/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/bus/create" class="nl-sub">إنشاء حجز</router-link>
               <router-link to="/bus" class="nl-sub">قائمة الحجوزات</router-link>
+              <router-link to="/bus/customers" class="nl-sub">عملاء الباصات</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/treasury" class="nl-sub">إدارة القسم (مالية الباصات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/companies" class="nl-sub">إدارة الشركات</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/inventory" class="nl-sub">إدارة الرحلات</router-link>
@@ -206,8 +208,20 @@
             <div v-show="isFinanceOpen" class="dropdown-content-styled">
               <router-link to="/finance/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/finance/accounts" class="nl-sub">كشوف الحسابات</router-link>
+              <router-link to="/finance/account-statement" class="nl-sub">كشف حساب تفصيلي</router-link>
               <router-link to="/finance/treasury" class="nl-sub">الخزينة</router-link>
               <router-link to="/finance/expenses" class="nl-sub">المصروفات</router-link>
+              <router-link to="/finance/transactions" class="nl-sub">سجل المعاملات</router-link>
+              <router-link to="/finance/transactions/create" class="nl-sub">معاملة جديدة</router-link>
+              <router-link to="/finance/transfers" class="nl-sub">التحويلات</router-link>
+              <router-link to="/finance/transfers/create" class="nl-sub">تحويل جديد</router-link>
+              <router-link to="/finance/transfers/history" class="nl-sub">سجل التحويلات</router-link>
+              <router-link to="/finance/invoices" class="nl-sub">الفواتير</router-link>
+              <router-link to="/finance/profit-loss" class="nl-sub">الأرباح والخسائر</router-link>
+              <router-link to="/finance/department/tourism" class="nl-sub">المركز المالي - السياحة</router-link>
+              <router-link to="/finance/department/office" class="nl-sub">المركز المالي - المكتب</router-link>
+              <router-link to="/finance/operations/tourism" class="nl-sub">دفتر القيود - السياحة</router-link>
+              <router-link to="/finance/operations/office" class="nl-sub">دفتر القيود - المكتب</router-link>
               <router-link to="/suppliers" class="nl-sub">الموردين</router-link>
             </div>
           </div>
@@ -225,11 +239,18 @@
             </div>
           </div>
 
-          <!-- Reports Link -->
-          <router-link v-if="hasPermission('view_reports')" to="/reports" class="nl" active-class="nl-active">
-            <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z"/></svg></span>
-            <span class="nl-t">التقارير الشاملة</span>
-          </router-link>
+          <!-- Reports Module -->
+          <div class="nav-dropdown" v-if="hasPermission('view_reports')">
+            <button @click="isReportsOpen = !isReportsOpen" class="nl" :class="{'nl-active': $route.path.startsWith('/reports')}">
+              <span class="nl-i text-sky-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z"/></svg></span>
+              <span class="nl-t" style="flex: 1; text-align: right;">التقارير الشاملة</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: isReportsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }" style="width: 1rem; height: 1rem; transition: transform 0.2s; opacity: 0.5;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div v-show="isReportsOpen" class="dropdown-content-styled">
+              <router-link to="/reports" class="nl-sub">مركز التقارير</router-link>
+              <router-link to="/reports/debts" class="nl-sub">الديون والمديونيات</router-link>
+            </div>
+          </div>
 
           <!-- Users Link -->
           <router-link v-if="hasPermission('manage_users')" to="/users" class="nl" active-class="nl-active">
@@ -262,7 +283,7 @@
             <span></span><span></span><span></span>
           </button>
           <div class="breadcrumb">
-            <span class="bc-home">سفارك إلينا</span>
+            <span class="bc-home">سفرك علينا</span>
             <span class="bc-div">/</span>
             <span class="bc-cur">{{ currentPageTitle }}</span>
           </div>
@@ -299,7 +320,7 @@
             <h3 class="text-2xl font-bold text-slate-100 mb-4">عذراً، حدث خطأ غير متوقع</h3>
             <p class="text-slate-400 mb-8 leading-relaxed">واجهنا صعوبة في عرض هذه الصفحة حالياً. يمكنك محاولة تحديث الصفحة أو العودة للرئيسية.</p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <button @click="error = null; window.location.reload()" class="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-all">تحديث الصفحة</button>
+                <button @click="reloadPage" class="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-all">تحديث الصفحة</button>
                 <router-link to="/dashboard" @click="error = null" class="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700">الرئيسية</router-link>
             </div>
         </div>
@@ -401,6 +422,7 @@ const isOnlineOpen = ref(route.path.startsWith('/online'));
 const isWalletOpen = ref(route.path.startsWith('/wallet'));
 const isFinanceOpen = ref(route.path.startsWith('/finance'));
 const isEmployeesOpen = ref(route.path.startsWith('/employees'));
+const isReportsOpen = ref(route.path.startsWith('/reports'));
 const isAdminOrOwner = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 
 function onResize() {
@@ -461,6 +483,11 @@ window.addToast = addToast;
 async function handleLogout() {
   await authStore.logout();
   router.push('/login');
+}
+
+function reloadPage() {
+  error.value = null;
+  window.location.reload();
 }
 
 const handleEsc = (e) => {
@@ -989,4 +1016,28 @@ html { direction: rtl; height: 100%; }
 
 .badge-success { background: var(--green); color: black; }
 .badge-purple { background: #a855f7; color: white; }
+
+/* ══ PRINT STYLES ══════════════════════ */
+@media print {
+  .app-shell {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: transparent !important;
+  }
+  .sidebar, .top-bar, .toast-rack, .backdrop {
+    display: none !important;
+  }
+  .main-zone {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .page-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+}
 </style>

@@ -343,7 +343,7 @@
           >
             <option value="">اختر الحساب</option>
             <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
-              {{ acc.name }}
+              {{ formatSettlementOption(acc) }}
             </option>
           </select>
           <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-1">
@@ -352,6 +352,35 @@
           <p v-if="selectedPaymentMethod?.defaultAccountId && form.account_id == selectedPaymentMethod.defaultAccountId" class="text-xs text-text-muted mt-1">
             مُقترَح تلقائياً من إعدادات طريقة الدفع؛ يمكنك تغييره.
           </p>
+
+          <!-- Balance Preview -->
+          <div
+            v-if="selectedSettlementAccount"
+            class="mt-4 space-y-2 rounded-xl border border-gold/25 bg-gold/10 p-4 text-sm"
+          >
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gold/90">رصيد حساب التحصيل</div>
+            <div class="flex justify-between gap-2 text-text-muted">
+              <span>الرصيد الحالي</span>
+              <span class="font-mono font-bold text-white tabular-nums">
+                {{ formatMoney(balancePreview.current, balancePreview.currency) }}
+              </span>
+            </div>
+            <div
+              v-if="balancePreview.delta > 0"
+              class="flex justify-between gap-2 border-t border-white/10 pt-2"
+            >
+              <span class="flex items-center gap-1 text-success">
+                <ArrowUpRight class="h-4 w-4" />
+                بعد تسجيل المعاملة (+ المبلغ)
+              </span>
+              <span class="font-mono text-base font-black text-success tabular-nums">
+                {{ formatMoney(balancePreview.after, balancePreview.currency) }}
+              </span>
+            </div>
+            <p v-else class="border-t border-white/10 pt-2 text-[11px] text-text-muted">
+              أدخل مبلغاً في «المبلغ المدفوع الآن» ليظهر تقدير الرصيد بعد الزيادة.
+            </p>
+          </div>
         </div>
 
         <div class="mt-6">
@@ -429,6 +458,7 @@ import { useCustomerStore } from '@/stores/customerStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
   ArrowRight,
+  ArrowUpRight,
   User,
   CreditCard,
   Check,
@@ -436,6 +466,7 @@ import {
   Banknote,
   Wallet,
   Landmark,
+  FileText,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -511,6 +542,25 @@ const selectedPaymentMethod = computed(() => {
   return store.paymentMethods.find(m => m.value === form.value.payment_method);
 });
 
+const selectedSettlementAccount = computed(() => {
+  const id = form.value.account_id;
+  if (id == null || id === '') return null;
+  return settlementAccounts.value.find((x) => String(x.id) === String(id)) ?? null;
+});
+
+const balancePreview = computed(() => {
+  const a = selectedSettlementAccount.value;
+  if (!a) return null;
+  const cur = Number(a.balance) || 0;
+  const add = Number(form.value.amount) || 0;
+  return {
+    current: cur,
+    after: cur + add,
+    delta: add,
+    currency: a.currency || 'EGP',
+  };
+});
+
 watch(
   () => form.value.client_id,
   (id) => {
@@ -558,6 +608,42 @@ const setPaidPercentOfSelling = (pct) => {
     return;
   }
   form.value.amount = roundMoney((sp * pct) / 100);
+};
+
+const formatMoney = (amount, currencyCode = 'EGP') => {
+  const n = Number(amount) || 0;
+  const code = currencyCode || 'EGP';
+  try {
+    return new Intl.NumberFormat('ar-EG', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  } catch {
+    return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${code}`;
+  }
+};
+
+const getAccountTypeLabel = (type) => {
+  const labels = {
+    cashbox: 'خزينة نقدية',
+    treasury: 'خزينة عامة',
+    wallet: 'محفظة إلكترونية',
+    bank: 'بنك',
+  };
+  return labels[type] || type;
+};
+
+const formatSettlementOption = (account) => {
+  const bal = formatMoney(account.balance ?? 0, account.currency || 'EGP');
+  const typeLabel = getAccountTypeLabel(account.type);
+  if (account.type === 'wallet' && account.wallet_provider) {
+    const num = String(account.wallet_number ?? '').trim();
+    const line = num ? `${account.wallet_provider} — ${num}` : account.wallet_provider;
+    return `${account.name} — ${line} — ${bal}`;
+  }
+  return `${account.name} — ${typeLabel} — ${bal}`;
 };
 
 const onPaymentMethodChange = () => {
@@ -622,6 +708,14 @@ const handleSubmit = async () => {
   try {
     const created = await store.createTransaction(payload);
     if (created?.id) {
+      const account = selectedSettlementAccount.value;
+      if (account) {
+        const newBal = (Number(account.balance) || 0) + (Number(form.value.amount) || 0);
+        store.addToast(
+          `تم إنشاء المعاملة بنجاح — الرصيد الجديد: ${formatMoney(newBal, account.currency || 'EGP')}`,
+          'success'
+        );
+      }
       router.push(`/fawry/${created.id}`);
     } else {
       router.push('/fawry');

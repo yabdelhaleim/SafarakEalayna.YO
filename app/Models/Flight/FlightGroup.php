@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'flight_carrier_id',
+    'account_id',
     'name',
     'code',
     'contact_person',
@@ -31,6 +32,38 @@ class FlightGroup extends Model
             'commission_rate' => 'decimal:2',
             'is_active' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (FlightGroup $group) {
+            if ($group->account_id !== null) {
+                return;
+            }
+
+            $userId = $group->created_by ?: 1;
+
+            $account = \App\Models\Account::create([
+                'name' => 'مجموعة طيران — ' . $group->name . ' · ' . $group->code,
+                'type' => \App\Enums\AccountType::Supplier->value,
+                'currency' => 'EGP',
+                'balance' => 0,
+                'is_active' => true,
+                'owner_type' => \App\Models\Account::OWNER_TYPE_OFFICE,
+                'module_type' => 'tourism',
+                'module' => 'flight',
+                'notes' => 'حساب جاري مجموعة طيران، يُنشأ تلقائياً مع سجل المجموعة للربط المحاسبي.',
+                'created_by' => $userId,
+            ]);
+
+            $group->account_id = $account->id;
+            $group->saveQuietly();
+        });
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Account::class, 'account_id');
     }
 
     public function carrier(): BelongsTo

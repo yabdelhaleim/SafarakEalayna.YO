@@ -4,7 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Admin\Resources\BusBookings\Pages\ManageBusBookings;
 use App\Filament\Admin\Resources\BusCompanies\BusCompanyResource;
-use App\Filament\Admin\Resources\BusCompanies\Pages\ManageBusCompanies;
+use App\Filament\Admin\Resources\BusCompanies\Pages\CreateBusCompany;
 use App\Filament\Admin\Resources\BusInventories\Pages\ManageBusInventories;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusCompany;
@@ -48,12 +48,13 @@ class BusFilamentCrudTest extends TestCase
 
     public function test_filament_can_create_bus_company_via_create_action(): void
     {
-        Livewire::test(ManageBusCompanies::class)
-            ->callAction('create', data: [
+        Livewire::test(CreateBusCompany::class)
+            ->fillForm([
                 'name' => 'شركة من Filament',
                 'phone' => '01001230000',
                 'is_active' => true,
             ])
+            ->call('create')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('bus_companies', [
@@ -64,12 +65,13 @@ class BusFilamentCrudTest extends TestCase
 
     public function test_filament_can_create_deferred_inventory_and_booking(): void
     {
-        Livewire::test(ManageBusCompanies::class)
-            ->callAction('create', data: [
+        Livewire::test(CreateBusCompany::class)
+            ->fillForm([
                 'name' => 'Co Filament Bus',
                 'phone' => '01005556666',
                 'is_active' => true,
             ])
+            ->call('create')
             ->assertHasNoErrors();
 
         $companyId = BusCompany::query()->where('name', 'Co Filament Bus')->value('id');

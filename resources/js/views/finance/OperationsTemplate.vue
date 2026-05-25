@@ -4,10 +4,10 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
-          {{ title }}
+          دفتر القيود - {{ title }}
         </h1>
         <p class="text-text-muted mt-1">
-          إدارة ومراجعة العمليات المالية الخاصة بـ {{ subtitle }}
+          مراجعة وتدقيق قيود اليومية والمعاملات التفصيلية الخاصة بـ {{ subtitle }}
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -206,10 +206,18 @@
               </td>
               <td class="px-6 py-4 text-left">
                 <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
-                  <button class="p-2 hover:bg-white/10 rounded-lg text-text-muted hover:text-white transition-all">
+                  <router-link
+                    :to="`/finance/transactions/${transaction.id}`"
+                    class="p-2 hover:bg-gold/20 rounded-lg text-text-muted hover:text-gold transition-all"
+                    title="عرض التفاصيل والعملية المرتبطة"
+                  >
                     <Eye class="w-4 h-4" />
-                  </button>
-                  <button class="p-2 hover:bg-error/10 rounded-lg text-text-muted hover:text-error transition-all">
+                  </router-link>
+                  <button
+                    @click="confirmDelete(transaction.id)"
+                    class="p-2 hover:bg-error/10 rounded-lg text-text-muted hover:text-error transition-all"
+                    title="حذف/إلغاء المعاملة"
+                  >
                     <Trash2 class="w-4 h-4" />
                   </button>
                 </div>
@@ -371,6 +379,18 @@ const getModuleLabel = (val) => {
 
 const getAccountTypeLabel = (val) => {
   return store.accountTypes.find(t => t.value === val)?.label || val;
+};
+
+const confirmDelete = async (id) => {
+  if (confirm('هل أنت متأكد من رغبتك في حذف أو إلغاء هذه المعاملة؟ هذا قد يؤثر على أرصدة الحسابات.')) {
+    try {
+      await store.deleteTransaction(id);
+      store.addToast('تم حذف المعاملة وتعديل الأرصدة بنجاح.', 'success');
+      fetchData();
+    } catch (err) {
+      store.addToast('فشل حذف المعاملة: ' + (err.response?.data?.message || err.message), 'error');
+    }
+  }
 };
 
 onMounted(async () => {

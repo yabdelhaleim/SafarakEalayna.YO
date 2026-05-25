@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Flight;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\Flight\AviationService;
 use App\Http\Requests\Flight\StoreAviationBookingRequest;
@@ -16,113 +17,109 @@ class AviationController extends Controller
         protected AviationService $aviationService
     ) {}
 
-    private function respond($status, $operation, $data = null, $errors = [], $warnings = [], $agent = null): JsonResponse
+    /**
+     * Generate next booking number for the frontend fallback integration.
+     */
+    public function nextNumber(): JsonResponse
     {
+        $timestamp = now()->format('Ymd');
+        $random = strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 6));
+        $number = "FLT-{$timestamp}-{$random}";
+        
         return response()->json([
-            'status' => $status,
-            'operation' => $operation,
-            'data' => $data,
-            'errors' => $errors,
-            'warnings' => $warnings,
-            'meta' => [
-                'timestamp' => now()->toIso8601String(),
-                'processed_by_agent' => $agent
-            ]
-        ], $status === 'ERROR' ? 422 : 200);
+            'success' => true,
+            'message' => 'Booking number generated',
+            'data' => ['number' => $number],
+            'number' => $number,
+            'errors' => null,
+        ]);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $operation = 'LIST_BOOKINGS';
         $filters = $request->only(['date_from', 'date_to', 'airline']);
         $report = $this->aviationService->getReport($filters);
         
-        return $this->respond('SUCCESS', $operation, $report['bookings'] ?? []);
+        return ApiResponse::success(
+            'Aviation bookings retrieved successfully',
+            $report['bookings'] ?? []
+        );
     }
 
     public function store(StoreAviationBookingRequest $request): JsonResponse
     {
-        $operation = 'CREATE_BOOKING';
-        
         try {
             $result = $this->aviationService->createBooking($request->validated());
+            $bookingNumber = "BK-" . Carbon::parse($result['booking']->departure_date)->format('Ymd') . "-" . str_pad($result['booking']->id, 3, '0', STR_PAD_LEFT);
             
-            return $this->respond(
-                'SUCCESS', 
-                $operation, 
+            return ApiResponse::success(
+                'Booking created successfully',
                 [
-                    'booking_id' => "BK-" . Carbon::parse($result['booking']->departure_date)->format('Ymd') . "-" . str_pad($result['booking']->id, 3, '0', STR_PAD_LEFT),
+                    'booking_id' => $bookingNumber,
                     'booking_reference' => $result['booking']->booking_reference,
                     'status' => $result['booking']->status->value,
                     'profit_egp' => $result['booking']->pricing->profit_egp ?? $result['booking']->pricing->profit,
                     'treasury_credited' => $result['booking']->payments->first()->treasury_account ?? null,
-                    'passenger_summary' => $result['passenger_summary']
-                ], 
-                [], 
-                $result['warnings'], 
-                $request->agent_name
+                    'passenger_summary' => $result['passenger_summary'],
+                    'warnings' => $result['warnings'],
+                ],
+                201
             );
         } catch (\Exception $e) {
             $decoded = json_decode($e->getMessage(), true);
             $errors = $decoded['errors'] ?? [['field' => 'general', 'code' => 'SYSTEM_ERROR', 'message' => $e->getMessage()]];
-            return $this->respond('ERROR', $operation, null, $errors, [], $request->agent_name);
+            return ApiResponse::error('Failing to create booking', $errors, 422);
         }
     }
 
     public function show($idOrRef): JsonResponse
     {
-        $operation = 'QUERY_BOOKING';
         $booking = $this->aviationService->getBooking($idOrRef);
         
         if (!$booking) {
-            return $this->respond('ERROR', $operation, null, [['field' => 'id', 'code' => 'NOT_FOUND', 'message' => 'الحجز غير موجود']]);
+            return ApiResponse::error('الحجز غير موجود', [['field' => 'id', 'code' => 'NOT_FOUND', 'message' => 'الحجز غير موجود']], 404);
         }
 
-        return $this->respond('SUCCESS', $operation, $booking);
+        return ApiResponse::success('Booking retrieved successfully', $booking);
     }
 
     public function update(Request $request, $id): JsonResponse
     {
-        $operation = 'UPDATE_BOOKING';
         try {
             $booking = $this->aviationService->updateBooking($id, $request->all());
-            return $this->respond('SUCCESS', $operation, $booking, [], [], $request->agent_name);
+            return ApiResponse::success('Booking updated successfully', $booking);
         } catch (\Exception $e) {
-            return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'UPDATE_FAILED', 'message' => $e->getMessage()]]);
+            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'UPDATE_FAILED', 'message' => $e->getMessage()]], 422);
         }
     }
 
     public function cancel(Request $request, $id): JsonResponse
     {
-        $operation = 'CANCEL_BOOKING';
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string',
             'agent_name' => 'required|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->respond('ERROR', $operation, null, $validator->errors()->all());
+            return ApiResponse::error('Validation failed', $validator->errors()->all(), 422);
         }
 
         try {
             $booking = $this->aviationService->cancelBooking($id, $request->reason, $request->agent_name);
-            return $this->respond('SUCCESS', $operation, $booking, [], [], $request->agent_name);
+            return ApiResponse::success('Booking cancelled successfully', $booking);
         } catch (\Exception $e) {
-            return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'CANCEL_FAILED', 'message' => $e->getMessage()]]);
+            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'CANCEL_FAILED', 'message' => $e->getMessage()]], 422);
         }
     }
 
     public function report(Request $request): JsonResponse
     {
-        $operation = 'BOOKING_REPORT';
         $report = $this->aviationService->getReport($request->only(['date_from', 'date_to', 'airline']));
-        return $this->respond('SUCCESS', $operation, $report);
+        return ApiResponse::success('Aviation report retrieved successfully', $report);
     }
 
     public function treasuryTransaction(Request $request): JsonResponse
     {
-        $operation = 'TREASURY_TRANSACTION';
-        
         $validator = Validator::make($request->all(), [
             'from_treasury' => 'nullable|string',
             'from_account_id' => 'nullable|integer|exists:accounts,id',
@@ -142,26 +139,25 @@ class AviationController extends Controller
         });
 
         if ($validator->fails()) {
-            return $this->respond('ERROR', $operation, null, $validator->errors()->all(), [], $request->agent_name);
+            return ApiResponse::error('Validation failed', $validator->errors()->all(), 422);
         }
 
         try {
             $transaction = $this->aviationService->transferFunds($request->all());
-            return $this->respond('SUCCESS', $operation, $transaction, [], [], $request->agent_name);
+            return ApiResponse::success('Funds transferred successfully', $transaction);
         } catch (\Exception $e) {
-            return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'SYSTEM_ERROR', 'message' => $e->getMessage()]], [], $request->agent_name);
+            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'SYSTEM_ERROR', 'message' => $e->getMessage()]], 422);
         }
     }
 
     public function destroy($id): JsonResponse
     {
-        $operation = 'DELETE_BOOKING';
         try {
             $booking = \App\Models\FlightBooking::findOrFail($id);
             $booking->delete();
-            return $this->respond('SUCCESS', $operation, null);
+            return ApiResponse::success('Booking deleted successfully');
         } catch (\Exception $e) {
-            return $this->respond('ERROR', $operation, null, [['field' => 'general', 'code' => 'DELETE_FAILED', 'message' => $e->getMessage()]]);
+            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'DELETE_FAILED', 'message' => $e->getMessage()]], 422);
         }
     }
 }

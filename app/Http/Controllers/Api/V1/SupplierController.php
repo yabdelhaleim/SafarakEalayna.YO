@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\SupplierService;
 use Illuminate\Http\Request;
@@ -29,11 +30,11 @@ class SupplierController extends Controller
         $suppliers = $this->supplierService->getAllSuppliers($filters)
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Suppliers retrieved successfully',
-            'data' => $suppliers,
-        ]);
+        return ApiResponse::paginated(
+            'Suppliers retrieved successfully',
+            $suppliers->getCollection(),
+            $suppliers
+        );
     }
 
     public function store(Request $request): JsonResponse
@@ -58,11 +59,11 @@ class SupplierController extends Controller
 
         $supplier = $this->supplierService->createSupplier($request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Supplier created successfully',
-            'data' => $supplier,
-        ], 201);
+        return ApiResponse::success(
+            'Supplier created successfully',
+            $supplier,
+            201
+        );
     }
 
     public function show(int $id): JsonResponse
@@ -71,11 +72,10 @@ class SupplierController extends Controller
 
         $this->authorize('view', $supplier);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Supplier retrieved successfully',
-            'data' => $supplier,
-        ]);
+        return ApiResponse::success(
+            'Supplier retrieved successfully',
+            $supplier
+        );
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -103,11 +103,10 @@ class SupplierController extends Controller
 
         $supplier = $this->supplierService->updateSupplier($supplier, $request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Supplier updated successfully',
-            'data' => $supplier,
-        ]);
+        return ApiResponse::success(
+            'Supplier updated successfully',
+            $supplier
+        );
     }
 
     public function destroy(int $id): JsonResponse
@@ -118,10 +117,9 @@ class SupplierController extends Controller
 
         $this->supplierService->deleteSupplier($supplier);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Supplier deleted successfully',
-        ]);
+        return ApiResponse::success(
+            'Supplier deleted successfully'
+        );
     }
 
     public function getDebt(): JsonResponse
@@ -130,10 +128,9 @@ class SupplierController extends Controller
 
         $debt = $this->supplierService->getSuppliersDebt();
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Suppliers debt retrieved successfully',
-            'data' => $debt,
-        ]);
+        return ApiResponse::success(
+            'Suppliers debt retrieved successfully',
+            $debt
+        );
     }
 }

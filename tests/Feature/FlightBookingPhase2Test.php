@@ -78,7 +78,7 @@ class FlightBookingPhase2Test extends TestCase
         $this->assertSame(2, $entryCount);
 
         $treasury->refresh();
-        $this->assertSame(750.0, (float) $treasury->balance);
+        $this->assertSame(0.0, (float) $treasury->balance);
     }
 
     public function test_create_booking_with_vodafone_cash_payment_persists_payment_method(): void

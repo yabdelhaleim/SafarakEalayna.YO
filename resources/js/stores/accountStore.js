@@ -42,15 +42,29 @@ export const useAccountStore = defineStore('account', () => {
   const officeCount = computed(() => dbStats.value.office_count)
   const activeAccountsCount = computed(() => dbStats.value.active_count)
 
+  let fetchAccountsController = null
+  let activeAccountsRequests = 0
+
   async function fetchAccounts(params = {}) {
+    if (fetchAccountsController) {
+      fetchAccountsController.abort()
+    }
+    fetchAccountsController = new AbortController()
+
+    activeAccountsRequests++
     loading.value = true
     error.value = null
+    accounts.value = [] // Reset data variables before calling API
+
     try {
       const query = {
         per_page: 100,
         ...params,
       }
-      const response = await axios.get('/api/v1/finance/accounts', { params: query })
+      const response = await axios.get('/api/v1/finance/accounts', {
+        params: query,
+        signal: fetchAccountsController.signal
+      })
       const body = response.data
       accounts.value = unwrapAccountsList(body?.data)
       
@@ -94,45 +108,91 @@ export const useAccountStore = defineStore('account', () => {
       }
       return body
     } catch (err) {
+      if (axios.isCancel(err)) {
+        return
+      }
       error.value = err.response?.data?.message || 'Failed to fetch accounts'
       throw err
     } finally {
-      loading.value = false
+      activeAccountsRequests--
+      if (activeAccountsRequests === 0) {
+        loading.value = false
+      }
     }
   }
 
+  let fetchAccountController = null
+  let activeAccountRequests = 0
+
   async function fetchAccount(id) {
+    if (fetchAccountController) {
+      fetchAccountController.abort()
+    }
+    fetchAccountController = new AbortController()
+
+    activeAccountRequests++
     loading.value = true
     error.value = null
+    account.value = null // reset before calling API
+
     try {
-      const response = await axios.get(`/api/v1/finance/accounts/${id}`)
+      const response = await axios.get(`/api/v1/finance/accounts/${id}`, {
+        signal: fetchAccountController.signal
+      })
       account.value = response.data.data
       return response.data
     } catch (err) {
+      if (axios.isCancel(err)) {
+        return
+      }
       error.value = err.response?.data?.message || 'Failed to fetch account'
       throw err
     } finally {
-      loading.value = false
+      activeAccountRequests--
+      if (activeAccountRequests === 0) {
+        loading.value = false
+      }
     }
   }
 
+  let fetchStatementController = null
+  let activeStatementRequests = 0
+
   async function fetchAccountStatement(id, params = {}) {
+    if (fetchStatementController) {
+      fetchStatementController.abort()
+    }
+    fetchStatementController = new AbortController()
+
+    activeStatementRequests++
     loading.value = true
     error.value = null
+    statement.value = [] // reset before calling API
+
     try {
-      const response = await axios.get(`/api/v1/finance/accounts/${id}/statement`, { params })
+      const response = await axios.get(`/api/v1/finance/accounts/${id}/statement`, {
+        params,
+        signal: fetchStatementController.signal
+      })
       statement.value = response.data.data.items || []
       pagination.value = response.data.data.pagination || {}
       return response.data
     } catch (err) {
+      if (axios.isCancel(err)) {
+        return
+      }
       error.value = err.response?.data?.message || 'Failed to fetch statement'
       throw err
     } finally {
-      loading.value = false
+      activeStatementRequests--
+      if (activeStatementRequests === 0) {
+        loading.value = false
+      }
     }
   }
 
   async function createAccount(data) {
+    if (loading.value) return;
     loading.value = true
     error.value = null
     try {
@@ -148,6 +208,7 @@ export const useAccountStore = defineStore('account', () => {
   }
 
   async function updateAccount(id, data) {
+    if (loading.value) return;
     loading.value = true
     error.value = null
     try {
@@ -166,6 +227,7 @@ export const useAccountStore = defineStore('account', () => {
   }
 
   async function deactivateAccount(id) {
+    if (loading.value) return;
     loading.value = true
     error.value = null
     try {
@@ -184,6 +246,7 @@ export const useAccountStore = defineStore('account', () => {
   }
 
   async function transferFunds(data) {
+    if (loading.value) return;
     loading.value = true
     error.value = null
     try {
@@ -212,6 +275,10 @@ export const useAccountStore = defineStore('account', () => {
     }
   }
 
+  function $reset() {
+    reset()
+  }
+
   return {
     accounts,
     account,
@@ -232,5 +299,6 @@ export const useAccountStore = defineStore('account', () => {
     deactivateAccount,
     transferFunds,
     reset,
+    $reset,
   }
 })

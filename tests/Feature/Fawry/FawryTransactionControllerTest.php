@@ -42,22 +42,24 @@ class FawryTransactionControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'status',
+                'success',
                 'message',
                 'data' => [
-                    '*' => [
-                        'id',
-                        'client_name',
-                        'operation_type',
-                        'selling_price',
-                        'profit',
-                        'created_at',
+                    'items' => [
+                        '*' => [
+                            'id',
+                            'client_name',
+                            'operation_type',
+                            'selling_price',
+                            'profit',
+                            'created_at',
+                        ],
                     ],
-                ],
-                'meta' => [
-                    'current_page',
-                    'per_page',
-                    'total',
+                    'pagination' => [
+                        'current_page',
+                        'per_page',
+                        'total',
+                    ],
                 ],
             ]);
     }
@@ -72,7 +74,7 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson('/api/v1/fawry/transactions?operation_type=bill_payment');
 
         $response->assertStatus(200)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(2, 'data.items');
     }
 
     public function test_can_filter_transactions_by_payment_method()
@@ -85,7 +87,7 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson('/api/v1/fawry/transactions?payment_method=cash');
 
         $response->assertStatus(200)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(2, 'data.items');
     }
 
     public function test_can_filter_transactions_by_employee()
@@ -101,7 +103,7 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson("/api/v1/fawry/transactions?employee_id={$employee1->id}");
 
         $response->assertStatus(200)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(2, 'data.items');
     }
 
     public function test_can_filter_transactions_by_date_range()
@@ -122,7 +124,7 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson('/api/v1/fawry/transactions?from_date=2024-01-18&to_date=2024-01-22');
 
         $response->assertStatus(200)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data.items');
     }
 
     public function test_can_search_transactions_by_client_name()
@@ -135,7 +137,7 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson('/api/v1/fawry/transactions?search=Ahmed');
 
         $response->assertStatus(200)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(2, 'data.items');
     }
 
     public function test_can_search_transactions_by_reference_number()
@@ -148,13 +150,12 @@ class FawryTransactionControllerTest extends TestCase
             ->getJson('/api/v1/fawry/transactions?search=REF456');
 
         $response->assertStatus(200)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data.items');
     }
 
     public function test_can_create_fawry_transaction()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,
@@ -173,7 +174,7 @@ class FawryTransactionControllerTest extends TestCase
 
         $response->assertStatus(201)
             ->assertJsonStructure([
-                'status',
+                'success',
                 'message',
                 'data' => [
                     'id',
@@ -194,7 +195,6 @@ class FawryTransactionControllerTest extends TestCase
     public function test_create_transaction_creates_accounting_entries()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,
@@ -218,13 +218,13 @@ class FawryTransactionControllerTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->expense_transaction_id,
-            'type' => 'expense',
+            'type' => 'transfer',
             'amount' => 95.00,
         ]);
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->income_transaction_id,
-            'type' => 'income',
+            'type' => 'transfer',
             'amount' => 100.00,
         ]);
     }
@@ -241,7 +241,7 @@ class FawryTransactionControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'status',
+                'success',
                 'message',
                 'data' => [
                     'id',
@@ -304,7 +304,7 @@ class FawryTransactionControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJson([
-                'status' => true,
+                'success' => true,
                 'message' => 'Fawry transaction deleted successfully.',
             ]);
 
@@ -315,10 +315,7 @@ class FawryTransactionControllerTest extends TestCase
 
     public function test_delete_transaction_reverses_accounting_entries()
     {
-        $transaction = FawryTransaction::factory()->create([
-            'expense_transaction_id' => 1,
-            'income_transaction_id' => 2,
-        ]);
+        $transaction = FawryTransaction::factory()->create();
 
         // Mock the transaction service to reverse transactions
         $this->mock(\App\Services\Finance\TransactionService::class, function ($mock) {
@@ -389,13 +386,15 @@ class FawryTransactionControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJson([
-                'meta' => [
-                    'per_page' => 10,
-                    'total' => 25,
+                'data' => [
+                    'pagination' => [
+                        'per_page' => 10,
+                        'total' => 25,
+                    ],
                 ],
             ]);
 
-        $this->assertCount(10, $response->json('data'));
+        $this->assertCount(10, $response->json('data.items'));
     }
 
     public function test_unauthorized_user_cannot_access_transactions()
@@ -423,7 +422,6 @@ class FawryTransactionControllerTest extends TestCase
     public function test_profit_is_calculated_automatically_on_create()
     {
         $data = [
-            'client_id' => $this->client->id,
             'client_name' => 'Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => 100.00,

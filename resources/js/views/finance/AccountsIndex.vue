@@ -51,7 +51,7 @@
         
         <div class="flex items-center gap-4 pb-4">
           <button @click="fetchAccounts" class="p-2 text-text-muted hover:text-gold transition-colors" title="تحديث البيانات">
-            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoading() }" />
           </button>
           <button
             class="btn-airline flex items-center gap-2 px-6 py-2.5 text-[11px] font-black uppercase tracking-widest shadow-xl shadow-gold/10"
@@ -68,7 +68,10 @@
         <!-- Main Ledger & Module Performance (Left Side) -->
         <div class="lg:col-span-2 space-y-6">
           <!-- Summary Intelligence Grid -->
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div v-if="isLoading()" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <KPICardSkeleton v-for="i in 2" :key="`s-${i}`" />
+          </div>
+          <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <!-- Main Liquidity Card -->
             <div class="flight-panel relative overflow-hidden !p-6 bg-gradient-to-br from-slate-900 to-slate-800 border-gold/20 shadow-2xl">
               <div class="absolute -right-4 -top-4 w-32 h-32 bg-gold/5 rounded-full blur-3xl"></div>
@@ -123,7 +126,10 @@
                 تحليل ربحية الأقسام التشغيلية (Section Profitability)
               </h3>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" v-if="Object.keys(dbStats.performance).length">
+            <div v-if="isLoading()" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <KPICardSkeleton v-for="i in 2" :key="`p-${i}`" />
+            </div>
+            <div v-else-if="Object.keys(dbStats.performance).length" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div 
                 v-for="(perf, mod) in dbStats.performance" 
                 :key="mod"
@@ -196,7 +202,11 @@
               </h3>
               <span class="text-[9px] text-sky-400/80 font-bold uppercase tracking-tighter">Live Audit</span>
             </div>
-            <div class="max-h-[500px] overflow-y-auto">
+            
+            <div v-if="isLoading()" class="p-4 space-y-4">
+              <TextLineSkeleton :lines="5" heightClass="h-12" gapClass="gap-2" />
+            </div>
+            <div v-else class="max-h-[500px] overflow-y-auto">
               <div v-if="!recentTransactions.length" class="p-10 text-center text-[10px] text-text-muted">
                 لا توجد حركات مسجلة مؤخراً.
               </div>
@@ -322,16 +332,13 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-              <tr v-if="loading">
-                <td colspan="9" class="py-20 text-center text-text-muted bg-white/[0.01]">
-                  <div class="flex flex-col items-center gap-3">
-                    <span class="inline-block h-10 w-10 animate-spin rounded-full border-2 border-gold border-t-transparent" />
-                    <span class="text-sm font-bold tracking-wider text-gold/80">جاري تحميل البيانات...</span>
-                  </div>
+              <tr v-if="isLoading()">
+                <td colspan="9" class="py-10 bg-white/[0.01]">
+                   <TableSkeleton :rows="5" :columns="9" />
                 </td>
               </tr>
-              <tr v-else-if="error">
-                <td colspan="9" class="px-6 py-10 text-center text-error bg-error/5 border-error/10">{{ error }}</td>
+              <tr v-else-if="state === 'error' || storeError">
+                <td colspan="9" class="px-6 py-10 text-center text-error bg-error/5 border-error/10">{{ storeError || 'حدث خطأ.' }}</td>
               </tr>
               <tr v-else-if="filteredAccounts.length === 0">
                 <td colspan="9" class="px-6 py-20 text-center text-text-muted bg-white/[0.01]">
@@ -578,7 +585,140 @@
         </div>
       </div>
     </teleport>
-  </div>
+
+  <!-- Edit Account Modal -->
+  <teleport to="body">
+    <div
+      v-if="showEditModal"
+      class="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-300"
+      @click.self="showEditModal = false"
+    >
+      <div
+        class="flight-panel max-h-[90vh] w-full max-w-lg overflow-y-auto !p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)] border-white/10 animate-in zoom-in-95 duration-300"
+        role="dialog"
+        aria-labelledby="edit-account-heading"
+        @click.stop
+      >
+        <div class="flex items-center justify-between mb-8">
+           <h3 id="edit-account-heading" class="text-2xl font-black text-text-main flex items-center gap-3">
+            <div class="p-2 bg-gold/10 rounded-xl text-gold">
+              <Pen class="w-6 h-6" />
+            </div>
+            تعديل بيانات الحساب
+          </h3>
+          <button @click="showEditModal = false" class="p-2 hover:bg-white/5 rounded-full transition-colors text-text-muted">
+            <X class="w-6 h-6" />
+          </button>
+        </div>
+
+        <form v-if="editAccount" class="space-y-6" @submit.prevent="saveAccount">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="md:col-span-2">
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">اسم الحساب (مثلاً: خزينة محمد، بنك CIB، محفظة فودافون)</label>
+              <input v-model="editAccount.name" type="text" required class="flight-input w-full" placeholder="ادخل اسماً مميزاً..." />
+            </div>
+            
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">نوع الحساب</label>
+              <select v-model="editAccount.type" required class="flight-select w-full" @change="onEditTypeChange">
+                <option v-for="t in financeStore.meta.accountTypes" :key="t.value" :value="t.value">
+                  {{ t.label }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">العملة الأساسية</label>
+              <select v-model="editAccount.currency" required class="flight-select w-full">
+                <option v-for="c in financeStore.meta.currencies" :key="c.code" :value="c.code">
+                  {{ c.name }} ({{ c.code }})
+                </option>
+              </select>
+            </div>
+
+            <template v-if="editAccount.type === 'wallet'">
+              <div>
+                <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">مزود المحفظة</label>
+                <select v-model="editAccount.wallet_provider" required class="flight-select w-full">
+                  <option value="" disabled>اختر نوع المحفظة</option>
+                  <option value="vodafone_cash">فودافون كاش</option>
+                  <option value="instapay">إنستاباي</option>
+                  <option value="etisalat_cash">اتصالات كاش</option>
+                  <option value="orange_cash">أورانج كاش</option>
+                  <option value="we_pay">WE Pay</option>
+                  <option value="paymob">Paymob</option>
+                  <option value="cash_wallet">محفظة كاش (عام)</option>
+                  <option value="postal">بريد / مصاري</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">رقم المحفظة / الحساب</label>
+                <input v-model="editAccount.wallet_number" type="text" required class="flight-input w-full" placeholder="رقم الهاتف أو الحساب..." />
+              </div>
+            </template>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">القسم التابع له</label>
+              <select v-model="editAccount.module_type" required class="flight-select w-full" @change="onEditModuleTypeChange">
+                <option value="tourism">سياحة (عمليات، طيران، إلخ)</option>
+                <option value="office">مكتب (باص، فوري، مصاريف إدارية)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">الموديول المختص</label>
+              <select v-model="editAccount.module" class="flight-select w-full">
+                <option value="">عام (لا يتبع موديول محدد)</option>
+                <option v-for="m in editAccountAvailableModules" :key="m.value" :value="m.value">
+                  {{ m.label }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">ملكية الحساب</label>
+              <select v-model="editAccount.owner_type" required class="flight-select w-full">
+                <option value="owner">مالك (عهدة شخصية)</option>
+                <option value="office">مكتب (خزينة عامة للمقر)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">حالة الحساب</label>
+              <select v-model="editAccount.is_active" required class="flight-select w-full">
+                <option :value="true">نشط</option>
+                <option :value="false">غير نشط</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-text-muted">ملاحظات إضافية</label>
+            <textarea v-model="editAccount.notes" rows="3" class="flight-input w-full resize-none" placeholder="أي تفاصيل أخرى عن الحساب..."></textarea>
+          </div>
+
+          <div class="mt-8 flex gap-4">
+            <button
+              type="submit"
+              :disabled="loading"
+              class="btn-airline flex-1 py-4 text-sm font-black disabled:opacity-45 shadow-lg shadow-gold/20"
+            >
+              {{ loading ? 'جاري الحفظ…' : 'حفظ التعديلات' }}
+            </button>
+            <button
+              type="button"
+              class="btn-airline-ghost rounded-xl px-6 py-4 text-sm font-bold border-white/10 hover:bg-white/10"
+              @click="showEditModal = false"
+            >
+              إلغاء
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </teleport>
+</div>
 </template>
 
 <script setup>
@@ -603,6 +743,12 @@ import {
   Pen,
   X,
 } from 'lucide-vue-next'
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TableSkeleton from '@/components/skeletons/TableSkeleton.vue';
+import ChartSkeleton from '@/components/skeletons/ChartSkeleton.vue';
+import GridSkeleton from '@/components/skeletons/GridSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
 const router = useRouter()
 const accountStore = useAccountStore()
@@ -611,6 +757,8 @@ const financeStore = useFinanceStore()
 
 const activeTab = ref('all')
 const showCreateModal = ref(false)
+const showEditModal = ref(false)
+const editAccount = ref(null)
 
 const filters = ref({
   search: '',
@@ -641,6 +789,23 @@ const availableModules = computed(() => {
 const newAccountAvailableModules = computed(() => {
   const modules = financeStore.meta.transactionModules || []
   const type = newAccount.value.module_type
+
+  const tourismModules = ['flight', 'hajj_umra', 'visa']
+  const officeModules = ['bus', 'wallet', 'online', 'fawry', 'general', 'service']
+
+  if (type === 'tourism') {
+    return modules.filter((m) => tourismModules.includes(m.value))
+  }
+  if (type === 'office') {
+    return modules.filter((m) => officeModules.includes(m.value))
+  }
+  return modules
+})
+
+const editAccountAvailableModules = computed(() => {
+  const modules = financeStore.meta.transactionModules || []
+  if (!editAccount.value) return modules
+  const type = editAccount.value.module_type
 
   const tourismModules = ['flight', 'hajj_umra', 'visa']
   const officeModules = ['bus', 'wallet', 'online', 'fawry', 'general', 'service']
@@ -694,7 +859,9 @@ const newAccountDefaults = () => ({
 
 const newAccount = ref(newAccountDefaults())
 
-const { accounts, loading, error, totalBalance, tourismCount, officeCount, activeAccountsCount, dbStats } =
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
+
+const { accounts, error: storeError, totalBalance, tourismCount, officeCount, activeAccountsCount, dbStats } =
   storeToRefs(accountStore)
 
 const recentTransactions = computed(() => dbStats.value.recent_transactions || [])
@@ -714,6 +881,7 @@ function getModuleLabel(val) {
 }
 
 async function fetchAccounts() {
+  setLoading()
   try {
     const params = {
       search: filters.value.search,
@@ -730,8 +898,10 @@ async function fetchAccounts() {
     }
 
     await accountStore.fetchAccounts(params)
+    setSuccess()
   } catch (err) {
     console.error('Failed to fetch accounts:', err)
+    setError(err)
   }
 }
 
@@ -783,6 +953,40 @@ function onNewTypeChange() {
   }
 }
 
+function onEditModuleTypeChange() {
+  if (editAccount.value && editAccount.value.module) {
+    const isValid = editAccountAvailableModules.value.some(m => m.value === editAccount.value.module)
+    if (!isValid) {
+      editAccount.value.module = ''
+    }
+  }
+}
+
+function onEditTypeChange() {
+  if (editAccount.value && editAccount.value.type !== 'wallet') {
+    editAccount.value.wallet_provider = 'vodafone_cash'
+    editAccount.value.wallet_number = ''
+  }
+}
+
+async function saveAccount() {
+  if (!editAccount.value) return
+  try {
+    const payload = { ...editAccount.value }
+    if (payload.type !== 'wallet') {
+      delete payload.wallet_provider
+      delete payload.wallet_number
+    }
+    payload.is_active = !!payload.is_active
+    await accountStore.updateAccount(payload.id, payload)
+    showEditModal.value = false
+    editAccount.value = null
+    await fetchAccounts()
+  } catch (err) {
+    console.error('Failed to update account:', err)
+  }
+}
+
 async function createAccount() {
   try {
     const payload = { ...newAccount.value }
@@ -804,13 +1008,22 @@ function viewStatement(id) {
   router.push({ name: 'finance.accounts.statement.detail', params: { id } })
 }
 
-/** Filament لتعديل بيانات التعريف؛ غير ذلك نفتح كشف الحساب */
+/** فتح نافذة تعديل الحساب المالي محلياً دون مغادرة التطبيق */
 function openEdit(acc) {
-  if (authStore.isAdmin) {
-    window.location.assign(`/admin/accounts/${acc.id}/edit`)
-    return
+  editAccount.value = {
+    id: acc.id,
+    name: acc.name,
+    type: acc.type,
+    currency: acc.currency,
+    module_type: acc.module_type || 'tourism',
+    module: acc.module || '',
+    owner_type: acc.owner_type || 'owner',
+    notes: acc.notes || '',
+    is_active: acc.is_active,
+    wallet_provider: acc.wallet_provider || 'vodafone_cash',
+    wallet_number: acc.wallet_number || '',
   }
-  viewStatement(acc.id)
+  showEditModal.value = true
 }
 
 function formatDate(date) {

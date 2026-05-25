@@ -28,7 +28,7 @@ export const useCustomerStore = defineStore('customer', {
 
   getters: {
     filteredCustomers: (state) => {
-      let filtered = [...state.customers];
+      let filtered = Array.isArray(state.customers) ? [...state.customers] : [];
       if (state.filters.search) {
         const query = state.filters.search.toLowerCase();
         filtered = filtered.filter(c =>
@@ -43,6 +43,9 @@ export const useCustomerStore = defineStore('customer', {
 
   actions: {
     addToast(message, type = 'success') {
+      if (window.addToast) {
+        window.addToast(message, type);
+      }
       const id = Date.now();
       this.toasts.push({ id, message, type });
       setTimeout(() => {
@@ -51,9 +54,19 @@ export const useCustomerStore = defineStore('customer', {
     },
 
     async fetchCustomers(filters = {}) {
+      if (this.fetchCustomersController) {
+        this.fetchCustomersController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchCustomersController = controller;
+
       this.loading.list = true;
+      this.customers = []; // Reset list before fetching
       try {
-        const response = await axios.get('/api/v1/customers', { params: filters });
+        const response = await axios.get('/api/v1/customers', { 
+          params: filters,
+          signal: controller.signal
+        });
         const rawData = response.data?.data || response.data;
         const items = rawData.items || (Array.isArray(rawData) ? rawData : []);
         this.customers = items.map(c => ({
@@ -67,30 +80,50 @@ export const useCustomerStore = defineStore('customer', {
           perPage: response.data?.pagination?.per_page || response.data?.per_page || 15
         };
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch customers', error);
         this.errors = { fetch: 'حدث خطأ أثناء تحميل العملاء' };
         this.customers = [];
       } finally {
-        this.loading.list = false;
+        if (this.fetchCustomersController === controller) {
+          this.loading.list = false;
+        }
       }
     },
 
     async fetchCustomerById(id) {
+      if (this.fetchCustomerByIdController) {
+        this.fetchCustomerByIdController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchCustomerByIdController = controller;
+
       this.loading.list = true;
+      this.currentCustomer = null; // Reset before fetching
       try {
-        const response = await axios.get(`/api/v1/customers/${id}`);
+        const response = await axios.get(`/api/v1/customers/${id}`, {
+          signal: controller.signal
+        });
         this.currentCustomer = {
           ...response.data.data,
           name: response.data.data.name || response.data.data.full_name
         };
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch customer', error);
       } finally {
-        this.loading.list = false;
+        if (this.fetchCustomerByIdController === controller) {
+          this.loading.list = false;
+        }
       }
     },
 
     async createCustomer(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
       try {
@@ -112,6 +145,7 @@ export const useCustomerStore = defineStore('customer', {
     },
 
     async updateCustomer(id, payload) {
+      if (this.loading.update) return;
       this.loading.update = true;
       this.errors = {};
       try {
@@ -134,6 +168,7 @@ export const useCustomerStore = defineStore('customer', {
     },
 
     async deleteCustomer(id) {
+      if (this.loading.delete) return;
       this.loading.delete = true;
       this.errors = {};
       try {
@@ -147,6 +182,30 @@ export const useCustomerStore = defineStore('customer', {
       } finally {
         this.loading.delete = false;
       }
+    },
+
+    reset() {
+      this.customers = [];
+      this.currentCustomer = null;
+      this.loading = {
+        list: false,
+        create: false,
+        update: false,
+        delete: false
+      };
+      this.errors = {};
+      this.toasts = [];
+      this.filters = {
+        search: '',
+        page: 1,
+        perPage: 15
+      };
+      this.pagination = {
+        total: 0,
+        currentPage: 1,
+        lastPage: 1,
+        perPage: 15
+      };
     }
   }
 });

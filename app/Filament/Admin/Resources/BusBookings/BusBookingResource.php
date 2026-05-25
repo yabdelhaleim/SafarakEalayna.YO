@@ -89,8 +89,7 @@ class BusBookingResource extends Resource
                                                         fn (Model $record) => ($record->company?->name ?? '—').' — '.$record->route.' ('.($record->travel_date?->format('d/m/Y') ?? '').')'
                                                     )
                                                     ->searchable(['route'])
-                                                    ->required()
-                                                    ->preload(),
+                                                    ->required(),
                                                 TextInput::make('quantity', 'عدد التذاكر')
                                                     ->numeric()
                                                     ->minValue(1)
@@ -111,7 +110,6 @@ class BusBookingResource extends Resource
                                                 Select::make('customer_id', 'عميل مسجّل')
                                                     ->relationship('customer', 'full_name')
                                                     ->searchable(['full_name', 'phone'])
-                                                    ->preload()
                                                     ->live(onBlur: true)
                                                     ->nullable(),
                                                 TextInput::make('customer_name', 'اسم العميل (مباشر)')
@@ -141,7 +139,6 @@ class BusBookingResource extends Resource
                                                             ?: ('موظف #'.$record->getKey());
                                                     })
                                                     ->searchable(['full_name', 'first_name', 'last_name', 'phone'])
-                                                    ->preload()
                                                     ->nullable(),
                                                 Textarea::make('notes', 'ملاحظات')
                                                     ->rows(3)
@@ -187,7 +184,6 @@ class BusBookingResource extends Resource
                                                 Select::make('account_id', 'حساب مرتبط')
                                                     ->relationship('account', 'name', fn ($query) => $query->where('is_active', true))
                                                     ->searchable()
-                                                    ->preload()
                                                     ->disabled()
                                                     ->dehydrated(false),
                                             ]),

@@ -1,5 +1,5 @@
 <template>
-  <div class="finance-dashboard flight-booking animate-in pb-10 fade-in duration-700">
+  <div class="finance-dashboard flight-booking animate-in pb-10 fade-in duration-700 print:hidden">
     <header class="flight-hero relative overflow-hidden">
       <div class="relative z-10 mx-auto flex max-w-7xl flex-col gap-4 px-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8">
         <div class="min-w-0 flex-1">
@@ -201,6 +201,7 @@
                 <th class="px-4 py-3">من</th>
                 <th class="px-4 py-3">إلى</th>
                 <th class="px-4 py-3">ملاحظات</th>
+                <th class="px-4 py-3 text-left">الإجراءات</th>
               </tr>
             </thead>
             <tbody>
@@ -214,6 +215,11 @@
                 <td class="px-4 py-2 text-text-muted">{{ tx.from_account?.name || '—' }}</td>
                 <td class="px-4 py-2 text-text-muted">{{ tx.to_account?.name || '—' }}</td>
                 <td class="max-w-xs truncate px-4 py-2 text-xs text-text-muted">{{ tx.notes || '—' }}</td>
+                <td class="px-4 py-2 text-left">
+                  <button type="button" @click="openRecentTx(tx)" class="rounded-lg bg-white/5 p-1.5 text-text-muted hover:bg-white/10 hover:text-white transition-colors" title="عرض التفاصيل">
+                    <Eye class="h-4 w-4" />
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -226,73 +232,213 @@
     </div>
     </div> <!-- Closes mx-auto max-w-7xl -->
 
-    <!-- Modal: عمليات نظام -->
+    <!-- Modal: تفاصيل حركة مالية (طيران) -->
     <Teleport to="body">
       <div
-        v-if="modal.type === 'system' && modal.system"
-        class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        v-if="modal.type === 'recentTx' && modal.recentTx"
+        class="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300 print:static print:block print:w-full print:bg-white print:p-0"
         role="dialog"
         aria-modal="true"
         @click.self="closeModal"
       >
-        <div class="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-white/15 bg-[#0b1220] shadow-2xl">
-          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div>
-              <p class="text-xs text-text-muted">عمليات نظام الحجز</p>
-              <h3 class="text-lg font-bold text-white">{{ modal.system.name }}</h3>
+        <div class="flex flex-col w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-card shadow-2xl animate-in zoom-in-95 duration-300 print:border-none print:shadow-none print:max-w-none print:rounded-none">
+          
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5 shrink-0 print:hidden">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                <Printer class="h-6 w-6" />
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-sky-400">سند مالي</p>
+                <h3 class="text-xl font-black text-white mt-1">تفاصيل الحركة</h3>
+              </div>
             </div>
-            <button type="button" class="rounded-lg p-2 text-text-muted hover:bg-white/10" @click="closeModal">
-              ✕
+            <button type="button" class="rounded-xl bg-white/5 p-2.5 text-text-muted hover:bg-white/10 hover:text-white transition-colors" @click="closeModal">
+              <X class="h-5 w-5" />
             </button>
           </div>
-          <div class="max-h-[60vh] overflow-y-auto p-4">
-            <table class="min-w-full text-right text-xs">
-              <thead class="sticky top-0 bg-[#0b1220] text-text-muted">
-                <tr>
-                  <th class="px-2 py-2">التاريخ</th>
-                  <th class="px-2 py-2">النوع</th>
-                  <th class="px-2 py-2">المبلغ</th>
-                  <th class="px-2 py-2">الرصيد بعد</th>
-                  <th class="px-2 py-2">الحجز</th>
-                  <th class="px-2 py-2">وصف</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in systemTxRows" :key="row.id" class="border-t border-white/5">
-                  <td class="px-2 py-2 font-mono">{{ formatDt(row.created_at) }}</td>
-                  <td class="px-2 py-2">
-                    <span :class="row.type === 'credit' ? 'text-success' : 'text-warning'">{{ row.type }}</span>
-                  </td>
-                  <td class="px-2 py-2 font-mono tabular-nums">{{ Number(row.amount).toLocaleString('ar-EG') }}</td>
-                  <td class="px-2 py-2 font-mono tabular-nums">{{ Number(row.balance_after).toLocaleString('ar-EG') }}</td>
-                  <td class="px-2 py-2">{{ row.flight_booking?.booking_number || row.flight_booking_id || '—' }}</td>
-                  <td class="max-w-[180px] truncate px-2 py-2 text-text-muted">{{ row.description || '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-if="!systemTxLoading && !systemTxRows.length" class="py-8 text-center text-text-muted">لا توجد عمليات.</p>
-            <p v-if="systemTxLoading" class="py-6 text-center text-text-muted">جاري التحميل…</p>
+          
+          <!-- Content -->
+          <div class="p-8 overflow-y-auto custom-scrollbar flex-1 print:w-full print:text-black">
+            <div class="text-center pb-4">
+              <h2 class="text-2xl font-black text-gold print:text-black mb-1">سفري علينا للسياحة</h2>
+              <p class="text-xs font-bold text-text-muted print:text-black/60">سند معاملة (خزينة الطيران)</p>
+            </div>
+
+            <!-- Amount -->
+            <div class="text-center py-6 bg-white/[0.02] print:bg-transparent rounded-2xl border border-white/10 print:border-black/20 print:border-2 mb-6">
+              <span class="text-[10px] font-black text-text-muted print:text-black/70 uppercase tracking-widest block mb-2">قيمة الحركة</span>
+              <p class="text-4xl font-black font-mono" :class="modal.recentTx.type === 'credit' ? 'text-success print:text-green-700' : 'text-error print:text-red-700'">
+                {{ Number(modal.recentTx.amount).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+              </p>
+            </div>
+
+            <!-- Basic Details -->
+            <div class="space-y-3 text-sm bg-white/5 print:bg-transparent p-5 rounded-2xl print:border-b print:border-t print:border-black/20 text-right" dir="rtl">
+              <div class="flex justify-between items-center py-2 border-b border-white/5 print:border-black/10">
+                <span class="text-text-muted print:text-black/70 text-xs font-black">رقم المرجع (ID)</span>
+                <span class="font-mono font-bold">{{ modal.recentTx.id }}</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-white/5 print:border-black/10">
+                <span class="text-text-muted print:text-black/70 text-xs font-black">التاريخ والوقت</span>
+                <span class="font-mono text-xs">{{ formatDt(modal.recentTx.created_at) }}</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-white/5 print:border-black/10">
+                <span class="text-text-muted print:text-black/70 text-xs font-black">الحساب المحول منه (من)</span>
+                <span class="font-bold">{{ modal.recentTx.from_account?.name || '—' }}</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-white/5 print:border-black/10">
+                <span class="text-text-muted print:text-black/70 text-xs font-black">الحساب المحول إليه (إلى)</span>
+                <span class="font-bold">{{ modal.recentTx.to_account?.name || '—' }}</span>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="mt-6 text-right" dir="rtl">
+              <span class="text-[10px] font-black text-gold print:text-black block uppercase tracking-widest mb-2">ملاحظات / البيان</span>
+              <p class="text-sm font-bold bg-white/[0.02] print:bg-gray-50 border border-white/5 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">{{ modal.recentTx.notes || '—' }}</p>
+            </div>
+
+            <!-- Footer for Print -->
+            <div class="grid grid-cols-2 gap-4 pt-12 text-center text-xs text-text-muted print:text-black/70 font-bold hidden print:grid">
+              <div>
+                <p class="mb-4">توقيع المستلم</p>
+                <p>___________________</p>
+              </div>
+              <div>
+                <p class="mb-4">توقيع الموظف</p>
+                <p>___________________</p>
+              </div>
+            </div>
+            
           </div>
-          <div v-if="systemTxMeta && systemTxMeta.last_page > 1" class="flex justify-center gap-2 border-t border-white/10 px-4 py-3">
-            <button
-              type="button"
-              class="rounded-lg border border-white/10 px-3 py-1 text-xs font-bold disabled:opacity-40"
-              :disabled="systemTxMeta.current_page <= 1"
-              @click="loadSystemPage(systemTxMeta.current_page - 1)"
-            >
-              السابق
+          
+          <!-- Print Button (Footer) -->
+          <div class="p-6 border-t border-white/10 bg-white/5 shrink-0 print:hidden flex justify-end">
+             <button type="button" @click="printReceipt" class="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition-all">
+               <Printer class="w-5 h-5" />
+               طباعة السند
+             </button>
+          </div>
+
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal: عمليات نظام -->
+    <Teleport to="body">
+      <div
+        v-if="modal.type === 'system' && modal.system"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeModal"
+      >
+        <div class="flex flex-col max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-card shadow-2xl animate-in zoom-in-95 duration-300">
+          
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5 shrink-0">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-400 border border-violet-500/20">
+                <Monitor class="h-6 w-6" />
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-violet-400">عمليات نظام الحجز</p>
+                <h3 class="text-2xl font-black text-white mt-1">{{ modal.system.name }}</h3>
+              </div>
+            </div>
+            <button type="button" class="rounded-xl bg-white/5 p-2.5 text-text-muted hover:bg-white/10 hover:text-white transition-colors" @click="closeModal">
+              <X class="h-5 w-5" />
             </button>
-            <span class="self-center text-xs text-text-muted">
-              {{ systemTxMeta.current_page }} / {{ systemTxMeta.last_page }}
+          </div>
+          
+          <!-- Content -->
+          <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+            <div class="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+              <table class="min-w-full text-right text-sm whitespace-nowrap">
+                <thead class="border-b border-white/10 bg-white/[0.02]">
+                  <tr>
+                    <th class="px-6 py-4 font-black text-white">التاريخ</th>
+                    <th class="px-6 py-4 font-black text-white">النوع</th>
+                    <th class="px-6 py-4 font-black text-white">المبلغ</th>
+                    <th class="px-6 py-4 font-black text-white">الرصيد بعد</th>
+                    <th class="px-6 py-4 font-black text-white">مرجع الحجز</th>
+                    <th class="px-6 py-4 font-black text-white">وصف العمليّة</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <tr v-for="row in systemTxRows" :key="row.id" class="transition-colors hover:bg-white/[0.04]">
+                    <td class="px-6 py-4">
+                      <div class="flex flex-col">
+                        <span class="font-mono font-bold text-white">{{ formatDt(row.created_at).split(',')[0] }}</span>
+                        <span class="text-[10px] text-text-muted">{{ formatDt(row.created_at).split(',')[1] }}</span>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-black border"
+                            :class="row.type === 'credit' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'">
+                        {{ row.type === 'credit' ? 'شحن / إضافة' : 'خصم / حجز' }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="font-mono font-black" :class="row.type === 'credit' ? 'text-emerald-400' : 'text-red-400'">
+                        {{ row.type === 'credit' ? '+' : '-' }}{{ Number(row.amount).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="font-mono font-bold text-gold">{{ Number(row.balance_after).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span v-if="row.flight_booking?.booking_number || row.flight_booking_id" class="font-mono text-sky-400 bg-sky-400/10 px-2 py-1 rounded-lg border border-sky-400/20 text-xs font-bold">
+                        {{ row.flight_booking?.booking_number || row.flight_booking_id }}
+                      </span>
+                      <span v-else class="text-text-muted">—</span>
+                    </td>
+                    <td class="px-6 py-4 text-xs text-text-muted max-w-[250px] truncate" :title="row.description">
+                      {{ row.description || '—' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <div v-if="!systemTxLoading && !systemTxRows.length" class="flex flex-col items-center justify-center py-16 text-text-muted">
+                <FileX class="h-12 w-12 mb-4 opacity-40" />
+                <p class="text-lg font-bold">لا توجد عمليات</p>
+                <p class="text-xs mt-1">لم يتم تسجيل أي عمليات شحن أو خصم لهذا النظام.</p>
+              </div>
+              <div v-if="systemTxLoading" class="flex flex-col items-center justify-center py-16 text-violet-400">
+                <Loader2 class="h-10 w-10 animate-spin mb-4" />
+                <p class="font-bold">جاري تحميل البيانات...</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Footer Pagination -->
+          <div v-if="systemTxMeta && systemTxMeta.last_page > 1" class="flex items-center justify-between border-t border-white/10 bg-white/5 px-6 py-4 shrink-0">
+            <span class="text-sm font-bold text-text-muted">
+              الصفحة <span class="text-white">{{ systemTxMeta.current_page }}</span> من <span class="text-white">{{ systemTxMeta.last_page }}</span>
             </span>
-            <button
-              type="button"
-              class="rounded-lg border border-white/10 px-3 py-1 text-xs font-bold disabled:opacity-40"
-              :disabled="systemTxMeta.current_page >= systemTxMeta.last_page"
-              @click="loadSystemPage(systemTxMeta.current_page + 1)"
-            >
-              التالي
-            </button>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="systemTxMeta.current_page <= 1"
+                @click="loadSystemPage(systemTxMeta.current_page - 1)"
+              >
+                <ArrowRight class="h-4 w-4" />
+                السابق
+              </button>
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="systemTxMeta.current_page >= systemTxMeta.last_page"
+                @click="loadSystemPage(systemTxMeta.current_page + 1)"
+              >
+                التالي
+                <ArrowRight class="h-4 w-4 rotate-180" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -385,65 +531,101 @@
     <Teleport to="body">
       <div
         v-if="modal.type === 'account' && modal.account"
-        class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
         role="dialog"
         aria-modal="true"
         @click.self="closeModal"
       >
-        <div class="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-white/15 bg-[#0b1220] shadow-2xl">
-          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div>
-              <p class="text-xs text-text-muted">حركات الطيران على الحساب</p>
-              <h3 class="text-lg font-bold text-white">{{ modal.account.name }}</h3>
+        <div class="flex flex-col max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-card shadow-2xl animate-in zoom-in-95 duration-300">
+          
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5 shrink-0">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                <Wallet class="h-6 w-6" />
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-sky-400">حركات الطيران على الحساب</p>
+                <h3 class="text-2xl font-black text-white mt-1">{{ modal.account.name }}</h3>
+              </div>
             </div>
-            <button type="button" class="rounded-lg p-2 text-text-muted hover:bg-white/10" @click="closeModal">
-              ✕
+            <button type="button" class="rounded-xl bg-white/5 p-2.5 text-text-muted hover:bg-white/10 hover:text-white transition-colors" @click="closeModal">
+              <X class="h-5 w-5" />
             </button>
           </div>
-          <div class="max-h-[60vh] overflow-y-auto p-4">
-            <table class="min-w-full text-right text-xs">
-              <thead class="sticky top-0 bg-[#0b1220] text-text-muted">
-                <tr>
-                  <th class="px-2 py-2">التاريخ</th>
-                  <th class="px-2 py-2">المبلغ</th>
-                  <th class="px-2 py-2">من</th>
-                  <th class="px-2 py-2">إلى</th>
-                  <th class="px-2 py-2">ملاحظات</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="tx in accountTxRows" :key="tx.id" class="border-t border-white/5">
-                  <td class="px-2 py-2 font-mono">{{ formatDt(tx.created_at) }}</td>
-                  <td class="px-2 py-2 font-mono tabular-nums">{{ Number(tx.amount).toLocaleString('ar-EG') }}</td>
-                  <td class="px-2 py-2">{{ tx.from_account?.name || '—' }}</td>
-                  <td class="px-2 py-2">{{ tx.to_account?.name || '—' }}</td>
-                  <td class="max-w-[200px] truncate px-2 py-2 text-text-muted">{{ tx.notes || '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-if="!accountTxLoading && !accountTxRows.length" class="py-8 text-center text-text-muted">لا توجد حركات.</p>
-            <p v-if="accountTxLoading" class="py-6 text-center text-text-muted">جاري التحميل…</p>
+          
+          <!-- Content -->
+          <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+            <div class="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+              <table class="min-w-full text-right text-sm whitespace-nowrap">
+                <thead class="border-b border-white/10 bg-white/[0.02]">
+                  <tr>
+                    <th class="px-6 py-4 font-black text-white">التاريخ</th>
+                    <th class="px-6 py-4 font-black text-white">المبلغ</th>
+                    <th class="px-6 py-4 font-black text-white">من</th>
+                    <th class="px-6 py-4 font-black text-white">إلى</th>
+                    <th class="px-6 py-4 font-black text-white">البيان / ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <tr v-for="tx in accountTxRows" :key="tx.id" class="transition-colors hover:bg-white/[0.04]">
+                    <td class="px-6 py-4">
+                      <div class="flex flex-col">
+                        <span class="font-mono font-bold text-white">{{ formatDt(tx.created_at).split(',')[0] }}</span>
+                        <span class="text-[10px] text-text-muted">{{ formatDt(tx.created_at).split(',')[1] }}</span>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-3 py-1.5 font-mono text-emerald-400 font-bold border border-emerald-500/20">
+                        {{ Number(tx.amount).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 font-bold text-white/90">{{ tx.from_account?.name || '—' }}</td>
+                    <td class="px-6 py-4 font-bold text-white/90">{{ tx.to_account?.name || '—' }}</td>
+                    <td class="px-6 py-4 text-xs text-text-muted leading-relaxed max-w-[300px] truncate" :title="tx.notes">
+                      {{ tx.notes || '—' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <div v-if="!accountTxLoading && !accountTxRows.length" class="flex flex-col items-center justify-center py-16 text-text-muted">
+                <FileX class="h-12 w-12 mb-4 opacity-40" />
+                <p class="text-lg font-bold">لا توجد حركات مالية</p>
+                <p class="text-xs mt-1">لم يتم تسجيل أي حركات طيران لهذا الحساب.</p>
+              </div>
+              <div v-if="accountTxLoading" class="flex flex-col items-center justify-center py-16 text-sky-400">
+                <Loader2 class="h-10 w-10 animate-spin mb-4" />
+                <p class="font-bold">جاري تحميل البيانات...</p>
+              </div>
+            </div>
           </div>
-          <div v-if="accountTxMeta && accountTxMeta.last_page > 1" class="flex justify-center gap-2 border-t border-white/10 px-4 py-3">
-            <button
-              type="button"
-              class="rounded-lg border border-white/10 px-3 py-1 text-xs font-bold disabled:opacity-40"
-              :disabled="accountTxMeta.current_page <= 1"
-              @click="loadAccountPage(accountTxMeta.current_page - 1)"
-            >
-              السابق
-            </button>
-            <span class="self-center text-xs text-text-muted">
-              {{ accountTxMeta.current_page }} / {{ accountTxMeta.last_page }}
+          
+          <!-- Footer Pagination -->
+          <div v-if="accountTxMeta && accountTxMeta.last_page > 1" class="flex items-center justify-between border-t border-white/10 bg-white/5 px-6 py-4 shrink-0">
+            <span class="text-sm font-bold text-text-muted">
+              الصفحة <span class="text-white">{{ accountTxMeta.current_page }}</span> من <span class="text-white">{{ accountTxMeta.last_page }}</span>
             </span>
-            <button
-              type="button"
-              class="rounded-lg border border-white/10 px-3 py-1 text-xs font-bold disabled:opacity-40"
-              :disabled="accountTxMeta.current_page >= accountTxMeta.last_page"
-              @click="loadAccountPage(accountTxMeta.current_page + 1)"
-            >
-              التالي
-            </button>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="accountTxMeta.current_page <= 1"
+                @click="loadAccountPage(accountTxMeta.current_page - 1)"
+              >
+                <ArrowRight class="h-4 w-4" />
+                السابق
+              </button>
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="accountTxMeta.current_page >= accountTxMeta.last_page"
+                @click="loadAccountPage(accountTxMeta.current_page + 1)"
+              >
+                التالي
+                <ArrowRight class="h-4 w-4 rotate-180" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -454,7 +636,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
-import { ArrowRight, Loader2, RefreshCw, Wallet } from 'lucide-vue-next';
+import { ArrowRight, Loader2, RefreshCw, Wallet, X, FileX, Monitor, Eye, Printer } from 'lucide-vue-next';
 
 const store = useFlightStore();
 
@@ -630,9 +812,17 @@ const loadSystemPage = async (page) => {
   }
 };
 
-const openAccountTx = async (acc) => {
-  modal.value = { type: 'account', account: acc };
-  await loadAccountPage(1);
+const openAccountTx = (account) => {
+  modal.value = { type: 'account', account };
+  loadAccountPage(1);
+};
+
+const openRecentTx = (tx) => {
+  modal.value = { type: 'recentTx', recentTx: tx };
+};
+
+const printReceipt = () => {
+  window.print();
 };
 
 const loadAccountPage = async (page) => {

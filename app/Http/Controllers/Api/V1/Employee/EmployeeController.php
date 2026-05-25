@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Employee;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
@@ -43,11 +44,11 @@ class EmployeeController extends Controller
         $employees = $this->employeeService->getAllEmployees($filters)
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employees retrieved successfully',
-            'data' => EmployeeResource::collection($employees)->response()->getData(true),
-        ]);
+        return ApiResponse::paginated(
+            'Employees retrieved successfully',
+            EmployeeResource::collection($employees),
+            $employees
+        );
     }
 
     public function store(StoreEmployeeRequest $request): JsonResponse
@@ -56,11 +57,11 @@ class EmployeeController extends Controller
 
         $employee = $this->employeeService->createEmployee($request->validated());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee created successfully',
-            'data' => new EmployeeResource($employee),
-        ], 201);
+        return ApiResponse::success(
+            'Employee created successfully',
+            new EmployeeResource($employee),
+            201
+        );
     }
 
     public function show(int $id): JsonResponse
@@ -69,11 +70,10 @@ class EmployeeController extends Controller
 
         $this->authorize('view', $employee);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee retrieved successfully',
-            'data' => new EmployeeResource($employee),
-        ]);
+        return ApiResponse::success(
+            'Employee retrieved successfully',
+            new EmployeeResource($employee)
+        );
     }
 
     public function update(UpdateEmployeeRequest $request, int $id): JsonResponse
@@ -84,11 +84,10 @@ class EmployeeController extends Controller
 
         $employee = $this->employeeService->updateEmployee($employee, $request->validated());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee updated successfully',
-            'data' => new EmployeeResource($employee),
-        ]);
+        return ApiResponse::success(
+            'Employee updated successfully',
+            new EmployeeResource($employee)
+        );
     }
 
     public function destroy(int $id): JsonResponse
@@ -99,10 +98,9 @@ class EmployeeController extends Controller
 
         $this->employeeService->deleteEmployee($employee);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee deleted successfully',
-        ]);
+        return ApiResponse::success(
+            'Employee deleted successfully'
+        );
     }
 
     public function referenceData(): JsonResponse
@@ -132,14 +130,13 @@ class EmployeeController extends Controller
             ];
         })->values();
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee reference data retrieved successfully',
-            'data' => [
+        return ApiResponse::success(
+            'Employee reference data retrieved successfully',
+            [
                 'departments' => $departments,
                 'employment_statuses' => $employmentStatuses,
-            ],
-        ]);
+            ]
+        );
     }
 
     public function getStats(Request $request, int $id): JsonResponse
@@ -157,11 +154,10 @@ class EmployeeController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee statistics retrieved successfully',
-            'data' => $stats,
-        ]);
+        return ApiResponse::success(
+            'Employee statistics retrieved successfully',
+            $stats
+        );
     }
 
     public function transactions(int $id): JsonResponse
@@ -170,11 +166,10 @@ class EmployeeController extends Controller
         
         // Fetch transactions created by this employee's user_id
         if (!$employee->user_id) {
-            return response()->json([
-                'status' => true,
-                'message' => 'No user account linked to this employee',
-                'data' => [],
-            ]);
+            return ApiResponse::success(
+                'No user account linked to this employee',
+                []
+            );
         }
 
         $transactions = \Illuminate\Support\Facades\DB::table('transactions')
@@ -183,10 +178,9 @@ class EmployeeController extends Controller
             ->limit(50)
             ->get();
             
-        return response()->json([
-            'status' => true,
-            'message' => 'Employee transactions retrieved successfully',
-            'data' => $transactions,
-        ]);
+        return ApiResponse::success(
+            'Employee transactions retrieved successfully',
+            $transactions
+        );
     }
 }

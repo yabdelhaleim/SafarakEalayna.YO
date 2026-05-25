@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
@@ -42,11 +43,11 @@ class UserController extends Controller
             return $user;
         });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم إنشاء المستخدم بنجاح',
-            'data' => new UserResource($user->load('employee')),
-        ], Response::HTTP_CREATED);
+        return ApiResponse::success(
+            'تم إنشاء المستخدم بنجاح',
+            new UserResource($user->load('employee')),
+            Response::HTTP_CREATED
+        );
     }
 
     public function show(int $id): JsonResponse
@@ -54,18 +55,17 @@ class UserController extends Controller
         $user = User::with('employee')->find($id);
 
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'المستخدم غير موجود',
-                'data' => null,
-            ], Response::HTTP_NOT_FOUND);
+            return ApiResponse::error(
+                'المستخدم غير موجود',
+                null,
+                Response::HTTP_NOT_FOUND
+            );
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => '',
-            'data' => new UserResource($user),
-        ]);
+        return ApiResponse::success(
+            '',
+            new UserResource($user)
+        );
     }
 
     public function update(UpdateUserRequest $request, int $id): JsonResponse
@@ -73,11 +73,11 @@ class UserController extends Controller
         $user = User::find($id);
 
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'المستخدم غير موجود',
-                'data' => null,
-            ], Response::HTTP_NOT_FOUND);
+            return ApiResponse::error(
+                'المستخدم غير موجود',
+                null,
+                Response::HTTP_NOT_FOUND
+            );
         }
 
         DB::transaction(function () use ($request, $user) {
@@ -91,11 +91,10 @@ class UserController extends Controller
             }
         });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تحديث المستخدم بنجاح',
-            'data' => new UserResource($user->load('employee')),
-        ]);
+        return ApiResponse::success(
+            'تم تحديث المستخدم بنجاح',
+            new UserResource($user->load('employee'))
+        );
     }
 
     public function destroy(int $id): JsonResponse
@@ -103,19 +102,19 @@ class UserController extends Controller
         $user = User::find($id);
 
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'المستخدم غير موجود',
-                'data' => null,
-            ], Response::HTTP_NOT_FOUND);
+            return ApiResponse::error(
+                'المستخدم غير موجود',
+                null,
+                Response::HTTP_NOT_FOUND
+            );
         }
 
         if ($user->id === auth()->user()->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكنك إلغاء تنشيط ح��ابك الخاص',
-                'data' => null,
-            ], Response::HTTP_FORBIDDEN);
+            return ApiResponse::error(
+                'لا يمكنك إلغاء تنشيط حسابك الخاص',
+                null,
+                Response::HTTP_FORBIDDEN
+            );
         }
 
         $user->update(['is_active' => false]);
@@ -124,11 +123,10 @@ class UserController extends Controller
             $user->employee->update(['status' => 'inactive']);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم إلغاء تنشيط المستخدم بنجاح',
-            'data' => null,
-        ]);
+        return ApiResponse::success(
+            'تم إلغاء تنشيط المستخدم بنجاح',
+            null
+        );
     }
 
     public function toggleStatus(int $id): JsonResponse
@@ -136,19 +134,19 @@ class UserController extends Controller
         $user = User::with('employee')->find($id);
 
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'المستخدم غير موجود',
-                'data' => null,
-            ], Response::HTTP_NOT_FOUND);
+            return ApiResponse::error(
+                'المستخدم غير موجود',
+                null,
+                Response::HTTP_NOT_FOUND
+            );
         }
 
         if ($user->id === auth()->user()->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكنك تغيير حالة حسابك الخاص',
-                'data' => null,
-            ], Response::HTTP_FORBIDDEN);
+            return ApiResponse::error(
+                'لا يمكنك تغيير حالة حسابك الخاص',
+                null,
+                Response::HTTP_FORBIDDEN
+            );
         }
 
         $newStatus = ! $user->is_active;
@@ -158,8 +156,12 @@ class UserController extends Controller
             $user->employee->update(['status' => $newStatus ? 'active' : 'inactive']);
         }
 
-        return response()->json([
-            'success' => true,
+        return ApiResponse::success(
+            $newStatus ? 'تم تفعيل المستخدم بنجاح' : 'تم إلغاء تنشيط المستخدم بنجاح',
+            new UserResource($user->load('employee'))
+        );
+    }
+},
             'message' => $newStatus ? 'تم تفعيل المستخدم بنجاح' : 'تم إلغاء تنشيط المستخدم بنجاح',
             'data' => new UserResource($user->load('employee')),
         ]);

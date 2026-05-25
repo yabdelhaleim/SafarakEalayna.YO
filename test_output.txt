@@ -1,0 +1,31 @@
+﻿
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightRemainingCrudTest[39m
+  [31;1mÔ¿»[39;22m[90m [39m[90maviation crud[39m[90m                                                                                               [39m [90m1.59s[39m  
+  [31mÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightRemainingCrudTest[22m [90m>[39m aviation crud                                                        
+[39;1m  Expected response status code [200] but received 500.
+Failed asserting that 500 is identical to 200.
+
+The following exception occurred during the last request:
+
+ValueError
+
+----------------------------------------------------------------------------------
+
+ValueError[39;22m
+
+  at [32mtests\Feature\FlightRemainingCrudTest.php[39m:[32m67[39m
+     63Ôûò             ],
+     64Ôûò         ];
+     65Ôûò 
+     66Ôûò         $create = $this->postJson('/api/v1/flight/aviation', $payload);
+  Ô×£  67Ôûò         $create->assertStatus(200)->assertJsonPath('status', 'SUCCESS');
+     68Ôûò 
+     69Ôûò         $booking = FlightBooking::where('booking_reference', $reference)->first();
+     70Ôûò         $this->assertNotNull($booking);
+     71Ôûò         $id = $booking->id;
+
+
+  [90mTests:[39m    [31;1m1 failed[39;22m[90m (1 assertions)[39m
+  [90mDuration:[39m [39m2.12s[39m
+

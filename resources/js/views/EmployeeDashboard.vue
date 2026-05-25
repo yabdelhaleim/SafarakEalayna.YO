@@ -28,7 +28,10 @@
     </header>
 
     <!-- My Sales Stats (Counts Only) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-if="isLoading()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <KPICardSkeleton v-for="i in 6" :key="`sales-${i}`" />
+    </div>
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       
       <!-- Flights -->
       <div class="bg-card-bg border border-white/10 rounded-2xl p-6 hover:border-sky-500/30 transition-all group">
@@ -111,9 +114,13 @@
         أحدث العمليات التي قمت بها
       </h3>
       
-      <div v-if="!data.recent_activity?.length" class="text-center py-12">
-        <div class="text-gray-500 italic">لا توجد عمليات مسجلة لك مؤخراً</div>
+      <div v-if="isLoading()" class="space-y-4">
+        <TextLineSkeleton :lines="3" heightClass="h-16" gapClass="gap-4" />
       </div>
+      <template v-else>
+        <div v-if="!data.recent_activity?.length" class="text-center py-12">
+          <div class="text-gray-500 italic">لا توجد عمليات مسجلة لك مؤخراً</div>
+        </div>
       
       <div v-else class="space-y-4">
         <div 
@@ -133,6 +140,7 @@
           <button class="text-xs font-bold text-indigo-400 hover:underline">عرض التفاصيل</button>
         </div>
       </div>
+      </template>
     </div>
 
   </div>
@@ -150,6 +158,9 @@ import {
   Clock, 
   Activity 
 } from 'lucide-vue-next';
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
 const data = ref({
   user: null,
@@ -158,16 +169,17 @@ const data = ref({
   recent_activity: []
 });
 
-const loading = ref(true);
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
 
 const fetchDashboard = async () => {
+  setLoading();
   try {
     const res = await axios.get('/api/v1/employee/dashboard');
     data.value = res.data.data;
+    setSuccess();
   } catch (err) {
     console.error('Failed to fetch employee dashboard:', err);
-  } finally {
-    loading.value = false;
+    setError(err);
   }
 };
 

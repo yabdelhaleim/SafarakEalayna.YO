@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Wallet;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Wallet\WalletTransaction;
@@ -47,13 +48,10 @@ class TransferDashboardController extends Controller
             ->limit(10)
             ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'stats' => $stats,
-                'daily' => $daily_stats,
-                'recent_transactions' => $recent,
-            ]
+        return ApiResponse::success('Transfer dashboard statistics retrieved successfully', [
+            'stats' => $stats,
+            'daily' => $daily_stats,
+            'recent_transactions' => $recent,
         ]);
     }
 }

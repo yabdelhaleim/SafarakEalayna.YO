@@ -1,33 +1,30 @@
 <template>
-  <DashboardLayout>
-    <div class="container mx-auto px-4 py-6">
-      <div class="flex justify-between items-center mb-6">
-        <div class="flex items-center gap-4">
-          <button
-            @click="router.back()"
-            class="text-gray-600 hover:text-gray-900"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 class="text-2xl font-bold text-gray-900">تحويل أموال</h1>
-        </div>
+  <div class="space-y-8 animate-in fade-in duration-700">
+    <div class="flex items-center gap-4">
+      <router-link to="/finance/transfers" class="p-2 hover:bg-white/10 rounded-lg transition-all">
+        <svg class="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+      </router-link>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-text-main tracking-tight">تحويل أموال</h1>
+        <p class="text-text-muted mt-1">تحويل بين الحسابات المالية</p>
       </div>
+    </div>
 
-      <div class="max-w-2xl mx-auto">
-        <div class="bg-white rounded-lg shadow p-6">
-          <form @submit.prevent="handleTransfer">
-            <div class="space-y-6">
-              <!-- From Account -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  من حساب
-                  <span class="text-red-500">*</span>
-                </label>
-                <select
-                  v-model="transfer.from_account_id"
-                  required
+    <div class="max-w-2xl mx-auto">
+      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
+        <form @submit.prevent="handleTransfer">
+          <div class="space-y-6">
+            <!-- From Account -->
+            <div>
+              <label class="block text-sm font-semibold text-text-main mb-2">
+                من حساب
+                <span class="text-rose-500">*</span>
+              </label>
+              <select
+                v-model="transfer.from_account_id"
+                required
                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">اختر الحساب</option>
@@ -155,14 +152,14 @@
                 <button
                   type="submit"
                   :disabled="loading || !canTransfer"
-                  class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="flex-1 bg-gold hover:bg-gold/90 text-black px-4 py-3 rounded-xl font-bold transition-all"
                 >
                   {{ loading ? 'جاري التحويل...' : 'تأكيد التحويل' }}
                 </button>
                 <button
                   type="button"
                   @click="router.back()"
-                  class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                  class="flex-1 bg-white/5 border border-white/10 text-text-muted px-4 py-3 rounded-xl font-bold hover:bg-white/10 transition-all"
                 >
                   إلغاء
                 </button>
@@ -172,15 +169,13 @@
         </div>
       </div>
     </div>
-  </DashboardLayout>
-</template>
+  </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAccountStore } from '@/stores/accountStore'
-import DashboardLayout from '@/layouts/DashboardLayout.vue'
 
 const router = useRouter()
 const accountStore = useAccountStore()

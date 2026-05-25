@@ -36,14 +36,14 @@ Route::prefix('v1')->middleware([
 ])->group(function () {
     // Health Check
     Route::get('/health', function () {
-        return response()->json([
-            'status' => true,
-            'message' => 'System is operational',
+        return \App\Helpers\ApiResponse::success('System is operational', [
             'timestamp' => now()->toIso8601String()
         ]);
     });
 
-    // Settings API (Payment Methods, Operation Types, Currencies, Trip Types)
+    // Aviation Next Number route for the frontend
+    Route::get('aviation/next-number', [\App\Http\Controllers\Api\V1\Flight\AviationController::class, 'nextNumber']);
+
     Route::prefix('settings')->group(function () {
         Route::get('payment-methods', [\App\Http\Controllers\Api\V1\SettingController::class, 'paymentMethods']);
         Route::get('operation-types', [\App\Http\Controllers\Api\V1\SettingController::class, 'operationTypes']);
@@ -76,6 +76,9 @@ Route::prefix('v1')->middleware([
             Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
             Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
             Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
+
+            // Transactions resource routes
+            Route::apiResource('transactions', \App\Http\Controllers\Api\V1\Finance\TransactionController::class)->except(['index', 'show'])->names('finance_transactions');
         });
     });
 
@@ -105,7 +108,7 @@ Route::prefix('v1')->middleware([
         Route::apiResource('carriers', \App\Http\Controllers\Api\V1\Flight\FlightCarrierController::class)->names('flight_carriers');
         Route::get('carriers/{carrier}/balance', [\App\Http\Controllers\Api\V1\Flight\FlightCarrierController::class, 'balance']);
         Route::get('carriers/{carrier}/groups', [\App\Http\Controllers\Api\V1\Flight\FlightGroupController::class, 'getByCarrier']);
-        Route::apiResource('groups', \App\Http\Controllers\Api\V1\Flight\FlightGroupController::class)->names('flight_groups');
+        Route::apiResource('groups', \App\Http\Controllers\Api\V1\Flight\FlightGroupController::class)->names('flight_groups')->only(['index', 'show']);
 
         // Airports endpoints
         Route::prefix('airports')->group(function () {
@@ -165,6 +168,7 @@ Route::prefix('v1')->middleware([
                 Route::get('accounts/{account}/bus-transactions', [\App\Http\Controllers\Api\V1\Bus\BusTreasuryController::class, 'accountBusTransactions']);
             });
 
+            Route::get('customers', [\App\Http\Controllers\Api\V1\Bus\BusCustomerController::class, 'index']);
             Route::get('companies/{company}/statement', [\App\Http\Controllers\Api\V1\Bus\BusCompanyController::class, 'statement']);
             Route::post('companies/{company}/pay-debt', [\App\Http\Controllers\Api\V1\Bus\BusCompanyController::class, 'payDebt']);
             Route::apiResource('companies', \App\Http\Controllers\Api\V1\Bus\BusCompanyController::class);
@@ -237,8 +241,10 @@ Route::prefix('v1')->middleware([
     // Fawry API
         Route::prefix('fawry')->group(function () {
             Route::get('dashboard', [\App\Http\Controllers\Api\V1\Fawry\FawryDashboardController::class, 'index']);
-            Route::apiResource('transactions', \App\Http\Controllers\Api\V1\Fawry\FawryTransactionController::class)->names('fawry_transactions');
             Route::get('transactions/daily-summary', [\App\Http\Controllers\Api\V1\Fawry\FawryTransactionController::class, 'dailySummary']);
+            Route::apiResource('transactions', \App\Http\Controllers\Api\V1\Fawry\FawryTransactionController::class)
+                ->parameters(['transactions' => 'fawryTransaction'])
+                ->names('fawry_transactions');
 
             // Fawry Treasury API
             Route::get('treasury/overview', [\App\Http\Controllers\Api\V1\Fawry\FawryTreasuryController::class, 'overview']);
@@ -265,7 +271,10 @@ Route::prefix('v1')->middleware([
             Route::post('bonuses/draw', [\App\Http\Controllers\Api\V1\Employee\EmployeeBonusController::class, 'draw']);
             Route::get('bonuses/summary', [\App\Http\Controllers\Api\V1\Employee\EmployeeBonusController::class, 'activitySummary']);
             Route::get('bonuses/employee-summary/{id}', [\App\Http\Controllers\Api\V1\Employee\EmployeeBonusController::class, 'employeeSummary']);
-            Route::apiResource('bonuses', \App\Http\Controllers\Api\V1\Employee\EmployeeBonusController::class)->names('employee_bonuses');
+            Route::apiResource('bonuses', \App\Http\Controllers\Api\V1\Employee\EmployeeBonusController::class)
+                ->parameters(['bonuses' => 'employeeBonus'])
+                ->except(['store'])
+                ->names('employee_bonuses');
             
             Route::apiResource('attendances', \App\Http\Controllers\Api\V1\Employee\AttendanceController::class)->names('employee_attendances');
             Route::apiResource('reports', \App\Http\Controllers\Api\V1\Employee\EmployeeReportController::class)->names('employee_reports');
@@ -276,6 +285,7 @@ Route::prefix('v1')->middleware([
         Route::get('financial/summary', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'financialSummary']);
         Route::get('financial/accounts-balance', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'accountsBalance']);
         Route::get('transactions', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'transactions']);
+        Route::get('transactions/{id}', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'transactionDetail']);
         Route::get('sales', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'sales']);
         Route::get('profit-loss', [\App\Http\Controllers\Api\V1\Reports\ReportController::class, 'profitLoss']);
 
@@ -283,7 +293,10 @@ Route::prefix('v1')->middleware([
         Route::get('treasury', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'treasuryReport']);
         Route::get('profit', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'profitReport']);
         Route::get('customer-debts', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'customerDebtsReport']);
+        Route::get('financial/customer-debts', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'customerDebtsReport']);
         Route::get('supplier-debts', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'supplierDebtsReport']);
+        Route::get('financial/supplier-debts', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'supplierDebtsReport']);
+        Route::get('debts', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'debtsReport']);
         Route::get('summary', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'financialSummary']);
         Route::get('profit-by-module', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'profitByModule']);
         Route::get('cash-flow-realtime', [\App\Http\Controllers\Api\V1\Reports\FinancialReportController::class, 'cashFlowRealtime']);

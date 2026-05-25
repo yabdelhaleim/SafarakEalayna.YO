@@ -24,9 +24,7 @@ class WalletAccountResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-device-phone-mobile';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'الطيران';
-
-    protected static ?string $navigationLabel = 'محافظ تحصيل الطيران';
+    protected static ?string $navigationLabel = 'كل المحافظ الإلكترونية';
 
     protected static ?string $pluralModelLabel = 'حسابات المحافظ الإلكترونية';
 
@@ -40,8 +38,7 @@ class WalletAccountResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('type', AccountType::Wallet->value)
-            ->where('module_type', 'flights');
+            ->where('type', AccountType::Wallet->value);
     }
 
     public static function form(Schema $schema): Schema

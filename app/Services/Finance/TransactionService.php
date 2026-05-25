@@ -486,7 +486,9 @@ class TransactionService
             }
 
             if (!$allowFromNegative && (float) $fromAccount->balance < $amount) {
-                throw new \Exception('Insufficient balance in account: '.$fromAccount->name);
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'amount' => 'رصيد الحساب غير كافٍ: ' . $fromAccount->name
+                ]);
             }
 
             $fromAccount->balance = (float) $fromAccount->balance - $amount;

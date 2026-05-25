@@ -33,6 +33,8 @@ class FawryTransaction extends Model
         'reference_number',
         'notes',
         'payment_details',
+        'expense_transaction_id',
+        'income_transaction_id',
     ];
 
     protected $casts = [

@@ -18,7 +18,7 @@
         <div class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-600 shadow-lg shadow-sky-500/30">
           <Plane class="h-7 w-7 text-white" />
         </div>
-        <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/90">سفارك إلينا</p>
+        <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/90">سفرك علينا</p>
         <h1 class="mt-1 text-2xl font-black tracking-tight text-text-main sm:text-3xl">تسجيل الدخول</h1>
         <p class="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-text-muted">
           أدخل البريد وكلمة المرور للوصول إلى لوحة التحكم — نفس أسلوب واجهة النظام الداكنة.
@@ -142,7 +142,7 @@
         </div>
       </div>
 
-      <p class="mt-8 text-center text-[11px] text-text-muted/80">© 2026 سفارك إلينا. جميع الحقوق محفوظة.</p>
+      <p class="mt-8 text-center text-[11px] text-text-muted/80">© 2026 سفرك علينا. جميع الحقوق محفوظة.</p>
     </div>
   </div>
 </template>

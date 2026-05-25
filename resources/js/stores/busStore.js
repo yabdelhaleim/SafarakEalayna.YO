@@ -171,13 +171,16 @@ export const useBusStore = defineStore('bus', {
         this.stats.total_revenue = Number(d.total_revenue) || 0;
         this.stats.pending_payments = Number(d.pending_payments) || 0;
       } catch (e) {
+        if (axios.isCancel(e)) return;
         console.error('fetchBookingStats', e);
       }
     },
 
     async fetchBookings(params = {}) {
+      if (this.loading.bookings) return;
       this.loading.bookings = true;
       this.errors = {};
+      const controller = new AbortController();
       try {
         const q = { ...this.filters, ...params };
         if (q.company_id === '') delete q.company_id;
@@ -186,7 +189,10 @@ export const useBusStore = defineStore('bus', {
         if (q.date_from === '') delete q.date_from;
         if (q.date_to === '') delete q.date_to;
 
-        const response = await axios.get('/api/v1/bus/bookings', { params: q });
+        const response = await axios.get('/api/v1/bus/bookings', {
+          params: q,
+          signal: controller.signal,
+        });
         const responseData = response.data?.data || response.data;
         const items = responseData.items || (Array.isArray(responseData) ? responseData : []);
         this.bookings = items.map((b) => this.mapBooking(b));
@@ -199,6 +205,7 @@ export const useBusStore = defineStore('bus', {
           per_page: pagination.per_page || response.data?.per_page || 15,
         };
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('Failed to fetch bookings:', error);
         this.errors = { fetch: error.response?.data?.message || 'فشل تحميل الحجوزات' };
         this.bookings = [];
@@ -227,16 +234,20 @@ export const useBusStore = defineStore('bus', {
     },
 
     async fetchInventory(params = {}) {
+      if (this.loading.inventory) return;
       this.loading.inventory = true;
       this.errors = {};
+      const controller = new AbortController();
       try {
         const response = await axios.get('/api/v1/bus/inventories', {
           params: { per_page: 200, ...params },
+          signal: controller.signal,
         });
         const data = response.data?.data || response.data;
         const items = data.items || (Array.isArray(data) ? data : []);
         this.inventory = items.map((i) => this.mapInventory(i));
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('Failed to fetch inventory:', error);
         this.errors = { fetch: error.response?.data?.message || 'فشل تحميل المخزون' };
         this.inventory = [];
@@ -257,15 +268,19 @@ export const useBusStore = defineStore('bus', {
     },
 
     async fetchCompanies(params = {}) {
+      if (this.loading.companies) return;
       this.loading.companies = true;
       this.errors = {};
+      const controller = new AbortController();
       try {
         const response = await axios.get('/api/v1/bus/companies', {
           params: { per_page: 100, ...params },
+          signal: controller.signal,
         });
         const data = response.data?.data || response.data;
         this.companies = data.items || (Array.isArray(data) ? data : []);
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error('Failed to fetch companies:', error);
         this.errors = { fetch: error.response?.data?.message || 'فشل تحميل الشركات' };
         this.companies = [];

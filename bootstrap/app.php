@@ -29,6 +29,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\AuthenticateWithApiToken::class,
         ]);
 
+        $middleware->api(append: [
+            \App\Http\Middleware\StandardizeApiResponse::class,
+        ]);
+
         $middleware->alias([
             'admin' => EnsureIsAdmin::class,
             'active' => EnsureIsActive::class,
@@ -100,15 +104,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
 
                 $response = [
-                    'status' => 'error',
+                    'success' => false,
                     'message' => $getFriendlyMessage($e, $statusCode),
-                    'code' => $statusCode,
                     'data' => null,
+                    'errors' => $e instanceof ValidationException ? $e->errors() : null,
                 ];
-
-                if ($e instanceof ValidationException) {
-                    $response['errors'] = $e->errors();
-                }
 
                 if (config('app.debug')) {
                     $response['debug'] = [

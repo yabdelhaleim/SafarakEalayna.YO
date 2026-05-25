@@ -14,12 +14,11 @@ class FlightStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $flightAccounts = Account::query()
+        $totalBalance = Account::query()
             ->where('is_active', true)
             ->where('module_type', 'flights')
-            ->get();
+            ->sum('balance');
 
-        $totalBalance = $flightAccounts->sum('balance');
         $totalBookings = FlightBooking::count();
         $revenueThisMonth = FlightBooking::whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)

@@ -5,13 +5,11 @@ namespace App\Filament\Admin\Resources\EmployeeBonuses;
 use App\Models\Employee\EmployeeBonus;
 use App\Filament\Admin\Resources\EmployeeBonuses\Pages\ManageEmployeeBonuses;
 use BackedEnum;
-use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -38,6 +36,11 @@ class EmployeeBonusResource extends Resource
                 Select::make('employee_id')
                     ->label('الموظف')
                     ->relationship('employee', 'full_name')
+                    ->getOptionLabelFromRecordUsing(fn ($record) =>
+                        $record->full_name
+                        ?? trim(($record->first_name ?? '') . ' ' . ($record->last_name ?? ''))
+                        ?: '-'
+                    )
                     ->searchable()
                     ->required(),
 
@@ -56,11 +59,6 @@ class EmployeeBonusResource extends Resource
                     ->prefix('ج.م')
                     ->required(),
 
-                DatePicker::make('date')
-                    ->label('التاريخ')
-                    ->required()
-                    ->default(now()),
-
                 Textarea::make('reason')
                     ->label('السبب')
                     ->required()
@@ -72,21 +70,26 @@ class EmployeeBonusResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('employee.full_name')
-                    ->label('الموظف')
-                    ->searchable()
+                TextColumn::make('id')
+                    ->label('#')
                     ->sortable(),
 
-                BadgeColumn::make('type')
+                TextColumn::make('employee_id')
+                    ->label('كود الموظف')
+                    ->sortable(),
+
+                TextColumn::make('type')
                     ->label('النوع')
-                    ->colors([
-                        'bonus' => 'success',
-                        'deduction' => 'danger',
-                    ])
-                    ->formatStateUsing(fn ($state): string => match($state instanceof \BackedEnum ? $state->value : (string) $state) {
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => match(is_object($state) ? $state->value : (string)$state) {
                         'bonus' => 'مكافأة',
                         'deduction' => 'خصم',
-                        default => $state instanceof \BackedEnum ? $state->value : (string) $state,
+                        default => (string)(is_object($state) ? $state->value : $state),
+                    })
+                    ->color(fn ($state): string => match(is_object($state) ? $state->value : (string)$state) {
+                        'bonus' => 'success',
+                        'deduction' => 'danger',
+                        default => 'gray',
                     }),
 
                 TextColumn::make('amount')
@@ -94,8 +97,12 @@ class EmployeeBonusResource extends Resource
                     ->money('egp')
                     ->sortable(),
 
-                TextColumn::make('date')
-                    ->label('التاريخ')
+                TextColumn::make('reason')
+                    ->label('السبب')
+                    ->limit(40),
+
+                TextColumn::make('created_at')
+                    ->label('تاريخ التسجيل')
                     ->date('d/m/Y')
                     ->sortable(),
             ])
@@ -105,7 +112,8 @@ class EmployeeBonusResource extends Resource
             ->actions([
                 \Filament\Tables\Actions\EditAction::make(),
                 \Filament\Tables\Actions\DeleteAction::make(),
-            ]);
+            ])
+            ->defaultSort('id', 'desc');
     }
 
     public static function getPages(): array

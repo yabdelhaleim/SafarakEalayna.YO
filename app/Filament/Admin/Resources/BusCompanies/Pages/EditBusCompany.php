@@ -3,17 +3,17 @@
 namespace App\Filament\Admin\Resources\BusCompanies\Pages;
 
 use App\Filament\Admin\Resources\BusCompanies\BusCompanyResource;
-use Filament\Actions\CreateAction;
-use Filament\Resources\Pages\ManageRecords;
+use Filament\Actions;
+use Filament\Resources\Pages\EditRecord;
 
-class ManageBusCompanies extends ManageRecords
+class EditBusCompany extends EditRecord
 {
     protected static string $resource = BusCompanyResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
-            CreateAction::make(),
+            Actions\DeleteAction::make(),
         ];
     }
 }

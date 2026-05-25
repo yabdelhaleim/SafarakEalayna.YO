@@ -31,27 +31,31 @@ class DashboardChartWidget extends ChartWidget
         }
 
         $months = [];
+        $sixMonthsAgo = now()->subMonths(5)->startOfMonth();
+
+        $monthlyStats = DB::table('transactions')
+            ->selectRaw("
+                DATE_FORMAT(created_at, '%Y-%m') as month_key,
+                type,
+                SUM(amount) as total
+            ")
+            ->where('created_at', '>=', $sixMonthsAgo)
+            ->whereIn('type', ['income', 'expense'])
+            ->groupByRaw('month_key, type')
+            ->get()
+            ->groupBy('month_key');
+
         $incomeData = [];
         $expenseData = [];
 
         for ($i = 5; $i >= 0; $i--) {
             $date = now()->subMonths($i);
+            $key = $date->format('Y-m');
             $months[] = $date->format('M');
 
-            $income = DB::table('transactions')
-                ->where('type', 'income')
-                ->whereMonth('created_at', $date->month)
-                ->whereYear('created_at', $date->year)
-                ->sum('amount') ?? 0;
-
-            $expense = DB::table('transactions')
-                ->where('type', 'expense')
-                ->whereMonth('created_at', $date->month)
-                ->whereYear('created_at', $date->year)
-                ->sum('amount') ?? 0;
-
-            $incomeData[] = $income;
-            $expenseData[] = $expense;
+            $stats = $monthlyStats->get($key, collect());
+            $incomeData[] = (float) $stats->firstWhere('type', 'income')?->total ?? 0;
+            $expenseData[] = (float) $stats->firstWhere('type', 'expense')?->total ?? 0;
         }
 
         return [

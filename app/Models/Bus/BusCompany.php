@@ -34,26 +34,7 @@ class BusCompany extends Model
         ];
     }
 
-    protected static function booted(): void
-    {
-        static::creating(function (BusCompany $company) {
-            if (!$company->account_id) {
-                $account = \App\Models\Account::create([
-                    'name' => 'حساب شركة: ' . $company->name,
-                    'type' => \App\Enums\AccountType::Treasury,
-                    'module_type' => 'bus',
-                    'currency' => 'EGP',
-                    'is_active' => true,
-                    'created_by' => $company->created_by ?? \Illuminate\Support\Facades\Auth::id(),
-                ]);
-                $company->account_id = $account->id;
-            }
-        });
-
-        static::deleting(function (BusCompany $company) {
-            // Optional: Handle account deletion or deactivation if needed
-        });
-    }
+    
 
     public function createdBy(): BelongsTo
     {

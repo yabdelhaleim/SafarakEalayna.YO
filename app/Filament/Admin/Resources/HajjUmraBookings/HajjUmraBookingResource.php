@@ -161,6 +161,11 @@ class HajjUmraBookingResource extends Resource
         ]);
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['customer', 'program', 'account', 'employee']);
+    }
+
     public static function table(Table $table): Table
     {
         return $table

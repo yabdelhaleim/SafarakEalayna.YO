@@ -1,10 +1,34 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 print:space-y-4">
+    <!-- Professional Print Header (Visible only on print) -->
+    <div class="hidden print:block print:mb-8">
+      <div class="flex items-center justify-between border-b-2 border-black pb-4">
+        <div>
+          <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+          <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
+        </div>
+        <div class="text-right">
+          <h1 class="text-xl font-black text-black">بيان الأرباح والخسائر التفصيلي (P&L)</h1>
+          <p class="text-[10px] font-bold text-black mt-1">تاريخ الطباعة: {{ new Date().toLocaleString('ar-EG') }}</p>
+        </div>
+      </div>
+      
+      <div class="mt-4 grid grid-cols-2 gap-4 text-xs text-black">
+        <div>
+          <p><span class="font-black">الفترة الزمنية:</span> من {{ filters.from || 'البداية' }} إلى {{ filters.to || 'اليوم' }}</p>
+        </div>
+        <div class="text-right">
+          <p><span class="font-black">القسم المالي:</span> {{ filters.category === 'tourism' ? 'قسم السياحة فقط' : (filters.category === 'office' ? 'قسم المكتب فقط' : 'كل الأقسام والموديولات') }}</p>
+          <p v-if="filters.module !== 'all'"><span class="font-black">الموديول المالي:</span> {{ filters.module === 'flight' ? 'الطيران' : (filters.module === 'hajj_umra' ? 'الحج والعمرة' : (filters.module === 'visa' ? 'التأشيرات' : (filters.module === 'bus' ? 'الباص' : (filters.module === 'fawry' ? 'فوري' : (filters.module === 'online' ? 'الخدمات الإلكترونية' : filters.module))))) }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
-    <div v-if="globalError" class="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl mb-4">
+    <div v-if="globalError" class="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl mb-4 print:hidden">
       {{ globalError }}
     </div>
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
       <div>
         <h1 class="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-l from-indigo-400 to-blue-600 flex items-center gap-3">
           <BarChart class="w-10 h-10 text-indigo-500" />
@@ -59,18 +83,28 @@
           class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
         />
         <button 
+          @click="printReport"
+          class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 print:hidden"
+        >
+          <Printer class="w-4 h-4" />
+          طباعة
+        </button>
+        <button 
           @click="fetchReport"
-          :disabled="loading"
+          :disabled="isLoading()"
           class="bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoading() }" />
           تحديث
         </button>
       </div>
     </div>
 
     <!-- Main KPIs -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <KPICardSkeleton v-for="i in 3" :key="`pl-kpi-${i}`" />
+    </div>
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <!-- Total Revenues -->
       <div class="bg-card-bg border border-white/5 p-6 rounded-2xl shadow-xl relative overflow-hidden">
         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl"></div>
@@ -130,9 +164,12 @@
         <h2 class="text-lg font-bold text-white">تفاصيل قائمة الدخل (Income Statement)</h2>
       </div>
 
-      <div v-if="loading" class="p-12 text-center text-text-muted flex flex-col items-center justify-center">
-        <RefreshCw class="w-8 h-8 animate-spin mb-4 text-indigo-400" />
-        جاري حساب وتجميع الأرقام...
+      <div v-if="isLoading()" class="p-12 space-y-8">
+        <TextLineSkeleton :lines="3" heightClass="h-24" gapClass="gap-4" />
+      </div>
+
+      <div v-else-if="state === 'error'" class="p-12 text-center text-rose-400 flex flex-col items-center justify-center">
+        حدث خطأ في عرض التقرير.
       </div>
 
       <div v-else class="p-6 font-mono text-sm space-y-8">
@@ -241,13 +278,17 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
-  Scale
+  Scale,
+  Printer
 } from 'lucide-vue-next';
 import axios from 'axios';
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
 const globalError = ref('');
 
-const loading = ref(true);
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
 
 const filters = ref({
   from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
@@ -276,7 +317,7 @@ const formatCurrency = (val) => {
 };
 
 const fetchReport = async () => {
-  loading.value = true;
+  setLoading();
   globalError.value = '';
   try {
     const params = {
@@ -289,17 +330,141 @@ const fetchReport = async () => {
     
     if (res && res.data && res.data.data) {
        reportData.value = res.data.data;
+       setSuccess();
     } else {
        throw new Error('Invalid response format');
     }
   } catch (error) {
     globalError.value = 'حدث خطأ في جلب تقرير الأرباح والخسائر. تأكد من صحة التواريخ.';
-  } finally {
-    loading.value = false;
+    setError(error);
   }
+};
+
+const printReport = () => {
+  window.print();
 };
 
 onMounted(() => {
   fetchReport();
 });
 </script>
+
+<style scoped>
+/* Scoped styles here if needed */
+.bg-card-bg {
+  background-color: var(--card-bg);
+}
+.bg-input-bg {
+  background-color: var(--input-bg);
+}
+.font-mono {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+.font-display {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+</style>
+
+<style>
+@media print {
+  /* Reset layout constraints and color for printing */
+  body, html, #app, .app-shell, .main-zone, .page-body {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  .sidebar, .top-bar, .toast-rack, .backdrop {
+    display: none !important;
+  }
+  
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .grid-cols-3 > div,
+  .bg-card-bg {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border-radius: 12px !important;
+  }
+
+  /* Force white background and black text on all KPI cards */
+  .grid-cols-3 > div *,
+  .bg-card-bg * {
+    color: #000000 !important;
+  }
+
+  .text-emerald-400,
+  .text-emerald-300 {
+    color: #166534 !important; /* Forest green */
+  }
+
+  .text-rose-400,
+  .text-rose-300 {
+    color: #991b1b !important; /* Crimson */
+  }
+
+  .text-orange-400 {
+    color: #b45309 !important; /* Amber/gold */
+  }
+
+  .text-indigo-400,
+  .text-indigo-300 {
+    color: #1e3a8a !important; /* Navy */
+  }
+
+  /* List entries container */
+  .space-y-8 > div {
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    padding: 16px !important;
+    border-radius: 12px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .space-y-8 > div h3 {
+    color: #000000 !important;
+    border-bottom: 2px solid #000000 !important;
+  }
+  
+  .space-y-8 > div h3 * {
+    color: #000000 !important;
+  }
+
+  .bg-white\/5 {
+    background-color: #f3f4f6 !important; /* light grey for print */
+    border: 1px solid #d1d5db !important;
+  }
+
+  .bg-indigo-500\/10 {
+    background-color: #f3f4f6 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  .bg-gradient-to-r {
+    background: #f3f4f6 !important;
+    color: #000000 !important;
+    border: 2px solid #000000 !important;
+  }
+
+  .bg-gradient-to-r * {
+    color: #000000 !important;
+  }
+}
+</style>

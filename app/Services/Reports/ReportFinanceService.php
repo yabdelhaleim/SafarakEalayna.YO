@@ -263,6 +263,116 @@ class ReportFinanceService
     }
 
     /**
+     * Get a single transaction with related details.
+     */
+    public function getTransactionDetail(int $id): ?\stdClass
+    {
+        $txModel = \App\Models\Transaction::with([
+            'createdBy',
+            'fromAccount',
+            'toAccount',
+            'entries.account',
+            'related' => function($morph) {
+                $morph->morphWith([
+                    \App\Models\FlightBooking::class => ['customer', 'passengers', 'airlineAccount', 'flightSystem', 'flightCarrier', 'flightGroup'],
+                    \App\Models\VisaBooking::class => ['customer', 'visaDetail'],
+                    \App\Models\HajjUmraBooking::class => ['customer', 'program'],
+                    \App\Models\Bus\BusBooking::class => ['customer', 'inventory.company'],
+                    \App\Models\Online\OnlineTransaction::class => ['customer', 'serviceType', 'provider'],
+                ]);
+            }
+        ])->find($id);
+
+        if (!$txModel) {
+            return null;
+        }
+
+        // Convert to standard object to match original signature and fields
+        $transaction = new \stdClass();
+        $transaction->id = $txModel->id;
+        $transaction->type = $txModel->type instanceof \App\Enums\TransactionType ? $txModel->type->value : (string)$txModel->type;
+        $transaction->amount = (float)$txModel->amount;
+        $transaction->module = $txModel->module instanceof \App\Enums\TransactionModule ? $txModel->module->value : (string)$txModel->module;
+        $transaction->notes = $txModel->notes;
+        $transaction->created_at = $txModel->created_at ? $txModel->created_at->toDateTimeString() : null;
+        $transaction->from_account_id = $txModel->from_account_id;
+        $transaction->to_account_id = $txModel->to_account_id;
+        $transaction->created_by_name = $txModel->createdBy?->name;
+        $transaction->from_account_name = $txModel->fromAccount?->name;
+        $transaction->from_account_type = $txModel->fromAccount?->type;
+        $transaction->from_account_currency = $txModel->fromAccount?->currency;
+        $transaction->to_account_name = $txModel->toAccount?->name;
+        $transaction->to_account_type = $txModel->toAccount?->type;
+        $transaction->to_account_currency = $txModel->toAccount?->currency;
+
+        // Map entries
+        $transaction->entries = $txModel->entries->map(function($e) {
+            $entry = new \stdClass();
+            $entry->id = $e->id;
+            $entry->account_id = $e->account_id;
+            $entry->debit = (float)$e->debit;
+            $entry->credit = (float)$e->credit;
+            $entry->balance_after = (float)$e->balance_after;
+            $entry->account_name = $e->account?->name ?? '—';
+            $entry->account_type = $e->account?->type ?? '—';
+            $entry->account_currency = $e->account?->currency ?? 'EGP';
+            return $entry;
+        })->toArray();
+
+        // Build related_meta if related model exists
+        $transaction->related_meta = null;
+        if ($txModel->related) {
+            $related = $txModel->related;
+            $meta = new \stdClass();
+            $meta->type = class_basename($related);
+            
+            // Extract person name and phone
+            $meta->person_name = null;
+            $meta->person_phone = null;
+            
+            if (isset($related->customer) && $related->customer) {
+                $meta->person_name = $related->customer->full_name ?: $related->customer->name;
+                $meta->person_phone = $related->customer->phone;
+            } elseif (isset($related->customer_name)) {
+                $meta->person_name = $related->customer_name;
+                $meta->person_phone = $related->customer_phone ?? null;
+            }
+            
+            // Extract financial data
+            $meta->total_amount = 0.0;
+            $meta->paid_amount = 0.0;
+            
+            if ($related instanceof \App\Models\FlightBooking) {
+                $meta->total_amount = (float)$related->selling_price;
+                $meta->paid_amount = (float)$related->payments()->sum('amount');
+                $meta->details = "حجز طيران - PNR: " . ($related->pnr ?: '—') . " - خط الطيران: " . ($related->airline_name ?: '—') . " (" . ($related->origin ?: '—') . " -> " . ($related->destination ?: '—') . ")";
+            } elseif ($related instanceof \App\Models\VisaBooking) {
+                $meta->total_amount = (float)$related->selling_price + (float)($related->service_fee ?? 0);
+                $meta->paid_amount = (float)$related->payments()->sum('amount');
+                $meta->details = "حجز تأشيرة - النوع: " . ($related->visaDetail?->title ?: '—') . " - الوكيل: " . ($related->agent_name ?: '—');
+            } elseif ($related instanceof \App\Models\HajjUmraBooking) {
+                $meta->total_amount = (float)$related->selling_price;
+                $meta->paid_amount = (float)$related->payments()->sum('amount');
+                $meta->details = "حجز حج وعمرة - البرنامج: " . ($related->program?->name ?: '—') . " - الوكيل: " . ($related->agent_name ?: '—');
+            } elseif ($related instanceof \App\Models\Bus\BusBooking) {
+                $meta->total_amount = (float)$related->total_price;
+                $meta->paid_amount = (float)$related->paid_amount;
+                $meta->details = "حجز باص - الرحلة: " . ($related->inventory?->origin ?: '—') . " -> " . ($related->inventory?->destination ?: '—') . " - الشركة: " . ($related->inventory?->company?->name ?: '—');
+            } elseif ($related instanceof \App\Models\Online\OnlineTransaction) {
+                $meta->total_amount = (float)$related->selling_price;
+                $meta->paid_amount = (float)$related->selling_price; // Online services are generally fully paid
+                $meta->details = "خدمة إلكترونية - النوع: " . ($related->serviceType?->name ?: '—') . " - المزود: " . ($related->provider?->name ?: '—');
+            }
+            
+            $meta->remaining_amount = max(0.0, $meta->total_amount - $meta->paid_amount);
+            
+            $transaction->related_meta = $meta;
+        }
+
+        return $transaction;
+    }
+
+    /**
      * Get bus company debt summary.
      * Shows which companies the office still owes money to.
      */

@@ -37,10 +37,10 @@ export const useSupplierStore = defineStore('supplier', {
   }),
 
   getters: {
-    activeSuppliers: (state) => state.suppliers.filter(s => s.is_active),
-    totalDebt: (state) => state.suppliers.reduce((sum, s) => sum + parseFloat(s.current_debt || 0), 0),
-    suppliersWithDebt: (state) => state.suppliers.filter(s => parseFloat(s.current_debt || 0) > 0),
-    suppliersByType: (state) => (type) => state.suppliers.filter(s => s.type === type),
+    activeSuppliers: (state) => Array.isArray(state.suppliers) ? state.suppliers.filter(s => s.is_active) : [],
+    totalDebt: (state) => Array.isArray(state.suppliers) ? state.suppliers.reduce((sum, s) => sum + parseFloat(s.current_debt || 0), 0) : 0,
+    suppliersWithDebt: (state) => Array.isArray(state.suppliers) ? state.suppliers.filter(s => parseFloat(s.current_debt || 0) > 0) : [],
+    suppliersByType: (state) => (type) => Array.isArray(state.suppliers) ? state.suppliers.filter(s => s.type === type) : [],
 
     typeLabels: () => ({
       airline: 'شركة طيران',
@@ -64,18 +64,37 @@ export const useSupplierStore = defineStore('supplier', {
      * Fetch all suppliers with filters
      */
     async fetchSuppliers(params = {}) {
+      if (this.fetchSuppliersController) {
+        this.fetchSuppliersController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchSuppliersController = controller;
+
       this.loading.list = true;
       this.errors = {};
+      this.suppliers = []; // Reset before fetching
 
       try {
         const response = await axios.get('/api/v1/suppliers', {
           params: { ...this.filters, ...params },
+          signal: controller.signal
         });
 
         const responseData = response.data?.data || response.data;
 
-        // Handle paginated response
-        if (responseData.data && Array.isArray(responseData.data)) {
+        // Handle standardized items & pagination response
+        if (responseData.items && Array.isArray(responseData.items)) {
+          this.suppliers = responseData.items;
+          const pg = responseData.pagination || {};
+          this.pagination = {
+            total: pg.total || 0,
+            current_page: pg.current_page || 1,
+            last_page: pg.last_page || 1,
+            per_page: pg.per_page || 15,
+          };
+        }
+        // Handle legacy/fallback paginated response
+        else if (responseData.data && Array.isArray(responseData.data)) {
           this.suppliers = responseData.data;
           this.pagination = {
             total: responseData.total || 0,
@@ -90,6 +109,9 @@ export const useSupplierStore = defineStore('supplier', {
           this.suppliers = [];
         }
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch suppliers:', error);
         if (error.response?.status === 403) {
           this.errors = { fetch: 'ليس لديك صلاحية لعرض الموردين' };
@@ -106,7 +128,9 @@ export const useSupplierStore = defineStore('supplier', {
           per_page: this.pagination?.per_page || 15,
         };
       } finally {
-        this.loading.list = false;
+        if (this.fetchSuppliersController === controller) {
+          this.loading.list = false;
+        }
       }
     },
 
@@ -114,21 +138,35 @@ export const useSupplierStore = defineStore('supplier', {
      * Fetch single supplier
      */
     async fetchSupplier(id) {
+      if (this.fetchSupplierController) {
+        this.fetchSupplierController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchSupplierController = controller;
+
       this.loading.show = true;
       this.errors = {};
+      this.currentSupplier = null; // Reset before fetching
 
       try {
-        const response = await axios.get(`/api/v1/suppliers/${id}`);
+        const response = await axios.get(`/api/v1/suppliers/${id}`, {
+          signal: controller.signal
+        });
         this.currentSupplier = response.data?.data || response.data;
         return this.currentSupplier;
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch supplier:', error);
         this.errors = {
           fetch: error.response?.data?.message || 'فشل تحميل بيانات المورد',
         };
         throw error;
       } finally {
-        this.loading.show = false;
+        if (this.fetchSupplierController === controller) {
+          this.loading.show = false;
+        }
       }
     },
 
@@ -136,6 +174,7 @@ export const useSupplierStore = defineStore('supplier', {
      * Create new supplier
      */
     async createSupplier(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -160,6 +199,7 @@ export const useSupplierStore = defineStore('supplier', {
      * Update supplier
      */
     async updateSupplier(id, payload) {
+      if (this.loading.update) return;
       this.loading.update = true;
       this.errors = {};
 
@@ -187,6 +227,7 @@ export const useSupplierStore = defineStore('supplier', {
      * Delete supplier
      */
     async deleteSupplier(id) {
+      if (this.loading.delete) return;
       this.loading.delete = true;
       this.errors = {};
 
@@ -226,6 +267,32 @@ export const useSupplierStore = defineStore('supplier', {
       if (window.addToast) {
         window.addToast(message, type);
       }
+    },
+
+    reset() {
+      this.suppliers = [];
+      this.currentSupplier = null;
+      this.loading = {
+        list: false,
+        show: false,
+        create: false,
+        update: false,
+        delete: false,
+      };
+      this.errors = {};
+      this.pagination = {
+        total: 0,
+        current_page: 1,
+        last_page: 1,
+        per_page: 15,
+      };
+      this.filters = {
+        search: '',
+        type: '',
+        is_active: '',
+        page: 1,
+        per_page: 15,
+      };
     },
   },
 });

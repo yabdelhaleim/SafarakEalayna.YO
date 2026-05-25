@@ -148,7 +148,7 @@
             </div>
           </div>
           <div class="text-left">
-            <div class="text-lg font-black text-indigo-300">سفارك إلينا</div>
+            <div class="text-lg font-black text-indigo-300">سفرك علينا</div>
             <div class="text-[10px] font-semibold uppercase tracking-wider text-indigo-200/80">Safarak Ealayna</div>
           </div>
         </div>
@@ -228,7 +228,7 @@
           </div>
 
           <div class="border-t border-slate-200 pt-4 text-center text-[10px] leading-relaxed text-slate-500">
-             وصل استلام طلب تأشيرة من سفارك إلينا — يرجى الاحتفاظ بالوصل للمراجعة.
+             وصل استلام طلب تأشيرة من سفرك علينا — يرجى الاحتفاظ بالوصل للمراجعة.
           </div>
       </div>
     </div>

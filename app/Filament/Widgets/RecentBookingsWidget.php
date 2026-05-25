@@ -10,6 +10,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 class RecentBookingsWidget extends BaseWidget
 {
     protected static ?int $sort = 3;
+    protected static bool $isLazy = true;
     protected static ?string $heading = 'آخر الحجوزات المضافة';
 
     public function table(Table $table): Table

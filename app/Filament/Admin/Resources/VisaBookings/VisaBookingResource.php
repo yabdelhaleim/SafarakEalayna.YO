@@ -58,7 +58,6 @@ class VisaBookingResource extends Resource
                         ->label('العميل')
                         ->relationship('customer', 'full_name')
                         ->searchable(['full_name', 'phone', 'passport_number'])
-                        ->preload()
                         ->required(),
                 ])->columnSpanFull(),
 
@@ -117,7 +116,7 @@ class VisaBookingResource extends Resource
                         Select::make('account_id')
                             ->label('حساب التسوية / الخزينة')
                             ->relationship('account', 'name', fn (Builder $query) => $query->where('is_active', true))
-                            ->searchable()->preload()->required(),
+                            ->searchable(['name'])->required(),
 
                         Select::make('status')
                             ->label('حالة الطلب')
@@ -128,7 +127,7 @@ class VisaBookingResource extends Resource
                         Select::make('employee_id')
                             ->label('الموظف القائم بالطلب')
                             ->relationship('employee', 'name')
-                            ->searchable()->preload(),
+                            ->searchable(['name']),
 
                         TextInput::make('agent_name')->label('اسم الموظف (نص)')->maxLength(150),
                     ]),
@@ -138,6 +137,11 @@ class VisaBookingResource extends Resource
                 Textarea::make('notes')->label('ملاحظات')->rows(3)->maxLength(1000),
             ])->columnSpanFull(),
         ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['customer', 'visaDetail', 'account', 'employee']);
     }
 
     public static function table(Table $table): Table

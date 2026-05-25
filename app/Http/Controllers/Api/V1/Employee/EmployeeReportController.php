@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Employee;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\Employee\EmployeeReportService;
 use Illuminate\Http\Request;
@@ -30,11 +31,10 @@ class EmployeeReportController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Overall report generated successfully',
-            'data' => $report,
-        ]);
+        return ApiResponse::success(
+            'Overall report generated successfully',
+            $report
+        );
     }
 
     public function attendance(Request $request): JsonResponse
@@ -51,11 +51,10 @@ class EmployeeReportController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Attendance report generated successfully',
-            'data' => $report,
-        ]);
+        return ApiResponse::success(
+            'Attendance report generated successfully',
+            $report
+        );
     }
 
     public function bonuses(Request $request): JsonResponse
@@ -72,11 +71,10 @@ class EmployeeReportController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Bonuses report generated successfully',
-            'data' => $report,
-        ]);
+        return ApiResponse::success(
+            'Bonuses report generated successfully',
+            $report
+        );
     }
 
     public function performance(Request $request, int $employeeId): JsonResponse
@@ -94,11 +92,10 @@ class EmployeeReportController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Performance report generated successfully',
-            'data' => $report,
-        ]);
+        return ApiResponse::success(
+            'Performance report generated successfully',
+            $report
+        );
     }
 
     public function index(Request $request): JsonResponse
@@ -108,30 +105,29 @@ class EmployeeReportController extends Controller
 
         $report = $this->reportService->getOverallReport($fromDate, $toDate);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Overall report generated successfully',
-            'data' => $report,
-        ]);
+        return ApiResponse::success(
+            'Overall report generated successfully',
+            $report
+        );
     }
 
     public function store(Request $request): JsonResponse
     {
-        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+        return ApiResponse::error('Operation not supported', null, 405);
     }
 
     public function show($id): JsonResponse
     {
-        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+        return ApiResponse::error('Operation not supported', null, 405);
     }
 
     public function update(Request $request, $id): JsonResponse
     {
-        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+        return ApiResponse::error('Operation not supported', null, 405);
     }
 
     public function destroy($id): JsonResponse
     {
-        return response()->json(['status' => false, 'message' => 'Operation not supported'], 405);
+        return ApiResponse::error('Operation not supported', null, 405);
     }
 }

@@ -10,6 +10,10 @@ use App\Models\Bank;
 use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\Transaction;
+use App\Models\HajjUmra\VisaAgent;
+use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Models\Bus\BusCompany;
+use App\Models\Flight\AirlineAccount;
 use Illuminate\Support\Facades\DB;
 
 class FinancialReportService
@@ -384,5 +388,495 @@ class FinancialReportService
             'tolerance' => $tolerance,
             'banks' => $items,
         ];
+    }
+
+    /**
+     * تقرير الديون والمديونيات الموحد
+     */
+    public function getDebtsReport(array $filters = []): array
+    {
+        $department = $filters['department'] ?? null; // tourism, office
+        $module = $filters['module'] ?? null; // flight, bus, hajj_umra, visa, fawry, online
+        $direction = $filters['direction'] ?? 'all'; // receivables, payables, all
+        $search = $filters['search'] ?? null;
+        $entityType = $filters['entity_type'] ?? 'all'; // all, customer, supplier
+
+        $results = [];
+
+        if ($entityType === 'all' || $entityType === 'customer') {
+            // 1. QUERY CUSTOMERS (always part of receivables if balance > 0, payables if balance < 0)
+            $customerQuery = Customer::query()->with('ledgerAccount');
+
+        if ($search) {
+            $customerQuery->where(function ($q) use ($search) {
+                $q->where('full_name', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        // Apply module-specific conditions for customers
+        if ($module) {
+            switch ($module) {
+                case 'flight':
+                    $customerQuery->whereHas('flightBookings');
+                    break;
+                case 'bus':
+                    $customerQuery->whereHas('busBookings');
+                    break;
+                case 'hajj_umra':
+                    $customerQuery->whereHas('hajjUmraBookings');
+                    break;
+                case 'visa':
+                    $customerQuery->whereHas('visaBookings');
+                    break;
+                case 'fawry':
+                    $customerQuery->whereHas('fawryTransactions');
+                    break;
+                case 'online':
+                    $customerQuery->whereHas('onlineTransactions');
+                    break;
+                case 'general':
+                    $customerQuery->whereDoesntHave('flightBookings')
+                                  ->whereDoesntHave('busBookings')
+                                  ->whereDoesntHave('hajjUmraBookings')
+                                  ->whereDoesntHave('visaBookings')
+                                  ->whereDoesntHave('fawryTransactions')
+                                  ->whereDoesntHave('onlineTransactions');
+                    break;
+                case 'wallet':
+                    $customerQuery->whereRaw('1=0');
+                    break;
+            }
+        } elseif ($department) {
+            if ($department === 'tourism') {
+                $customerQuery->where(function ($q) {
+                    $q->whereHas('hajjUmraBookings')
+                      ->orWhereHas('visaBookings')
+                      ->orWhereHas('flightBookings');
+                });
+            } elseif ($department === 'office') {
+                $customerQuery->where(function ($q) {
+                    $q->whereHas('busBookings')
+                      ->orWhereHas('fawryTransactions')
+                      ->orWhereHas('onlineTransactions')
+                      ->orWhere(function ($sub) {
+                          $sub->whereDoesntHave('hajjUmraBookings')
+                              ->whereDoesntHave('visaBookings')
+                              ->whereDoesntHave('flightBookings');
+                      });
+                });
+            }
+        }
+
+        $customers = $customerQuery->get();
+
+        foreach ($customers as $c) {
+            $balance = $c->ledgerAccount ? (float) $c->ledgerAccount->balance : 0.0;
+            if ($balance == 0.0) {
+                continue;
+            }
+
+            // Customer balance > 0 is Receivable (customer owes company)
+            // Customer balance < 0 is Payable (company owes customer)
+            $dir = $balance > 0 ? 'receivables' : 'payables';
+
+            if ($direction !== 'all' && $direction !== $dir) {
+                continue;
+            }
+
+            // Deduce customer active department and module
+            $custDept = 'office';
+            $custMod = 'general';
+            if ($c->flightBookings()->exists() || $c->hajjUmraBookings()->exists() || $c->visaBookings()->exists()) {
+                $custDept = 'tourism';
+                if ($c->flightBookings()->exists()) {
+                    $custMod = 'flight';
+                } elseif ($c->hajjUmraBookings()->exists()) {
+                    $custMod = 'hajj_umra';
+                } else {
+                    $custMod = 'visa';
+                }
+            } else {
+                if ($c->busBookings()->exists()) {
+                    $custMod = 'bus';
+                } elseif ($c->fawryTransactions()->exists()) {
+                    $custMod = 'fawry';
+                } elseif ($c->onlineTransactions()->exists()) {
+                    $custMod = 'online';
+                }
+            }
+
+            if ($department && $custDept !== $department) {
+                continue;
+            }
+            if ($module && $custMod !== $module) {
+                continue;
+            }
+
+            $results[] = [
+                'id' => $c->id,
+                'name' => $c->full_name ?: $c->name,
+                'phone' => $c->phone,
+                'entity_type' => 'customer',
+                'entity_type_label' => 'عميل',
+                'department' => $custDept,
+                'department_label' => $custDept === 'tourism' ? 'قسم سياحه' : 'قسم مكتب',
+                'module' => $custMod,
+                'module_label' => $this->getModuleLabel($custMod),
+                'balance' => $balance,
+                'account_id' => $c->account_id,
+                'statement_url' => $c->account_id ? "/finance/account-statement/{$c->account_id}" : null,
+            ];
+        }
+        }
+
+        if ($entityType === 'all' || $entityType === 'supplier') {
+            // 2. QUERY SUPPLIERS
+            $supplierQuery = Supplier::query()->with('account');
+        if ($search) {
+            $supplierQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        $targetSupplierTypes = [];
+        if ($module) {
+            switch ($module) {
+                case 'flight':
+                    $targetSupplierTypes = ['airline'];
+                    break;
+                case 'bus':
+                    $targetSupplierTypes = ['bus_company'];
+                    break;
+                case 'hajj_umra':
+                    $targetSupplierTypes = ['hotel', 'service_provider'];
+                    break;
+                case 'visa':
+                    $targetSupplierTypes = ['visa_provider'];
+                    break;
+                case 'fawry':
+                case 'online':
+                case 'wallet':
+                    $targetSupplierTypes = ['service_provider'];
+                    break;
+                case 'general':
+                    $targetSupplierTypes = ['service_provider', 'other'];
+                    break;
+            }
+        } elseif ($department) {
+            if ($department === 'tourism') {
+                $targetSupplierTypes = ['airline', 'hotel', 'visa_provider', 'service_provider'];
+            } elseif ($department === 'office') {
+                $targetSupplierTypes = ['bus_company', 'service_provider', 'other'];
+            }
+        }
+
+        if ($module || $department) {
+            if (!empty($targetSupplierTypes)) {
+                $supplierQuery->whereIn('type', $targetSupplierTypes);
+            } else {
+                $supplierQuery->whereRaw('1=0');
+            }
+        }
+
+        $suppliers = $supplierQuery->get();
+
+        foreach ($suppliers as $s) {
+            $balance = $s->account ? (float) $s->account->balance : 0.0;
+            if ($balance == 0.0) {
+                continue;
+            }
+
+            // Supplier balance < 0 is Payable (company owes supplier)
+            // Supplier balance > 0 is Receivable (supplier owes company)
+            $dir = $balance < 0 ? 'payables' : 'receivables';
+
+            if ($direction !== 'all' && $direction !== $dir) {
+                continue;
+            }
+
+            $typeVal = $s->type instanceof \App\Enums\SupplierType ? $s->type->value : (string) $s->type;
+            
+            // Deduce supplier module and department
+            $supMod = 'general';
+            $supDept = 'office';
+            
+            if ($typeVal === 'airline') {
+                $supMod = 'flight';
+                $supDept = 'tourism';
+            } elseif ($typeVal === 'bus_company') {
+                $supMod = 'bus';
+                $supDept = 'office';
+            } elseif ($typeVal === 'hotel') {
+                $supMod = 'hajj_umra';
+                $supDept = 'tourism';
+            } elseif ($typeVal === 'visa_provider') {
+                $supMod = 'visa';
+                $supDept = 'tourism';
+            } else { // service_provider or other
+                if ($module) {
+                    $supMod = $module;
+                    $supDept = in_array($module, ['flight', 'hajj_umra', 'visa']) ? 'tourism' : 'office';
+                } elseif ($department) {
+                    $supDept = $department;
+                    $supMod = $department === 'tourism' ? 'hajj_umra' : 'online';
+                } else {
+                    $supMod = 'online';
+                    $supDept = 'office';
+                }
+            }
+
+            if ($department && $supDept !== $department) {
+                continue;
+            }
+            if ($module && $supMod !== $module) {
+                continue;
+            }
+
+            $results[] = [
+                'id' => $s->id,
+                'name' => $s->name,
+                'phone' => $s->phone ?: $s->mobile,
+                'entity_type' => 'supplier',
+                'entity_type_label' => 'مورد / شركة',
+                'department' => $supDept,
+                'department_label' => $supDept === 'tourism' ? 'قسم سياحه' : 'قسم مكتب',
+                'module' => $supMod,
+                'module_label' => $this->getModuleLabel($supMod),
+                'balance' => $balance,
+                'account_id' => $s->account_id,
+                'statement_url' => $s->account_id ? "/finance/account-statement/{$s->account_id}" : null,
+            ];
+        }
+
+        // 3. QUERY VISA AGENTS (tourism -> visa)
+        if ((!$department || $department === 'tourism') && (!$module || $module === 'visa')) {
+            $agentQuery = VisaAgent::query()->with('account');
+            if ($search) {
+                $agentQuery->where(function ($q) use ($search) {
+                    $q->where('company_name', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
+            }
+            $agents = $agentQuery->get();
+            foreach ($agents as $a) {
+                $balance = $a->account ? (float) $a->account->balance : 0.0;
+                if ($balance == 0.0) {
+                    continue;
+                }
+
+                $dir = $balance < 0 ? 'payables' : 'receivables';
+                if ($direction !== 'all' && $direction !== $dir) {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => $a->id,
+                    'name' => $a->company_name,
+                    'phone' => $a->phone,
+                    'entity_type' => 'visa_agent',
+                    'entity_type_label' => 'وكيل تأشيرات',
+                    'department' => 'tourism',
+                    'department_label' => 'قسم سياحه',
+                    'module' => 'visa',
+                    'module_label' => 'تأشيرات',
+                    'balance' => $balance,
+                    'account_id' => $a->account_id,
+                    'statement_url' => $a->account_id ? "/finance/account-statement/{$a->account_id}" : null,
+                ];
+            }
+        }
+
+        // 4. QUERY EXECUTING COMPANIES (tourism -> hajj_umra)
+        if ((!$department || $department === 'tourism') && (!$module || $module === 'hajj_umra')) {
+            $execQuery = HajjUmraExecutingCompany::query()->with('account');
+            if ($search) {
+                $execQuery->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
+            }
+            $execs = $execQuery->get();
+            foreach ($execs as $e) {
+                $balance = $e->account ? (float) $e->account->balance : 0.0;
+                if ($balance == 0.0) {
+                    continue;
+                }
+
+                $dir = $balance < 0 ? 'payables' : 'receivables';
+                if ($direction !== 'all' && $direction !== $dir) {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => $e->id,
+                    'name' => $e->name,
+                    'phone' => $e->phone,
+                    'entity_type' => 'executing_company',
+                    'entity_type_label' => 'شركة منفذة (حج وعمرة)',
+                    'department' => 'tourism',
+                    'department_label' => 'قسم سياحه',
+                    'module' => 'hajj_umra',
+                    'module_label' => 'حج وعمرة',
+                    'balance' => $balance,
+                    'account_id' => $e->account_id,
+                    'statement_url' => $e->account_id ? "/finance/account-statement/{$e->account_id}" : null,
+                ];
+            }
+        }
+
+        // 5. QUERY BUS COMPANIES (office -> bus)
+        if ((!$department || $department === 'office') && (!$module || $module === 'bus')) {
+            $busQuery = BusCompany::query()->with('account');
+            if ($search) {
+                $busQuery->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
+            }
+            $buses = $busQuery->get();
+            foreach ($buses as $b) {
+                $balance = $b->account ? (float) $b->account->balance : 0.0;
+                if ($balance == 0.0) {
+                    continue;
+                }
+
+                $dir = $b->account->balance < 0 ? 'payables' : 'receivables';
+                if ($direction !== 'all' && $direction !== $dir) {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => $b->id,
+                    'name' => $b->name,
+                    'phone' => $b->phone,
+                    'entity_type' => 'bus_company',
+                    'entity_type_label' => 'شركة باصات',
+                    'department' => 'office',
+                    'department_label' => 'قسم مكتب',
+                    'module' => 'bus',
+                    'module_label' => 'باص',
+                    'balance' => $balance,
+                    'account_id' => $b->account_id,
+                    'statement_url' => $b->account_id ? "/finance/account-statement/{$b->account_id}" : null,
+                ];
+            }
+        }
+
+        // 6. QUERY AIRLINE ACCOUNTS (tourism -> flight)
+        if ((!$department || $department === 'tourism') && (!$module || $module === 'flight')) {
+            $airQuery = AirlineAccount::query();
+            if ($search) {
+                $airQuery->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('code', 'like', "%{$search}%");
+                });
+            }
+            $airlines = $airQuery->get();
+            foreach ($airlines as $a) {
+                $balance = (float) $a->balance;
+                if ($balance == 0.0) {
+                    continue;
+                }
+
+                $dir = $balance < 0 ? 'payables' : 'receivables';
+                if ($direction !== 'all' && $direction !== $dir) {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => $a->id,
+                    'name' => $a->name . " ({$a->code})",
+                    'phone' => null,
+                    'entity_type' => 'airline_account',
+                    'entity_type_label' => 'حساب خط طيران',
+                    'department' => 'tourism',
+                    'department_label' => 'قسم سياحه',
+                    'module' => 'flight',
+                    'module_label' => 'طيران',
+                    'balance' => $balance,
+                    'account_id' => null,
+                    'statement_url' => "/flights/airline-accounts/{$a->id}/transactions",
+                ];
+            }
+        }
+
+        // 7. QUERY FLIGHT GROUPS (tourism -> flight)
+        if ((!$department || $department === 'tourism') && (!$module || $module === 'flight')) {
+            $groupQuery = \App\Models\Flight\FlightGroup::query()->with('account');
+            if ($search) {
+                $groupQuery->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('code', 'like', "%{$search}%");
+                });
+            }
+            $groups = $groupQuery->get();
+            foreach ($groups as $g) {
+                $balance = $g->account ? (float) $g->account->balance : 0.0;
+                if ($balance == 0.0) {
+                    continue;
+                }
+
+                $dir = $balance < 0 ? 'payables' : 'receivables';
+                if ($direction !== 'all' && $direction !== $dir) {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => $g->id,
+                    'name' => $g->name,
+                    'phone' => $g->contact_phone,
+                    'entity_type' => 'flight_group',
+                    'entity_type_label' => 'مجموعة طيران',
+                    'department' => 'tourism',
+                    'department_label' => 'قسم سياحه',
+                    'module' => 'flight',
+                    'module_label' => 'طيران',
+                    'balance' => $balance,
+                    'account_id' => $g->account_id,
+                    'statement_url' => $g->account_id ? "/finance/account-statement/{$g->account_id}" : null,
+                ];
+            }
+        }
+        }
+
+        // Sort items by absolute balance value descending
+        usort($results, function ($a, $b) {
+            return abs($b['balance']) <=> abs($a['balance']);
+        });
+
+        // Calculate totals
+        $totalReceivables = 0.0;
+        $totalPayables = 0.0;
+
+        foreach ($results as $item) {
+            if ($item['balance'] > 0) {
+                $totalReceivables += $item['balance'];
+            } else {
+                $totalPayables += abs($item['balance']);
+            }
+        }
+
+        return [
+            'total_receivables' => $totalReceivables,
+            'total_payables' => $totalPayables,
+            'net_balance' => $totalReceivables - $totalPayables,
+            'items' => $results,
+        ];
+    }
+
+    private function getModuleLabel(string $module): string
+    {
+        return match ($module) {
+            'flight' => 'طيران',
+            'bus' => 'باص',
+            'hajj_umra' => 'حج وعمرة',
+            'visa' => 'تأشيرات',
+            'fawry' => 'فوري',
+            'online' => 'خدمات إلكترونية',
+            'wallet' => 'محفظة',
+            default => 'عام / كاش',
+        };
     }
 }

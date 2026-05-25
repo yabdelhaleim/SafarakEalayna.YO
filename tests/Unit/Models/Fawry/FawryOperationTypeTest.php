@@ -10,6 +10,15 @@ class FawryOperationTypeTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Clear migration-seeded data that conflicts with test codes
+        \App\Models\Fawry\FawryPaymentMethod::query()->forceDelete();
+        \App\Models\Fawry\FawryOperationType::query()->forceDelete();
+    }
+
     public function test_fawry_operation_type_can_be_created()
     {
         $operationType = FawryOperationType::create([

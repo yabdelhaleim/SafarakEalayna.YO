@@ -28,11 +28,23 @@
 
     <!-- Customers List -->
     <div class="bg-card border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
-      <div v-if="store.loading.list" class="p-12 text-center">
-        <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gold"></div>
-        <p class="text-muted mt-4">جارٍ تحميل العملاء...</p>
-      </div>
-      <div v-else-if="filteredCustomers.length === 0" class="p-12 text-center">
+      <!-- Skeleton -->
+      <template v-if="asyncState === 'loading'">
+        <div v-for="i in 6" :key="i" class="p-6 border-b border-white/5 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-full bg-white/5 animate-pulse"></div>
+            <div class="space-y-2">
+              <div class="h-4 bg-white/5 animate-pulse rounded w-36"></div>
+              <div class="h-3 bg-white/5 animate-pulse rounded w-24"></div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <div class="w-9 h-9 bg-white/5 animate-pulse rounded-lg"></div>
+            <div class="w-9 h-9 bg-white/5 animate-pulse rounded-lg"></div>
+          </div>
+        </div>
+      </template>
+      <div v-else-if="asyncState === 'empty' || (asyncState === 'success' && filteredCustomers.length === 0)" class="p-12 text-center">
         <Users class="h-16 w-16 text-muted mx-auto mb-4" />
         <h3 class="text-lg font-bold text-white mb-2">لا يوجد عملاء</h3>
         <p class="text-muted mb-6">لم يتم إضافة أي عملاء بعد</p>
@@ -111,10 +123,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useCustomerStore } from '@/stores/customerStore';
+import { useAsyncState } from '@/composables/useAsyncState';
 import { Search, Users, Plus, Pen, Trash2 } from 'lucide-vue-next';
 import { useDebounceFn } from '@vueuse/core';
 
 const store = useCustomerStore();
+const { state: asyncState, setLoading, setSuccess, setError } = useAsyncState();
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
@@ -212,7 +226,13 @@ const saveCustomer = async () => {
 };
 
 onMounted(async () => {
-  await store.fetchCustomers();
+  try {
+    setLoading();
+    await store.fetchCustomers();
+    setSuccess(store.customers.length === 0);
+  } catch (e) {
+    setError(e);
+  }
 });
 </script>
 

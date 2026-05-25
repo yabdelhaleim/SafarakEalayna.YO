@@ -125,12 +125,38 @@
     </div>
 
     <!-- Table -->
-    <div v-if="store.loading.transactions" class="bg-card-bg border border-white/10 rounded-2xl p-12 flex items-center justify-center">
-      <Loader2 class="w-8 h-8 text-gold animate-spin" />
-    </div>
+    <div class="bg-card-bg border border-white/10 rounded-2xl overflow-hidden">
+      <!-- Skeleton rows -->
+      <template v-if="store.loading.transactions">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-white/5 text-text-muted text-xs uppercase tracking-wider">
+                <th class="px-4 py-3 text-right font-bold">#</th>
+                <th class="px-4 py-3 text-right font-bold">العميل</th>
+                <th class="px-4 py-3 text-right font-bold">الخدمة</th>
+                <th class="px-4 py-3 text-right font-bold">المزود</th>
+                <th class="px-4 py-3 text-right font-bold">سعر الشراء</th>
+                <th class="px-4 py-3 text-right font-bold">سعر البيع</th>
+                <th class="px-4 py-3 text-right font-bold">الربح</th>
+                <th class="px-4 py-3 text-right font-bold">طريقة الدفع</th>
+                <th class="px-4 py-3 text-right font-bold">الحالة</th>
+                <th class="px-4 py-3 text-right font-bold">التاريخ</th>
+                <th class="px-4 py-3 text-right font-bold">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="i in 8" :key="i" class="border-b border-white/5">
+                <td v-for="j in 11" :key="j" class="px-4 py-3">
+                  <div class="h-4 bg-white/5 animate-pulse rounded w-full"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
 
-    <div v-else-if="store.transactions.length" class="bg-card-bg border border-white/10 rounded-2xl overflow-hidden">
-      <div class="overflow-x-auto">
+      <div v-else-if="store.transactions.length" class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-white/5 text-text-muted text-xs uppercase tracking-wider">
@@ -208,6 +234,10 @@
           </tbody>
         </table>
       </div>
+
+      <div v-else class="p-12 text-center text-text-muted">
+        لا توجد معاملات بعد
+      </div>
     </div>
   </div>
 </template>
@@ -222,7 +252,6 @@ import {
   Globe,
   Network,
   Layers,
-  Loader2,
   Eye,
   Trash2,
   Banknote,

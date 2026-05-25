@@ -37,7 +37,7 @@ class AdminLogin extends BaseLogin
 
     public function getTitle(): string | Htmlable
     {
-        return 'تسجيل الدخول — لوحة الإدارة | سفارك إلينا';
+        return 'تسجيل الدخول — لوحة الإدارة | سفرك علينا';
     }
 
     public function getHeading(): string | Htmlable | null
@@ -46,7 +46,7 @@ class AdminLogin extends BaseLogin
             return parent::getHeading();
         }
 
-        return 'سفارك إلينا — الإدارة';
+        return 'سفرك علينا — الإدارة';
     }
 
     public function getSubheading(): string | Htmlable | null

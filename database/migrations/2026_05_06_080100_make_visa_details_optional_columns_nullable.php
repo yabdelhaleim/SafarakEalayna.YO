@@ -12,6 +12,7 @@ return new class extends Migration
             $table->string('executing_company')->nullable()->change();
             $table->string('executing_agent')->nullable()->change();
             $table->string('duration')->nullable()->change();
+            $table->string('entry_type')->nullable()->change();
         });
     }
 
@@ -21,6 +22,7 @@ return new class extends Migration
             $table->string('executing_company')->nullable(false)->change();
             $table->string('executing_agent')->nullable(false)->change();
             $table->string('duration')->nullable(false)->change();
+            $table->string('entry_type')->nullable(false)->change();
         });
     }
 };

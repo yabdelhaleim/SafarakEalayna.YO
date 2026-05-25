@@ -69,44 +69,53 @@
             </tr>
           </thead>
           <tbody class="text-sm text-white divide-y divide-white/5">
-            <tr v-if="loading" class="text-center">
-              <td colspan="7" class="p-8 text-text-muted">جاري تحميل البيانات...</td>
+            <template v-if="asyncState === 'loading'">
+              <tr v-for="i in 8" :key="i" class="border-b border-white/5">
+                <td v-for="j in 7" :key="j" class="p-4">
+                  <div class="h-4 bg-white/5 animate-pulse rounded w-full"></div>
+                </td>
+              </tr>
+            </template>
+            <tr v-else-if="asyncState === 'error'" class="text-center">
+              <td colspan="7" class="p-8 text-error">حدث خطأ أثناء تحميل المصروفات</td>
             </tr>
-            <tr v-else-if="expenses.length === 0" class="text-center">
+            <tr v-else-if="asyncState === 'empty'" class="text-center">
               <td colspan="7" class="p-8 text-text-muted">لا توجد مصروفات مسجلة بعد.</td>
             </tr>
-            <tr v-for="expense in expenses" :key="expense.id" class="hover:bg-white/5 transition-colors">
-              <td class="p-4">
-                <div class="flex flex-col">
-                  <span class="font-medium">{{ formatDate(expense.created_at) }}</span>
-                  <span class="text-xs text-text-muted">{{ formatTime(expense.created_at) }}</span>
-                </div>
-              </td>
-              <td class="p-4">
-                <span class="bg-rose-500/20 text-rose-300 px-3 py-1 rounded-lg font-medium text-xs">
-                  {{ expense.to_account_name || expense.to_account?.name || 'غير محدد' }}
-                </span>
-              </td>
-              <td class="p-4">
-                <span class="bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-lg font-medium text-xs">
-                  {{ formatModule(expense.module) }}
-                </span>
-              </td>
-              <td class="p-4">
-                <span class="text-emerald-400 font-medium">
-                  {{ expense.from_account_name || expense.from_account?.name || 'غير محدد' }}
-                </span>
-              </td>
-              <td class="p-4 font-bold text-white">
-                {{ formatCurrency(expense.amount) }}
-              </td>
-              <td class="p-4 text-text-muted max-w-xs truncate" :title="expense.notes">
-                {{ expense.notes || '---' }}
-              </td>
-              <td class="p-4 text-text-muted">
-                {{ expense.created_by_name || expense.created_by?.name || '---' }}
-              </td>
-            </tr>
+            <template v-else>
+              <tr v-for="expense in expenses" :key="expense.id" class="hover:bg-white/5 transition-colors">
+                <td class="p-4">
+                  <div class="flex flex-col">
+                    <span class="font-medium">{{ formatDate(expense.created_at) }}</span>
+                    <span class="text-xs text-text-muted">{{ formatTime(expense.created_at) }}</span>
+                  </div>
+                </td>
+                <td class="p-4">
+                  <span class="bg-rose-500/20 text-rose-300 px-3 py-1 rounded-lg font-medium text-xs">
+                    {{ expense.to_account_name || expense.to_account?.name || 'غير محدد' }}
+                  </span>
+                </td>
+                <td class="p-4">
+                  <span class="bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-lg font-medium text-xs">
+                    {{ formatModule(expense.module) }}
+                  </span>
+                </td>
+                <td class="p-4">
+                  <span class="text-emerald-400 font-medium">
+                    {{ expense.from_account_name || expense.from_account?.name || 'غير محدد' }}
+                  </span>
+                </td>
+                <td class="p-4 font-bold text-white">
+                  {{ formatCurrency(expense.amount) }}
+                </td>
+                <td class="p-4 text-text-muted max-w-xs truncate" :title="expense.notes">
+                  {{ expense.notes || '---' }}
+                </td>
+                <td class="p-4 text-text-muted">
+                  {{ expense.created_by_name || expense.created_by?.name || '---' }}
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -256,12 +265,13 @@ import {
   Coins,
   PlusCircle
 } from 'lucide-vue-next';
+import { useAsyncState } from '@/composables/useAsyncState';
 import axios from 'axios';
 
 const globalError = ref('');
 const successMessage = ref('');
 
-const loading = ref(true);
+const { state: asyncState, setLoading, setSuccess, setError } = useAsyncState();
 const isModalOpen = ref(false);
 const isSubmitting = ref(false);
 
@@ -335,18 +345,16 @@ const formatModule = (mod) => {
 
 const fetchInitialData = async () => {
   try {
-    loading.value = true;
+    setLoading();
     
-    // Fetch Accounts (Expense Type)
-    const expenseRes = await axios.get('/api/v1/finance/accounts', { params: { type: 'expense' } });
+    const [expenseRes, treasuriesRes, transactionsRes] = await Promise.all([
+      axios.get('/api/v1/finance/accounts', { params: { type: 'expense' } }),
+      axios.get('/api/v1/finance/accounts', { params: { type: 'cashbox,bank,treasury' } }),
+      axios.get('/api/v1/reports/transactions', { params: { type: 'expense', per_page: 50 } }),
+    ]);
+    
     expenseAccounts.value = expenseRes.data.data || [];
-    
-    // Fetch Treasuries/Cashboxes
-    const treasuriesRes = await axios.get('/api/v1/finance/accounts', { params: { type: 'cashbox,bank,treasury' } });
     treasuryAccounts.value = treasuriesRes.data.data || [];
-
-    // Fetch Actual Expenses from DB
-    const transactionsRes = await axios.get('/api/v1/reports/transactions', { params: { type: 'expense', per_page: 50 } });
     if (transactionsRes.data && transactionsRes.data.data) {
       expenses.value = transactionsRes.data.data;
       
@@ -365,10 +373,10 @@ const fetchInitialData = async () => {
       expenses.value = [];
     }
     
+    setSuccess(expenses.value.length === 0);
   } catch (error) {
     console.error('Error fetching data', error);
-  } finally {
-    loading.value = false;
+    setError(error);
   }
 };
 

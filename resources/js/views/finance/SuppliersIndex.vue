@@ -61,18 +61,27 @@
 
     <!-- Table -->
     <div class="bg-card-bg border border-white/10 rounded-2xl overflow-hidden">
-      <div v-if="store.loading.list" class="p-12 text-center">
-        <div class="inline-block w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-text-muted mt-3">جاري التحميل...</p>
-      </div>
+      <!-- Skeleton -->
+      <template v-if="asyncState === 'loading'">
+        <div class="divide-y divide-white/5">
+          <div v-for="i in 8" :key="i" class="flex items-center gap-4 px-5 py-4">
+            <div class="h-4 bg-white/5 animate-pulse rounded w-16"></div>
+            <div class="h-4 bg-white/5 animate-pulse rounded flex-1"></div>
+            <div class="h-4 bg-white/5 animate-pulse rounded w-24"></div>
+            <div class="h-4 bg-white/5 animate-pulse rounded w-32"></div>
+            <div class="h-4 bg-white/5 animate-pulse rounded w-20"></div>
+            <div class="h-4 bg-white/5 animate-pulse rounded w-16"></div>
+          </div>
+        </div>
+      </template>
 
-      <div v-else-if="store.errors.fetch" class="p-12 text-center">
+      <div v-else-if="asyncState === 'error'" class="p-12 text-center">
         <AlertCircle class="w-12 h-12 text-red-400 mx-auto mb-3" />
-        <p class="text-red-400">{{ store.errors.fetch }}</p>
-        <button @click="store.fetchSuppliers()" class="mt-3 text-blue-400 hover:underline">إعادة المحاولة</button>
+        <p class="text-red-400">حدث خطأ أثناء تحميل الموردين</p>
+        <button @click="loadData" class="mt-3 text-blue-400 hover:underline">إعادة المحاولة</button>
       </div>
 
-      <div v-else-if="filteredSuppliers.length === 0" class="p-12 text-center">
+      <div v-else-if="asyncState === 'empty' || (asyncState === 'success' && filteredSuppliers.length === 0)" class="p-12 text-center">
         <Users class="w-12 h-12 text-white/10 mx-auto mb-3" />
         <p class="text-text-muted">لا يوجد موردون</p>
       </div>
@@ -253,10 +262,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useSupplierStore } from '@/stores/supplierStore'
+import { useAsyncState } from '@/composables/useAsyncState'
 import { Plus, Search, Pencil, Trash2, X, AlertCircle, Users } from 'lucide-vue-next'
 import { debounce } from 'lodash-es'
 
 const store = useSupplierStore()
+const { state: asyncState, setLoading, setSuccess, setError } = useAsyncState()
 
 const showModal = ref(false)
 const showDeleteConfirm = ref(false)
@@ -345,5 +356,15 @@ function formatCurrency(v) {
   return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP' }).format(v || 0)
 }
 
-onMounted(() => store.fetchSuppliers())
+async function loadData() {
+  try {
+    setLoading();
+    await store.fetchSuppliers();
+    setSuccess(store.suppliers.length === 0);
+  } catch (e) {
+    setError(e);
+  }
+}
+
+onMounted(() => loadData())
 </script>

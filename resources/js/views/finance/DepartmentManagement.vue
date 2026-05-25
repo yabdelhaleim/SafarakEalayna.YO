@@ -24,7 +24,7 @@
           class="p-3 bg-white/5 border border-white/10 rounded-xl hover:border-gold transition-all"
           title="تحديث البيانات"
         >
-          <RefreshCw :class="['w-5 h-5', loading ? 'animate-spin' : '']" />
+          <RefreshCw :class="['w-5 h-5', isRefreshing ? 'animate-spin' : '']" />
         </button>
         <router-link
           to="/finance/transactions/create"
@@ -52,10 +52,13 @@
       </button>
     </div>
 
-    <!-- Tab Content: Financials -->
-    <div v-if="activeTab === 'financials'" class="space-y-6">
+    <!-- Tab Content: Financials (Overview) -->
+    <div v-if="activeTab === 'financials'" class="space-y-8">
       <!-- Mini Stats -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <KPICardSkeleton v-for="i in 4" :key="`mkpi-${i}`" />
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-card-bg border border-white/10 rounded-2xl p-5 shadow-lg border-r-4 border-r-success">
           <p class="text-[10px] font-bold text-text-muted uppercase mb-1">إجمالي المقبوضات</p>
           <h3 class="text-xl font-black text-success">{{ formatCurrency(financeStore.stats.total_income) }}</h3>
@@ -74,53 +77,165 @@
         </div>
       </div>
 
-      <!-- Transactions Filter & List -->
+      <!-- Accounts & Safes Grid -->
+      <div class="space-y-4">
+        <h4 class="font-extrabold text-base text-text-main flex items-center gap-2">
+          <Wallet class="w-5 h-5 text-gold" />
+          الخزائن وحسابات السيولة للقسم
+        </h4>
+        
+        <div v-if="isLoading()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <KPICardSkeleton v-for="i in 3" :key="`dacc-${i}`" />
+        </div>
+        <template v-else>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" v-if="departmentAccounts.length">
+            <div 
+              v-for="acc in departmentAccounts" 
+              :key="acc.id" 
+              class="bg-gradient-to-br from-card-bg to-white/[0.02] border border-white/10 rounded-2xl p-5 shadow-lg relative overflow-hidden group hover:border-gold/30 transition-all duration-300"
+            >
+              <!-- Background glow -->
+              <div class="absolute -right-10 -bottom-10 w-24 h-24 bg-gold/5 rounded-full blur-xl group-hover:bg-gold/10 transition-all"></div>
+              
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div :class="['p-2 rounded-lg bg-white/5', getAccountTypeColor(acc.type)]">
+                    <component :is="getAccountTypeIcon(acc.type)" class="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h5 class="font-bold text-sm text-white group-hover:text-gold transition-colors">{{ acc.name }}</h5>
+                    <span class="text-[10px] text-text-muted font-bold uppercase">{{ getAccountTypeLabel(acc.type) }}</span>
+                  </div>
+                </div>
+                <span class="text-xs font-black px-2 py-0.5 rounded bg-white/10 font-mono text-white/80">{{ acc.currency }}</span>
+              </div>
+              
+              <div class="space-y-1">
+                <p class="text-[9px] text-text-muted font-bold uppercase">الرصيد الحالي</p>
+                <h4 :class="['text-xl font-black font-mono', acc.balance < 0 ? 'text-error' : 'text-success']">
+                  {{ formatNumber(acc.balance) }}
+                </h4>
+              </div>
+            </div>
+          </div>
+          <div v-else class="bg-card-bg border border-white/10 rounded-2xl p-8 text-center text-text-muted italic text-sm">
+            لا توجد حسابات سيولة نشطة مخصصة لهذا القسم حالياً.
+          </div>
+        </template>
+      </div>
+
+      <!-- Module Performance Breakdown -->
       <div class="bg-card-bg border border-white/10 rounded-2xl overflow-hidden shadow-xl">
         <div class="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
-          <h4 class="font-bold flex items-center gap-2">
-            <ListTree class="w-4 h-4 text-gold" />
-            آخر المعاملات المالية
+          <h4 class="font-extrabold text-base flex items-center gap-2">
+            <Percent class="w-5 h-5 text-gold" />
+            تحليل الأداء والأرباح حسب القسم الفرعي
           </h4>
-          <div class="flex items-center gap-3">
-            <select
-              v-model="financeFilters.module"
-              @change="fetchTransactions"
-              class="bg-input-bg border border-white/10 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-gold"
-            >
-              <option :value="modules">كل موديولات {{ departmentName }}</option>
-              <option v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
-            </select>
-          </div>
         </div>
         
-        <div class="overflow-x-auto">
+        <div v-if="isLoading()" class="p-5">
+          <TableSkeleton :rows="4" :columns="5" />
+        </div>
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
               <tr class="text-[10px] text-text-muted uppercase bg-white/5 border-b border-white/5 whitespace-nowrap">
-                <th class="px-6 py-4">التاريخ</th>
-                <th class="px-6 py-4">الموديول</th>
-                <th class="px-6 py-4">الحساب</th>
-                <th class="px-6 py-4">الوصف</th>
-                <th class="px-6 py-4">المبلغ</th>
+                <th class="px-6 py-4">القسم الفرعي (الموديول)</th>
+                <th class="px-6 py-4">إجمالي المقبوضات</th>
+                <th class="px-6 py-4">إجمالي المدفوعات</th>
+                <th class="px-6 py-4">صافي الربح</th>
+                <th class="px-6 py-4">معدل الأداء</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in financeStore.transactions" :key="t.id" class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                <td class="px-6 py-3 text-xs text-text-muted">{{ formatDate(t.created_at) }}</td>
-                <td class="px-6 py-3">
-                  <span class="text-[10px] font-bold bg-white/5 px-2 py-0.5 rounded text-sky-200">{{ getModuleLabel(t.module) }}</span>
+              <tr v-for="m in profitByModuleData" :key="m.module" class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                <td class="px-6 py-4">
+                  <span class="font-bold text-sm text-white">{{ getModuleLabel(m.module) }}</span>
                 </td>
-                <td class="px-6 py-3 text-xs font-bold">{{ t.from_account_name || t.to_account_name }}</td>
-                <td class="px-6 py-3 text-xs text-text-muted truncate max-w-[200px]">{{ t.notes || '-' }}</td>
-                <td class="px-6 py-3">
-                  <span :class="['font-mono font-bold text-sm', t.type === 'income' ? 'text-success' : 'text-error']">
-                    {{ t.type === 'income' ? '+' : '-' }}{{ formatNumber(t.amount) }}
+                <td class="px-6 py-4 font-mono font-bold text-success text-sm">+{{ formatNumber(m.income) }}</td>
+                <td class="px-6 py-4 font-mono font-bold text-error text-sm">-{{ formatNumber(m.expense) }}</td>
+                <td class="px-6 py-4">
+                  <span :class="['font-mono font-black text-sm', m.profit < 0 ? 'text-error' : 'text-success']">
+                    {{ m.profit >= 0 ? '+' : '' }}{{ formatNumber(m.profit) }}
                   </span>
                 </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <div class="w-20 bg-white/5 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        :class="['h-full rounded-full', m.profit < 0 ? 'bg-error' : 'bg-success']"
+                        :style="{ width: `${getModuleMarginPercentage(m)}%` }"
+                      ></div>
+                    </div>
+                    <span class="text-[10px] font-bold text-text-muted">{{ getModuleMarginPercentage(m) }}%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!profitByModuleData.length" class="text-center italic text-text-muted">
+                <td colspan="5" class="py-10 text-sm">لا تتوفر بيانات أرباح مخصصة للموديولات في الفترة الحالية.</td>
               </tr>
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Debt & Receivables Summary Panel -->
+      <div class="bg-gradient-to-r from-card-bg to-white/[0.02] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+        <h4 class="font-extrabold text-base flex items-center gap-2">
+          <TrendingUp class="w-5 h-5 text-gold" />
+          ميزان الديون والتحصيل (المركز العام للقسم)
+        </h4>
+
+        <div v-if="isLoading()" class="space-y-4 pt-4">
+          <GridSkeleton :count="2" itemHeight="100px" />
+          <TextLineSkeleton :lines="3" />
+        </div>
+        <template v-else>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Receivables (العملاء) -->
+            <div class="bg-white/5 p-4 rounded-xl border border-white/5 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-text-muted">مستحقاتنا لدى العملاء (المدين)</span>
+                <span class="text-success text-xs font-bold">{{ regularCustomerDebts.length + counterCustomerDebts.length }} عملاء</span>
+              </div>
+              <h3 class="text-2xl font-black text-success">{{ formatCurrency(regularCustomerDebtsTotal + counterCustomerDebtsTotal) }}</h3>
+            </div>
+
+            <!-- Payables (الموردين) -->
+            <div class="bg-white/5 p-4 rounded-xl border border-white/5 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-text-muted">مستحقات الموردين والشركات (الدائن)</span>
+                <span class="text-error text-xs font-bold">{{ supplierDebts.length }} شركات</span>
+              </div>
+              <h3 class="text-2xl font-black text-error">{{ formatCurrency(supplierDebtsTotal) }}</h3>
+            </div>
+          </div>
+
+          <!-- Visual balance indicator -->
+          <div class="space-y-2 pt-2">
+            <div class="flex justify-between text-xs text-text-muted font-bold">
+              <span>الالتزامات (علينا للموردين)</span>
+              <span>التحصيلات المتوقعة (لنا لدى العملاء)</span>
+            </div>
+            <div class="w-full bg-white/5 h-3 rounded-full flex overflow-hidden">
+              <!-- Payables bar (red) -->
+              <div 
+                class="bg-error h-full transition-all duration-1000"
+                :style="{ width: `${getDebtRatioPercent('payables')}%` }"
+                title="الالتزامات"
+              ></div>
+              <!-- Receivables bar (green) -->
+              <div 
+                class="bg-success h-full transition-all duration-1000"
+                :style="{ width: `${getDebtRatioPercent('receivables')}%` }"
+                title="المستحقات"
+              ></div>
+            </div>
+            <p class="text-[10px] text-text-muted leading-relaxed">
+              * هذا المؤشر يوضح ميزان السيولة المتوقع للقسم: النسبة الحمراء تشير للديون والنسبة الخضراء تشير لمستحقات التحصيل.
+            </p>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -138,7 +253,10 @@
           </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div v-if="isLoading()" class="p-6">
+          <TableSkeleton :rows="5" :columns="6" />
+        </div>
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
               <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10 whitespace-nowrap">
@@ -192,7 +310,10 @@
           </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div v-if="isLoading()" class="p-6">
+          <TableSkeleton :rows="5" :columns="5" />
+        </div>
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
               <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10 whitespace-nowrap">
@@ -244,7 +365,10 @@
           </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div v-if="isLoading()" class="p-6">
+          <TableSkeleton :rows="5" :columns="5" />
+        </div>
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-right">
             <thead>
               <tr class="text-[11px] text-text-muted uppercase bg-white/5 border-b border-white/10">
@@ -298,8 +422,17 @@ import {
   ListTree,
   UserCircle,
   FileText,
-  Building2
+  Building2,
+  Wallet,
+  Landmark,
+  Percent
 } from 'lucide-vue-next';
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TableSkeleton from '@/components/skeletons/TableSkeleton.vue';
+import ChartSkeleton from '@/components/skeletons/ChartSkeleton.vue';
+import GridSkeleton from '@/components/skeletons/GridSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
 const props = defineProps({
   type: { type: String, required: true }, // 'tourism' or 'office'
@@ -312,10 +445,11 @@ const isTourism = computed(() => props.type === 'tourism');
 const financeStore = useFinanceStore();
 
 const activeTab = ref('financials');
-const loading = ref(false);
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
+const isRefreshing = computed(() => isLoading());
 
 const tabs = [
-  { id: 'financials', label: 'المالية والعمليات', icon: LayoutDashboard },
+  { id: 'financials', label: 'المركز المالي والسيولة', icon: LayoutDashboard },
   { id: 'suppliers', label: 'مديونيات الموردين', icon: TrendingDown },
   { id: 'customers', label: 'العملاء والشركات', icon: UserCircle },
 ];
@@ -329,6 +463,8 @@ const financeFilters = reactive({
 const supplierDebts = ref([]);
 const regularCustomerDebts = ref([]);
 const counterCustomerDebts = ref([]);
+const departmentAccounts = ref([]);
+const profitByModuleData = ref([]);
 
 const supplierDebtsTotal = computed(() => supplierDebts.value.reduce((acc, s) => acc + s.current_debt, 0));
 const regularCustomerDebtsTotal = computed(() => regularCustomerDebts.value.reduce((acc, c) => acc + c.total_debt, 0));
@@ -341,15 +477,19 @@ const moduleOptions = computed(() => {
 
 // Actions
 const refreshAll = async () => {
-  loading.value = true;
+  setLoading();
   try {
     await Promise.all([
       fetchTransactions(),
       fetchSupplierDebts(),
-      fetchCustomerDebts()
+      fetchCustomerDebts(),
+      fetchDepartmentAccounts(),
+      fetchProfitByModule()
     ]);
-  } finally {
-    loading.value = false;
+    setSuccess();
+  } catch (error) {
+    console.error('Failed to refresh data:', error);
+    setError(error);
   }
 };
 
@@ -360,8 +500,29 @@ const fetchTransactions = async () => {
   ]);
 };
 
+const fetchDepartmentAccounts = async () => {
+  try {
+    const res = await axios.get('/api/v1/finance/accounts', {
+      params: { module_type: props.type, is_active: true }
+    });
+    departmentAccounts.value = res.data.data?.items || res.data.data || [];
+  } catch (err) {
+    console.error('Failed to fetch department accounts:', err);
+  }
+};
+
+const fetchProfitByModule = async () => {
+  try {
+    const res = await axios.get('/api/v1/reports/profit-by-module');
+    const allModules = res.data.data?.by_module || [];
+    profitByModuleData.value = allModules.filter(m => props.modules.includes(m.module));
+  } catch (err) {
+    console.error('Failed to fetch profit by module:', err);
+  }
+};
+
 const fetchSupplierDebts = async () => {
-  const res = await axios.get('/api/v1/reports/financial/supplier-debts', {
+  const res = await axios.get('/api/v1/reports/supplier-debts', {
     params: { module_type: props.type }
   });
   supplierDebts.value = res.data.data.debts;
@@ -369,10 +530,10 @@ const fetchSupplierDebts = async () => {
 
 const fetchCustomerDebts = async () => {
   const [reg, count] = await Promise.all([
-    axios.get('/api/v1/reports/financial/customer-debts', {
+    axios.get('/api/v1/reports/customer-debts', {
       params: { module: props.modules, customer_type: 'regular' }
     }),
-    axios.get('/api/v1/reports/financial/customer-debts', {
+    axios.get('/api/v1/reports/customer-debts', {
       params: { module: props.modules, customer_type: 'counter' }
     })
   ]);
@@ -398,6 +559,52 @@ const formatDate = (date) => {
 
 const getModuleLabel = (val) => {
   return financeStore.transactionModules.find(m => m.value === val)?.label || val;
+};
+
+const getAccountTypeIcon = (type) => {
+  const icons = {
+    cashbox: Wallet,
+    bank: Landmark,
+    wallet: Wallet,
+    treasury: Landmark,
+  };
+  return icons[type] || Landmark;
+};
+
+const getAccountTypeColor = (type) => {
+  const colors = {
+    cashbox: 'text-success bg-success/10',
+    bank: 'text-blue-400 bg-blue-400/10',
+    wallet: 'text-purple-400 bg-purple-400/10',
+    treasury: 'text-gold bg-gold/10',
+  };
+  return colors[type] || 'text-white bg-white/5';
+};
+
+const getAccountTypeLabel = (type) => {
+  const labels = {
+    cashbox: 'درج كاشير / صندوق',
+    bank: 'حساب بنكي',
+    wallet: 'محفظة إلكترونية',
+    treasury: 'خزينة رئيسية',
+  };
+  return labels[type] || type;
+};
+
+const getModuleMarginPercentage = (m) => {
+  if (!m.income) return 0;
+  return Math.round((m.profit / m.income) * 100);
+};
+
+const getDebtRatioPercent = (type) => {
+  const pay = supplierDebtsTotal.value;
+  const rec = regularCustomerDebtsTotal.value + counterCustomerDebtsTotal.value;
+  const total = pay + rec;
+  if (!total) return 50;
+  if (type === 'payables') {
+    return Math.round((pay / total) * 100);
+  }
+  return Math.round((rec / total) * 100);
 };
 
 onMounted(() => {

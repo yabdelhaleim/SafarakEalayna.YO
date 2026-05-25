@@ -94,7 +94,7 @@ class FawryTransactionController extends Controller
                 'Fawry transaction updated successfully.',
                 new FawryTransactionResource($transaction)
             );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }

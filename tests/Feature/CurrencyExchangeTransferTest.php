@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Transfer;
+use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -19,7 +20,10 @@ class CurrencyExchangeTransferTest extends TestCase
             'name' => 'FX Test',
             'email' => 'fx-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
+            'role' => 'admin',
         ]);
+
+        Employee::create(['user_id' => $user->id, 'status' => 'active']);
 
         $egp = Account::create([
             'name' => 'EGP vault test',
@@ -55,7 +59,7 @@ class CurrencyExchangeTransferTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $response->assertJsonPath('status', true);
+        $response->assertJsonPath('success', true);
         $response->assertJsonPath('data.from_currency', 'EGP');
         $response->assertJsonPath('data.to_currency', 'KWD');
 
@@ -79,7 +83,10 @@ class CurrencyExchangeTransferTest extends TestCase
             'name' => 'FX Test 2',
             'email' => 'fx2-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
+            'role' => 'admin',
         ]);
+
+        Employee::create(['user_id' => $user->id, 'status' => 'active']);
 
         $a = Account::create([
             'name' => 'EGP A',

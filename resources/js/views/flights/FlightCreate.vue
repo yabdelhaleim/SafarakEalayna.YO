@@ -314,7 +314,7 @@
                 <!-- Booking Type Toggle -->
                 <div class="mb-8 p-4 bg-white/5 rounded-2xl border border-white/10">
                   <label class="block text-sm font-bold text-gray-400 mb-4 text-center">طريقة الخصم المالي</label>
-                  <div class="grid grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <button 
                       type="button"
                       @click="form.booking_source = 'system'; form.purchase_balance_source = 'system'; form.flight_system_id = null; form.flight_carrier_id = null;"
@@ -332,6 +332,15 @@
                     >
                       <Plane class="h-6 w-6" />
                       <span class="font-bold">حجز مباشر (Airline)</span>
+                    </button>
+                    <button 
+                      type="button"
+                      @click="form.booking_source = 'group'; form.purchase_balance_source = 'group'; form.flight_system_id = null; form.flight_carrier_id = null; loadAllGroups();"
+                      class="flex flex-col items-center gap-3 p-4 rounded-xl border transition-all"
+                      :class="form.booking_source === 'group' ? 'border-amber-500 bg-amber-500/20 text-white shadow-lg shadow-amber-500/20' : 'border-white/10 bg-white/5 text-gray-400 hover:bg-white/10'"
+                    >
+                      <Users class="h-6 w-6" />
+                      <span class="font-bold">حجز مجموعة (Group)</span>
                     </button>
                   </div>
                 </div>
@@ -379,8 +388,23 @@
                     </div>
                   </div>
 
-                  <!-- Common: Group Selection -->
-                  <div v-if="form.flight_carrier_id">
+                  <!-- Case 3: Group Booking -->
+                  <div v-if="form.booking_source === 'group'" class="space-y-6">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-300 mb-2">اختر المجموعة / الشركة بالأجل <span class="text-error">*</span></label>
+                      <select v-model="form.flight_group_id" :disabled="loadingGroups" class="flight-select">
+                        <option value="">— اختر المجموعة —</option>
+                        <option v-for="group in availableGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-300 mb-2">خط الطيران (اختياري)</label>
+                      <input v-model="form.airline_name" type="text" placeholder="مثال: مصر للطيران، النيل..." class="flight-input" />
+                    </div>
+                  </div>
+
+                  <!-- Common: Group Selection (Only for direct or system, if carrier is selected) -->
+                  <div v-if="form.booking_source !== 'group' && form.flight_carrier_id">
                     <label class="block text-sm font-medium text-gray-300 mb-2">المجموعة (اختياري)</label>
                     <select v-model="form.flight_group_id" :disabled="loadingGroups" class="flight-select">
                       <option value="">— بدون مجموعة —</option>
@@ -425,7 +449,7 @@
                       :class="form.customer_type === 'regular' ? 'border-gold bg-gold/10 text-gold' : 'border-white/10 bg-white/5 text-text-muted'"
                     >
                       <User class="h-4 w-4" />
-                      <span class="text-sm font-bold">عميل عادي</span>
+                      <span class="text-sm font-bold">عميل كوانتر</span>
                     </button>
                     <button 
                       type="button"
@@ -434,14 +458,17 @@
                       :class="form.customer_type === 'counter' ? 'border-sky-500 bg-sky-500/10 text-sky-400' : 'border-white/10 bg-white/5 text-text-muted'"
                     >
                       <Building2 class="h-4 w-4" />
-                      <span class="text-sm font-bold">عميل كوانتر</span>
+                      <span class="text-sm font-bold">عميل شركه</span>
                     </button>
                   </div>
 
                   <label class="mb-2 block text-sm font-medium text-text-muted">
-                    العميل المختار <span class="text-error">*</span>
+                    {{ form.customer_type === 'counter' ? 'عميل الشركه المختار *' : 'العميل المختار *' }}
                   </label>
                   <CustomerSelect v-model="form.customer" :type="form.customer_type" />
+                  <p v-if="form.customer_type === 'counter'" class="mt-2 text-xs text-sky-400 text-right" dir="rtl">
+                    * سيتم قيد مديونية التذكرة على حساب هذا العميل (الشركة). يرجى إدخال اسم المسافر الفعلي أدناه.
+                  </p>
                 </div>
 
                 <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -538,7 +565,7 @@
 
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-300">
-                          نوع التذكرة <span class="text-error">*</span>
+                          نوع التذكرة
                         </label>
                         <select v-model="passenger.type" class="flight-select">
                           <option
@@ -1024,15 +1051,23 @@
                       </div>
                       <div>
                         <span class="text-gray-400">طريقة الحجز:</span>
-                        <span class="text-white font-bold mr-2">{{ form.booking_source === 'system' ? 'عبر نظام' : 'حجز مباشر' }}</span>
+                        <span class="text-white font-bold mr-2">
+                          {{ form.booking_source === 'system' ? 'عبر نظام' : (form.booking_source === 'group' ? 'حجز مجموعة' : 'حجز مباشر') }}
+                        </span>
                       </div>
                       <div v-if="form.booking_source === 'system'">
                         <span class="text-gray-400">نظام الحجز:</span>
                         <span class="text-white font-bold mr-2">{{ selectedFlightSystemName || '-' }}</span>
                       </div>
+                      <div v-if="form.booking_source === 'group'">
+                        <span class="text-gray-400">المجموعة:</span>
+                        <span class="text-white font-bold mr-2">
+                          {{ availableGroups.find(g => g.id === form.flight_group_id)?.name || '-' }}
+                        </span>
+                      </div>
                       <div>
                         <span class="text-gray-400">خط الطيران:</span>
-                        <span class="text-white font-bold mr-2">{{ selectedCarrier?.name || '-' }}</span>
+                        <span class="text-white font-bold mr-2">{{ selectedCarrier?.name || form.airline_name || '-' }}</span>
                       </div>
                       <div>
                         <span class="text-gray-400">من:</span>
@@ -1972,6 +2007,9 @@ const isBookingStepComplete = (step) => {
         (form.value.trip_type !== 'round_trip' || !!form.value.return_date)
       );
     case 3:
+      if (form.value.booking_source === 'group') {
+        return !!form.value.flight_group_id;
+      }
       if (form.value.booking_source === 'system') {
         return !!form.value.flight_system_id && !!form.value.flight_carrier_id;
       }
@@ -2053,6 +2091,9 @@ const canProceed = computed(() => {
       return !!form.value.from_airport && !!form.value.to_airport && !!form.value.departure_date &&
         (form.value.trip_type !== 'round_trip' || !!form.value.return_date);
     case 3:
+      if (form.value.booking_source === 'group') {
+        return !!form.value.flight_group_id;
+      }
       if (form.value.booking_source === 'system') {
         return !!form.value.flight_system_id && !!form.value.flight_carrier_id;
       }
@@ -2443,6 +2484,17 @@ const onCarrierChange = async () => {
   }
 };
 
+const loadAllGroups = async () => {
+  form.value.flight_group_id = null;
+  availableGroups.value = [];
+  loadingGroups.value = true;
+  try {
+    availableGroups.value = await store.fetchGroups();
+  } finally {
+    loadingGroups.value = false;
+  }
+};
+
 const onCurrencyChange = () => {
   if (form.value.currency === 'EGP') {
     form.value.purchase_price_foreign = 0;
@@ -2556,6 +2608,7 @@ const hydrateForEdit = async (id) => {
     form.value.pnr = raw.pnr || '';
     form.value.baggage_allowance_kg = Number(raw.baggage_allowance_kg) || 0;
     form.value.customer = raw.customer || null;
+    form.value.customer_type = raw.customer?.type || 'regular';
     form.value.customer_id = raw.customer_id != null ? String(raw.customer_id) : '';
     form.value.employee_id = raw.employee_id != null ? String(raw.employee_id) : '';
     form.value.currency = String(raw.currency || 'EGP').toUpperCase().slice(0, 3);
@@ -2568,8 +2621,14 @@ const hydrateForEdit = async (id) => {
     form.value.flight_system_id = raw.flight_system_id || null;
     form.value.flight_carrier_id = raw.flight_carrier_id || null;
     form.value.flight_group_id = raw.flight_group_id || null;
-    form.value.purchase_balance_source =
-      raw.purchase_balance_source === 'system' ? 'system' : 'carrier';
+    form.value.purchase_balance_source = raw.purchase_balance_source || 'carrier';
+    if (form.value.purchase_balance_source === 'group') {
+      form.value.booking_source = 'group';
+    } else if (form.value.purchase_balance_source === 'system') {
+      form.value.booking_source = 'system';
+    } else {
+      form.value.booking_source = 'direct';
+    }
 
     const fromId = raw.from_airport_id;
     const toId = raw.to_airport_id;
@@ -2628,7 +2687,14 @@ const hydrateForEdit = async (id) => {
         null;
     }
 
-    if (form.value.flight_carrier_id) {
+    if (form.value.booking_source === 'group') {
+      loadingGroups.value = true;
+      try {
+        availableGroups.value = await store.fetchGroups();
+      } finally {
+        loadingGroups.value = false;
+      }
+    } else if (form.value.flight_carrier_id) {
       loadingGroups.value = true;
       try {
         availableGroups.value = await store.fetchGroupsByCarrier(form.value.flight_carrier_id);
@@ -2876,6 +2942,25 @@ watch(
     }
     if (sell > 0 && pay > sell) {
       form.value.initial_payment = Math.round(sell * 100) / 100;
+    }
+  }
+);
+
+watch(
+  () => form.value.customer,
+  (customer) => {
+    if (customer && form.value.customer_type === 'regular') {
+      if (!form.value.passengers.length) {
+        addPassenger('adult');
+      }
+      const first = form.value.passengers[0];
+      if (first && !first.first_name && !first.last_name) {
+        const parts = (customer.full_name || customer.name || '').trim().split(' ');
+        if (parts.length > 0) {
+          first.first_name = parts[0];
+          first.last_name = parts.slice(1).join(' ') || ' ';
+        }
+      }
     }
   }
 );

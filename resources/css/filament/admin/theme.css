@@ -2,73 +2,53 @@
 @import '/vendor/filament/filament/resources/css/theme.css';
 @config '../../../../tailwind.config.js';
 
-/* ===== الخط ===== */
-
-*, *::before, *::after {
-    font-family: 'Cairo', sans-serif !important;
-}
+/* ===== الخط الأساسي ===== */
+* { font-family: 'Cairo', sans-serif !important; }
 
 /* =================================================================
-   SIDEBAR — الشريط الجانبي
+   SIDEBAR
 ================================================================= */
-
-/* الخلفية الكاملة */
-.fi-sidebar {
-    background-color: #0B2D4E !important;
-}
-
-/* Header الـ Sidebar */
+.fi-sidebar { background-color: #0B2D4E !important; }
 .fi-sidebar-header {
     background-color: #0B2D4E !important;
     border-bottom: 1px solid rgba(133, 183, 235, 0.15) !important;
     padding: 14px 12px !important;
 }
-
-/* ===== عناوين مجموعات التنقل ===== */
 .fi-sidebar-group-label {
     color: #63A4D8 !important;
-    font-size: 0.62rem !important;
+    font-size: 0.65rem !important;
     font-weight: 700 !important;
-    letter-spacing: 0.1em !important;
+    letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
     padding: 4px 14px !important;
     margin-top: 8px !important;
     opacity: 1 !important;
 }
-
-/* ===== روابط التنقل — النص ===== */
 .fi-sidebar-item-button {
     color: #C8DDEF !important;
     border-radius: 8px !important;
     padding: 9px 14px !important;
     margin: 1px 8px !important;
     gap: 10px !important;
-    font-size: 0.84rem !important;
+    font-size: 0.88rem !important;
     font-weight: 500 !important;
     transition: all 0.2s ease !important;
     opacity: 1 !important;
 }
-
-/* span النص داخل الرابط */
 .fi-sidebar-item-button span,
 .fi-sidebar-item-label {
     color: #C8DDEF !important;
     opacity: 1 !important;
     font-weight: 500 !important;
 }
-
-/* Hover */
 .fi-sidebar-item-button:hover {
     background-color: rgba(55, 138, 221, 0.18) !important;
     color: #FFFFFF !important;
 }
-
 .fi-sidebar-item-button:hover span,
 .fi-sidebar-item-button:hover .fi-sidebar-item-label {
     color: #FFFFFF !important;
 }
-
-/* العنصر النشط */
 .fi-sidebar-item-button.fi-active,
 .fi-sidebar-item-button[aria-current="page"],
 .fi-sidebar-item-button[data-active="true"] {
@@ -76,20 +56,15 @@
     color: #FFFFFF !important;
     font-weight: 700 !important;
 }
-
 .fi-sidebar-item-button.fi-active span,
 .fi-sidebar-item-button.fi-active .fi-sidebar-item-label {
     color: #FFFFFF !important;
 }
-
-/* أيقونات التنقل */
 .fi-sidebar-item-icon,
 .fi-sidebar-item-button svg {
     color: inherit !important;
     opacity: 1 !important;
 }
-
-/* Badge عدد في الـ Sidebar */
 .fi-sidebar-item-badge {
     background-color: #378ADD !important;
     color: #FFFFFF !important;
@@ -100,8 +75,6 @@
     padding: 0 5px !important;
     border-radius: 999px !important;
 }
-
-/* مجموعات الـ Sidebar القابلة للطي */
 .fi-sidebar-group-button {
     color: #C8DDEF !important;
     font-size: 0.84rem !important;
@@ -110,88 +83,73 @@
     margin: 1px 8px !important;
     border-radius: 8px !important;
 }
-
 .fi-sidebar-group-button:hover {
     background-color: rgba(255,255,255,0.07) !important;
     color: white !important;
 }
-
-/* سهم الطي في المجموعات */
-.fi-sidebar-group-collapse-button {
-    color: #63A4D8 !important;
-}
-
-/* ===== Sidebar مطوي — collapsed ===== */
+.fi-sidebar-group-collapse-button { color: #63A4D8 !important; }
 .fi-sidebar-nav.fi-sidebar-nav-collapsed .fi-sidebar-item-label,
 .fi-sidebar-nav.fi-sidebar-nav-collapsed .fi-sidebar-group-label {
     opacity: 0 !important;
     width: 0 !important;
 }
-
-/* زر الطي في أعلى الـ Sidebar */
 .fi-sidebar-collapse-button {
     color: #85B7EB !important;
     border-radius: 8px !important;
     padding: 6px !important;
     transition: background 0.2s !important;
 }
-
 .fi-sidebar-collapse-button:hover {
     background-color: rgba(255,255,255,0.1) !important;
     color: white !important;
 }
+.fi-sidebar .fi-avatar-name {
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+}
 
 /* =================================================================
-   TOPBAR — الشريط العلوي
+   TOPBAR
 ================================================================= */
-
 .fi-topbar {
     background-color: #FFFFFF !important;
     border-bottom: 1px solid #E2EBF4 !important;
     box-shadow: 0 1px 6px rgba(11, 45, 78, 0.06) !important;
 }
-
-/* اسم الصفحة في الـ Topbar */
 .fi-breadcrumbs,
-.fi-topbar h1 {
+.fi-topbar h1,
+.fi-page-header-heading {
     color: #0B2D4E !important;
     font-weight: 700 !important;
 }
 
 /* =================================================================
-   الخلفية والتخطيط العام
+   MAIN
 ================================================================= */
-
-.fi-main {
-    background-color: #EEF3FA !important;
-}
+.fi-main { background-color: #EEF3FA !important; }
 
 /* =================================================================
-   البطاقات والأقسام
+   SECTIONS / CARDS
 ================================================================= */
-
 .fi-section {
     background-color: #FFFFFF !important;
     border: 1px solid #DDE8F3 !important;
     border-radius: 12px !important;
     box-shadow: 0 1px 4px rgba(11, 45, 78, 0.05) !important;
 }
-
 .fi-section-header {
     border-bottom: 1px solid #EEF3FA !important;
     padding: 14px 18px !important;
 }
-
 .fi-section-header-heading {
     color: #0B2D4E !important;
     font-weight: 700 !important;
-    font-size: 0.88rem !important;
+    font-size: 0.92rem !important;
 }
 
 /* =================================================================
-   Widgets الإحصائيات
+   STAT WIDGETS
 ================================================================= */
-
 .fi-stats-overview-stat {
     background-color: #FFFFFF !important;
     border: 1px solid #DDE8F3 !important;
@@ -199,75 +157,63 @@
     transition: box-shadow 0.25s, transform 0.2s !important;
     overflow: hidden !important;
 }
-
 .fi-stats-overview-stat:hover {
     box-shadow: 0 8px 24px rgba(24, 95, 165, 0.12) !important;
     transform: translateY(-2px) !important;
 }
-
 .fi-stats-overview-stat-label {
     color: #5A7896 !important;
-    font-size: 0.75rem !important;
-    font-weight: 600 !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
 }
-
 .fi-stats-overview-stat-value {
     color: #0B2D4E !important;
-    font-weight: 900 !important;
+    font-weight: 800 !important;
     font-size: 1.6rem !important;
     line-height: 1.2 !important;
 }
-
 .fi-stats-overview-stat-description {
-    font-size: 0.72rem !important;
-    font-weight: 500 !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
 }
 
 /* =================================================================
-   الجداول
+   TABLES
 ================================================================= */
-
 .fi-ta-header-cell {
     background-color: #F4F8FD !important;
     color: #5A7896 !important;
-    font-size: 0.7rem !important;
+    font-size: 0.72rem !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.07em !important;
+    letter-spacing: 0.06em !important;
     padding: 10px 16px !important;
     border-bottom: 1px solid #DDE8F3 !important;
 }
-
+.fi-ta-cell,
 .fi-ta-row td {
     padding: 12px 16px !important;
-    font-size: 0.84rem !important;
+    font-size: 0.86rem !important;
     color: #1A3A5C !important;
     border-bottom: 1px solid #EEF3FA !important;
+    font-weight: 600 !important;
 }
-
-.fi-ta-row:hover td {
-    background-color: #EDF4FC !important;
-}
-
-.fi-ta-row:last-child td {
-    border-bottom: none !important;
-}
+.fi-ta-row:hover td { background-color: #EDF4FC !important; }
+.fi-ta-row:last-child td { border-bottom: none !important; }
 
 /* =================================================================
-   Badges
+   BADGES
 ================================================================= */
-
 .fi-badge {
-    font-size: 0.68rem !important;
-    font-weight: 700 !important;
+    font-size: 0.7rem !important;
+    font-weight: 800 !important;
     padding: 2px 10px !important;
     border-radius: 999px !important;
 }
 
 /* =================================================================
-   الأزرار
+   BUTTONS
 ================================================================= */
-
 .fi-btn-primary,
 .fi-btn[data-color="primary"] {
     background-color: #185FA5 !important;
@@ -278,27 +224,28 @@
     font-size: 0.84rem !important;
     transition: background 0.2s, transform 0.15s !important;
 }
-
 .fi-btn-primary:hover {
     background-color: #0C447C !important;
     border-color: #0C447C !important;
     transform: translateY(-1px) !important;
 }
+.fi-btn {
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+}
 
 /* =================================================================
-   حقول الإدخال
+   INPUTS & LABELS
 ================================================================= */
-
 .fi-input,
 .fi-select-input,
 .fi-textarea {
     border-color: #C0D3E8 !important;
     border-radius: 8px !important;
     color: #0B2D4E !important;
-    font-size: 0.85rem !important;
+    font-size: 0.86rem !important;
     background-color: #FAFCFF !important;
 }
-
 .fi-input:focus,
 .fi-select-input:focus,
 .fi-textarea:focus {
@@ -306,77 +253,36 @@
     box-shadow: 0 0 0 3px rgba(24, 95, 165, 0.12) !important;
     outline: none !important;
 }
-
-/* =================================================================
-   RESPONSIVE — استجابة الشاشات
-================================================================= */
-
-/* موبايل صغير ≤ 640px */
-@media (max-width: 640px) {
-    .fi-main-ctn {
-        padding: 8px !important;
-    }
-
-    .fi-stats-overview-stats-ctn {
-        grid-template-columns: 1fr 1fr !important;
-        gap: 8px !important;
-    }
-
-    .fi-stats-overview-stat-value {
-        font-size: 1.2rem !important;
-    }
-
-    .fi-section {
-        border-radius: 10px !important;
-    }
-
-    .fi-ta-header-cell,
-    .fi-ta-row td {
-        padding: 8px 10px !important;
-        font-size: 0.75rem !important;
-    }
-
-    /* إخفاء بعض الأعمدة على الموبايل */
-    .fi-ta-col-hidden-mobile {
-        display: none !important;
-    }
-
-    .fi-topbar {
-        padding: 0 8px !important;
-    }
-}
-
-/* تابلت ≤ 768px */
-@media (max-width: 768px) {
-    .fi-sidebar {
-        z-index: 50 !important;
-    }
-
-    .fi-stats-overview-stats-ctn {
-        grid-template-columns: repeat(2, 1fr) !important;
-    }
-
-    .fi-main-ctn {
-        padding: 12px !important;
-    }
-}
-
-/* ديسكتوب ≥ 1280px */
-@media (min-width: 1280px) {
-    .fi-stats-overview-stats-ctn {
-        grid-template-columns: repeat(4, 1fr) !important;
-    }
+.fi-fo-field-wrp label,
+.fi-fo-label {
+    font-size: 0.84rem !important;
+    font-weight: 700 !important;
+    color: #0B2D4E !important;
 }
 
 /* =================================================================
-   صفحة تسجيل الدخول
+   TABS
 ================================================================= */
+.fi-tabs-tab {
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+}
 
+/* =================================================================
+   DROPDOWN
+================================================================= */
+.fi-dropdown-list-item-label {
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+}
+
+/* =================================================================
+   LOGIN PAGE
+================================================================= */
 .fi-simple-layout {
     background: linear-gradient(145deg, #EDF4FC 0%, #F4F8FD 50%, #E6F1FB 100%) !important;
     min-height: 100vh !important;
 }
-
 .fi-simple-main {
     background: white !important;
     border: 1px solid #DDE8F3 !important;
@@ -386,8 +292,6 @@
     width: 100% !important;
     max-width: 420px !important;
 }
-
-/* إخفاء أيقونة المفتاح الافتراضية */
 .fi-simple-main > svg:first-child,
 .fi-simple-main > div > svg,
 .fi-simple-main > svg,
@@ -396,206 +300,63 @@
 }
 
 /* =================================================================
-   لوحة التحكم — Dashboard Header
+   DASHBOARD HEADER
 ================================================================= */
-
-.fi-page-header {
-    margin-bottom: 1.5rem !important;
-}
-
+.fi-page-header { margin-bottom: 1.5rem !important; }
 .fi-page-header-heading {
     color: #0B2D4E !important;
-    font-size: 1.4rem !important;
+    font-size: 1.3rem !important;
     font-weight: 800 !important;
 }
 
 /* =================================================================
-   Widgets الجداول (Table Widgets)
+   TABLE WIDGETS
 ================================================================= */
-
-.fi-wi-table .fi-ta {
-    border-radius: 0 !important;
-}
-
-.fi-wi-table .fi-section {
-    overflow: hidden !important;
-}
-
-/* رسالة "لا توجد سجلات" */
+.fi-wi-table .fi-ta { border-radius: 0 !important; }
+.fi-wi-table .fi-section { overflow: hidden !important; }
 .fi-ta-empty-state-icon {
     color: #185FA5 !important;
     opacity: 0.4 !important;
 }
-
 .fi-ta-empty-state-heading {
     color: #0B2D4E !important;
     font-weight: 700 !important;
 }
-
-.fi-ta-empty-state-description {
-    color: #5A7896 !important;
-}
+.fi-ta-empty-state-description { color: #5A7896 !important; }
 
 /* =================================================================
-   Chart Widget
+   CHART WIDGET
 ================================================================= */
-
 .fi-wi-chart .fi-section-header-heading {
     font-size: 0.9rem !important;
     color: #0B2D4E !important;
 }
 
-
-/* =====================================================
-   إضافة في آخر ملف theme.css
-   resources/css/filament/admin/theme.css
-===================================================== */
-
-/* ===== الخط — كبير وبولد ===== */
-
-/* كل النصوص */
-*, *::before, *::after {
-    font-family: 'Cairo', sans-serif !important;
-    font-weight: 600 !important;
-}
-
-/* ===== Sidebar ===== */
-.fi-sidebar-item-label {
-    font-size: 0.95rem !important;
-    font-weight: 700 !important;
-    color: #C8DDEF !important;
-    opacity: 1 !important;
-}
-
-.fi-sidebar-group-label {
-    font-size: 0.7rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.08em !important;
-    color: #63A4D8 !important;
-}
-
-.fi-sidebar-item-button {
-    font-size: 0.95rem !important;
-    font-weight: 700 !important;
-}
-
-/* ===== Topbar + عنوان الصفحة ===== */
-.fi-page-header-heading,
-.fi-breadcrumbs,
-.fi-topbar h1 {
-    font-size: 1.2rem !important;
-    font-weight: 800 !important;
-    color: #0B2D4E !important;
-}
-
-/* ===== بطاقات الإحصائيات ===== */
-.fi-stats-overview-stat-label {
-    font-size: 0.82rem !important;
-    font-weight: 700 !important;
-}
-
-.fi-stats-overview-stat-value {
-    font-size: 1.8rem !important;
-    font-weight: 900 !important;
-    line-height: 1.1 !important;
-}
-
-.fi-stats-overview-stat-description {
-    font-size: 0.78rem !important;
-    font-weight: 700 !important;
-}
-
-/* ===== الجداول ===== */
-.fi-ta-header-cell {
-    font-size: 0.78rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.06em !important;
-}
-
-.fi-ta-cell,
-.fi-ta-row td {
-    font-size: 0.92rem !important;
-    font-weight: 600 !important;
-}
-
-/* ===== عناوين الأقسام ===== */
-.fi-section-header-heading {
-    font-size: 1rem !important;
-    font-weight: 800 !important;
-    color: #0B2D4E !important;
-}
-
-/* ===== الأزرار ===== */
-.fi-btn {
-    font-size: 0.92rem !important;
-    font-weight: 700 !important;
-}
-
-/* ===== حقول الإدخال والـ Labels ===== */
-.fi-fo-field-wrp label,
-.fi-fo-label {
-    font-size: 0.88rem !important;
-    font-weight: 700 !important;
-    color: #0B2D4E !important;
-}
-
-.fi-input,
-.fi-select-input,
-.fi-textarea {
-    font-size: 0.92rem !important;
-    font-weight: 600 !important;
-}
-
-/* ===== Badges ===== */
-.fi-badge {
-    font-size: 0.75rem !important;
-    font-weight: 800 !important;
-}
-
-/* ===== Dropdown / Select Options ===== */
-.fi-dropdown-list-item-label {
-    font-size: 0.88rem !important;
-    font-weight: 600 !important;
-}
-
-/* ===== النص العام في الصفحات ===== */
+/* =================================================================
+   GENERAL TEXT
+================================================================= */
 .fi-main p,
 .fi-main span,
-.fi-main div {
-    font-weight: 600 !important;
-}
+.fi-main div { font-weight: 600 !important; }
 
-/* ===== Tabs ===== */
-.fi-tabs-tab {
-    font-size: 0.9rem !important;
-    font-weight: 700 !important;
-}
-
-/* ===== اسم المستخدم في الـ Sidebar ===== */
-.fi-sidebar .fi-avatar-name {
-    font-size: 0.88rem !important;
-    font-weight: 700 !important;
-}
-
-
-/* ===== لوحة الوصول السريع التجريبية (Demo Box) ===== */
+/* =================================================================
+   DEMO BOX (Quick Access)
+================================================================= */
 .demo-box {
     margin-top: 1.5rem !important;
     padding: 1rem !important;
     border-radius: 12px !important;
-    background: #042c53 !important; /* Dark Blue matching our brand */
+    background: #042c53 !important;
     color: white !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 4px 12px rgba(4, 44, 83, 0.15) !important;
 }
-
 .demo-header {
     display: flex !important;
     align-items: center !important;
     gap: 0.75rem !important;
     margin-bottom: 0.75rem !important;
 }
-
 .demo-icon-wrapper {
     display: flex !important;
     align-items: center !important;
@@ -605,36 +366,30 @@
     border-radius: 8px !important;
     background: rgba(255, 255, 255, 0.15) !important;
 }
-
 .demo-icon-wrapper svg {
     width: 18px !important;
     height: 18px !important;
-    color: #ffb800 !important; /* Amber yellow color for key */
+    color: #ffb800 !important;
 }
-
 .demo-title-container {
     display: flex !important;
     flex-direction: column !important;
 }
-
 .demo-title {
     font-size: 0.85rem !important;
     font-weight: 700 !important;
     color: white !important;
 }
-
 .demo-subtitle {
     font-size: 0.7rem !important;
     color: #b5d4f4 !important;
 }
-
 .demo-buttons-grid {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 0.5rem !important;
     margin-bottom: 0.75rem !important;
 }
-
 .demo-btn {
     display: flex !important;
     flex-direction: column !important;
@@ -647,29 +402,24 @@
     cursor: pointer !important;
     transition: all 0.2s ease !important;
 }
-
 .demo-btn:hover {
     background: rgba(255, 255, 255, 0.15) !important;
     border-color: rgba(255, 255, 255, 0.2) !important;
 }
-
 .demo-btn-info {
     display: flex !important;
     flex-direction: column !important;
     width: 100% !important;
 }
-
 .demo-btn-role {
     font-size: 0.75rem !important;
     font-weight: 700 !important;
     color: white !important;
 }
-
 .demo-btn-desc {
     font-size: 0.6rem !important;
     color: #85b7eb !important;
 }
-
 .demo-btn-badge {
     margin-top: 0.25rem !important;
     font-size: 0.65rem !important;
@@ -679,32 +429,237 @@
     border-radius: 4px !important;
     font-family: monospace !important;
 }
-
 .demo-footer {
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
     padding-top: 0.5rem !important;
 }
-
 .demo-footer-text {
     display: flex !important;
     align-items: center !important;
     font-size: 0.65rem !important;
     color: #b5d4f4 !important;
 }
-
 .demo-pulse-dot {
     display: inline-block !important;
     width: 6px !important;
     height: 6px !important;
     border-radius: 50% !important;
-    background-color: #1d9e75 !important; /* Green pulse */
+    background-color: #1d9e75 !important;
     margin-left: 6px !important;
     box-shadow: 0 0 0 rgba(29, 158, 117, 0.4) !important;
     animation: demo-pulse 2s infinite !important;
 }
-
 @keyframes demo-pulse {
     0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.7); }
     70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(29, 158, 117, 0); }
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); }
+}
+
+/* =================================================================
+   RESPONSIVE — BREAKPOINT SYSTEM
+   Mobile-First: all base styles are default, breakpoints override
+================================================================= */
+
+/* ───────── Vue Create/Edit forms: stepper scroll on mobile ───────── */
+.flight-stepper,
+.bus-stepper {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.flight-step,
+.bus-step {
+    flex-shrink: 0 !important;
+}
+
+/* ───────── < 640px (Mobile portrait) ───────── */
+@media (max-width: 639px) {
+    /* Main content padding */
+    .fi-main-ctn { padding: 8px !important; }
+
+    /* Stats: 2-col grid */
+    .fi-stats-overview-stats-ctn {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+    }
+    .fi-stats-overview-stat-value { font-size: 1.2rem !important; }
+    .fi-stats-overview-stat-label { font-size: 0.68rem !important; }
+    .fi-stats-overview-stat-description { font-size: 0.64rem !important; }
+
+    /* Sections compact */
+    .fi-section { border-radius: 10px !important; }
+    .fi-section-header { padding: 10px 12px !important; }
+    .fi-section-header-heading { font-size: 0.8rem !important; }
+
+    /* Tables: compact + horizontal scroll */
+    .fi-ta-ctn { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+    .fi-ta-header-cell { padding: 6px 8px !important; font-size: 0.6rem !important; }
+    .fi-ta-cell,
+    .fi-ta-row td { padding: 6px 8px !important; font-size: 0.72rem !important; }
+    .fi-ta-header-cell:last-child,
+    .fi-ta-row td:last-child { padding-left: 12px !important; }
+
+    /* Topbar */
+    .fi-topbar { padding: 0 8px !important; }
+    .fi-topbar h1 { font-size: 1rem !important; }
+    .fi-breadcrumbs { font-size: 0.72rem !important; }
+
+    /* Page heading */
+    .fi-page-header-heading { font-size: 1rem !important; }
+
+    /* ───── Filament Modals: bottom sheet ───── */
+    .fi-modal { align-items: flex-end !important; padding: 0 !important; }
+    .fi-modal-window {
+        max-width: 100% !important;
+        width: 100% !important;
+        border-radius: 16px 16px 0 0 !important;
+        margin: 0 !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+    }
+    .fi-modal-close { top: 12px !important; left: 12px !important; }
+
+    /* ───── Vue Modals: bottom sheet ───── */
+    .fixed.inset-0.flex.items-center.justify-center {
+        align-items: flex-end !important;
+        padding: 0 !important;
+    }
+    .fixed.inset-0.flex.items-center.justify-center > div:last-child {
+        max-width: 100% !important;
+        width: 100% !important;
+        border-radius: 16px 16px 0 0 !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+        margin: 0 !important;
+    }
+
+    /* Filter panel: full width */
+    .fi-fo-panel { padding: 12px !important; }
+    .fi-fo-panel .grid { grid-template-columns: 1fr !important; }
+
+    /* Form columns stack */
+    .fi-fo-component-ctn > .grid { grid-template-columns: 1fr !important; }
+
+    /* Tabs: horizontal scroll */
+    .fi-tabs {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+    .fi-tabs::-webkit-scrollbar { display: none !important; }
+
+    /* Pagination compact */
+    .fi-pagination { flex-wrap: wrap !important; gap: 4px !important; }
+    .fi-pagination-item { min-width: 28px !important; height: 28px !important; font-size: 0.72rem !important; }
+    .fi-pagination-text { font-size: 0.72rem !important; }
+
+    /* Buttons compact */
+    .fi-btn { font-size: 0.78rem !important; padding: 6px 10px !important; }
+
+    /* Inputs compact */
+    .fi-input,
+    .fi-select-input { font-size: 0.8rem !important; padding: 6px 10px !important; }
+
+    /* Login */
+    .fi-simple-main {
+        padding: 1.5rem !important;
+        border-radius: 12px !important;
+        margin: 12px !important;
+    }
+
+    /* Badges */
+    .fi-badge { font-size: 0.62rem !important; padding: 1px 7px !important; }
+
+    /* Chart widget title */
+    .fi-wi-chart .fi-section-header-heading { font-size: 0.78rem !important; }
+
+    /* Demo box */
+    .demo-buttons-grid { grid-template-columns: 1fr !important; }
+    .demo-box { margin-top: 1rem !important; padding: 0.75rem !important; }
+
+    /* Vue stepper: scrollable on mobile */
+    .flight-stepper,
+    .bus-stepper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+        gap: 4px !important;
+    }
+    .flight-stepper::-webkit-scrollbar,
+    .bus-stepper::-webkit-scrollbar { display: none !important; }
+    .flight-step,
+    .bus-step {
+        max-width: 70px !important;
+        min-width: 50px !important;
+        padding: 6px 4px !important;
+    }
+}
+
+/* ───────── 640px – 1023px (Mobile landscape + Tablet portrait) ───────── */
+@media (min-width: 640px) and (max-width: 1023px) {
+    .fi-main-ctn { padding: 12px !important; }
+
+    .fi-stats-overview-stats-ctn {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .fi-stats-overview-stat-value { font-size: 1.4rem !important; }
+
+    .fi-ta-ctn { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+    .fi-ta-header-cell { padding: 8px 12px !important; font-size: 0.66rem !important; }
+    .fi-ta-cell,
+    .fi-ta-row td { padding: 8px 12px !important; font-size: 0.8rem !important; }
+
+    .fi-section-header { padding: 12px 14px !important; }
+    .fi-page-header-heading { font-size: 1.15rem !important; }
+
+    .fi-sidebar { z-index: 50 !important; }
+
+    .fi-modal-window { max-width: 90% !important; }
+    .fi-fo-panel .grid { grid-template-columns: 1fr 1fr !important; }
+
+    /* Vue modals: slightly larger on tablet but not full-screen */
+    .fixed.inset-0.flex.items-center.justify-center > div:last-child {
+        max-width: 90% !important;
+    }
+}
+
+/* ───────── 1024px – 1279px (Small laptop) ───────── */
+@media (min-width: 1024px) and (max-width: 1279px) {
+    .fi-stats-overview-stats-ctn {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+    .fi-main-ctn { padding: 16px !important; }
+    .fi-modal-window { max-width: 75% !important; }
+}
+
+/* ───────── 1280px+ (Desktop) ───────── */
+@media (min-width: 1280px) {
+    .fi-stats-overview-stats-ctn {
+        grid-template-columns: repeat(4, 1fr) !important;
+    }
+}
+
+/* ───────── 1536px+ (Large desktop) ───────── */
+@media (min-width: 1536px) {
+    .fi-main-ctn { padding: 24px !important; }
+    .fi-stats-overview-stats-ctn {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 20px !important;
+    }
+}
+
+/* =================================================================
+   PRINT
+================================================================= */
+@media print {
+    .fi-sidebar,
+    .fi-topbar,
+    .fi-modal,
+    .fi-notification,
+    .fi-toast { display: none !important; }
+    .fi-main { background: white !important; }
+    .fi-main-ctn { padding: 0 !important; }
+    .fi-section { break-inside: avoid !important; box-shadow: none !important; border: 1px solid #ddd !important; }
 }

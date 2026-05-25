@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('flight_carriers', function (Blueprint $table) {
-            //
+        Schema::table('customers', function (Blueprint $table) {
+            $table->string('whatsapp_number')->nullable()->after('affiliation');
+            $table->string('travel_country')->nullable()->after('whatsapp_number');
         });
     }
 
@@ -21,8 +22,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('flight_carriers', function (Blueprint $table) {
-            //
+        Schema::table('customers', function (Blueprint $table) {
+            $table->dropColumn(['whatsapp_number', 'travel_country']);
         });
     }
 };

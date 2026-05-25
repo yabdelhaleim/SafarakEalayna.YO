@@ -12,7 +12,7 @@ class FawryPaymentMethodFactory extends Factory
 
     public function definition(): array
     {
-        $code = $this->faker->unique()->randomElement(['cash', 'bank_transfer', 'cash_wallet', 'office_safe', 'office_drawer']);
+        $code = $this->faker->randomElement(['cash', 'bank_transfer', 'cash_wallet', 'office_safe', 'office_drawer']).'_'.$this->faker->unique()->numberBetween(1, 9999);
 
         return [
             'code' => $code,

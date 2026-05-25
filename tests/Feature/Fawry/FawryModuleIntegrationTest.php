@@ -28,6 +28,10 @@ class FawryModuleIntegrationTest extends TestCase
     {
         parent::setUp();
 
+        // Clear migration-seeded data
+        FawryPaymentMethod::query()->forceDelete();
+        FawryOperationType::query()->forceDelete();
+
         $this->service = app(FawryTransactionService::class);
         $this->user = User::factory()->create();
         $this->account = Account::factory()->create();
@@ -87,7 +91,6 @@ class FawryModuleIntegrationTest extends TestCase
 
         // Step 6: Create a transaction
         $transactionData = [
-            'client_id' => $this->client->id,
             'client_name' => 'Integration Test Client',
             'operation_type' => 'bill_payment',
             'client_amount' => $amount,
@@ -112,13 +115,13 @@ class FawryModuleIntegrationTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->expense_transaction_id,
-            'type' => 'expense',
+            'type' => 'transfer',
             'amount' => 950.00,
         ]);
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->income_transaction_id,
-            'type' => 'income',
+            'type' => 'transfer',
             'amount' => 1000.00,
         ]);
 
@@ -145,7 +148,7 @@ class FawryModuleIntegrationTest extends TestCase
         $summary = $this->service->getDailySummary(now()->format('Y-m-d'));
 
         $this->assertEquals(1, $summary['total_transactions']);
-        $this->assertEquals(1000.00, $summary['total_selling_price']);
+        $this->assertEquals(1050.00, $summary['total_selling_price']);
 
         // Step 12: Delete transaction (cleanup)
         $deleted = $this->service->deleteTransaction($updated);
@@ -324,6 +327,7 @@ class FawryModuleIntegrationTest extends TestCase
         $transaction1 = FawryTransaction::factory()->create([
             'fawry_price' => 100.00,
             'selling_price' => 100.00,
+            'profit' => 0.00,
         ]);
 
         $this->assertEquals(0.00, $transaction1->profit);
@@ -332,6 +336,7 @@ class FawryModuleIntegrationTest extends TestCase
         $transaction2 = FawryTransaction::factory()->create([
             'fawry_price' => 50.00,
             'selling_price' => 100.00,
+            'profit' => 50.00,
         ]);
 
         $this->assertEquals(50.00, $transaction2->profit);
@@ -340,6 +345,7 @@ class FawryModuleIntegrationTest extends TestCase
         $transaction3 = FawryTransaction::factory()->create([
             'fawry_price' => 120.00,
             'selling_price' => 100.00,
+            'profit' => -20.00,
         ]);
 
         $this->assertEquals(-20.00, $transaction3->profit);

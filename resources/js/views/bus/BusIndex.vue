@@ -476,6 +476,8 @@ const store = useBusStore();
 
 // ─── Accounts ──────────────────────────────────────────────
 const settlementCategoryUi = ref('cash');
+const accounts = ref([]);
+const loadingAccounts = ref(false);
 const settlementCategoryChips = [
   { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
   { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },

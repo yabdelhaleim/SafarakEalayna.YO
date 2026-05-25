@@ -1,16 +1,12 @@
 import { ref } from 'vue'
-import { useFlightStore } from '@/stores/flightStore'
 
 const toasts = ref([])
 
 export function useToast() {
-  const store = useFlightStore()
-
   const addToast = (message, type = 'success') => {
     const id = Date.now()
     toasts.value.push({ id, message, type })
 
-    // Auto-dismiss after 4 seconds
     setTimeout(() => {
       removeToast(id)
     }, 4000)
@@ -25,23 +21,13 @@ export function useToast() {
     }
   }
 
-  const success = (message) => {
-    store.addToast(message, 'success')
-    return addToast(message, 'success')
-  }
+  const success = (message) => addToast(message, 'success')
 
-  const error = (message) => {
-    store.addToast(message, 'error')
-    return addToast(message, 'error')
-  }
+  const error = (message) => addToast(message, 'error')
 
-  const warning = (message) => {
-    return addToast(message, 'warning')
-  }
+  const warning = (message) => addToast(message, 'warning')
 
-  const info = (message) => {
-    return addToast(message, 'info')
-  }
+  const info = (message) => addToast(message, 'info')
 
   return {
     toasts,

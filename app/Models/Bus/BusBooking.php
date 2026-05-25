@@ -45,16 +45,8 @@ class BusBooking extends Model
             'paid_amount' => 'decimal:2',
             'profit' => 'decimal:2',
             'status' => BusBookingStatus::class,
-            'status' => BusBookingStatus::class,
             'payment_status' => BusPaymentStatus::class,
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::deleting(function (BusBooking $booking) {
-            throw new \RuntimeException('لا يمكن حذف حجز الباص برمجياً لتجنب إفساد السجلات المالية وتوازن المخزون. يرجى إلغاء الحجز (Cancel) لتسوية الأرصدة وإرجاع المقاعد تلقائياً.');
-        });
     }
 
     public function inventory(): BelongsTo

@@ -137,4 +137,18 @@ class FinancialReportController extends Controller
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
+    /**
+     * تقرير الديون والمديونيات الموحد
+     */
+    public function debtsReport(Request $request): JsonResponse
+    {
+        try {
+            $report = $this->reportService->getDebtsReport($request->all());
+
+            return ApiResponse::success('Debts and receivables report generated successfully.', $report);
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
 }

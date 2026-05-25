@@ -35,6 +35,8 @@ class Customer extends Model
         'status',
         'total_spent',
         'bookings_count',
+        'whatsapp_number',
+        'travel_country',
     ];
 
     protected $casts = [
@@ -60,6 +62,11 @@ class Customer extends Model
         return $this->hasMany(FlightBooking::class);
     }
 
+    public function busBookings(): HasMany
+    {
+        return $this->hasMany(\App\Models\Bus\BusBooking::class);
+    }
+
     public function hajjUmraBookings(): HasMany
     {
         return $this->hasMany(HajjUmraBooking::class);
@@ -68,6 +75,16 @@ class Customer extends Model
     public function visaBookings(): HasMany
     {
         return $this->hasMany(VisaBooking::class);
+    }
+
+    public function fawryTransactions(): HasMany
+    {
+        return $this->hasMany(\App\Models\Fawry\FawryTransaction::class, 'client_id');
+    }
+
+    public function onlineTransactions(): HasMany
+    {
+        return $this->hasMany(\App\Models\Online\OnlineTransaction::class, 'customer_id');
     }
 
     public function scopeSearch($query, $search)

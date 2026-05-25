@@ -74,8 +74,7 @@ class BusCompanyResource extends Resource
                                         Select::make('account_id')
                                             ->label('الحساب المالي المرتبط')
                                             ->relationship('account', 'name')
-                                            ->searchable()
-                                            ->preload(),
+                                            ->searchable(['name']),
                                     ]),
                             ]),
                         Tab::make('contact')
@@ -208,13 +207,17 @@ class BusCompanyResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            RelationManagers\InventoriesRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ManageBusCompanies::route('/'),
+            'index' => Pages\ListBusCompanies::route('/'),
+            'create' => Pages\CreateBusCompany::route('/create'),
+            'edit' => Pages\EditBusCompany::route('/{record}/edit'),
         ];
     }
 }

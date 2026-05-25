@@ -74,7 +74,10 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div v-if="isLoading()" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICardSkeleton v-for="i in 4" :key="`kpi-${i}`" />
+      </div>
+      <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="dashboard-kpi group flex flex-col justify-between">
           <div class="mb-4 flex items-start justify-between">
             <div class="dashboard-kpi__icon group-hover:scale-105">
@@ -167,7 +170,10 @@
               </router-link>
             </div>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div v-if="isLoading()" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <KPICardSkeleton v-for="i in 4" :key="`acc-${i}`" />
+            </div>
+            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div
                 v-for="account in bankAccounts"
                 :key="account.id"
@@ -227,7 +233,10 @@
               </router-link>
             </div>
 
-            <div class="overflow-x-auto">
+            <div v-if="isLoading()" class="p-5">
+              <TableSkeleton :rows="5" :columns="6" />
+            </div>
+            <div v-else class="overflow-x-auto">
               <table class="w-full border-collapse text-right">
                 <thead>
                   <tr class="border-b border-white/10 bg-white/5 text-xs uppercase tracking-wider text-text-muted">
@@ -329,7 +338,10 @@
               إحصائيات سريعة
             </h2>
 
-            <div class="space-y-3">
+            <div v-if="isLoading()" class="space-y-3">
+              <TextLineSkeleton :lines="4" heightClass="h-10" />
+            </div>
+            <div v-else class="space-y-3">
               <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3">
                 <div class="flex items-center gap-3">
                   <div class="rounded-lg bg-sky-500/15 p-2 text-sky-300">
@@ -378,7 +390,10 @@
               الدخل مقابل المصروف
             </h2>
 
-            <div class="space-y-4">
+            <div v-if="isLoading()" class="space-y-4">
+              <ChartSkeleton height="150px" />
+            </div>
+            <div v-else class="space-y-4">
               <div>
                 <div class="mb-2 flex items-center justify-between">
                   <span class="text-sm text-text-muted">الدخل</span>
@@ -413,7 +428,10 @@
               أكبر الحسابات حسب الرصيد
             </h2>
 
-            <div class="space-y-3">
+            <div v-if="isLoading()" class="space-y-3">
+              <TextLineSkeleton :lines="5" heightClass="h-12" />
+            </div>
+            <div v-else class="space-y-3">
               <div
                 v-for="(account, index) in topAccounts"
                 :key="index"
@@ -447,6 +465,13 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { useFinanceStore } from '@/stores/financeStore';
+import { useAsyncState } from '@/composables/useAsyncState';
+import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
+import TableSkeleton from '@/components/skeletons/TableSkeleton.vue';
+import ChartSkeleton from '@/components/skeletons/ChartSkeleton.vue';
+import GridSkeleton from '@/components/skeletons/GridSkeleton.vue';
+import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
+
 import {
   Plus,
   ArrowRightLeft,
@@ -462,6 +487,7 @@ import {
 } from 'lucide-vue-next';
 
 const financeStore = useFinanceStore();
+const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
 
 // Filters
 const filters = ref({
@@ -617,6 +643,7 @@ const goToPage = (page) => {
 };
 
 const fetchData = async () => {
+  setLoading();
   try {
     const accountParams = {
       per_page: 100,
@@ -668,8 +695,11 @@ const fetchData = async () => {
       total_expense: Number(s.total_expense) || 0,
       net_profit: Number(s.net_profit) || 0,
     };
+    
+    setSuccess();
   } catch (error) {
     console.error('Failed to fetch finance data:', error);
+    setError(error);
     accounts.value = [];
     transactions.value = [];
     stats.value = {

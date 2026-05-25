@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\InvoiceService;
 use App\Http\Resources\Invoice\InvoiceResource;
@@ -34,11 +35,11 @@ class InvoiceController extends Controller
         $invoices = $this->invoiceService->getAllInvoices($filters)
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoices retrieved successfully',
-            'data' => InvoiceResource::collection($invoices)->response()->getData(true),
-        ]);
+        return ApiResponse::paginated(
+            'Invoices retrieved successfully',
+            InvoiceResource::collection($invoices),
+            $invoices
+        );
     }
 
     public function store(Request $request): JsonResponse
@@ -67,11 +68,11 @@ class InvoiceController extends Controller
 
         $invoice = $this->invoiceService->createInvoice($request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice created successfully',
-            'data' => new InvoiceResource($invoice->load('customer')),
-        ], 201);
+        return ApiResponse::success(
+            'Invoice created successfully',
+            new InvoiceResource($invoice->load('customer')),
+            201
+        );
     }
 
     public function show(int $id): JsonResponse
@@ -80,11 +81,10 @@ class InvoiceController extends Controller
 
         $this->authorize('view', $invoice);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice retrieved successfully',
-            'data' => new InvoiceResource($invoice),
-        ]);
+        return ApiResponse::success(
+            'Invoice retrieved successfully',
+            new InvoiceResource($invoice)
+        );
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -115,11 +115,10 @@ class InvoiceController extends Controller
 
         $invoice = $this->invoiceService->updateInvoice($invoice, $request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice updated successfully',
-            'data' => new InvoiceResource($invoice->load('customer')),
-        ]);
+        return ApiResponse::success(
+            'Invoice updated successfully',
+            new InvoiceResource($invoice->load('customer'))
+        );
     }
 
     public function destroy(int $id): JsonResponse
@@ -130,10 +129,9 @@ class InvoiceController extends Controller
 
         $this->invoiceService->deleteInvoice($invoice);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice deleted successfully',
-        ]);
+        return ApiResponse::success(
+            'Invoice deleted successfully'
+        );
     }
 
     public function send(int $id): JsonResponse
@@ -144,11 +142,10 @@ class InvoiceController extends Controller
 
         $invoice = $this->invoiceService->sendInvoice($invoice);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice sent successfully',
-            'data' => new InvoiceResource($invoice),
-        ]);
+        return ApiResponse::success(
+            'Invoice sent successfully',
+            new InvoiceResource($invoice)
+        );
     }
 
     public function cancel(int $id): JsonResponse
@@ -159,11 +156,10 @@ class InvoiceController extends Controller
 
         $invoice = $this->invoiceService->cancelInvoice($invoice);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice cancelled successfully',
-            'data' => new InvoiceResource($invoice),
-        ]);
+        return ApiResponse::success(
+            'Invoice cancelled successfully',
+            new InvoiceResource($invoice)
+        );
     }
 
     public function addPayment(Request $request, int $id): JsonResponse
@@ -181,11 +177,11 @@ class InvoiceController extends Controller
 
         $payment = $this->invoiceService->addPayment($id, $request->all());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Payment added successfully',
-            'data' => new InvoicePaymentResource($payment),
-        ], 201);
+        return ApiResponse::success(
+            'Payment added successfully',
+            new InvoicePaymentResource($payment),
+            201
+        );
     }
 
     public function getPayments(int $id): JsonResponse
@@ -194,11 +190,10 @@ class InvoiceController extends Controller
 
         $invoice = $this->invoiceService->getInvoiceById($id);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Payments retrieved successfully',
-            'data' => InvoicePaymentResource::collection($invoice->payments),
-        ]);
+        return ApiResponse::success(
+            'Payments retrieved successfully',
+            InvoicePaymentResource::collection($invoice->payments)
+        );
     }
 
     public function getStats(Request $request): JsonResponse
@@ -215,10 +210,9 @@ class InvoiceController extends Controller
             $request->to_date
         );
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Invoice statistics retrieved successfully',
-            'data' => $stats,
-        ]);
+        return ApiResponse::success(
+            'Invoice statistics retrieved successfully',
+            $stats
+        );
     }
 }

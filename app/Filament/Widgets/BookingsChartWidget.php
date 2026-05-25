@@ -8,10 +8,12 @@ use Filament\Widgets\ChartWidget;
 class BookingsChartWidget extends ChartWidget
 {
     protected static ?int $sort = 2;
+    protected static bool $isLazy = true;
     protected ?string $heading = 'مخطط الحجوزات الشهرية';
 
     protected function getData(): array
     {
+        // Add a slight artificial delay if needed, but not required
         $data = collect(range(1, 12))->map(function ($month) {
             return Booking::whereMonth('created_at', $month)
                 ->whereYear('created_at', now()->year)

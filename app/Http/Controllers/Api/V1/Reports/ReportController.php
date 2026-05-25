@@ -145,6 +145,17 @@ class ReportController extends Controller
         return $this->transactionReport($request);
     }
 
+    public function transactionDetail(int $id): JsonResponse
+    {
+        try {
+            $data = $this->financeService->getTransactionDetail($id);
+
+            return ApiResponse::success('Transaction details retrieved successfully.', $data);
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 404);
+        }
+    }
+
     public function busDebtSummary(): JsonResponse
     {
         try {

@@ -147,7 +147,7 @@ class FawryTransactionService
                     'paymentMethodRow',
                 ]);
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('FawryTransactionService::createTransaction failed', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id(),
@@ -169,11 +169,6 @@ class FawryTransactionService
 
                 $transaction->update($data);
 
-                Log::info('Fawry transaction updated', [
-                    'fawry_transaction_id' => $transaction->id,
-                    'updated_by' => Auth::id(),
-                ]);
-
                 return $transaction->fresh([
                     'client',
                     'employee',
@@ -185,7 +180,7 @@ class FawryTransactionService
                     'paymentMethodRow',
                 ]);
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('FawryTransactionService::updateTransaction failed', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id(),

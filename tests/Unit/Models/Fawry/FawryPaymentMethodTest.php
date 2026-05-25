@@ -3,6 +3,7 @@
 namespace Tests\Unit\Models\Fawry;
 
 use App\Models\Account;
+use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryPaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,13 +18,17 @@ class FawryPaymentMethodTest extends TestCase
     {
         parent::setUp();
 
+        // Clear migration-seeded data that conflicts with test codes
+        FawryPaymentMethod::query()->forceDelete();
+        FawryOperationType::query()->forceDelete();
+
         $this->account = Account::factory()->create();
     }
 
     public function test_fawry_payment_method_can_be_created()
     {
         $paymentMethod = FawryPaymentMethod::create([
-            'code' => 'cash',
+            'code' => 'custom_cash',
             'name_ar' => 'نقدي',
             'name_en' => 'Cash',
             'color' => '#28a745',
@@ -41,7 +46,7 @@ class FawryPaymentMethodTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('fawry_payment_methods', [
-            'code' => 'cash',
+            'code' => 'custom_cash',
             'name_ar' => 'نقدي',
         ]);
     }

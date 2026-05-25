@@ -57,11 +57,6 @@ class EmployeeResource extends Resource
                     ->schema([
                         Grid::make(2)
                             ->schema([
-                                TextInput::make('position', 'المنصب')
-                                    ->required()
-                                    ->maxLength(100),
-                                TextInput::make('department', 'القسم')
-                                    ->maxLength(100),
                                 Select::make('employment_type', 'نوع التوظيف')
                                     ->options([
                                         'full_time' => 'دوام كامل',
@@ -105,17 +100,10 @@ class EmployeeResource extends Resource
                     ->sortable()
                     ->searchable(),
 
-                TextColumn::make('user.name', 'الموظف')
+                TextColumn::make('full_name', 'الاسم')
+                    ->sortable()
                     ->searchable()
-                    ->sortable(),
-
-                TextColumn::make('position', 'المنصب')
-                    ->searchable()
-                    ->sortable(),
-
-                TextColumn::make('department', 'القسم')
-                    ->searchable()
-                    ->sortable(),
+                    ->formatStateUsing(fn (Employee $record) => $record->first_name . ' ' . $record->last_name),
 
                 TextColumn::make('employment_type', 'نوع التوظيف')
                     ->badge()
@@ -149,7 +137,7 @@ class EmployeeResource extends Resource
 
                 TextColumn::make('salary', 'الراتب')
                     ->money('EGP')
-                    ->sortable(),
+                    ->sortable()
             ])
             ->filters([
                 //

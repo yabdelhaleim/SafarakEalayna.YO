@@ -14,7 +14,11 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Grid;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -40,9 +44,9 @@ class EmployeeResource extends Resource
     {
         return $schema
             ->components([
-                \Filament\Forms\Components\Tabs::make('EmployeeTabs')
+                Tabs::make('EmployeeTabs')
                     ->tabs([
-                        \Filament\Forms\Components\Tabs\Tab::make('personal')
+                        Tab::make('personal')
                             ->label('البيانات الشخصية')
                             ->icon('heroicon-o-user')
                             ->schema([
@@ -57,7 +61,7 @@ class EmployeeResource extends Resource
                                     ->options(['male' => 'ذكر', 'female' => 'أنثى']),
                             ])->columns(2),
                         
-                        \Filament\Forms\Components\Tabs\Tab::make('employment')
+                        Tab::make('employment')
                             ->label('بيانات الوظيفة')
                             ->icon('heroicon-o-briefcase')
                             ->schema([
@@ -69,9 +73,7 @@ class EmployeeResource extends Resource
                                     ->label('الراتب الأساسي')
                                     ->numeric()
                                     ->prefix('ج.م'),
-                                TextInput::make('position')->label('المنصب'),
-                                TextInput::make('department')->label('القسم'),
-                                TextInput::make('job_title')->label('المسمى الوظيفي'),
+
                                 DatePicker::make('hire_date')->label('تاريخ التعيين')->default(now()),
                                 Select::make('employment_type')
                                     ->label('نوع التوظيف')
@@ -90,12 +92,11 @@ class EmployeeResource extends Resource
                                     ])->default('active'),
                             ])->columns(2),
 
-                        \Filament\Forms\Components\Tabs\Tab::make('contact')
+                        Tab::make('contact')
                             ->label('الاتصال والبنك')
                             ->icon('heroicon-o-phone')
                             ->schema([
                                 TextInput::make('phone')->label('رقم الهاتف')->tel(),
-                                TextInput::make('email')->label('البريد الإلكتروني')->email(),
                                 TextInput::make('address')->label('العنوان'),
                                 TextInput::make('city')->label('المدينة'),
                                 TextInput::make('bank_name')->label('اسم البنك'),
@@ -112,74 +113,65 @@ class EmployeeResource extends Resource
     {
         return $schema
             ->components([
-                TextEntry::make('user.name')
-                    ->label('User')
-                    ->placeholder('-'),
-                TextEntry::make('salary')
-                    ->numeric()
-                    ->placeholder('-'),
-                TextEntry::make('status'),
-                TextEntry::make('created_at')
-                    ->dateTime()
-                    ->placeholder('-'),
-                TextEntry::make('updated_at')
-                    ->dateTime()
-                    ->placeholder('-'),
-                TextEntry::make('first_name')
-                    ->placeholder('-'),
-                TextEntry::make('last_name')
-                    ->placeholder('-'),
-                TextEntry::make('full_name')
-                    ->placeholder('-'),
-                TextEntry::make('national_id')
-                    ->placeholder('-'),
-                TextEntry::make('nationality')
-                    ->placeholder('-'),
-                TextEntry::make('date_of_birth')
-                    ->date()
-                    ->placeholder('-'),
-                TextEntry::make('gender')
-                    ->badge()
-                    ->placeholder('-'),
-                TextEntry::make('phone')
-                    ->placeholder('-'),
-                TextEntry::make('address')
-                    ->placeholder('-'),
-                TextEntry::make('city')
-                    ->placeholder('-'),
-                TextEntry::make('country')
-                    ->placeholder('-'),
-                TextEntry::make('hire_date')
-                    ->date()
-                    ->placeholder('-'),
-                TextEntry::make('termination_date')
-                    ->date()
-                    ->placeholder('-'),
-                TextEntry::make('position')
-                    ->placeholder('-'),
-                TextEntry::make('department')
-                    ->placeholder('-'),
-                TextEntry::make('job_title')
-                    ->placeholder('-'),
-                TextEntry::make('employment_type')
-                    ->badge(),
-                TextEntry::make('employment_status')
-                    ->badge(),
-                TextEntry::make('bank_account_number')
-                    ->placeholder('-'),
-                TextEntry::make('bank_name')
-                    ->placeholder('-'),
-                TextEntry::make('iban')
-                    ->placeholder('-'),
-                TextEntry::make('emergency_contact_name')
-                    ->placeholder('-'),
-                TextEntry::make('emergency_contact_phone')
-                    ->placeholder('-'),
-                TextEntry::make('performance_rating')
-                    ->badge()
-                    ->placeholder('-'),
-                TextEntry::make('contract_path')
-                    ->placeholder('-'),
+
+                Section::make('البيانات الأساسية')
+                    ->icon('heroicon-o-user')
+                    ->columns(2)
+                    ->schema([
+                        TextEntry::make('display_name')
+                            ->label('اسم الموظف')
+                            ->columnSpanFull()
+                            ->getStateUsing(function ($record) {
+                                if ($record->full_name) return $record->full_name;
+                                $name = trim(($record->first_name ?? '') . ' ' . ($record->last_name ?? ''));
+                                if ($name) return $name;
+                                return $record->user?->name ?? 'غير محدد';
+                            }),
+                        TextEntry::make('salary')
+                            ->label('الراتب الأساسي')
+                            ->money('EGP')
+                            ->placeholder('-'),
+                        TextEntry::make('employment_type')
+                            ->label('نوع التوظيف')
+                            ->badge()
+                            ->formatStateUsing(fn ($state) => match($state) {
+                                'full_time' => 'دوام كامل',
+                                'part_time' => 'دوام جزئي',
+                                'contract' => 'عقد',
+                                'temporary' => 'مؤقت',
+                                default => $state ?? '-',
+                            })
+                            ->color(fn ($state) => match($state) {
+                                'full_time' => 'success',
+                                'part_time' => 'warning',
+                                'contract' => 'info',
+                                'temporary' => 'gray',
+                                default => 'gray',
+                            }),
+                        TextEntry::make('employment_status')
+                            ->label('حالة الموظف')
+                            ->badge()
+                            ->formatStateUsing(fn ($state) => match($state) {
+                                'active' => 'نشط',
+                                'on_leave' => 'في إجازة',
+                                'terminated' => 'مستقيل / مفصول',
+                                default => $state ?? '-',
+                            })
+                            ->color(fn ($state) => match($state) {
+                                'active' => 'success',
+                                'on_leave' => 'warning',
+                                'terminated' => 'danger',
+                                default => 'gray',
+                            }),
+                        TextEntry::make('hire_date')
+                            ->label('تاريخ التعيين')
+                            ->date('d/m/Y')
+                            ->placeholder('غير محدد'),
+                        TextEntry::make('created_at')
+                            ->label('تاريخ الإضافة')
+                            ->dateTime('d/m/Y H:i'),
+                    ]),
+
             ]);
     }
 
@@ -187,16 +179,16 @@ class EmployeeResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('full_name')
+                TextColumn::make('display_name')
                     ->label('اسم الموظف')
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('job_title')
-                    ->label('المسمى الوظيفي')
-                    ->searchable(),
-                TextColumn::make('department')
-                    ->label('القسم')
-                    ->badge(),
+                    ->searchable(['full_name', 'first_name', 'last_name'])
+                    ->sortable()
+                    ->getStateUsing(function ($record) {
+                        if ($record->full_name) return $record->full_name;
+                        $name = trim(($record->first_name ?? '') . ' ' . ($record->last_name ?? ''));
+                        if ($name) return $name;
+                        return $record->user?->name ?? '-';
+                    }),
                 TextColumn::make('salary')
                     ->label('الراتب')
                     ->money('egp')

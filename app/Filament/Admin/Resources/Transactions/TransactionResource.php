@@ -17,6 +17,7 @@ use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TransactionResource extends Resource
 {
@@ -31,6 +32,11 @@ class TransactionResource extends Resource
     protected static ?string $modelLabel = 'عملية مالية';
 
     protected static ?string $recordTitleAttribute = 'id';
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['fromAccount', 'toAccount', 'createdBy']);
+    }
 
     public static function form(Schema $schema): Schema
     {

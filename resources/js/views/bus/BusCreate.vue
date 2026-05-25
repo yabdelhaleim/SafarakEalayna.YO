@@ -154,8 +154,8 @@
                   <select v-model="form.inventory_id" required class="flight-select">
                     <option value="">— اختر الرحلة —</option>
                     <option v-for="item in availableInventory" :key="item.id" :value="item.id">
-                      {{ item.route_from }} → {{ item.route_to }} | {{ formatTime(item.departure_time) }} |
-                      {{ formatDate(item.travel_date) }} | متاح: {{ item.available_seats }}
+                      {{ item.route }} | {{ formatTime(item.departure_time) }} |
+                      {{ formatDate(item.travel_date) }} | السعر: {{ formatMoney(item.selling_price) }} | متاح: {{ item.available_tickets }}
                     </option>
                   </select>
                 </div>
@@ -170,7 +170,7 @@
                   <div>
                     <p class="text-[10px] font-bold uppercase text-text-muted">المسار</p>
                     <p class="text-sm font-semibold">
-                      {{ selectedInventory.route_from }} → {{ selectedInventory.route_to }}
+                      {{ selectedInventory.route }}
                     </p>
                   </div>
                   <div>
@@ -217,13 +217,17 @@
                   />
                 </div>
                 <div>
-                  <label class="mb-2 block text-sm font-medium text-text-muted">الهاتف <span class="text-error">*</span></label>
+                  <div class="flex justify-between mb-2">
+                    <label class="block text-sm font-medium text-text-muted">الهاتف <span class="text-error">*</span></label>
+                    <span v-if="searchingCustomer" class="text-[10px] text-sky-400">جاري البحث...</span>
+                  </div>
                   <input
                     v-model="form.customer_phone"
                     type="tel"
                     required
                     class="flight-input"
                     placeholder="مثال: 01xxxxxxxxx"
+                    @input="onPhoneInput"
                   />
                 </div>
               </div>
@@ -256,12 +260,12 @@
                     v-model.number="form.seats_count"
                     type="number"
                     min="1"
-                    :max="selectedInventory?.available_seats || 1"
+                    :max="selectedInventory?.available_tickets || 1"
                     required
                     class="flight-input font-mono"
                   />
                   <p v-if="selectedInventory" class="mt-1 text-xs text-text-muted">
-                    المتاح: {{ selectedInventory.available_seats }}
+                    المتاح: {{ selectedInventory.available_tickets }}
                   </p>
                 </div>
                 <div class="md:col-span-2 flex flex-col justify-end">
@@ -406,7 +410,7 @@
                       class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-text-muted transition hover:border-white/25"
                       @click="form.paid_amount = 0"
                     >
-                      تصفير
+                      آجل (بدون سداد الآن)
                     </button>
                   </div>
                 </div>
@@ -448,7 +452,7 @@
                   <dt class="text-xs text-text-muted">الرحلة</dt>
                   <dd class="mt-1 font-semibold">
                     <template v-if="selectedInventory">
-                      {{ selectedInventory.route_from }} → {{ selectedInventory.route_to }} — {{ formatDate(selectedInventory.travel_date) }}
+                      {{ selectedInventory.route }} — {{ formatDate(selectedInventory.travel_date) }}
                     </template>
                     <template v-else>—</template>
                   </dd>
@@ -610,6 +614,31 @@ const totalSteps = 4;
 const stepLabels = ['الرحلة', 'العميل', 'المقاعد والدفع', 'المراجعة'];
 const currentStep = ref(1);
 const submitting = ref(false);
+const searchingCustomer = ref(false);
+let phoneTimeout;
+
+const onPhoneInput = () => {
+  clearTimeout(phoneTimeout);
+  if (form.value.customer_phone?.length >= 10) {
+    phoneTimeout = setTimeout(searchCustomer, 500);
+  }
+};
+
+const searchCustomer = async () => {
+  if (!form.value.customer_phone || form.value.customer_phone.length < 10) return;
+  searchingCustomer.value = true;
+  try {
+    const res = await axios.get('/api/v1/customers', { params: { search: form.value.customer_phone } });
+    const customers = res.data?.data || [];
+    if (customers.length > 0 && !form.value.customer_name) {
+      form.value.customer_name = customers[0].full_name;
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    searchingCustomer.value = false;
+  }
+};
 
 const circumference = 2 * Math.PI * 22;
 const progressOffset = computed(() => circumference * (1 - currentStep.value / totalSteps));
@@ -672,9 +701,9 @@ const ACCOUNT_TYPE_LABELS = {
   treasury: 'خزينة عامة',
 };
 
-const adminFilamentBankAccountsUrl = computed(() => `${window.location.origin}/admin/bank-accounts/create`);
-const adminFilamentWalletAccountsUrl = computed(() => `${window.location.origin}/admin/wallet-accounts/create`);
-const adminAccountsUrl = computed(() => `${window.location.origin}/admin/accounts`);
+const adminFilamentBankAccountsUrl = computed(() => `${window.location.origin}/admin/bus-banks/create`);
+const adminFilamentWalletAccountsUrl = computed(() => `${window.location.origin}/admin/bus-wallets/create`);
+const adminAccountsUrl = computed(() => `${window.location.origin}/admin/bus-treasuries/create`);
 const adminBusCompaniesUrl = computed(() => `${window.location.origin}/admin/bus-companies`);
 const adminBusInventoriesUrl = computed(() => `${window.location.origin}/admin/bus-inventories`);
 
@@ -819,7 +848,7 @@ const selectedInventory = computed(() => {
   return store.inventory.find((i) => sameId(i.id, form.value.inventory_id));
 });
 
-const seatPrice = computed(() => Number(selectedInventory.value?.seat_price) || 0);
+const seatPrice = computed(() => Number(selectedInventory.value?.selling_price) || 0);
 const totalPrice = computed(() => seatPrice.value * (Number(form.value.seats_count) || 0));
 const remainingAmount = computed(() => Math.max(0, totalPrice.value - (Number(form.value.paid_amount) || 0)));
 
@@ -845,7 +874,7 @@ const isStepDone = (step) => {
       const seatsOk =
         (Number(form.value.seats_count) || 0) >= 1 &&
         selectedInventory.value &&
-        (Number(form.value.seats_count) || 0) <= (selectedInventory.value.available_seats || 0);
+        (Number(form.value.seats_count) || 0) <= (selectedInventory.value.available_tickets || 0);
       if (!seatsOk || paymentAmountError.value) return false;
       if (paidPositive.value) {
         return !!form.value.account_id && settlementAccounts.value.length > 0;
@@ -918,19 +947,11 @@ const formatTime = (timeString) => {
 
 const loadSettlementAccounts = async () => {
   try {
-    const accountsRes = await axios.get('/api/v1/finance/accounts', {
-      params: {
-        per_page: 100,
-        types: 'cashbox,wallet,bank,treasury,post',
-        is_active: 1,
-        module: 'bus',
-      },
-    });
-    let raw = accountsRes.data?.data;
-    if (raw && !Array.isArray(raw) && Array.isArray(raw.data)) raw = raw.data;
+    const response = await axios.get('/api/v1/bus/treasury/overview');
+    const raw = response.data?.data?.settlement_accounts;
     settlementAccounts.value = Array.isArray(raw) ? raw : [];
   } catch (e) {
-    console.error(e);
+    console.error('Failed to load bus treasury accounts:', e);
     settlementAccounts.value = [];
   }
 };

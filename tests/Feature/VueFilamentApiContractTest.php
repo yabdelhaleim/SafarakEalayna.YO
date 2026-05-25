@@ -39,7 +39,7 @@ class VueFilamentApiContractTest extends TestCase
         $response = $this->getJson('/api/v1/settings/trip-types');
 
         $response->assertOk();
-        $this->assertTrue($response->json('status') === true);
+        $this->assertTrue($response->json('success') === true);
     }
 
     public function test_currencies_endpoint_returns_ok_payload(): void
@@ -105,7 +105,7 @@ class VueFilamentApiContractTest extends TestCase
         $response = $this->getJson('/api/v1/online/settings/all');
 
         $response->assertOk();
-        $this->assertTrue($response->json('status') === true);
+        $this->assertTrue($response->json('success') === true);
         $data = $response->json('data');
         $this->assertIsArray($data['service_types'] ?? null);
         $this->assertIsArray($data['providers'] ?? null);

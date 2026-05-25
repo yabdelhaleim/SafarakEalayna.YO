@@ -112,40 +112,51 @@ class BusCompanyController extends Controller
         }
     }
 
-    public function statement(Request $request, BusCompany $company): JsonResponse
-    {
-        if (!$company->account_id) {
-            return ApiResponse::error('هذه الشركة غير مربوطة بحساب مالي.', null, 422);
-        }
-
-        $perPage = min((int) $request->query('per_page', 30), 100);
-
-        $paginator = \App\Models\Transaction::query()
-            ->where(function ($q) use ($company) {
-                $q->where('from_account_id', $company->account_id)
-                    ->orWhere('to_account_id', $company->account_id);
-            })
-            ->with(['fromAccount:id,name', 'toAccount:id,name', 'createdBy:id,name'])
-            ->latest()
-            ->paginate($perPage);
-
+public function statement(Request $request, BusCompany $company): JsonResponse
+{
+    if (!$company->account_id) {
         return ApiResponse::success('Bus company statement retrieved.', [
             'company' => [
-                'id' => $company->id,
-                'name' => $company->name,
-                'balance' => $company->account?->balance ?? 0,
+                'id'      => $company->id,
+                'name'    => $company->name,
+                'balance' => 0,
             ],
-            'transactions' => $paginator
+            'transactions' => [
+              'data'  => [],
+              'total' => 0,
+              'per_page' => 30,
+              'current_page' => 1,
+              'last_page' => 1,
+            ],
         ]);
     }
 
-    public function payDebt(Request $request, BusCompany $company): JsonResponse
+    $perPage = min((int) $request->query('per_page', 30), 100);
+
+    $paginator = \App\Models\Transaction::query()
+        ->where(function ($q) use ($company) {
+            $q->where('from_account_id', $company->account_id)
+                ->orWhere('to_account_id', $company->account_id);
+        })
+        ->with(['fromAccount:id,name', 'toAccount:id,name', 'createdBy:id,name'])
+        ->latest()
+        ->paginate($perPage);
+
+    return ApiResponse::success('Bus company statement retrieved.', [
+        'company' => [
+            'id'      => $company->id,
+            'name'    => $company->name,
+            'balance' => $company->account?->balance ?? 0,
+        ],
+        'transactions' => $paginator,
+    ]);
+}    public function payDebt(Request $request, BusCompany $company): JsonResponse
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'from_account_id' => 'required|exists:accounts,id',
             'notes' => 'nullable|string|max:500',
-        ]);
+        ]); 
 
         if (!$company->account_id) {
             return ApiResponse::error('هذه الشركة غير مربوطة بحساب مالي لتسديد الديون.', null, 422);

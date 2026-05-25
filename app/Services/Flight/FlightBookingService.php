@@ -280,7 +280,7 @@ class FlightBookingService
                     'user_id' => $userId,
                 ]);
 
-                // Step 4: Debit exactly one balance pool (carrier or system) for purchase cost
+                // Step 4: Debit exactly one balance pool (carrier or system) or credit a group account for purchase cost
                 if ($purchaseBalanceSource === 'carrier' && ! empty($data['flight_carrier_id']) && $purchasePriceEGP > 0) {
                     $this->debitFlightCarrier(
                         $booking,
@@ -302,6 +302,15 @@ class FlightBookingService
                         isset($data['purchase_price_foreign']) ? (float) $data['purchase_price_foreign'] : null,
                         $userId,
                         $lockSystem
+                    );
+                }
+
+                if ($purchaseBalanceSource === 'group' && ! empty($data['flight_group_id']) && $purchasePriceEGP > 0) {
+                    $this->recordPurchaseFromGroup(
+                        $booking,
+                        (int) $data['flight_group_id'],
+                        $purchasePriceEGP,
+                        $userId
                     );
                 }
 
@@ -615,6 +624,16 @@ class FlightBookingService
     private function resolvePurchaseBalanceSource(array $data): ?string
     {
         $explicit = isset($data['purchase_balance_source']) ? strtolower(trim((string) $data['purchase_balance_source'])) : '';
+        $hasGroup = ! empty($data['flight_group_id']);
+        $isGroupChannel = isset($data['booking_channel_type']) && strtoupper(trim($data['booking_channel_type'])) === 'GROUP';
+
+        if ($explicit === 'group' || $isGroupChannel || $hasGroup) {
+            if (empty($data['flight_group_id'])) {
+                throw new \Exception('لا يمكن إتمام الحجز عبر مجموعة دون تحديد المجموعة.');
+            }
+            return 'group';
+        }
+
         $hasCarrier = ! empty($data['flight_carrier_id']);
         $hasSystem = ! empty($data['flight_system_id']);
 
@@ -1557,11 +1576,15 @@ class FlightBookingService
                     $this->creditBackFlightCarrier($booking, $airlinePenalty);
                 } elseif ($src === 'system' && $booking->flight_system_id && (float) $booking->purchase_price > 0) {
                     $this->creditBackFlightSystem($booking, $airlinePenalty);
+                } elseif ($src === 'group' && $booking->flight_group_id && (float) $booking->purchase_price > 0) {
+                    $this->reverseGroupPurchase($booking, $airlinePenalty, $userId);
                 } elseif ($src === null) {
                     if ($booking->flight_carrier_id && (float) $booking->purchase_price > 0) {
                         $this->creditBackFlightCarrier($booking, $airlinePenalty);
                     } elseif ($booking->flight_system_id && (float) $booking->purchase_price > 0) {
                         $this->creditBackFlightSystem($booking, $airlinePenalty);
+                    } elseif ($booking->flight_group_id && (float) $booking->purchase_price > 0) {
+                        $this->reverseGroupPurchase($booking, $airlinePenalty, $userId);
                     }
                 }
 
@@ -1902,6 +1925,115 @@ class FlightBookingService
             'customer_id' => $customerId,
             'account_id' => $customerAccount->id,
             'amount' => $sellingPrice
+        ]);
+    }
+
+    /**
+     * Record flight purchase from group (Accounts Payable)
+     */
+    protected function recordPurchaseFromGroup(
+        FlightBooking $booking,
+        int $groupId,
+        float $purchasePriceEGP,
+        int $userId
+    ): void {
+        $group = \App\Models\Flight\FlightGroup::findOrFail($groupId);
+
+        if (! $group->account_id) {
+            $account = Account::create([
+                'name' => 'مجموعة طيران — ' . $group->name . ' · ' . $group->code,
+                'type' => \App\Enums\AccountType::Supplier->value,
+                'currency' => 'EGP',
+                'balance' => 0,
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OFFICE,
+                'module_type' => 'tourism',
+                'module' => 'flight',
+                'notes' => 'حساب جاري مجموعة طيران، يُنشأ تلقائياً للربط المحاسبي.',
+                'created_by' => $userId,
+            ]);
+            $group->update(['account_id' => $account->id]);
+            $group->refresh();
+        }
+
+        $groupAccount = $group->account;
+        $clearingAccountId = $this->flightLedgerContraAccountId();
+
+        if ($clearingAccountId === null) {
+            Log::warning('No flight clearing account configured. Skipping group purchase journal.');
+            return;
+        }
+
+        if ($clearingAccountId === $groupAccount->id) {
+            return;
+        }
+
+        $tx = $this->transactionService->recordJournalTransfer([
+            'amount' => $purchasePriceEGP,
+            'from_account_id' => $groupAccount->id,
+            'to_account_id' => $clearingAccountId,
+            'allow_from_negative' => true,
+            'module' => TransactionModule::Flight->value,
+            'related_type' => FlightBooking::class,
+            'related_id' => $booking->id,
+            'notes' => 'شراء تذكرة طيران بالأجل — حجز #' . $booking->booking_number . ' من مجموعة: ' . $group->name,
+            'created_by' => $userId,
+        ]);
+
+        Log::info('Flight purchase from group recorded on group ledger', [
+            'booking_id' => $booking->id,
+            'group_id' => $groupId,
+            'account_id' => $groupAccount->id,
+            'amount' => $purchasePriceEGP,
+            'transaction_id' => $tx->id,
+        ]);
+    }
+
+    /**
+     * Reverse group purchase ledger entry when booking is cancelled.
+     */
+    protected function reverseGroupPurchase(FlightBooking $booking, float $airlinePenalty, int $userId): void
+    {
+        $group = \App\Models\Flight\FlightGroup::find($booking->flight_group_id);
+        if (! $group || ! $group->account_id) {
+            return;
+        }
+
+        $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
+        $netReversal = max(0.0, $purchaseEgp - (float) $airlinePenalty);
+
+        if ($netReversal <= 0) {
+            Log::info('No reversal for group purchase (penalty >= purchase)', [
+                'flight_booking_id' => $booking->id,
+                'purchase_price' => $booking->purchase_price,
+                'penalty' => $airlinePenalty,
+            ]);
+            return;
+        }
+
+        $clearingAccountId = $this->flightLedgerContraAccountId();
+        if ($clearingAccountId === null) {
+            return;
+        }
+
+        $tx = $this->transactionService->recordJournalTransfer([
+            'amount' => $netReversal,
+            'from_account_id' => $clearingAccountId,
+            'to_account_id' => $group->account_id,
+            'allow_from_negative' => true,
+            'module' => TransactionModule::Flight->value,
+            'related_type' => FlightBooking::class,
+            'related_id' => $booking->id,
+            'notes' => 'إلغاء شراء تذكرة طيران — حجز #' . $booking->booking_number . ' من مجموعة: ' . $group->name,
+            'created_by' => $userId,
+        ]);
+
+        Log::info('Flight group purchase reversed (booking cancelled)', [
+            'flight_booking_id' => $booking->id,
+            'group_id' => $group->id,
+            'reversal_amount' => $netReversal,
+            'penalty' => $airlinePenalty,
+            'transaction_id' => $tx->id,
         ]);
     }
 }

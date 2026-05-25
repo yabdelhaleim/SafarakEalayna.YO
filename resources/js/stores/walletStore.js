@@ -62,11 +62,17 @@ export const useWalletStore = defineStore('wallet', {
     //  Wallet Types
     // ────────────────────────────────────────────────
     async fetchWalletTypes(params = {}) {
+      if (this.loading.walletTypes) return;
       this.loading.walletTypes = true;
+      const controller = new AbortController();
       try {
-        const res = await axios.get('/api/v1/wallet/types', { params });
+        const res = await axios.get('/api/v1/wallet/types', {
+          params,
+          signal: controller.signal,
+        });
         this.walletTypes = res.data?.data || [];
       } catch (err) {
+        if (axios.isCancel(err)) return;
         console.error('Failed to fetch wallet types:', err);
         this.walletTypes = [];
       } finally {
@@ -78,11 +84,14 @@ export const useWalletStore = defineStore('wallet', {
     //  Transactions
     // ────────────────────────────────────────────────
     async fetchTransactions(params = {}) {
+      if (this.loading.transactions) return;
       this.loading.transactions = true;
       this.errors = {};
+      const controller = new AbortController();
       try {
         const res = await axios.get('/api/v1/wallet/transactions', {
           params: { ...this.filters, ...params },
+          signal: controller.signal,
         });
         const data       = res.data?.data || {};
         this.transactions = data.items || (Array.isArray(data) ? data : []);
@@ -94,6 +103,7 @@ export const useWalletStore = defineStore('wallet', {
           per_page:     pg.per_page     || res.data?.per_page     || 20,
         };
       } catch (err) {
+        if (axios.isCancel(err)) return;
         console.error('Failed to fetch wallet transactions:', err);
         this.errors = { fetch: 'حدث خطأ أثناء تحميل العمليات' };
         this.transactions = [];
@@ -114,6 +124,7 @@ export const useWalletStore = defineStore('wallet', {
     },
 
     async createTransaction(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
       try {
@@ -133,6 +144,7 @@ export const useWalletStore = defineStore('wallet', {
     },
 
     async updateTransaction(id, payload) {
+      if (this.loading.update) return;
       this.loading.update = true;
       this.errors = {};
       try {
@@ -152,6 +164,7 @@ export const useWalletStore = defineStore('wallet', {
     },
 
     async deleteTransaction(id) {
+      if (this.loading.delete) return;
       this.loading.delete = true;
       this.errors = {};
       try {

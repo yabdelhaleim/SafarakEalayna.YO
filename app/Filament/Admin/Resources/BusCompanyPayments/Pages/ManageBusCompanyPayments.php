@@ -14,20 +14,30 @@ class ManageBusCompanyPayments extends ManageRecords
     {
         return [
             CreateAction::make()
-                ->after(function (\App\Models\Bus\BusCompanyPayment $record) {
+                ->after(function (\App\Models\Bus\BusCompanyPayment $record, CreateAction $action) {
                     $company = $record->company;
                     if ($company && $company->account_id && $record->account_id && $record->amount > 0) {
-                        $transactionService = app(\App\Services\Finance\TransactionService::class);
-                        
-                        $transactionService->recordTransfer([
-                            'amount' => $record->amount,
-                            'from_account_id' => $record->account_id,
-                            'to_account_id' => $company->account_id,
-                            'module' => \App\Enums\TransactionModule::Bus->value,
-                            'related_type' => \App\Models\Bus\BusCompanyPayment::class,
-                            'related_id' => $record->id,
-                            'notes' => 'تسوية دفعة شركة باص: ' . $company->name . ($record->notes ? ' - ' . $record->notes : ''),
-                        ]);
+                        try {
+                            $transactionService = app(\App\Services\Finance\TransactionService::class);
+                            
+                            $transactionService->recordTransfer([
+                                'amount' => $record->amount,
+                                'from_account_id' => $record->account_id,
+                                'to_account_id' => $company->account_id,
+                                'module' => \App\Enums\TransactionModule::Bus->value,
+                                'related_type' => \App\Models\Bus\BusCompanyPayment::class,
+                                'related_id' => $record->id,
+                                'notes' => 'تسوية دفعة شركة باص: ' . $company->name . ($record->notes ? ' - ' . $record->notes : ''),
+                            ]);
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('عفواً، لا يمكن إتمام العملية')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                                
+                            $action->halt();
+                        }
                     }
                 }),
         ];

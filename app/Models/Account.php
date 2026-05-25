@@ -179,8 +179,7 @@ class Account extends Model
      */
     public function getPaymentStatusAttribute(): string
     {
-        // For Treasury/Cashbox/System Accounts: Negative balance means deficit (Partial)
-        if ($this->type === 'cashbox' || $this->type === 'bank' || $this->type === 'wallet' || $this->type === 'treasury') {
+        if (in_array($this->type, [AccountType::Cashbox, AccountType::Bank, AccountType::Wallet, AccountType::Treasury], true)) {
             return $this->balance < 0 ? 'partial' : 'paid';
         }
 

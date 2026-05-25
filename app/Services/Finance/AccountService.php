@@ -149,9 +149,15 @@ class AccountService
         return DB::transaction(function () use ($account, $data) {
             $account->fill([
                 'name' => $data['name'] ?? $account->name,
+                'type' => $data['type'] ?? $account->type,
                 'currency' => $data['currency'] ?? $account->currency,
-                'is_active' => $data['is_active'] ?? $account->is_active,
-                'notes' => $data['notes'] ?? $account->notes,
+                'is_active' => isset($data['is_active']) ? (bool)$data['is_active'] : $account->is_active,
+                'notes' => array_key_exists('notes', $data) ? $data['notes'] : $account->notes,
+                'module_type' => $data['module_type'] ?? $account->module_type,
+                'module' => array_key_exists('module', $data) ? $data['module'] : $account->module,
+                'owner_type' => $data['owner_type'] ?? $account->owner_type,
+                'wallet_provider' => array_key_exists('wallet_provider', $data) ? $data['wallet_provider'] : $account->wallet_provider,
+                'wallet_number' => array_key_exists('wallet_number', $data) ? $data['wallet_number'] : $account->wallet_number,
             ]);
             $account->save();
 

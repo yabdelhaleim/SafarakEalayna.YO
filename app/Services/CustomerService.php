@@ -16,9 +16,10 @@ class CustomerService
      *
      * @param  array  $filters  Available keys: search, per_page
      */
+
     public function getAllCustomers(array $filters): LengthAwarePaginator
     {
-        $query = Customer::with('createdBy');
+        $query = Customer::with(['createdBy', 'ledgerAccount']);
 
         if (isset($filters['search']) && $filters['search']) {
             $search = $filters['search'];
@@ -34,7 +35,13 @@ class CustomerService
         }
 
         if (isset($filters['type']) && $filters['type']) {
-            $query->where('type', $filters['type']);
+            $type = $filters['type'];
+            if ($type === 'regular') {
+                $type = 'individual';
+            } elseif ($type === 'counter') {
+                $type = 'company';
+            }
+            $query->where('type', $type);
         }
 
         $perPage = min($filters['per_page'] ?? 15, 100);
@@ -55,6 +62,14 @@ class CustomerService
             $customer = DB::transaction(function () use ($data) {
                 $data['created_by'] = auth()->id();
 
+                if (isset($data['type'])) {
+                    if ($data['type'] === 'regular') {
+                        $data['type'] = 'individual';
+                    } elseif ($data['type'] === 'counter') {
+                        $data['type'] = 'company';
+                    }
+                }
+
                 $customer = Customer::create($data);
 
                 Log::info('Customer created', [
@@ -65,7 +80,7 @@ class CustomerService
                 return $customer;
             });
 
-            return $customer->load('createdBy');
+            return $customer->load(['createdBy', 'ledgerAccount']);
         } catch (\Exception $e) {
             Log::error('CustomerService::createCustomer failed', [
                 'error' => $e->getMessage(),
@@ -88,6 +103,13 @@ class CustomerService
     {
         try {
             $customer = DB::transaction(function () use ($customer, $data) {
+                if (isset($data['type'])) {
+                    if ($data['type'] === 'regular') {
+                        $data['type'] = 'individual';
+                    } elseif ($data['type'] === 'counter') {
+                        $data['type'] = 'company';
+                    }
+                }
                 $customer->update($data);
 
                 Log::info('Customer updated', [
@@ -99,7 +121,7 @@ class CustomerService
                 return $customer;
             });
 
-            return $customer->fresh(['createdBy']);
+            return $customer->fresh(['createdBy', 'ledgerAccount']);
         } catch (\Exception $e) {
             Log::error('CustomerService::updateCustomer failed', [
                 'error' => $e->getMessage(),

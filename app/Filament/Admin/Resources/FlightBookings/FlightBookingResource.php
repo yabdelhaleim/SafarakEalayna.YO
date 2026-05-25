@@ -81,8 +81,7 @@ class FlightBookingResource extends Resource
                                         Select::make('customer_id')
                                             ->label('العميل')
                                             ->relationship('customer', 'full_name')
-                                            ->searchable()
-                                            ->preload()
+                                            ->searchable(['full_name', 'phone'])
                                             ->required(),
                                         Select::make('status')
                                             ->label('الحالة')
@@ -206,8 +205,7 @@ class FlightBookingResource extends Resource
                                         Select::make('employee_id')
                                             ->label('الموظف')
                                             ->relationship('employee', 'full_name')
-                                            ->searchable()
-                                            ->preload(),
+                                            ->searchable(['full_name']),
                                         TextInput::make('baggage_allowance_kg')
                                             ->label('الأمتعة (كجم)')
                                             ->numeric()
@@ -221,6 +219,11 @@ class FlightBookingResource extends Resource
                             ]),
                     ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['customer', 'flightSystem', 'flightCarrier', 'flightGroup', 'employee']);
     }
 
     public static function table(Table $table): Table

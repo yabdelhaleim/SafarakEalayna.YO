@@ -104,7 +104,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useBusStore } from '@/stores/busStore';
 import { ArrowRight, Building2, Clock, RefreshCw } from 'lucide-vue-next';
-
+import axios from 'axios';
 const route = useRoute();
 const store = useBusStore();
 
@@ -127,19 +127,18 @@ const loadPage = async (page = 1) => {
   loading.value = true;
   try {
     const res = await store.fetchCompanyBusStatement(route.params.id, { page });
-    company.value = res.company;
-    transactions.value = res.transactions.data;
+    
+    // استخدام علامة الاستفهام ? يمنع انهيار الصفحة إذا كانت البيانات ناقصة
+    company.value = res?.company || null;
+    transactions.value = res?.transactions?.data || [];
     meta.value = {
-      current_page: res.transactions.current_page,
-      last_page: res.transactions.last_page
+      current_page: res?.transactions?.current_page || 1,
+      last_page: res?.transactions?.last_page || 1
     };
-    // Get the account_id from the company data to distinguish income/expense
-    // In our backend, we should return account_id or just compare in the loop
-    // But since we fetch company, it might have account_id if we include it.
-    // For now, let's assume we need to fetch the company details once.
+
     if (!company_account_id.value) {
         const fullComp = await axios.get(`/api/v1/bus/companies/${route.params.id}`);
-        company_account_id.value = fullComp.data?.data?.account_id;
+        company_account_id.value = fullComp.data?.data?.account_id || null;
     }
   } catch (err) {
     console.error(err);
@@ -147,7 +146,6 @@ const loadPage = async (page = 1) => {
     loading.value = false;
   }
 };
-
 const reload = () => loadPage(meta.value?.current_page || 1);
 
 onMounted(() => {

@@ -139,15 +139,26 @@ export const useFawryStore = defineStore('fawry', {
   actions: {
     // Fetch Settings (Payment Methods & Operation Types)
     async fetchSettings() {
+      if (this.fetchSettingsController) {
+        this.fetchSettingsController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchSettingsController = controller;
+
       this.loading.settings = true;
       try {
-        const response = await axios.get('/api/v1/fawry/settings/all');
+        const response = await axios.get('/api/v1/fawry/settings/all', {
+          signal: controller.signal
+        });
         const settings = response.data?.data || {};
 
         this.paymentMethods = settings.paymentMethods || [];
         this.operationTypes = settings.operationTypes || [];
         this.currencies = settings.currencies || [];
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch fawry settings:', error);
         // Fallback to defaults if API fails
         this.paymentMethods = [
@@ -167,18 +178,28 @@ export const useFawryStore = defineStore('fawry', {
           { value: 'EGP', label: 'جنيه مصري', labelEn: 'Egyptian Pound', symbol: 'ج.م' },
         ];
       } finally {
-        this.loading.settings = false;
+        if (this.fetchSettingsController === controller) {
+          this.loading.settings = false;
+        }
       }
     },
 
     // Fetch Transactions
     async fetchTransactions(params = {}) {
+      if (this.fetchTransactionsController) {
+        this.fetchTransactionsController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchTransactionsController = controller;
+
       this.loading.transactions = true;
       this.errors = {};
+      this.transactions = []; // Reset variables before API calls
 
       try {
         const response = await axios.get('/api/v1/fawry/transactions', {
           params: { ...this.filters, ...params },
+          signal: controller.signal
         });
         this.lastApiEnvelope = response.data ?? null;
         const data = response.data?.data || response.data;
@@ -194,6 +215,9 @@ export const useFawryStore = defineStore('fawry', {
 
         await this.calculateStats();
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch fawry transactions:', error);
         this.lastApiEnvelope = error.response?.data ?? null;
         this.errors = {
@@ -202,12 +226,15 @@ export const useFawryStore = defineStore('fawry', {
         this.transactions = [];
         await this.calculateStats();
       } finally {
-        this.loading.transactions = false;
+        if (this.fetchTransactionsController === controller) {
+          this.loading.transactions = false;
+        }
       }
     },
 
     // Create Transaction
     async createTransaction(payload) {
+      if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
@@ -235,6 +262,7 @@ export const useFawryStore = defineStore('fawry', {
 
     // Update Transaction
     async updateTransaction(id, payload) {
+      if (this.loading.update) return;
       this.loading.update = true;
       this.errors = {};
 
@@ -266,6 +294,7 @@ export const useFawryStore = defineStore('fawry', {
 
     // Delete Transaction
     async deleteTransaction(id) {
+      if (this.loading.delete) return;
       this.loading.delete = true;
       this.errors = {};
 
@@ -290,10 +319,18 @@ export const useFawryStore = defineStore('fawry', {
     },
 
     async fetchTransactionById(id) {
+      if (this.fetchTransactionByIdController) {
+        this.fetchTransactionByIdController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchTransactionByIdController = controller;
+
       this.loading.transaction = true;
       this.errors = {};
       try {
-        const response = await axios.get(`/api/v1/fawry/transactions/${id}`);
+        const response = await axios.get(`/api/v1/fawry/transactions/${id}`, {
+          signal: controller.signal
+        });
         this.lastApiEnvelope = response.data ?? null;
         const item = response.data?.data;
         if (item) {
@@ -309,10 +346,15 @@ export const useFawryStore = defineStore('fawry', {
         }
         return item;
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         this.lastApiEnvelope = error.response?.data ?? null;
         throw error;
       } finally {
-        this.loading.transaction = false;
+        if (this.fetchTransactionByIdController === controller) {
+          this.loading.transaction = false;
+        }
       }
     },
 
@@ -322,6 +364,12 @@ export const useFawryStore = defineStore('fawry', {
 
     // Fetch Daily Summary
     async fetchDailySummary(date = null) {
+      if (this.fetchDailySummaryController) {
+        this.fetchDailySummaryController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchDailySummaryController = controller;
+
       this.loading.daily_summary = true;
       this.errors = {};
 
@@ -329,17 +377,23 @@ export const useFawryStore = defineStore('fawry', {
         const targetDate = date || new Date().toISOString().split('T')[0];
         const response = await axios.get('/api/v1/fawry/transactions/daily-summary', {
           params: { date: targetDate },
+          signal: controller.signal
         });
         const summary = response.data?.data || response.data;
         return summary;
       } catch (error) {
+        if (axios.isCancel(error)) {
+          return;
+        }
         console.error('Failed to fetch daily summary:', error);
         this.errors = {
           daily_summary: 'حدث خطأ أثناء تحميل الملخص اليومي',
         };
         throw error;
       } finally {
-        this.loading.daily_summary = false;
+        if (this.fetchDailySummaryController === controller) {
+          this.loading.daily_summary = false;
+        }
       }
     },
 
@@ -441,16 +495,29 @@ export const useFawryStore = defineStore('fawry', {
 
     /** Fawry Treasury Actions */
     async fetchFawryTreasuryOverview() {
+      if (this.fetchFawryTreasuryOverviewController) {
+        this.fetchFawryTreasuryOverviewController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchFawryTreasuryOverviewController = controller;
+
       this.loading.transactions = true;
       try {
-        const { data } = await axios.get('/api/v1/fawry/treasury/overview');
+        const { data } = await axios.get('/api/v1/fawry/treasury/overview', {
+          signal: controller.signal
+        });
         this.treasuryOverview = data?.data ?? null;
         return this.treasuryOverview;
       } catch (e) {
+        if (axios.isCancel(e)) {
+          return;
+        }
         console.error('fetchFawryTreasuryOverview failed', e);
         throw e;
       } finally {
-        this.loading.transactions = false;
+        if (this.fetchFawryTreasuryOverviewController === controller) {
+          this.loading.transactions = false;
+        }
       }
     },
 
@@ -465,16 +532,79 @@ export const useFawryStore = defineStore('fawry', {
     },
 
     async fetchFawryDashboard() {
+      if (this.fetchFawryDashboardController) {
+        this.fetchFawryDashboardController.abort();
+      }
+      const controller = new AbortController();
+      this.fetchFawryDashboardController = controller;
+
       this.loading.transactions = true;
       try {
-        const { data } = await axios.get('/api/v1/fawry/dashboard');
+        const { data } = await axios.get('/api/v1/fawry/dashboard', {
+          signal: controller.signal
+        });
         return data?.data;
       } catch (e) {
+        if (axios.isCancel(e)) {
+          return;
+        }
         console.error('fetchFawryDashboard failed', e);
         throw e;
       } finally {
-        this.loading.transactions = false;
+        if (this.fetchFawryDashboardController === controller) {
+          this.loading.transactions = false;
+        }
       }
+    },
+
+    reset() {
+      this.transactions = [];
+      this.currentTransaction = null;
+      this.operationTypes = [];
+      this.paymentMethods = [];
+      this.currencies = [];
+      this.stats = {
+        total_transactions: 0,
+        today_transactions: 0,
+        total_revenue: 0,
+        total_profit: 0,
+        today_revenue: 0,
+        today_profit: 0,
+        by_operation_type: {
+          withdrawal: 0,
+          deposit: 0,
+          payment: 0,
+          travel_permit: 0,
+        },
+      };
+      this.loading = {
+        transactions: false,
+        transaction: false,
+        create: false,
+        update: false,
+        delete: false,
+        daily_summary: false,
+        settings: false,
+      };
+      this.errors = {};
+      this.lastApiEnvelope = null;
+      this.filters = {
+        search: '',
+        operation_type: '',
+        payment_method: '',
+        employee_id: '',
+        date_from: '',
+        date_to: '',
+        page: 1,
+        per_page: 15,
+      };
+      this.pagination = {
+        total: 0,
+        current_page: 1,
+        last_page: 1,
+        per_page: 15,
+      };
+      this.treasuryOverview = null;
     },
   },
 });
