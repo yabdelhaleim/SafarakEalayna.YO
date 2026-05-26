@@ -203,7 +203,7 @@
                 <td class="px-6 py-4">
                   <div :class="['inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', statusStyles[booking.status]]">
                     <span v-if="booking.status === 'confirmed'" class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-                    {{ booking.status }}
+                    {{ getStatusLabelAr(booking.status) }}
                   </div>
                 </td>
                 <td class="px-6 py-4 text-right">
@@ -297,7 +297,7 @@
               </span>
               <div :class="['px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', statusStyles[booking.status]]">
                 <span v-if="booking.status === 'confirmed'" class="inline-block w-1 h-1 rounded-full bg-current mr-1 animate-pulse"></span>
-                {{ booking.status }}
+                {{ getStatusLabelAr(booking.status) }}
               </div>
             </div>
 
@@ -379,7 +379,7 @@
 
       <!-- Pagination -->
       <div class="px-6 py-4 bg-white/5 border-t border-white/10 flex items-center justify-between text-sm text-muted">
-        <div>عرض {{ (store.pagination.currentPage - 1) * store.pagination.perPage + 1 }} - {{ Math.min(store.pagination.currentPage * store.pagination.perPage, filteredBookings.length) }} من {{ filteredBookings.length }} نتيجة</div>
+        <div>عرض {{ (store.pagination.currentPage - 1) * store.pagination.perPage + 1 }} - {{ Math.min(store.pagination.currentPage * store.pagination.perPage, store.pagination.total || filteredBookings.length) }} من {{ store.pagination.total || filteredBookings.length }} نتيجة</div>
         <div class="flex items-center gap-2">
           <select v-model="store.filters.perPage" @change="onPerPageChange" class="px-3 py-2 bg-input border border-white/5 rounded-lg focus:border-gold outline-none text-sm">
             <option :value="10">10 لكل صفحة</option>
@@ -497,6 +497,16 @@ const statusStyles = {
   refunded: 'bg-muted/10 text-muted'
 };
 
+const statusLabelsAr = {
+  pending: 'قيد الانتظار',
+  confirmed: 'مؤكد',
+  ticketed: 'صدرت التذكرة',
+  cancelled: 'ملغي',
+  refunded: 'مُسترد'
+};
+
+const getStatusLabelAr = (status) => statusLabelsAr[status] || status;
+
 const filteredBookings = computed(() => store.filteredBookings(filters.value));
 
 const uniqueAirlines = computed(() => {
@@ -607,42 +617,36 @@ const printTicket = (booking) => {
   });
 };
 
-const onPerPageChange = () => {
-  // Build filters object, excluding empty values
+// Helper to build full API filters object from current filter state
+const buildApiFilters = (overrides = {}) => {
   const apiFilters = {
     per_page: store.filters.perPage,
-    page: 1
+    page: 1,
+    ...overrides
   };
-
-  // Only add non-empty filters
   if (filters.value.search) apiFilters.search = filters.value.search;
   if (filters.value.status) apiFilters.status = filters.value.status;
-  if (filters.value.dateFrom) apiFilters.from_date = filters.value.dateFrom;
-  if (filters.value.dateTo) apiFilters.to_date = filters.value.dateTo;
+  if (filters.value.tripType) apiFilters.trip_type = filters.value.tripType;
+  if (filters.value.currency) apiFilters.currency = filters.value.currency;
+  if (filters.value.flightSystemId) apiFilters.flight_system_id = filters.value.flightSystemId;
+  if (filters.value.flightCarrierId) apiFilters.flight_carrier_id = filters.value.flightCarrierId;
+  if (filters.value.customerId) apiFilters.customer_id = filters.value.customerId;
+  if (filters.value.departureDateFrom) apiFilters.departure_date_from = filters.value.departureDateFrom;
+  if (filters.value.departureDateTo) apiFilters.departure_date_to = filters.value.departureDateTo;
   if (filters.value.paymentStatus) apiFilters.payment_status = filters.value.paymentStatus;
+  return apiFilters;
+};
 
+const onPerPageChange = () => {
   store.filters.page = 1;
-  store.fetchBookings(apiFilters);
+  store.fetchBookings(buildApiFilters({ page: 1 }));
 };
 
 const goToPage = (page) => {
   if (page < 1 || page > store.pagination.lastPage || page === '...') return;
-
-  // Build filters object, excluding empty values
-  const apiFilters = {
-    per_page: store.filters.perPage,
-    page: page
-  };
-
-  // Only add non-empty filters
-  if (filters.value.search) apiFilters.search = filters.value.search;
-  if (filters.value.status) apiFilters.status = filters.value.status;
-  if (filters.value.dateFrom) apiFilters.from_date = filters.value.dateFrom;
-  if (filters.value.dateTo) apiFilters.to_date = filters.value.dateTo;
-  if (filters.value.paymentStatus) apiFilters.payment_status = filters.value.paymentStatus;
-
   store.filters.page = page;
-  store.fetchBookings(apiFilters);
+  router.replace({ query: { ...filters.value, page } });
+  store.fetchBookings(buildApiFilters({ page }));
 };
 
 const clearFilters = () => {
@@ -717,18 +721,8 @@ const confirmDelete = async (booking) => {
 };
 
 const fetchData = async () => {
-  // Build filters object, excluding empty values
-  const apiFilters = {
-    per_page: store.filters.perPage,
-    page: 1
-  };
-
-  // Only add non-empty filters
-  if (filters.value.search) apiFilters.search = filters.value.search;
-  if (filters.value.status) apiFilters.status = filters.value.status;
-  if (filters.value.dateFrom) apiFilters.from_date = filters.value.dateFrom;
-  if (filters.value.dateTo) apiFilters.to_date = filters.value.dateTo;
-
+  const page = route.query.page ? parseInt(route.query.page) : 1;
+  const apiFilters = buildApiFilters({ page });
   await store.fetchBookings(apiFilters);
   animateStats();
 };

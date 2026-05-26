@@ -149,14 +149,38 @@ export const useBusStore = defineStore('bus', {
     },
 
     transformPayloadForApi(payload) {
+      const inventoryId = payload.inventory?.id || payload.inventoryId || payload.inventory_id || null;
+
+      // Manual mode: company_id + route + selling_price (no pre-defined inventory)
+      if (!inventoryId && payload.company_id) {
+        return {
+          // Manual route fields
+          company_id:     parseInt(String(payload.company_id), 10),
+          route:          String(payload.route || '').trim(),
+          cost_price:     Number(payload.cost_price)    || 0,   // سعر الشراء → مديونية الشركة
+          selling_price:  Number(payload.selling_price) || 0,   // سعر البيع → إيراد العميل
+          travel_date:    payload.travel_date || null,
+          departure_time: payload.departure_time || null,
+          // Customer
+          customer_id:    payload.customer?.id || payload.customerId || payload.customer_id || null,
+          customer_name:  payload.customer_name || payload.customer?.name || null,
+          customer_phone: payload.customer_phone || payload.customer?.phone || null,
+          // Booking
+          employee_id:    payload.employee_id ?? undefined,
+          quantity:       payload.quantity || payload.seats_count || payload.seatsCount || 1,
+          notes:          payload.notes || null,
+        };
+      }
+
+      // Classic mode: inventory_id provided (Filament-managed inventory)
       return {
-        inventory_id: payload.inventory?.id || payload.inventoryId || payload.inventory_id,
-        customer_id: payload.customer?.id || payload.customerId || payload.customer_id || null,
+        inventory_id:  inventoryId,
+        customer_id:   payload.customer?.id || payload.customerId || payload.customer_id || null,
         customer_name: payload.customer_name || payload.customer?.name || null,
-        customer_phone: payload.customer_phone || payload.customer?.phone || null,
-        employee_id: payload.employee_id ?? undefined,
-        quantity: payload.quantity || payload.seats_count || payload.seatsCount || 1,
-        notes: payload.notes || null,
+        customer_phone:payload.customer_phone || payload.customer?.phone || null,
+        employee_id:   payload.employee_id ?? undefined,
+        quantity:      payload.quantity || payload.seats_count || payload.seatsCount || 1,
+        notes:         payload.notes || null,
       };
     },
 

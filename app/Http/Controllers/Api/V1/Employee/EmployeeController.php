@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1\Employee;
 
-use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
@@ -12,6 +11,7 @@ use App\Services\Employee\EmployeeService;
 use App\Services\Employee\EmployeeAttendanceService;
 use App\Services\Employee\EmployeeBonusService;
 use App\Http\Resources\Employee\EmployeeResource;
+use App\Helpers\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -44,10 +44,9 @@ class EmployeeController extends Controller
         $employees = $this->employeeService->getAllEmployees($filters)
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return ApiResponse::paginated(
+        return ApiResponse::success(
             'Employees retrieved successfully',
-            EmployeeResource::collection($employees),
-            $employees
+            EmployeeResource::collection($employees)->response()->getData(true)
         );
     }
 
@@ -98,9 +97,7 @@ class EmployeeController extends Controller
 
         $this->employeeService->deleteEmployee($employee);
 
-        return ApiResponse::success(
-            'Employee deleted successfully'
-        );
+        return ApiResponse::success('Employee deleted successfully');
     }
 
     public function referenceData(): JsonResponse
@@ -163,8 +160,7 @@ class EmployeeController extends Controller
     public function transactions(int $id): JsonResponse
     {
         $employee = Employee::findOrFail($id);
-        
-        // Fetch transactions created by this employee's user_id
+
         if (!$employee->user_id) {
             return ApiResponse::success(
                 'No user account linked to this employee',
@@ -177,7 +173,7 @@ class EmployeeController extends Controller
             ->orderBy('created_at', 'desc')
             ->limit(50)
             ->get();
-            
+
         return ApiResponse::success(
             'Employee transactions retrieved successfully',
             $transactions

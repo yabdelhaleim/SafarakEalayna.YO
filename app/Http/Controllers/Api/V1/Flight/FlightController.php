@@ -166,6 +166,7 @@ class FlightController extends Controller
                 'flightCarrier.system',
                 'flightGroup',
                 'passengers',
+                'tickets',
                 'segments',
                 'payments.transaction',
                 'payments.account',

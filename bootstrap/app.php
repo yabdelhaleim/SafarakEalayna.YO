@@ -107,17 +107,11 @@ return Application::configure(basePath: dirname(__DIR__))
                     'success' => false,
                     'message' => $getFriendlyMessage($e, $statusCode),
                     'data' => null,
-                    'errors' => $e instanceof ValidationException ? $e->errors() : null,
+                    'errors' => null,
                 ];
 
-                if (config('app.debug')) {
-                    $response['debug'] = [
-                        'message' => $e->getMessage(),
-                        'exception' => get_class($e),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                        'trace' => collect($e->getTrace())->take(5)->toArray(),
-                    ];
+                if ($e instanceof ValidationException) {
+                    $response['errors'] = $e->errors();
                 }
 
                 return response()->json($response, $statusCode);

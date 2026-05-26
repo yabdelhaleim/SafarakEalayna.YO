@@ -74,10 +74,10 @@ export const useCustomerStore = defineStore('customer', {
           name: c.name || c.full_name
         }));
         this.pagination = {
-          total: response.data?.pagination?.total || response.data?.total || this.customers.length,
-          currentPage: response.data?.pagination?.current_page || response.data?.current_page || 1,
-          lastPage: response.data?.pagination?.last_page || response.data?.last_page || 1,
-          perPage: response.data?.pagination?.per_page || response.data?.per_page || 15
+          total: rawData?.pagination?.total || response.data?.total || this.customers.length,
+          currentPage: rawData?.pagination?.current_page || response.data?.current_page || 1,
+          lastPage: rawData?.pagination?.last_page || response.data?.last_page || 1,
+          perPage: rawData?.pagination?.per_page || response.data?.per_page || 15
         };
       } catch (error) {
         if (axios.isCancel(error)) {

@@ -177,7 +177,6 @@ import axios from 'axios'
 import { ArrowRightLeft, Search } from 'lucide-vue-next'
 
 const store = useFinanceStore()
-const toast = useToast()
 
 const transfers = ref([])
 const accounts = ref([])
@@ -203,7 +202,7 @@ const fetchTransfers = async () => {
       page: pagination.value.current_page,
       per_page: pagination.value.per_page,
     }
-    const response = await axios.get('/api/v1/finance/transfers', { params })
+    const response = await axios.get('/api/v1/reports/transactions', { params: { ...params, type: 'transfer' } })
     const data = response.data
     transfers.value = Array.isArray(data) ? data : data.data || []
     if (data.pagination) {

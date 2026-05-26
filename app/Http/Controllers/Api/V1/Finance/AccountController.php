@@ -153,4 +153,41 @@ class AccountController extends Controller
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
+    /**
+     * List transfer-type transactions with pagination and filters.
+     */
+    public function transferHistory(Request $request): JsonResponse
+    {
+        $query = \App\Models\Transaction::with(['createdBy', 'fromAccount', 'toAccount'])
+            ->where('type', 'transfer')
+            ->latest();
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('created_at', '>=', $request->from_date);
+        }
+        if ($request->filled('to_date')) {
+            $query->whereDate('created_at', '<=', $request->to_date);
+        }
+        if ($request->filled('from_account_id')) {
+            $query->where('from_account_id', $request->from_account_id);
+        }
+        if ($request->filled('to_account_id')) {
+            $query->where('to_account_id', $request->to_account_id);
+        }
+
+        $perPage = min((int) $request->get('per_page', 20), 100);
+        $paginated = $query->paginate($perPage);
+
+        return ApiResponse::success('Transfer history retrieved.', [
+            'data' => $paginated->items(),
+            'pagination' => [
+                'total' => $paginated->total(),
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+            ],
+        ]);
+    }
 }
+

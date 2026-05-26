@@ -90,8 +90,17 @@ class CustomerResource extends Resource
                 ]),
 
             \Filament\Schemas\Components\Section::make('الحالة المالية والعضوية')
-                ->columns(3)
+                ->columns(4)
                 ->schema([
+                    Forms\Components\Select::make('type')
+                        ->label('نوع العميل')
+                        ->options([
+                            'individual' => 'عميل فردي (كاونتر)',
+                            'company'    => 'شركة (شركات)',
+                        ])
+                        ->default('individual')
+                        ->required(),
+
                     Forms\Components\Select::make('status')
                         ->label('حالة الحساب')
                         ->options([
@@ -149,7 +158,7 @@ class CustomerResource extends Resource
                         default => $state,
                     }),
 
-                Tables\Columns\TextColumn::make('status')
+                 Tables\Columns\TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
                     ->formatStateUsing(fn ($state) => match($state) {
@@ -165,6 +174,20 @@ class CustomerResource extends Resource
                         default => 'gray',
                     }),
 
+                Tables\Columns\TextColumn::make('type')
+                    ->label('النوع')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => match($state) {
+                        'individual', \App\Enums\CustomerType::Individual => 'عميل فردي',
+                        'company', \App\Enums\CustomerType::Company => 'شركة',
+                        default => $state instanceof \App\Enums\CustomerType ? $state->label() : $state,
+                    })
+                    ->color(fn ($state) => match($state) {
+                        'individual', \App\Enums\CustomerType::Individual => 'gray',
+                        'company', \App\Enums\CustomerType::Company => 'info',
+                        default => 'gray',
+                    }),
+
                 Tables\Columns\TextColumn::make('total_spent')
                     ->label('إجمالي الإنفاق')
                     ->money('EGP')
@@ -176,6 +199,12 @@ class CustomerResource extends Resource
                     ->alignCenter(),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('type')
+                    ->label('نوع العميل')
+                    ->options([
+                        'individual' => 'عميل فردي',
+                        'company'    => 'شركة',
+                    ]),
                 Tables\Filters\SelectFilter::make('status')
                     ->label('الحالة')
                     ->options([

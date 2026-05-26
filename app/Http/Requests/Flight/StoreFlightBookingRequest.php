@@ -51,6 +51,7 @@ class StoreFlightBookingRequest extends FormRequest
 
         return [
             'customer_id' => 'required|integer|exists:customers,id',
+            'agent_name' => 'nullable|string|max:150',
             'employee_id' => 'nullable|integer|exists:employees,id',
             'airline_name' => 'nullable|string|max:150',
             'airline' => 'nullable|string|max:150',

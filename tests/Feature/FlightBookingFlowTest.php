@@ -512,10 +512,6 @@ class FlightBookingFlowTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        $this->assertNotNull($group->account_id);
-        $groupAccount = $group->account;
-        $this->assertEquals(0, $groupAccount->balance);
-
         // 2. Set up booking data using this group
         $bookingData = [
             'customer_id' => $this->customer->id,
@@ -544,11 +540,19 @@ class FlightBookingFlowTest extends TestCase
 
         // Assert customer was debited (selling price)
         $this->customer->refresh();
-        $this->assertEquals(18000.0, $this->customer->ledgerAccount->balance); // Positive balance is debt we are owed
+        $this->assertEquals(18000.0, $this->customer->ledgerAccount->balance);
 
-        // Assert group was credited (purchase price)
-        $groupAccount->refresh();
-        $this->assertEquals(-15000.0, $groupAccount->balance); // Negative balance is debt we owe to supplier
+        // Assert group transaction was recorded (purchase price)
+        $this->assertDatabaseHas('flight_group_transactions', [
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => $booking->id,
+            'type' => 'debt',
+            'amount' => 15000.0,
+        ]);
+
+        $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
+        $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
+        $this->assertEquals(15000.0, $totalDebt - $totalPayment);
     }
 
     public function test_cancels_group_booking_and_reverses_debt_correctly(): void
@@ -560,8 +564,6 @@ class FlightBookingFlowTest extends TestCase
             'is_active' => true,
             'created_by' => $this->admin->id,
         ]);
-
-        $groupAccount = $group->account;
 
         // 2. Set up booking data using this group
         $bookingData = [
@@ -585,9 +587,10 @@ class FlightBookingFlowTest extends TestCase
         // Create booking
         $booking = $this->bookingService->createBooking($bookingData);
 
-        // Group balance should be -15000
-        $groupAccount->refresh();
-        $this->assertEquals(-15000.0, $groupAccount->balance);
+        // Group balance should be 15000
+        $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
+        $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
+        $this->assertEquals(15000.0, $totalDebt - $totalPayment);
 
         // 3. Cancel the booking with some penalties
         $cancelData = [
@@ -604,8 +607,9 @@ class FlightBookingFlowTest extends TestCase
         $this->assertEquals(FlightBookingStatus::CANCELLED, $booking->status);
 
         // Group balance should be reversed by (purchase - airline_penalty) = (15000 - 1000) = 14000
-        // So balance should become -15000 + 14000 = -1000
-        $groupAccount->refresh();
-        $this->assertEquals(-1000.0, $groupAccount->balance);
+        // So balance should become 15000 - 14000 = 1000
+        $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
+        $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
+        $this->assertEquals(1000.0, $totalDebt - $totalPayment);
     }
 }

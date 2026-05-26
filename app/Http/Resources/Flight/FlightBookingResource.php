@@ -35,6 +35,7 @@ class FlightBookingResource extends JsonResource
         return [
             'id' => $this->id,
             'booking_number' => $this->booking_number,
+            'agent_name' => $this->agent_name,
             'system_type' => $this->system_type,
             'system_type_label' => $systemType->label(),
             'pnr' => $this->pnr,
@@ -124,6 +125,9 @@ class FlightBookingResource extends JsonResource
                 'name' => $this->customer->full_name,
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
+                'type' => $this->customer->type instanceof \App\Enums\CustomerType
+                    ? ($this->customer->type === \App\Enums\CustomerType::Company ? 'counter' : 'regular')
+                    : ($this->customer->type === 'company' || $this->customer->type === 'counter' ? 'counter' : 'regular'),
             ]),
             'employee' => $this->whenLoaded('employee', fn () => [
                 'id' => $this->employee->id,

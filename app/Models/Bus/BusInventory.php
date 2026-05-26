@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'remaining_debt',
     'account_id',
     'transaction_id',
+    'is_auto_created',
     'notes',
     'created_by',
 ])]

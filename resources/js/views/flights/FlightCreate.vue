@@ -458,12 +458,12 @@
                       :class="form.customer_type === 'counter' ? 'border-sky-500 bg-sky-500/10 text-sky-400' : 'border-white/10 bg-white/5 text-text-muted'"
                     >
                       <Building2 class="h-4 w-4" />
-                      <span class="text-sm font-bold">عميل شركه</span>
+                      <span class="text-sm font-bold">عميل شركة</span>
                     </button>
                   </div>
 
                   <label class="mb-2 block text-sm font-medium text-text-muted">
-                    {{ form.customer_type === 'counter' ? 'عميل الشركه المختار *' : 'العميل المختار *' }}
+                    {{ form.customer_type === 'counter' ? 'عميل الشركة المختار *' : 'العميل المختار *' }}
                   </label>
                   <CustomerSelect v-model="form.customer" :type="form.customer_type" />
                   <p v-if="form.customer_type === 'counter'" class="mt-2 text-xs text-sky-400 text-right" dir="rtl">
@@ -493,131 +493,154 @@
                   </div>
                 </div>
 
-                <div
-                  v-if="store.passengerTypes?.length"
-                  class="mb-6 flex flex-wrap gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
-                >
-                  <span class="w-full text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                    ملخص الأنواع
-                  </span>
-                  <span
-                    v-for="pt in store.passengerTypes"
-                    :key="pt.value"
-                    class="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-text-muted"
-                  >
-                    <span class="font-bold text-white">{{ pt.label }}</span>
-                    <span class="rounded bg-black/25 px-1.5 py-0.5 font-mono text-gold">
-                      {{ form.passengers.filter((p) => p.type === pt.value).length }}
-                    </span>
-                  </span>
-                </div>
-
-                <!-- Passenger repeater -->
-                <div class="space-y-4">
+                <!-- Regular Passengers Flow -->
+                <div v-if="form.customer_type !== 'counter'" class="space-y-6">
                   <div
-                    v-for="(passenger, index) in form.passengers"
-                    :key="passenger.uid"
-                    class="space-y-4 rounded-xl border border-white/10 bg-white/5 p-6"
+                    v-if="store.passengerTypes?.length"
+                    class="mb-6 flex flex-wrap gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
                   >
-                    <div class="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 class="font-bold text-white">
-                          مسافر {{ index + 1 }}
-                          <span class="mr-2 text-xs font-normal text-text-muted">
-                            ({{ getPassengerTypeLabel(passenger.type) }})
-                          </span>
-                        </h4>
-                      </div>
-                      <button
-                        type="button"
-                        class="rounded-lg p-2 transition-colors hover:bg-error/20"
-                        @click="removePassenger(passenger)"
-                      >
-                        <Trash2 class="h-5 w-5 text-error" />
-                      </button>
-                    </div>
+                    <span class="w-full text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      ملخص الأنواع
+                    </span>
+                    <span
+                      v-for="pt in store.passengerTypes"
+                      :key="pt.value"
+                      class="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-text-muted"
+                    >
+                      <span class="font-bold text-white">{{ pt.label }}</span>
+                      <span class="rounded bg-black/25 px-1.5 py-0.5 font-mono text-gold">
+                        {{ form.passengers.filter((p) => p.type === pt.value).length }}
+                      </span>
+                    </span>
+                  </div>
 
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <!-- Passenger repeater -->
+                  <div class="space-y-4">
+                    <div
+                      v-for="(passenger, index) in form.passengers"
+                      :key="passenger.uid"
+                      class="space-y-4 rounded-xl border border-white/10 bg-white/5 p-6"
+                    >
+                      <div class="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 class="font-bold text-white">
+                            مسافر {{ index + 1 }}
+                            <span class="mr-2 text-xs font-normal text-text-muted">
+                              ({{ getPassengerTypeLabel(passenger.type) }})
+                            </span>
+                          </h4>
+                        </div>
+                        <button
+                          type="button"
+                          class="rounded-lg p-2 transition-colors hover:bg-error/20"
+                          @click="removePassenger(passenger)"
+                        >
+                          <Trash2 class="h-5 w-5 text-error" />
+                        </button>
+                      </div>
+
                       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <label class="mb-2 block text-sm font-medium text-gray-300">
+                              الاسم الأول <span class="text-error">*</span>
+                            </label>
+                            <input
+                              v-model="passenger.first_name"
+                              type="text"
+                              placeholder="الاسم الأول"
+                              class="flight-input"
+                            />
+                          </div>
+                          <div>
+                            <label class="mb-2 block text-sm font-medium text-gray-300">
+                              الاسم الأخير <span class="text-error">*</span>
+                            </label>
+                            <input
+                              v-model="passenger.last_name"
+                              type="text"
+                              placeholder="الاسم الأخير"
+                              class="flight-input"
+                            />
+                          </div>
+                        </div>
+
                         <div>
                           <label class="mb-2 block text-sm font-medium text-gray-300">
-                            الاسم الأول <span class="text-error">*</span>
+                            نوع التذكرة
                           </label>
+                          <select v-model="passenger.type" class="flight-select">
+                            <option
+                              v-for="pt in store.passengerTypes"
+                              :key="pt.value"
+                              :value="pt.value"
+                            >
+                              {{ pt.label }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">رقم البطاقة</label>
                           <input
-                            v-model="passenger.first_name"
+                            v-model="passenger.national_id"
                             type="text"
-                            placeholder="الاسم الأول"
+                            placeholder="رقم البطاقة"
                             class="flight-input"
                           />
                         </div>
+
                         <div>
-                          <label class="mb-2 block text-sm font-medium text-gray-300">
-                            الاسم الأخير <span class="text-error">*</span>
-                          </label>
-                          <input
-                            v-model="passenger.last_name"
-                            type="text"
-                            placeholder="الاسم الأخير"
-                            class="flight-input"
+                          <label class="mb-2 block text-sm font-medium text-gray-300">تاريخ الميلاد</label>
+                          <input v-model="passenger.date_of_birth" type="date" class="flight-input" />
+                        </div>
+
+                        <div>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">حد الأمتعة (كجم)</label>
+                          <input 
+                            v-model.number="passenger.baggage_allowance_kg" 
+                            type="number" 
+                            min="0" 
+                            placeholder="0"
+                            class="flight-input" 
                           />
                         </div>
-                      </div>
-
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-300">
-                          نوع التذكرة
-                        </label>
-                        <select v-model="passenger.type" class="flight-select">
-                          <option
-                            v-for="pt in store.passengerTypes"
-                            :key="pt.value"
-                            :value="pt.value"
-                          >
-                            {{ pt.label }}
-                          </option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-300">رقم البطاقة</label>
-                        <input
-                          v-model="passenger.national_id"
-                          type="text"
-                          placeholder="رقم البطاقة"
-                          class="flight-input"
-                        />
-                      </div>
-
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-300">تاريخ الميلاد</label>
-                        <input v-model="passenger.date_of_birth" type="date" class="flight-input" />
-                      </div>
-
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-300">حد الأمتعة (كجم)</label>
-                        <input 
-                          v-model.number="passenger.baggage_allowance_kg" 
-                          type="number" 
-                          min="0" 
-                          placeholder="0"
-                          class="flight-input" 
-                        />
                       </div>
                     </div>
                   </div>
+
+                  <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <button
+                      v-for="pt in store.passengerTypes"
+                      :key="'add-' + pt.value"
+                      type="button"
+                      class="btn-airline-ghost inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm sm:min-w-[140px]"
+                      @click="addPassenger(pt.value)"
+                    >
+                      <Plus class="h-4 w-4" />
+                      إضافة {{ pt.label }}
+                    </button>
+                  </div>
                 </div>
 
-                <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button
-                    v-for="pt in store.passengerTypes"
-                    :key="'add-' + pt.value"
-                    type="button"
-                    class="btn-airline-ghost inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm sm:min-w-[140px]"
-                    @click="addPassenger(pt.value)"
-                  >
-                    <Plus class="h-4 w-4" />
-                    إضافة {{ pt.label }}
-                  </button>
+                <!-- B2B Informational Card (Company Booking) -->
+                <div v-else class="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-8 text-center space-y-5">
+                  <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-sky-500/10 text-sky-400">
+                    <Building2 class="h-8 w-8" />
+                  </div>
+                  <div class="space-y-2">
+                    <h3 class="text-lg font-bold text-white">تسجيل حجز باسم جهة التعاقد (الشركة)</h3>
+                    <p class="text-sm text-text-muted max-w-md mx-auto leading-relaxed">
+                      نظراً لأن هذا الحجز يخص جهة تعاقدية (شركة)، سيتم إصدار التذكرة باسم الشركة مباشرة دون الحاجة لملء بيانات مسافرين فردية.
+                    </p>
+                  </div>
+                  <div v-if="form.customer" class="inline-flex items-center gap-3 rounded-xl bg-sky-500/10 px-5 py-3 border border-sky-500/20">
+                    <span class="text-xs text-text-muted">الجهة المستفيدة:</span>
+                    <span class="text-base font-black text-sky-400">{{ form.customer.name }}</span>
+                  </div>
+                  <div v-else class="text-sm text-error font-medium">
+                    * يرجى العودة لاختيار الشركة أولاً لإتمام الحجز.
+                  </div>
                 </div>
               </div>
             </div>
@@ -838,160 +861,206 @@
                 </div>
 
                 <div class="space-y-6">
-                  <div>
-                    <p class="mb-3 text-xs font-semibold text-text-muted">نوع التحصيل</p>
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        v-for="chip in settlementCategoryChips"
-                        :key="chip.id"
-                        type="button"
-                        class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition"
-                        :class="
-                          settlementCategoryUi === chip.id
-                            ? 'border-gold/50 bg-gold/15 text-gold'
-                            : 'border-white/10 bg-white/[0.04] text-text-muted hover:border-white/20 hover:text-text-main'
-                        "
-                        @click="setSettlementCategory(chip.id)"
-                      >
-                        <component :is="chip.icon" class="h-3.5 w-3.5" :class="chip.iconClass" />
-                        {{ chip.label }}
-                      </button>
-                    </div>
+                  <!-- Regular Cash/Bank/Wallet Payment -->
+                  <div v-if="form.customer_type !== 'counter'" class="space-y-6">
+                    <div>
+                      <p class="mb-3 text-xs font-semibold text-text-muted">نوع التحصيل</p>
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          v-for="chip in settlementCategoryChips"
+                          :key="chip.id"
+                          type="button"
+                          class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition"
+                          :class="
+                            settlementCategoryUi === chip.id
+                              ? 'border-gold/50 bg-gold/15 text-gold'
+                              : 'border-white/10 bg-white/[0.04] text-text-muted hover:border-white/20 hover:text-text-main'
+                          "
+                          @click="setSettlementCategory(chip.id)"
+                        >
+                          <component :is="chip.icon" class="h-3.5 w-3.5" :class="chip.iconClass" />
+                          {{ chip.label }}
+                        </button>
+                      </div>
 
-                    <label class="mb-2 mt-5 block text-sm font-medium text-gray-300">
-                      {{ settlementPickerLabel }} <span v-if="form.initial_payment > 0" class="text-error">*</span>
-                    </label>
-                    <select
-                      v-model="form.account_id"
-                      class="flight-select"
-                      :disabled="!settlementPickerOptions.length"
-                    >
-                      <option value="">
-                        {{ settlementPickerEmptyText }}
-                      </option>
-                      <option
-                        v-for="account in settlementPickerOptions"
-                        :key="account.id"
-                        :value="account.id"
+                      <label class="mb-2 mt-5 block text-sm font-medium text-gray-300">
+                        {{ settlementPickerLabel }} <span v-if="form.initial_payment > 0" class="text-error">*</span>
+                      </label>
+                      <select
+                        v-model="form.account_id"
+                        class="flight-select"
+                        :disabled="!settlementPickerOptions.length"
                       >
-                        {{ formatSettlementPickerOption(account) }}
-                      </option>
-                    </select>
-                    <p v-if="selectedPaymentMethodLabel && form.account_id" class="mt-1.5 text-[11px] text-text-muted">
-                      تسجيل الطريقة في النظام:
-                      <span class="font-semibold text-sky-200/90">{{ selectedPaymentMethodLabel }}</span>
-                    </p>
-                    <p class="mt-2 text-xs leading-relaxed text-sky-200/80">
-                      {{ paymentMethodSettlementHint }}
-                    </p>
-                    <div
-                      class="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-3 text-[11px] leading-relaxed text-sky-100/95"
-                    >
-                      <p class="font-bold text-sky-200">إضافة حسابات من لوحة الإدارة (Filament)</p>
-                      <p class="mt-1 text-text-muted">
-                        كل محفظة مسجّلة كحساب مستقل تظهر هنا بالاسم ورقم المحفظة. أنشئ حسابات بنكية أو محافظ مع
-                        <span class="font-semibold text-white">وحدة العمل = سياحة</span>.
+                        <option value="">
+                          {{ settlementPickerEmptyText }}
+                        </option>
+                        <option
+                          v-for="account in settlementPickerOptions"
+                          :key="account.id"
+                          :value="account.id"
+                        >
+                          {{ formatSettlementPickerOption(account) }}
+                        </option>
+                      </select>
+                      <p v-if="selectedPaymentMethodLabel && form.account_id" class="mt-1.5 text-[11px] text-text-muted">
+                        تسجيل الطريقة في النظام:
+                        <span class="font-semibold text-sky-200/90">{{ selectedPaymentMethodLabel }}</span>
                       </p>
-                      <div class="mt-2 flex flex-wrap gap-2">
-                        <a
-                          :href="adminFilamentBankAccountsUrl"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-bold text-gold transition hover:border-gold/40 hover:bg-gold/10"
-                        >
-                          <Landmark class="h-3.5 w-3.5" />
-                          حسابات بنوك
-                        </a>
-                        <a
-                          :href="adminFilamentWalletAccountsUrl"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-bold text-sky-200 transition hover:border-sky-400/40 hover:bg-sky-500/15"
-                        >
-                          <Wallet class="h-3.5 w-3.5" />
-                          محافظ إلكترونية
-                        </a>
-                      </div>
-                    </div>
-
-                    <p v-if="!settlementAccounts.length" class="mt-3 text-xs text-warning">
-                      لم يتم تحميل أي حسابات مالية. أضف حسابات من Filament (روابط أعلاه).
-                    </p>
-                    <p
-                      v-else-if="settlementAccounts.length && !settlementPickerOptions.length"
-                      class="mt-3 text-xs text-warning"
-                    >
-                      لا يوجد حساب من هذا النوع. غيّر التصنيف أعلاه أو أنشئ حساباً مطابقاً من Filament.
-                    </p>
-
-                    <div
-                      v-if="selectedSettlementAccount"
-                      class="mt-4 space-y-2 rounded-xl border border-gold/25 bg-gold/10 p-4 text-sm"
-                    >
-                      <div class="text-[10px] font-bold uppercase tracking-wider text-gold/90">رصيد حساب التحصيل</div>
-                      <div class="flex justify-between gap-2 text-text-muted">
-                        <span>الرصيد الحالي</span>
-                        <span class="font-mono font-bold text-white tabular-nums">
-                          {{ formatMoney(settlementBalancePreview.current, settlementBalancePreview.currency) }}
-                        </span>
-                      </div>
+                      <p class="mt-2 text-xs leading-relaxed text-sky-200/80">
+                        {{ paymentMethodSettlementHint }}
+                      </p>
                       <div
-                        v-if="settlementBalancePreview.delta > 0"
-                        class="flex justify-between gap-2 border-t border-white/10 pt-2"
+                        class="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-3 text-[11px] leading-relaxed text-sky-100/95"
                       >
-                        <span class="flex items-center gap-1 text-success">
-                          <ArrowUpRight class="h-4 w-4" />
-                          بعد تسجيل الحجز (+ المدفوع)
-                        </span>
-                        <span class="font-mono text-base font-black text-success tabular-nums">
-                          {{ formatMoney(settlementBalancePreview.after, settlementBalancePreview.currency) }}
-                        </span>
+                        <p class="font-bold text-sky-200">إضافة حسابات من لوحة الإدارة (Filament)</p>
+                        <p class="mt-1 text-text-muted">
+                          كل محفظة مسجّلة كحساب مستقل تظهر هنا بالاسم ورقم المحفظة. أنشئ حسابات بنكية أو محافظ مع
+                          <span class="font-semibold text-white">وحدة العمل = سياحة</span>.
+                        </p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                          <a
+                            :href="adminFilamentBankAccountsUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-bold text-gold transition hover:border-gold/40 hover:bg-gold/10"
+                          >
+                            <Landmark class="h-3.5 w-3.5" />
+                            حسابات بنوك
+                          </a>
+                          <a
+                            :href="adminFilamentWalletAccountsUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-bold text-sky-200 transition hover:border-sky-400/40 hover:bg-sky-500/15"
+                          >
+                            <Wallet class="h-3.5 w-3.5" />
+                            محافظ إلكترونية
+                          </a>
+                        </div>
                       </div>
-                      <p v-else-if="!isEditMode" class="border-t border-white/10 pt-2 text-[11px] text-text-muted">
-                        أدخل مبلغاً في «الدفع المبدئي» ليظهر تقدير الرصيد بعد الزيادة.
+
+                      <p v-if="!settlementAccounts.length" class="mt-3 text-xs text-warning">
+                        لم يتم تحميل أي حسابات مالية. أضف حسابات من Filament (روابط أعلاه).
                       </p>
-                      <p v-else class="border-t border-white/10 pt-2 text-[11px] text-text-muted">
-                        عند التعديل تُسجَّل الدفعات من شاشة عرض الحجز، وليس من هنا.
+                      <p
+                        v-else-if="settlementAccounts.length && !settlementPickerOptions.length"
+                        class="mt-3 text-xs text-warning"
+                      >
+                        لا يوجد حساب من هذا النوع. غيّر التصنيف أعلاه أو أنشئ حساباً مطابقاً من Filament.
                       </p>
+
+                      <div
+                        v-if="selectedSettlementAccount"
+                        class="mt-4 space-y-2 rounded-xl border border-gold/25 bg-gold/10 p-4 text-sm"
+                      >
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-gold/90">رصيد حساب التحصيل</div>
+                        <div class="flex justify-between gap-2 text-text-muted">
+                          <span>الرصيد الحالي</span>
+                          <span class="font-mono font-bold text-white tabular-nums">
+                            {{ formatMoney(settlementBalancePreview.current, settlementBalancePreview.currency) }}
+                          </span>
+                        </div>
+                        <div
+                          v-if="settlementBalancePreview.delta > 0"
+                          class="flex justify-between gap-2 border-t border-white/10 pt-2"
+                        >
+                          <span class="flex items-center gap-1 text-success">
+                            <ArrowUpRight class="h-4 w-4" />
+                            بعد تسجيل الحجز (+ المدفوع)
+                          </span>
+                          <span class="font-mono text-base font-black text-success tabular-nums">
+                            {{ formatMoney(settlementBalancePreview.after, settlementBalancePreview.currency) }}
+                          </span>
+                        </div>
+                        <p v-else-if="!isEditMode" class="border-t border-white/10 pt-2 text-[11px] text-text-muted">
+                          أدخل مبلغاً في «الدفع المبدئي» ليظهر تقدير الرصيد بعد الزيادة.
+                        </p>
+                        <p v-else class="border-t border-white/10 pt-2 text-[11px] text-text-muted">
+                          عند التعديل تُسجَّل الدفعات من شاشة عرض الحجز، وليس من هنا.
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Initial Payment -->
+                    <div
+                      v-if="!isEditMode"
+                      class="space-y-4 rounded-xl border border-white/10 bg-white/5 p-6"
+                    >
+                      <h4 class="font-bold text-white">الدفع المبدئي (اختياري)</h4>
+                      <p class="text-xs text-text-muted">
+                        يُسجَّل بنفس طريقة التحصيل أعلاه. اترك المبلغ ٠ إن لم يتم استلام دفعة الآن.
+                      </p>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">مبلغ الدفع</label>
+                        <div class="relative">
+                          <input
+                            v-model.number="form.initial_payment"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-14 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
+                          />
+                          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">ج.م</span>
+                        </div>
+                      </div>
+
+                      <!-- Quick Amount Buttons -->
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          v-for="percent in [25, 50, 75, 100]"
+                          :key="percent"
+                          type="button"
+                          class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-400 transition-all hover:border-gold/50 hover:bg-gold/20 hover:text-gold"
+                          @click="form.initial_payment = (form.selling_price * percent) / 100"
+                        >
+                          {{ percent }}%
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <!-- Initial Payment -->
-                  <div
-                    v-if="!isEditMode"
-                    class="space-y-4 rounded-xl border border-white/10 bg-white/5 p-6"
-                  >
-                    <h4 class="font-bold text-white">الدفع المبدئي (اختياري)</h4>
-                    <p class="text-xs text-text-muted">
-                      يُسجَّل بنفس طريقة التحصيل أعلاه. اترك المبلغ ٠ إن لم يتم استلام دفعة الآن.
-                    </p>
-
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-gray-300">مبلغ الدفع</label>
-                      <div class="relative">
-                        <input
-                          v-model.number="form.initial_payment"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-14 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
-                        />
-                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">ج.م</span>
+                  <!-- B2B credit details -->
+                  <div v-else class="space-y-4">
+                    <div class="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-6 space-y-4">
+                      <div class="flex items-center gap-3">
+                        <div class="rounded-xl bg-sky-500/10 p-3 text-sky-400">
+                          <Building2 class="h-6 w-6" />
+                        </div>
+                        <div>
+                          <h4 class="font-bold text-white">البيع الآجل (حساب جهة التعاقد)</h4>
+                          <p class="text-xs text-text-muted">سيتم قيد مديونية التذكرة مباشرة على رصيد الشركة.</p>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Quick Amount Buttons -->
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        v-for="percent in [25, 50, 75, 100]"
-                        :key="percent"
-                        type="button"
-                        class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-400 transition-all hover:border-gold/50 hover:bg-gold/20 hover:text-gold"
-                        @click="form.initial_payment = (form.selling_price * percent) / 100"
-                      >
-                        {{ percent }}%
-                      </button>
+                      <div v-if="form.customer" class="divide-y divide-white/5 space-y-3 animate-in fade-in duration-200">
+                        <div class="flex justify-between items-center pt-3">
+                          <span class="text-xs text-text-muted">اسم جهة التعاقد:</span>
+                          <span class="text-sm font-black text-sky-400">{{ form.customer.name }}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-3">
+                          <span class="text-xs text-text-muted">الرصيد الحالي (المديونية):</span>
+                          <span class="font-mono text-sm font-bold text-white">
+                            {{ Number(form.customer.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          </span>
+                        </div>
+                        <div class="flex justify-between items-center pt-3">
+                          <span class="text-xs text-text-muted">قيمة الحجز الحالي:</span>
+                          <span class="font-mono text-sm font-bold text-gold">
+                            {{ Number(form.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.m
+                          </span>
+                        </div>
+                        <div class="flex justify-between items-center pt-3 border-t border-white/10">
+                          <span class="text-xs font-bold text-white">المديونية المتوقعة بعد الحجز:</span>
+                          <span class="font-mono text-base font-black text-sky-400">
+                            {{ Number((Number(form.customer.balance || 0) + Number(form.selling_price || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          </span>
+                        </div>
+                      </div>
+                      <div v-else class="text-sm text-error font-medium">
+                        * يرجى اختيار جهة التعاقد (الشركة) أولاً لرؤية الرصيد.
+                      </div>
                     </div>
                   </div>
 
@@ -2015,6 +2084,9 @@ const isBookingStepComplete = (step) => {
       }
       return !!form.value.flight_carrier_id;
     case 4:
+      if (form.value.customer_type === 'counter') {
+        return !!(form.value.customer?.id || form.value.customer_id);
+      }
       return (
         (form.value.customer?.id || !!form.value.customer_id) &&
         form.value.passengers.length > 0 &&
@@ -2099,6 +2171,9 @@ const canProceed = computed(() => {
       }
       return !!form.value.flight_carrier_id;
     case 4:
+      if (form.value.customer_type === 'counter') {
+        return !!(form.value.customer?.id || form.value.customer_id);
+      }
       return (
         (form.value.customer?.id || form.value.customer_id !== '') &&
         form.value.passengers.length > 0 &&
@@ -2949,16 +3024,64 @@ watch(
 watch(
   () => form.value.customer,
   (customer) => {
-    if (customer && form.value.customer_type === 'regular') {
-      if (!form.value.passengers.length) {
-        addPassenger('adult');
+    if (customer) {
+      if (form.value.customer_type === 'regular') {
+        if (!form.value.passengers.length) {
+          addPassenger('adult');
+        }
+        const first = form.value.passengers[0];
+        if (first && !first.first_name && !first.last_name) {
+          const parts = (customer.full_name || customer.name || '').trim().split(' ');
+          if (parts.length > 0) {
+            first.first_name = parts[0];
+            first.last_name = parts.slice(1).join(' ') || ' ';
+          }
+        }
+      } else if (form.value.customer_type === 'counter') {
+        form.value.passengers = [{
+          uid: 'company-pax',
+          first_name: customer.name || customer.full_name || '',
+          last_name: '',
+          type: 'adult',
+          national_id: '',
+          date_of_birth: '',
+          baggage_allowance_kg: 0,
+        }];
       }
-      const first = form.value.passengers[0];
-      if (first && !first.first_name && !first.last_name) {
-        const parts = (customer.full_name || customer.name || '').trim().split(' ');
-        if (parts.length > 0) {
-          first.first_name = parts[0];
-          first.last_name = parts.slice(1).join(' ') || ' ';
+    }
+  }
+);
+watch(
+  () => form.value.customer_type,
+  (type) => {
+    if (type === 'counter') {
+      form.value.initial_payment = 0;
+      form.value.account_id = '';
+      form.value.agent_name = '';
+      if (form.value.customer) {
+        form.value.passengers = [{
+          uid: 'company-pax',
+          first_name: form.value.customer.name || form.value.customer.full_name || '',
+          last_name: '',
+          type: 'adult',
+          national_id: '',
+          date_of_birth: '',
+          baggage_allowance_kg: 0,
+        }];
+      } else {
+        form.value.passengers = [];
+      }
+    } else {
+      form.value.passengers = [];
+      if (form.value.customer) {
+        addPassenger('adult');
+        const first = form.value.passengers[0];
+        if (first) {
+          const parts = (form.value.customer.full_name || form.value.customer.name || '').trim().split(' ');
+          if (parts.length > 0) {
+            first.first_name = parts[0];
+            first.last_name = parts.slice(1).join(' ') || ' ';
+          }
         }
       }
     }

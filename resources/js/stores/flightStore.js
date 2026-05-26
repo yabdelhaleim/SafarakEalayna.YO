@@ -157,10 +157,10 @@ export const useFlightStore = defineStore('flight', {
         // Map API response (snake_case) to frontend format (camelCase with nested objects)
         this.bookings = items.map(b => this.mapBooking(b));
         this.pagination = {
-          total: response.data?.pagination?.total || response.data?.total || this.bookings.length,
-          currentPage: response.data?.pagination?.current_page || response.data?.current_page || 1,
-          lastPage: response.data?.pagination?.last_page || response.data?.last_page || 1,
-          perPage: response.data?.pagination?.per_page || response.data?.per_page || 15
+          total: rawData?.pagination?.total || response.data?.total || this.bookings.length,
+          currentPage: rawData?.pagination?.current_page || response.data?.current_page || 1,
+          lastPage: rawData?.pagination?.last_page || response.data?.last_page || 1,
+          perPage: rawData?.pagination?.per_page || response.data?.per_page || 15
         };
       } catch (error) {
         console.error('Failed to fetch bookings', error);

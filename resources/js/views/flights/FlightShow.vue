@@ -34,13 +34,13 @@
                 {{ getStatusLabel(booking.status) }}
               </div>
               <div
-                v-if="booking.paymentStatusLabel"
+                v-if="formattedPaymentStatusLabel"
                 :class="[
                   'rounded-full border px-4 py-1.5 text-[10px] font-black tracking-wide shadow-sm',
-                  paymentStatusBadgeClass(booking.paymentStatus),
+                  formattedPaymentStatusClass,
                 ]"
               >
-                {{ booking.paymentStatusLabel }}
+                {{ formattedPaymentStatusLabel }}
               </div>
             </div>
           </div>
@@ -170,6 +170,21 @@
               <div class="ticket-barcode" style="height:44px; width:170px; border-radius:6px; border:1px solid rgba(255,255,255,0.2);" aria-hidden="true" />
             </div>
 
+            <!-- ===== CORPORATE / AGL WATERMARK BANNER ===== -->
+            <div v-if="booking.customer?.type === 'counter'" 
+              class="print-corporate-badge"
+              style="background: #f0f9ff; border-bottom: 1.5px solid #bae6fd; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+              <div style="display: flex; align-items: center; gap: 10px; color: #0369a1;">
+                <Building2 style="width: 20px; height: 20px; color: #0284c7; flex-shrink: 0;" />
+                <span style="font-size: 13px; font-weight: 800; font-family:'Segoe UI',Arial,sans-serif;">حساب جهة الحجز: {{ booking.customer?.name }} (عميل شركات - دفع آجل)</span>
+              </div>
+              <div style="text-align: left;">
+                <span style="font-size: 10px; font-weight: 800; color: #0f52ba; background: #e0f2fe; padding: 4px 12px; border-radius: 9999px; border: 1.5px solid #7dd3fc;">
+                  {{ getRemainingBalance() > 0.01 ? 'معاملة آجلة - مديونية غير مسددة' : 'معاملة آجلة - مسددة بالكامل' }}
+                </span>
+              </div>
+            </div>
+
             <!-- ===== PNR STRIP ===== -->
             <div v-if="(booking.pnr || booking.tripType || booking.trip_type) && printOptions.tripDetails"
               style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:10px 28px; display:flex; align-items:center; gap:20px;">
@@ -234,7 +249,7 @@
                         <div style="font-family:'Courier New',monospace; font-size:44px; font-weight:900; color:#0f172a; letter-spacing:0.08em; line-height:1;">{{ segment.to || segment.to_airport || '—' }}</div>
                         <div style="font-size:10px; font-weight:800; letter-spacing:0.2em; text-transform:uppercase; color:#4b6bab; margin-top:6px; font-family:'Segoe UI',Arial,sans-serif;">وصول</div>
                         <div style="font-family:'Segoe UI',Arial,sans-serif; font-size:14px; font-weight:800; color:#1d4ed8; margin-top:6px;">
-                          {{ (segment.arrivalTime && segment.arrivalTime !== '00:00' && segment.arrivalTime !== '00:00:00') ? segment.arrivalTime + ' • ' : '' }}{{ segment.returnDate ? formatDate(segment.returnDate) : '' }}
+                          {{ (segment.arrivalTime && segment.arrivalTime !== '00:00' && segment.arrivalTime !== '00:00:00') ? segment.arrivalTime + ' • ' : '' }}{{ segment.arrivalDate ? formatDate(segment.arrivalDate) : '' }}
                         </div>
                       </div>
                     </div>
@@ -312,7 +327,7 @@
               </div>
 
               <!-- PAYMENTS -->
-              <div v-if="printOptions.payments && booking.payments && booking.payments.length > 0" class="break-inside-avoid" style="margin-bottom:24px; border:1.5px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+              <div v-if="printOptions.payments && (booking.payments?.length > 0 || booking.customer?.type === 'counter')" class="break-inside-avoid" style="margin-bottom:24px; border:1.5px solid #e2e8f0; border-radius:12px; overflow:hidden;">
                 <div style="background:#f1f5f9; padding:10px 16px; font-size:9px; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; color:#64748b; border-bottom:1px solid #e2e8f0;">🧾 ملخص الدفع</div>
                 <div style="padding:12px 16px; display:flex; flex-direction:column; gap:8px;">
                   <div v-for="(payment, idx) in booking.payments" :key="payment.id || idx"
@@ -327,9 +342,23 @@
                       <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b;">مدفوع</div>
                     </div>
                   </div>
+
+                  <!-- Corporate unpaid debt warning row -->
+                  <div v-if="booking.payments?.length === 0 && booking.customer?.type === 'counter'"
+                    style="background:#fef2f2; border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; border:1px solid #fee2e2;">
+                    <div>
+                      <div style="font-weight:800; color:#991b1b; font-size:12px;">قيد محاسبي آجل (مديونية شركة)</div>
+                      <div style="font-size:10px; color:#7f1d1d; margin-top:2px;">لم يتم تسجيل أي سداد نقدي/بنكي لهذا الحجز بعد.</div>
+                    </div>
+                    <div style="text-align:left;">
+                      <div style="font-weight:900; color:#dc2626; font-size:16px;">{{ formatCurrency(booking.pricing?.sellingPrice) }}</div>
+                      <div style="font-size:9px; font-weight:700; color:#991b1b;">مستحق بالكامل</div>
+                    </div>
+                  </div>
+
                   <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:2px solid #e2e8f0;">
-                    <span style="font-weight:700; color:#0f172a;">المتبقي</span>
-                    <span :style="{ fontWeight:'900', fontSize:'18px', color: getRemainingBalance() > 0 ? '#b45309' : '#15803d' }">
+                    <span style="font-weight:700; color:#0f172a;">{{ booking.customer?.type === 'counter' ? 'مديونية الحجز المتبقية' : 'المتبقي' }}</span>
+                    <span :style="{ fontWeight:'900', fontSize:'18px', color: getRemainingBalance() > 0 ? '#dc2626' : '#15803d' }">
                       {{ formatCurrency(Math.abs(getRemainingBalance())) }}
                     </span>
                   </div>
@@ -443,7 +472,7 @@
               </div>
               <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
                 <span class="text-text-muted">التحصيل</span>
-                <span class="font-bold text-sky-200">{{ booking.paymentStatusLabel || '—' }}</span>
+                <span class="font-bold" :class="booking.customer?.type === 'counter' ? 'text-sky-300' : 'text-sky-200'">{{ formattedPaymentStatusLabel || '—' }}</span>
               </div>
               <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
                 <span class="text-text-muted">المدفوع</span>
@@ -452,10 +481,10 @@
                 </span>
               </div>
               <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
-                <span class="text-text-muted">المتبقي</span>
+                <span class="text-text-muted">{{ booking.customer?.type === 'counter' ? 'مديونية مستحقة' : 'المتبقي' }}</span>
                 <span
                   class="font-mono font-bold tabular-nums"
-                  :class="getRemainingBalance() > 0.009 ? 'text-amber-300' : 'text-success'"
+                  :class="getRemainingBalance() > 0.009 ? (booking.customer?.type === 'counter' ? 'text-error font-black text-base' : 'text-amber-300') : 'text-success'"
                 >
                   {{ formatCurrency(Math.max(0, getRemainingBalance())) }}
                 </span>
@@ -463,15 +492,26 @@
             </div>
             
             <!-- Confirm Booking Call to Action -->
-            <div v-if="booking.status === 'pending'" class="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <p class="text-[10px] text-emerald-300 font-bold uppercase mb-2">إجراء مطلوب</p>
+            <div v-if="booking.status === 'pending'" class="mt-4 p-4 rounded-2xl space-y-3 bg-opacity-10 border" :class="booking.customer?.type === 'counter' ? 'bg-error border-error/30' : 'bg-emerald-500 border-emerald-500/20'">
+              <div class="flex items-start gap-2.5">
+                <AlertTriangle class="h-5 w-5 shrink-0 mt-0.5" :class="booking.customer?.type === 'counter' ? 'text-error' : 'text-emerald-300'" />
+                <div>
+                  <h4 class="text-xs font-black text-white">إجراء مطلوب: تأكيد الحجز</h4>
+                  <p class="text-[10px] text-text-muted mt-1 leading-relaxed">
+                    {{ booking.customer?.type === 'counter' 
+                      ? 'هذا حجز لعميل شركات (أجل). يجب النقر على تأكيد الحجز لتسجيل المديونية تلقائياً على حساب الشركة وإصدار التذكرة.' 
+                      : 'هذا الحجز في حالة معلقة. يرجى تأكيده بعد استلام الدفع لتنشيط حالة التذكرة.' }}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
-                class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
+                class="w-full py-3 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg"
+                :class="booking.customer?.type === 'counter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/10'"
                 @click="runConfirmBooking"
               >
                 <CheckCircle class="h-4 w-4" />
-                تأكيد الحجز الآن
+                تأكيد وتفعيل الحجز الآن
               </button>
             </div>
           </div>
@@ -577,10 +617,31 @@
             </div>
           </div>
 
-          <div class="flight-panel !p-6">
+          <!-- Corporate Buyer Panel (جهة الحجز / الشركة) -->
+          <div v-if="booking.customer?.type === 'counter'" class="flight-panel !p-6 border-sky-500/25">
+            <h3 class="flight-panel__title mb-4 flex items-center gap-2 text-sky-400">
+              <Building2 class="h-5 w-5" />
+              <span>جهة الحجز (الشركة)</span>
+            </h3>
+            <div class="flex items-center gap-4 rounded-xl border border-sky-500/10 p-4 bg-white/[0.03]">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-sky-400 text-lg font-black">
+                <Building2 class="w-6 h-6" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <div class="truncate font-bold text-white text-base">{{ booking.customer?.name || '—' }}</div>
+                  <span class="px-2.5 py-0.5 text-[9px] font-black bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full shrink-0">آجل فقط</span>
+                </div>
+                <div class="text-xs text-text-muted mt-1">كود الشركة: #{{ booking.customer?.id }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Individual Customer Panel (بيانات العميل) -->
+          <div v-else class="flight-panel !p-6">
             <h3 class="flight-panel__title mb-4 flex items-center gap-2">
               <User class="h-5 w-5 text-gold" />
-              بيانات العميل
+              <span>بيانات العميل</span>
             </h3>
             <div class="mb-4 flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.05] p-4">
               <div
@@ -861,6 +922,7 @@ import {
   Briefcase,
   CheckCircle,
   Edit,
+  Building2,
 } from 'lucide-vue-next';
 
 const props = defineProps(['id']);
@@ -963,6 +1025,36 @@ const printOptionList = [
 
 const booking = computed(() => store.currentBooking);
 
+const formattedPaymentStatusLabel = computed(() => {
+  if (!booking.value) return '';
+  const isCompany = booking.value.customer?.type === 'counter';
+  if (isCompany) {
+    if (booking.value.paymentStatus === 'paid') {
+      return 'آجل - مسدد بالكامل';
+    } else if (booking.value.paymentStatus === 'partial') {
+      return 'آجل - مسدد جزئياً';
+    } else {
+      return 'آجل - غير مسدد';
+    }
+  }
+  return booking.value.paymentStatusLabel || '';
+});
+
+const formattedPaymentStatusClass = computed(() => {
+  if (!booking.value) return '';
+  const isCompany = booking.value.customer?.type === 'counter';
+  if (isCompany) {
+    if (booking.value.paymentStatus === 'paid') {
+      return 'bg-success/15 text-success border border-success/30';
+    } else if (booking.value.paymentStatus === 'partial') {
+      return 'bg-amber-500/15 text-amber-200 border border-amber-500/35';
+    } else {
+      return 'bg-red-500/15 text-error border border-red-500/30';
+    }
+  }
+  return paymentStatusBadgeClass(booking.value.paymentStatus);
+});
+
 const getRemainingBalance = () => {
   const sellingPrice = booking.value?.pricing?.sellingPrice || 0;
   const fromBooking = parseFloat(booking.value?.totalPaid);
@@ -1007,6 +1099,7 @@ const ticketSegments = computed(() => {
       departureDate: s.departureDate || s.departure_date || booking.value?.departureDate || booking.value?.departure_date,
       departureTime: s.departureTime || s.departure_time,
       arrivalTime: s.arrivalTime || s.arrival_time,
+      arrivalDate: s.arrivalDate || s.arrival_date || booking.value?.arrivalDate || booking.value?.arrival_date || s.departureDate || s.departure_date,
       returnDate: (isRoundTrip && idx === segs.length - 1) ? returnDate : null,
       baggage: s.baggage || s.baggage_allowance || s.baggageAllowance || booking.value?.baggageAllowanceKg || booking.value?.baggage_allowance_kg || '',
     }));
@@ -1021,6 +1114,7 @@ const ticketSegments = computed(() => {
     departureDate: booking.value?.departureDate || booking.value?.departure_date,
     departureTime: booking.value?.departureTime || booking.value?.departure_time,
     arrivalTime: booking.value?.arrivalTime || booking.value?.arrival_time,
+    arrivalDate: booking.value?.arrivalDate || booking.value?.arrival_date || booking.value?.departureDate || booking.value?.departure_date,
     returnDate: isRoundTrip ? returnDate : null,
     baggage: booking.value?.baggageAllowanceKg || booking.value?.baggage_allowance_kg || '',
     flightClass: 'economy',

@@ -125,8 +125,9 @@ class BusBookingService
 
     /**
      * Create a new bus booking (reserve tickets).
-     * Does NOT record payment here — payment is separate step.
-     * Decrements available_tickets from inventory.
+     * Supports two modes:
+     *   A) inventory_id provided → use existing Filament-managed inventory
+     *   B) company_id + route + selling_price → auto-create inventory (deferred/آجل)
      *
      * @param  array  $data  Validated booking data
      *
@@ -136,40 +137,47 @@ class BusBookingService
     {
         try {
             return DB::transaction(function () use ($data) {
-                $inventory = BusInventory::where('id', $data['inventory_id'])
-                    ->lockForUpdate()
-                    ->firstOrFail();
 
-                if ($inventory->available_tickets < $data['quantity']) {
-                    throw new \Exception(
-                        'Not enough available tickets. Only '.
-                        $inventory->available_tickets.' left.'
-                    );
+                // ── Resolve inventory ───────────────────────────────────────────
+                if (! empty($data['inventory_id'])) {
+                    // Mode A: explicit Filament inventory
+                    $inventory = BusInventory::where('id', $data['inventory_id'])
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    if ($inventory->available_tickets < $data['quantity']) {
+                        throw new \Exception(
+                            'لا توجد تذاكر كافية. المتاح: ' . $inventory->available_tickets
+                        );
+                    }
+                } else {
+                    // Mode B: manual route → find-or-create auto inventory
+                    $inventory = $this->findOrCreateAutoInventory($data);
                 }
 
-                // Handle customer - create new if not exists
+                // ── Resolve customer ────────────────────────────────────────────
                 $customerId = $data['customer_id'] ?? null;
-                if (!$customerId && isset($data['customer_name']) && isset($data['customer_phone'])) {
+                if (! $customerId && isset($data['customer_name']) && isset($data['customer_phone'])) {
                     $customer = \App\Models\Customer::firstOrCreate(
                         ['phone' => $data['customer_phone']],
                         [
-                            'full_name' => $data['customer_name'],
-                            'type' => 'individual',
-                            'is_active' => true,
+                            'full_name'  => $data['customer_name'],
+                            'type'       => 'individual',
+                            'is_active'  => true,
                             'created_by' => Auth::id(),
                         ]
                     );
                     $customerId = $customer->id;
                 }
 
-                $unitPrice = $inventory->selling_price;
-                $totalPrice = $data['quantity'] * $unitPrice;
-                $costPerTicket = $inventory->cost_per_ticket;
-                $profit = ($unitPrice - $costPerTicket) * $data['quantity'];
+                $unitPrice    = (float) $inventory->selling_price;
+                $totalPrice   = $data['quantity'] * $unitPrice;
+                $costPerTicket = (float) $inventory->cost_per_ticket;
+                $profit       = ($unitPrice - $costPerTicket) * $data['quantity'];
 
                 $inventory->decrement('available_tickets', $data['quantity']);
 
-                // Get employee_id from authenticated user if not provided
+                // ── Resolve employee ────────────────────────────────────────────
                 $employeeId = $data['employee_id'] ?? null;
                 if (! $employeeId && Auth::check()) {
                     $user = Auth::user();
@@ -182,41 +190,41 @@ class BusBookingService
                 }
 
                 $booking = BusBooking::create([
-                    'inventory_id' => $data['inventory_id'],
-                    'customer_id' => $customerId,
-                    'employee_id' => $employeeId,
-                    'quantity' => $data['quantity'],
-                    'unit_price' => $unitPrice,
-                    'total_price' => $totalPrice,
-                    'paid_amount' => 0,
+                    'inventory_id'   => $inventory->id,
+                    'customer_id'    => $customerId,
+                    'employee_id'    => $employeeId,
+                    'quantity'       => $data['quantity'],
+                    'unit_price'     => $unitPrice,
+                    'total_price'    => $totalPrice,
+                    'paid_amount'    => 0,
                     'payment_status' => BusPaymentStatus::Pending,
-                    'profit' => $profit,
-                    'status' => BusBookingStatus::Pending,
-                    'notes' => $data['notes'] ?? null,
-                    'created_by' => Auth::id(),
+                    'profit'         => $profit,
+                    'status'         => BusBookingStatus::Pending,
+                    'notes'          => $data['notes'] ?? null,
+                    'created_by'     => Auth::id(),
                 ]);
 
-                // ✅ Record cost to company account if available
+                // ✅ Record company debt (cost) if company has an account
                 $company = $inventory->company;
                 if ($company && $company->account_id && $costPerTicket > 0) {
-                    $totalCost = $costPerTicket * $data['quantity'];
+                    $totalCost       = $costPerTicket * $data['quantity'];
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
-                    
+
                     if ($clearingAccountId) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount' => $totalCost,
-                            'from_account_id' => $company->account_id, // Debit company (decreases balance/increases debt)
-                            'to_account_id' => $clearingAccountId,    // Credit clearing
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'تكلفة حجز باص #' . $booking->id,
-                            'allow_from_negative' => true,
+                            'amount'             => $totalCost,
+                            'from_account_id'    => $company->account_id,
+                            'to_account_id'      => $clearingAccountId,
+                            'module'             => TransactionModule::Bus->value,
+                            'related_type'       => BusBooking::class,
+                            'related_id'         => $booking->id,
+                            'notes'              => 'تكلفة حجز باص #' . $booking->id . ' — ' . $inventory->route,
+                            'allow_from_negative'=> true,
                         ]);
                     }
                 }
 
-                // ✅ Record sale on customer ledger (Debt)
+                // ✅ Record sale on customer ledger (Debt / مديونية)
                 $this->recordSaleToCustomer(
                     $booking,
                     (int) $customerId,
@@ -225,12 +233,14 @@ class BusBookingService
                 );
 
                 Log::info('Bus booking created', [
-                    'booking_id' => $booking->id,
+                    'booking_id'   => $booking->id,
                     'inventory_id' => $inventory->id,
-                    'customer_id' => $customerId,
-                    'employee_id' => $employeeId,
-                    'quantity' => $data['quantity'],
-                    'user_id' => Auth::id(),
+                    'auto_created' => $inventory->is_auto_created,
+                    'customer_id'  => $customerId,
+                    'employee_id'  => $employeeId,
+                    'quantity'     => $data['quantity'],
+                    'route'        => $inventory->route,
+                    'user_id'      => Auth::id(),
                 ]);
 
                 return $booking->load([
@@ -244,14 +254,63 @@ class BusBookingService
             });
         } catch (\Exception $e) {
             Log::error('BusBookingService::createBooking failed', [
-                'error' => $e->getMessage(),
-                'user_id' => Auth::id(),
+                'error'      => $e->getMessage(),
+                'user_id'    => Auth::id(),
                 'booking_id' => null,
-                'inventory_id' => $data['inventory_id'] ?? null,
-                'input' => $data,
+                'input'      => $data,
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Find an existing auto-created inventory for (company + route + date)
+     * or create a new deferred one with unlimited capacity.
+     * This is used when booking directly from the Vue.js frontend (no Filament setup needed).
+     */
+    protected function findOrCreateAutoInventory(array $data): BusInventory
+    {
+        $companyId    = (int) $data['company_id'];
+        $route        = trim($data['route']);
+        $sellingPrice = (float) ($data['selling_price'] ?? 0);
+        $costPrice    = (float) ($data['cost_price']    ?? $sellingPrice); // سعر الشراء — المديونية للشركة
+        $travelDate   = $data['travel_date'] ?? now()->toDateString();
+
+        // Try to find an existing auto-inventory for same company + route + date + prices
+        $existing = BusInventory::where('company_id', $companyId)
+            ->where('route', $route)
+            ->where('travel_date', $travelDate)
+            ->where('selling_price', $sellingPrice)
+            ->where('cost_per_ticket', $costPrice)
+            ->where('is_auto_created', true)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        // Create new auto-inventory:
+        //   cost_per_ticket = سعر الشراء   → ما ندفعه للشركة (الآجل)
+        //   selling_price   = سعر البيع    → ما يدفعه العميل
+        //   profit margin   = selling - cost (تُحسب في createBooking)
+        return BusInventory::create([
+            'company_id'        => $companyId,
+            'route'             => $route,
+            'travel_date'       => $travelDate,
+            'departure_time'    => $data['departure_time'] ?? null,
+            'total_tickets'     => 999999,
+            'available_tickets' => 999999,
+            'cost_per_ticket'   => $costPrice,    // ← المديونية للشركة
+            'selling_price'     => $sellingPrice, // ← سعر البيع للعميل
+            'payment_type'      => \App\Enums\BusInventoryPaymentType::Deferred,
+            'total_cost'        => 0,
+            'amount_paid'       => 0,
+            'remaining_debt'    => 0,
+            'is_auto_created'   => true,
+            'notes'             => 'تلقائي — ' . $route . ' — شراء ' . $costPrice . ' / بيع ' . $sellingPrice,
+            'created_by'        => Auth::id(),
+        ]);
     }
 
     /**

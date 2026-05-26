@@ -215,7 +215,7 @@
                     <td class="px-5 py-3.5 text-xs text-white/40">{{ formatDt(booking.created_at) }}</td>
                   </tr>
                   <tr v-if="!data.recent_bookings?.length">
-                    <td colspan="6" class="px-5 py-16 text-center">
+                    <td :colspan="isAdmin ? 6 : 5" class="px-5 py-16 text-center">
                       <div class="flex flex-col items-center gap-3">
                         <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
                           <Plane class="w-7 h-7 text-white/10 -rotate-45" />

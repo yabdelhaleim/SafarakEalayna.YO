@@ -76,6 +76,7 @@ class FlightBookingService
             'flightSystem',
             'flightCarrier.system',
             'passengers',
+            'tickets',
             'segments',
             'payments',
             'createdBy',
@@ -1939,53 +1940,19 @@ class FlightBookingService
     ): void {
         $group = \App\Models\Flight\FlightGroup::findOrFail($groupId);
 
-        if (! $group->account_id) {
-            $account = Account::create([
-                'name' => 'مجموعة طيران — ' . $group->name . ' · ' . $group->code,
-                'type' => \App\Enums\AccountType::Supplier->value,
-                'currency' => 'EGP',
-                'balance' => 0,
-                'is_active' => true,
-                'owner_type' => Account::OWNER_TYPE_OFFICE,
-                'module_type' => 'tourism',
-                'module' => 'flight',
-                'notes' => 'حساب جاري مجموعة طيران، يُنشأ تلقائياً للربط المحاسبي.',
-                'created_by' => $userId,
-            ]);
-            $group->update(['account_id' => $account->id]);
-            $group->refresh();
-        }
-
-        $groupAccount = $group->account;
-        $clearingAccountId = $this->flightLedgerContraAccountId();
-
-        if ($clearingAccountId === null) {
-            Log::warning('No flight clearing account configured. Skipping group purchase journal.');
-            return;
-        }
-
-        if ($clearingAccountId === $groupAccount->id) {
-            return;
-        }
-
-        $tx = $this->transactionService->recordJournalTransfer([
+        \App\Models\Flight\FlightGroupTransaction::create([
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => $booking->id,
+            'type' => 'debt',
             'amount' => $purchasePriceEGP,
-            'from_account_id' => $groupAccount->id,
-            'to_account_id' => $clearingAccountId,
-            'allow_from_negative' => true,
-            'module' => TransactionModule::Flight->value,
-            'related_type' => FlightBooking::class,
-            'related_id' => $booking->id,
-            'notes' => 'شراء تذكرة طيران بالأجل — حجز #' . $booking->booking_number . ' من مجموعة: ' . $group->name,
+            'notes' => 'شراء تذكرة طيران بالأجل — حجز #' . $booking->booking_number,
             'created_by' => $userId,
         ]);
 
         Log::info('Flight purchase from group recorded on group ledger', [
             'booking_id' => $booking->id,
             'group_id' => $groupId,
-            'account_id' => $groupAccount->id,
             'amount' => $purchasePriceEGP,
-            'transaction_id' => $tx->id,
         ]);
     }
 
@@ -1995,7 +1962,7 @@ class FlightBookingService
     protected function reverseGroupPurchase(FlightBooking $booking, float $airlinePenalty, int $userId): void
     {
         $group = \App\Models\Flight\FlightGroup::find($booking->flight_group_id);
-        if (! $group || ! $group->account_id) {
+        if (! $group) {
             return;
         }
 
@@ -2011,20 +1978,12 @@ class FlightBookingService
             return;
         }
 
-        $clearingAccountId = $this->flightLedgerContraAccountId();
-        if ($clearingAccountId === null) {
-            return;
-        }
-
-        $tx = $this->transactionService->recordJournalTransfer([
+        \App\Models\Flight\FlightGroupTransaction::create([
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => $booking->id,
+            'type' => 'payment',
             'amount' => $netReversal,
-            'from_account_id' => $clearingAccountId,
-            'to_account_id' => $group->account_id,
-            'allow_from_negative' => true,
-            'module' => TransactionModule::Flight->value,
-            'related_type' => FlightBooking::class,
-            'related_id' => $booking->id,
-            'notes' => 'إلغاء شراء تذكرة طيران — حجز #' . $booking->booking_number . ' من مجموعة: ' . $group->name,
+            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #' . $booking->booking_number . ' (غرامة: ' . $airlinePenalty . ')',
             'created_by' => $userId,
         ]);
 
@@ -2033,7 +1992,6 @@ class FlightBookingService
             'group_id' => $group->id,
             'reversal_amount' => $netReversal,
             'penalty' => $airlinePenalty,
-            'transaction_id' => $tx->id,
         ]);
     }
 }

@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\InvoiceService;
 use App\Http\Resources\Invoice\InvoiceResource;
 use App\Http\Resources\Invoice\InvoicePaymentResource;
+use App\Helpers\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -35,10 +35,9 @@ class InvoiceController extends Controller
         $invoices = $this->invoiceService->getAllInvoices($filters)
             ->paginate(min($request->per_page ?? 15, 100));
 
-        return ApiResponse::paginated(
+        return ApiResponse::success(
             'Invoices retrieved successfully',
-            InvoiceResource::collection($invoices),
-            $invoices
+            InvoiceResource::collection($invoices)->response()->getData(true),
         );
     }
 
@@ -83,7 +82,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Invoice retrieved successfully',
-            new InvoiceResource($invoice)
+            new InvoiceResource($invoice),
         );
     }
 
@@ -117,7 +116,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Invoice updated successfully',
-            new InvoiceResource($invoice->load('customer'))
+            new InvoiceResource($invoice->load('customer')),
         );
     }
 
@@ -129,9 +128,7 @@ class InvoiceController extends Controller
 
         $this->invoiceService->deleteInvoice($invoice);
 
-        return ApiResponse::success(
-            'Invoice deleted successfully'
-        );
+        return ApiResponse::success('Invoice deleted successfully');
     }
 
     public function send(int $id): JsonResponse
@@ -144,7 +141,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Invoice sent successfully',
-            new InvoiceResource($invoice)
+            new InvoiceResource($invoice),
         );
     }
 
@@ -158,7 +155,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Invoice cancelled successfully',
-            new InvoiceResource($invoice)
+            new InvoiceResource($invoice),
         );
     }
 
@@ -192,7 +189,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Payments retrieved successfully',
-            InvoicePaymentResource::collection($invoice->payments)
+            InvoicePaymentResource::collection($invoice->payments),
         );
     }
 
@@ -212,7 +209,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success(
             'Invoice statistics retrieved successfully',
-            $stats
+            $stats,
         );
     }
 }

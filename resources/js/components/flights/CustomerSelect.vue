@@ -69,17 +69,17 @@
     <!-- Create Customer Modal -->
     <div v-if="showCreateModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div class="bg-card w-full max-w-2xl border border-white/10 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-300 text-right" dir="rtl">
-        <h2 class="text-xl font-bold mb-6 text-gold">إضافة عميل جديد (كوانتر)</h2>
+        <h2 class="text-xl font-bold mb-6 text-gold">{{ props.type === 'counter' ? 'إضافة شركة جديدة' : 'إضافة عميل جديد (كوانتر)' }}</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm text-muted mb-1">الاسم بالكامل*</label>
-            <input v-model="newCustomer.full_name" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أدخل الاسم بالكامل" />
+            <label class="block text-sm text-muted mb-1">{{ props.type === 'counter' ? 'اسم الشركة*' : 'الاسم بالكامل*' }}</label>
+            <input v-model="newCustomer.full_name" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" :placeholder="props.type === 'counter' ? 'أدخل اسم الشركة' : 'أدخل الاسم بالكامل'" />
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">رقم الهاتف*</label>
             <input v-model="newCustomer.phone" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="01xxxxxxxxx" />
           </div>
-          <div>
+          <div v-if="props.type !== 'counter'">
             <label class="block text-sm text-muted mb-1">الرقم القومي</label>
             <input v-model="newCustomer.national_id" type="text" maxlength="14" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="14 رقم" />
           </div>
@@ -91,11 +91,11 @@
             <label class="block text-sm text-muted mb-1">المدينة</label>
             <input v-model="newCustomer.city" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أدخل المدينة" />
           </div>
-          <div>
+          <div v-if="props.type !== 'counter'">
             <label class="block text-sm text-muted mb-1">دولة السفر</label>
             <input v-model="newCustomer.travel_country" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أدخل دولة السفر" />
           </div>
-          <div class="md:col-span-2">
+          <div v-if="props.type !== 'counter'" class="md:col-span-2">
             <label class="block text-sm text-muted mb-1">الجهة التابع لها</label>
             <input v-model="newCustomer.affiliation" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="الشركة أو الجهة التابع لها" />
           </div>
@@ -149,6 +149,11 @@ const newCustomer = ref({
   notes: '',
   type: props.type
 });
+
+watch(() => props.type, (newType) => {
+  newCustomer.value.type = newType;
+});
+
 const savingCustomer = ref(false);
 
 const getInitials = (name) => {

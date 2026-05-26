@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\SupplierService;
+use App\Helpers\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -32,7 +32,7 @@ class SupplierController extends Controller
 
         return ApiResponse::paginated(
             'Suppliers retrieved successfully',
-            $suppliers->getCollection(),
+            $suppliers->items(),
             $suppliers
         );
     }
@@ -117,9 +117,7 @@ class SupplierController extends Controller
 
         $this->supplierService->deleteSupplier($supplier);
 
-        return ApiResponse::success(
-            'Supplier deleted successfully'
-        );
+        return ApiResponse::success('Supplier deleted successfully');
     }
 
     public function getDebt(): JsonResponse

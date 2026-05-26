@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
-use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Http\Resources\UserResource;
+use App\Helpers\ApiResponse;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -64,7 +64,7 @@ class UserController extends Controller
 
         return ApiResponse::success(
             '',
-            new UserResource($user)
+            new UserResource($user),
         );
     }
 
@@ -93,7 +93,7 @@ class UserController extends Controller
 
         return ApiResponse::success(
             'تم تحديث المستخدم بنجاح',
-            new UserResource($user->load('employee'))
+            new UserResource($user->load('employee')),
         );
     }
 
@@ -125,7 +125,7 @@ class UserController extends Controller
 
         return ApiResponse::success(
             'تم إلغاء تنشيط المستخدم بنجاح',
-            null
+            null,
         );
     }
 
@@ -158,12 +158,7 @@ class UserController extends Controller
 
         return ApiResponse::success(
             $newStatus ? 'تم تفعيل المستخدم بنجاح' : 'تم إلغاء تنشيط المستخدم بنجاح',
-            new UserResource($user->load('employee'))
+            new UserResource($user->load('employee')),
         );
-    }
-},
-            'message' => $newStatus ? 'تم تفعيل المستخدم بنجاح' : 'تم إلغاء تنشيط المستخدم بنجاح',
-            'data' => new UserResource($user->load('employee')),
-        ]);
     }
 }

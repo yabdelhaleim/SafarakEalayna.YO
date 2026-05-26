@@ -122,284 +122,113 @@ class CustomerController extends Controller
     public function statement(Request $request, Customer $customer): JsonResponse
     {
         try {
+            $customerAccount = null;
+            if ($customer->account_id) {
+                $customerAccount = \App\Models\Account::find($customer->account_id);
+            }
+
+            if (!$customerAccount) {
+                return ApiResponse::success('تم استدعاء كشف حساب العميل التفصيلي بنجاح.', [
+                    'customer' => new CustomerResource($customer),
+                    'stats' => [
+                        'opening_balance' => 0.0,
+                        'period_credit' => 0.0,
+                        'period_debit' => 0.0,
+                        'closing_balance' => 0.0,
+                    ],
+                    'items' => [],
+                    'pagination' => [
+                        'total' => 0,
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'per_page' => 20,
+                        'from' => 0,
+                        'to' => 0,
+                    ]
+                ]);
+            }
+
+            // Get all entries for the customer account
+            $entries = \App\Models\AccountEntry::with([
+                'transaction.createdBy'
+            ])
+            ->where('account_id', $customerAccount->id)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
             $items = [];
-            $totalSales = 0.0;
-            $totalPaid = 0.0;
+            $totalDebit = 0.0;
+            $totalCredit = 0.0;
 
-            // 1. Flight Bookings
-            $flights = \App\Models\Flight\FlightBooking::with(['flightSystem', 'flightCarrier', 'passengers', 'payments', 'createdBy'])
-                ->where('customer_id', $customer->id)
-                ->get();
+            foreach ($entries as $entry) {
+                $tx = $entry->transaction;
+                if (!$tx) {
+                    continue;
+                }
 
-            foreach ($flights as $b) {
-                $saleAmount = (float) $b->selling_price;
-                $totalSales += $saleAmount;
+                $debit = (float) $entry->debit;
+                $credit = (float) $entry->credit;
+
+                $totalDebit += $debit;
+                $totalCredit += $credit;
+
+                $module = $tx->module instanceof \App\Enums\TransactionModule ? $tx->module->value : $tx->module;
+                $description = $tx->notes ?: 'معاملة مالية';
+
+                // Try to resolve booking details if related is present
+                $bookingDetails = null;
+                if ($tx->related_type && $tx->related_id) {
+                    try {
+                        $related = $tx->related;
+                        if ($related) {
+                            if ($tx->related_type === \App\Models\Flight\FlightBooking::class) {
+                                $bookingDetails = [
+                                    'booking_id' => $related->id,
+                                    'booking_number' => $related->booking_number,
+                                    'pnr' => $related->pnr,
+                                    'provider_name' => $related->airline_name,
+                                    'route' => $related->route ?: ($related->from_airport . ' → ' . $related->to_airport),
+                                    'passengers' => $related->passengers && $related->passengers->count() ? $related->passengers->map(fn($p) => trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? '')))->filter()->implode('، ') : '—',
+                                    'status' => $related->status instanceof \App\Enums\FlightBookingStatus ? $related->status->value : $related->status,
+                                    'selling_price' => (float) $related->selling_price,
+                                    'total_paid' => (float) $related->paid_amount,
+                                    'remaining' => (float) $related->remaining_amount,
+                                    'payment_status' => $related->computePaymentStatus(),
+                                ];
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // ignore if related model cannot be loaded
+                    }
+                }
 
                 $items[] = [
-                    'id' => 'FL-' . $b->id,
-                    'transaction_id' => 'FL-' . $b->id,
-                    'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                    'user_name' => $b->createdBy ? $b->createdBy->name : 'النظام',
-                    'reference_id' => $b->booking_number ?: $b->booking_reference ?: ('BK-' . $b->id),
+                    'id' => $entry->id,
+                    'transaction_id' => $tx->id,
+                    'created_at' => $entry->created_at->toDateTimeString(),
+                    'date_human' => $entry->created_at->format('Y-m-d H:i'),
+                    'user_name' => $tx->createdBy ? $tx->createdBy->name : 'النظام',
+                    'reference_id' => $tx->id,
                     'entity_name' => $customer->full_name,
-                    'description' => 'حجز طيران - خط السير: ' . ($b->route ?: ($b->from_airport . ' → ' . $b->to_airport)),
-                    'process_type' => 'فاتورة مبيعات',
-                    'module' => 'flight',
-                    'credit' => 0.0,
-                    'debit' => $saleAmount,
-                    'booking_details' => [
-                        'pnr' => $b->pnr,
-                        'provider_name' => $b->flightSystem ? $b->flightSystem->name : ($b->flightCarrier ? $b->flightCarrier->name : $b->airline_name),
-                        'route' => $b->route ?: ($b->from_airport . ' → ' . $b->to_airport),
-                        'passengers' => $b->passengers && $b->passengers->count() ? $b->passengers->map(fn($p) => $p->name)->implode('، ') : '—',
-                        'status' => $b->status,
-                    ],
+                    'description' => $description,
+                    'process_type' => $debit > 0 ? 'سند قبض / سداد نقدية' : 'فاتورة مبيعات / مديونية',
+                    'module' => $module,
+                    'debit' => $debit,
+                    'credit' => $credit,
+                    'balance_after' => (float) $entry->balance_after,
+                    'booking_details' => $bookingDetails,
                 ];
-
-                // Payments for Flight
-                foreach ($b->payments as $p) {
-                    $amt = (float) $p->amount;
-                    $totalPaid += $amt;
-                    $items[] = [
-                        'id' => 'FLP-' . $p->id,
-                        'transaction_id' => 'FLP-' . $p->id,
-                        'created_at' => $p->created_at ? $p->created_at->toDateTimeString() : now()->toDateTimeString(),
-                        'user_name' => 'سداد',
-                        'reference_id' => $b->booking_number ?: $b->booking_reference ?: ('BK-' . $b->id),
-                        'entity_name' => $customer->full_name,
-                        'description' => 'سداد دفعة حجز طيران (' . ($p->payment_method ?: 'نقدي') . ')',
-                        'process_type' => 'سداد نقدية',
-                        'module' => 'flight',
-                        'credit' => $amt,
-                        'debit' => 0.0,
-                        'booking_details' => null,
-                    ];
-                }
-            }
-
-            // 2. Hajj & Umra Bookings
-            $hajj = \App\Models\HajjUmraBooking::with(['program', 'payments', 'createdBy'])
-                ->where('customer_id', $customer->id)
-                ->get();
-
-            foreach ($hajj as $b) {
-                $saleAmount = (float) $b->selling_price;
-                $totalSales += $saleAmount;
-
-                $items[] = [
-                    'id' => 'HU-' . $b->id,
-                    'transaction_id' => 'HU-' . $b->id,
-                    'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                    'user_name' => $b->createdBy ? $b->createdBy->name : 'النظام',
-                    'reference_id' => 'HU-' . $b->id,
-                    'entity_name' => $customer->full_name,
-                    'description' => 'حجز برنامج: ' . ($b->program ? $b->program->name : 'حج وعمرة'),
-                    'process_type' => 'فاتورة مبيعات',
-                    'module' => 'hajj_umra',
-                    'credit' => 0.0,
-                    'debit' => $saleAmount,
-                    'booking_details' => [
-                        'pnr' => 'HU-' . $b->id,
-                        'provider_name' => $b->program ? $b->program->name : '—',
-                        'route' => 'رحلة دينية',
-                        'passengers' => $customer->full_name,
-                        'status' => $b->status instanceof \App\Enums\HajjUmraStatus ? $b->status->label() : $b->status,
-                    ],
-                ];
-
-                foreach ($b->payments as $p) {
-                    $amt = (float) $p->amount;
-                    $totalPaid += $amt;
-                    $items[] = [
-                        'id' => 'HUP-' . $p->id,
-                        'transaction_id' => 'HUP-' . $p->id,
-                        'created_at' => $p->created_at ? $p->created_at->toDateTimeString() : now()->toDateTimeString(),
-                        'user_name' => 'سداد',
-                        'reference_id' => 'HU-' . $b->id,
-                        'entity_name' => $customer->full_name,
-                        'description' => 'سداد دفعة برنامج حج/عمرة',
-                        'process_type' => 'سداد نقدية',
-                        'module' => 'hajj_umra',
-                        'credit' => $amt,
-                        'debit' => 0.0,
-                        'booking_details' => null,
-                    ];
-                }
-            }
-
-            // 3. Visa Bookings
-            $visas = \App\Models\VisaBooking::with(['visaDetail', 'payments', 'createdBy'])
-                ->where('customer_id', $customer->id)
-                ->get();
-
-            foreach ($visas as $b) {
-                $saleAmount = (float) $b->selling_price + (float) ($b->service_fee ?? 0);
-                $totalSales += $saleAmount;
-
-                $items[] = [
-                    'id' => 'VS-' . $b->id,
-                    'transaction_id' => 'VS-' . $b->id,
-                    'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                    'user_name' => $b->createdBy ? $b->createdBy->name : 'النظام',
-                    'reference_id' => 'VS-' . $b->id,
-                    'entity_name' => $customer->full_name,
-                    'description' => 'إصدار تأشيرة - الوجهة: ' . ($b->visaDetail ? $b->visaDetail->country : 'تأشيرة'),
-                    'process_type' => 'فاتورة مبيعات',
-                    'module' => 'visa',
-                    'credit' => 0.0,
-                    'debit' => $saleAmount,
-                    'booking_details' => [
-                        'pnr' => 'VS-' . $b->id,
-                        'provider_name' => $b->visaDetail ? $b->visaDetail->country : '—',
-                        'route' => 'تأشيرة سفر',
-                        'passengers' => $customer->full_name,
-                        'status' => $b->status instanceof \App\Enums\VisaStatus ? $b->status->label() : $b->status,
-                    ],
-                ];
-
-                foreach ($b->payments as $p) {
-                    $amt = (float) $p->amount;
-                    $totalPaid += $amt;
-                    $items[] = [
-                        'id' => 'VSP-' . $p->id,
-                        'transaction_id' => 'VSP-' . $p->id,
-                        'created_at' => $p->created_at ? $p->created_at->toDateTimeString() : now()->toDateTimeString(),
-                        'user_name' => 'سداد',
-                        'reference_id' => 'VS-' . $b->id,
-                        'entity_name' => $customer->full_name,
-                        'description' => 'سداد رسوم تأشيرة',
-                        'process_type' => 'سداد نقدية',
-                        'module' => 'visa',
-                        'credit' => $amt,
-                        'debit' => 0.0,
-                        'booking_details' => null,
-                    ];
-                }
-            }
-
-            // 4. Bus Bookings
-            $buses = \App\Models\Bus\BusBooking::with(['inventory.company', 'payments', 'createdBy'])
-                ->where('customer_id', $customer->id)
-                ->get();
-
-            foreach ($buses as $b) {
-                $saleAmount = (float) $b->total_price;
-                $totalSales += $saleAmount;
-
-                $items[] = [
-                    'id' => 'BS-' . $b->id,
-                    'transaction_id' => 'BS-' . $b->id,
-                    'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                    'user_name' => $b->createdBy ? $b->createdBy->name : 'النظام',
-                    'reference_id' => 'BS-' . $b->id,
-                    'entity_name' => $customer->full_name,
-                    'description' => 'حجز باص - الجهة: ' . ($b->inventory && $b->inventory->company ? $b->inventory->company->name : 'باص'),
-                    'process_type' => 'فاتورة مبيعات',
-                    'module' => 'bus',
-                    'credit' => 0.0,
-                    'debit' => $saleAmount,
-                    'booking_details' => [
-                        'pnr' => 'BS-' . $b->id,
-                        'provider_name' => $b->inventory && $b->inventory->company ? $b->inventory->company->name : '—',
-                        'route' => 'نقل بري (' . $b->quantity . ' مقاعد)',
-                        'passengers' => $customer->full_name,
-                        'status' => $b->status instanceof \App\Enums\BusBookingStatus ? $b->status->label() : $b->status,
-                    ],
-                ];
-
-                foreach ($b->payments as $p) {
-                    $amt = (float) $p->amount;
-                    $totalPaid += $amt;
-                    $items[] = [
-                        'id' => 'BSP-' . $p->id,
-                        'transaction_id' => 'BSP-' . $p->id,
-                        'created_at' => $p->created_at ? $p->created_at->toDateTimeString() : now()->toDateTimeString(),
-                        'user_name' => 'سداد',
-                        'reference_id' => 'BS-' . $b->id,
-                        'entity_name' => $customer->full_name,
-                        'description' => 'سداد تذكرة باص',
-                        'process_type' => 'سداد نقدية',
-                        'module' => 'bus',
-                        'credit' => $amt,
-                        'debit' => 0.0,
-                        'booking_details' => null,
-                    ];
-                }
-            }
-
-            // 5. Online Transactions
-            $onlines = \App\Models\Online\OnlineTransaction::with(['serviceType', 'provider', 'createdBy'])
-                ->where('customer_id', $customer->id)
-                ->get();
-
-            foreach ($onlines as $b) {
-                $saleAmount = (float) $b->selling_price;
-                $totalSales += $saleAmount;
-
-                $items[] = [
-                    'id' => 'ON-' . $b->id,
-                    'transaction_id' => 'ON-' . $b->id,
-                    'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                    'user_name' => $b->createdBy ? $b->createdBy->name : 'النظام',
-                    'reference_id' => $b->reference_number ?: ('ON-' . $b->id),
-                    'entity_name' => $customer->full_name,
-                    'description' => 'خدمة إلكترونية: ' . ($b->serviceType ? $b->serviceType->name : 'خدمة'),
-                    'process_type' => 'فاتورة مبيعات',
-                    'module' => 'online',
-                    'credit' => 0.0,
-                    'debit' => $saleAmount,
-                    'booking_details' => [
-                        'pnr' => $b->reference_number ?: ('ON-' . $b->id),
-                        'provider_name' => $b->provider ? $b->provider->name : '—',
-                        'route' => 'أونلاين',
-                        'passengers' => $customer->full_name,
-                        'status' => $b->status instanceof \App\Enums\OnlineTransactionStatus ? $b->status->label() : $b->status,
-                    ],
-                ];
-
-                // If completed/paid, mark auto receipt
-                if (in_array($b->status instanceof \App\Enums\OnlineTransactionStatus ? $b->status->value : $b->status, ['completed', 'paid'])) {
-                    $totalPaid += $saleAmount;
-                    $items[] = [
-                        'id' => 'ONP-' . $b->id,
-                        'transaction_id' => 'ONP-' . $b->id,
-                        'created_at' => $b->created_at ? $b->created_at->toDateTimeString() : now()->toDateTimeString(),
-                        'user_name' => 'سداد تلقائي',
-                        'reference_id' => $b->reference_number ?: ('ON-' . $b->id),
-                        'entity_name' => $customer->full_name,
-                        'description' => 'تحصيل فوري لخدمة أونلاين',
-                        'process_type' => 'سداد نقدية',
-                        'module' => 'online',
-                        'credit' => $saleAmount,
-                        'debit' => 0.0,
-                        'booking_details' => null,
-                    ];
-                }
-            }
-
-            // Sort chronologically ascending
-            usort($items, function ($a, $b) {
-                return strtotime($a['created_at']) <=> strtotime($b['created_at']);
-            });
-
-            // Compute line-by-line running balance
-            $runningBalance = 0.0;
-            foreach ($items as &$item) {
-                // Client Debt increases by Sales (debit) and decreases by Payments (credit)
-                $runningBalance = $runningBalance + $item['debit'] - $item['credit'];
-                $item['balance_after'] = $runningBalance;
-                $item['date_human'] = \Carbon\Carbon::parse($item['created_at'])->format('Y-m-d H:i');
             }
 
             return ApiResponse::success('تم استدعاء كشف حساب العميل التفصيلي بنجاح.', [
                 'customer' => new CustomerResource($customer),
                 'stats' => [
                     'opening_balance' => 0.0,
-                    'period_credit' => $totalPaid, // total paid by client
-                    'period_debit' => $totalSales, // total bought by client
-                    'closing_balance' => $runningBalance, // net client balance (positive means client owes company)
+                    'period_credit' => $totalCredit,
+                    'period_debit' => $totalDebit,
+                    'closing_balance' => (float) $customerAccount->balance,
                 ],
-                'items' => array_reverse($items), // Reverse to show latest on top in standard datatables
+                'items' => array_reverse($items),
                 'pagination' => [
                     'total' => count($items),
                     'current_page' => 1,
@@ -409,6 +238,69 @@ class CustomerController extends Controller
                     'to' => count($items),
                 ]
             ]);
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Record a customer debt repayment (سند قبض) and transfer to treasury/bank.
+     */
+    public function payDebt(Request $request, Customer $customer): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'account_id' => 'required|exists:accounts,id',
+            'notes' => 'nullable|string|max:500',
+            'type' => 'nullable|string|in:receipt,payment',
+        ]); 
+
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated) {
+                // Ensure customer has a ledger account
+                $customerAccount = $customer->account_id ? \App\Models\Account::find($customer->account_id) : null;
+                if (!$customerAccount) {
+                    $customerAccount = \App\Models\Account::create([
+                        'name' => 'حساب العميل: ' . $customer->full_name,
+                        'type' => \App\Enums\AccountType::Customer,
+                        'balance' => 0,
+                        'currency' => 'EGP',
+                        'is_active' => true,
+                        'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                        'module_type' => 'tourism',
+                        'is_module_vault' => false,
+                        'notes' => 'حساب تلقائي للعميل #' . $customer->id,
+                        'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                    ]);
+                    $customer->update(['account_id' => $customerAccount->id]);
+                }
+
+                $toAccount = \App\Models\Account::findOrFail($validated['account_id']); // Treasury/Bank receiving the payment
+                $fromAccount = $customerAccount; // Customer's ledger account
+
+                $type = $validated['type'] ?? 'receipt'; // 'receipt' or 'payment'
+
+                $fromId = $type === 'payment' ? $toAccount->id : $fromAccount->id;
+                $toId = $type === 'payment' ? $fromAccount->id : $toAccount->id;
+
+                $transactionService = app(\App\Services\Finance\TransactionService::class);
+                $transaction = $transactionService->recordJournalTransfer([
+                    'amount' => (float) $validated['amount'],
+                    'from_account_id' => $fromId,
+                    'to_account_id' => $toId,
+                    'allow_from_negative' => true, // Customer debt can go negative (i.e. they pay extra, becoming in credit)
+                    'module' => \App\Enums\TransactionModule::Flight->value,
+                    'notes' => $validated['notes'] ?? ($type === 'payment' 
+                        ? ('سند صرف - دفع للعميل: ' . $customer->full_name) 
+                        : ('سند قبض - تسديد مديونية عميل طيران: ' . $customer->full_name)),
+                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                ]);
+
+                return ApiResponse::success($type === 'payment' ? 'تم صرف المبلغ للعميل بنجاح وقيد سند الصرف.' : 'تم سداد المبلغ بنجاح وقيد سند القبض.', [
+                    'transaction_id' => $transaction->id,
+                    'new_balance' => (float) $fromAccount->fresh()->balance,
+                ]);
+            });
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

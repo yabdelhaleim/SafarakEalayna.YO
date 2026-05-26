@@ -19,19 +19,21 @@ class CustomerService
 
     public function getAllCustomers(array $filters): LengthAwarePaginator
     {
-        $query = Customer::with(['createdBy', 'ledgerAccount']);
+        $query = Customer::with(['createdBy', 'ledgerAccount'])
+            ->leftJoin('accounts', 'customers.account_id', '=', 'accounts.id')
+            ->select('customers.*');
 
         if (isset($filters['search']) && $filters['search']) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('national_id', 'like', "%{$search}%");
+                $q->where('customers.full_name', 'like', "%{$search}%")
+                    ->orWhere('customers.phone', 'like', "%{$search}%")
+                    ->orWhere('customers.national_id', 'like', "%{$search}%");
             });
         }
 
         if (isset($filters['customer_tier']) && $filters['customer_tier']) {
-            $query->where('customer_tier', $filters['customer_tier']);
+            $query->where('customers.customer_tier', $filters['customer_tier']);
         }
 
         if (isset($filters['type']) && $filters['type']) {
@@ -41,12 +43,13 @@ class CustomerService
             } elseif ($type === 'counter') {
                 $type = 'company';
             }
-            $query->where('type', $type);
+            $query->where('customers.type', $type);
         }
 
         $perPage = min($filters['per_page'] ?? 15, 100);
 
-        return $query->orderBy('created_at', 'desc')->paginate($perPage);
+        return $query->orderBy('customers.created_at', 'desc')
+            ->paginate($perPage);
     }
 
     /**

@@ -126,7 +126,7 @@ class FinancialReportService
 
             return [
                 'customer_id' => $customer->id,
-                'customer_name' => $customer->name,
+                'customer_name' => $customer->full_name ?: $customer->name,
                 'phone' => $customer->phone,
                 'total_debt' => $totalDebt,
                 'pending_bookings_count' => $pendingBookings->count(),

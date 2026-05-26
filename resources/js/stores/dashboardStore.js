@@ -219,7 +219,7 @@ export const useDashboardStore = defineStore('dashboard', {
           signal: controller.signal
         });
 
-        if (response.data.success || response.data.status) {
+        if (response.data.success || response.data.success) {
           const data = response.data.data;
 
           // Update all state
@@ -261,7 +261,7 @@ export const useDashboardStore = defineStore('dashboard', {
         const response = await axios.get('/api/v1/dashboard/overview', {
           signal: controller.signal
         });
-        if (response.data.success || response.data.status) {
+        if (response.data.success || response.data.success) {
           this.overview = response.data.data;
         }
       } catch (error) {
@@ -292,7 +292,7 @@ export const useDashboardStore = defineStore('dashboard', {
           },
           signal: controller.signal
         });
-        if (response.data.success || response.data.status) {
+        if (response.data.success || response.data.success) {
           this.financial = response.data.data;
         }
       } catch (error) {
@@ -323,7 +323,7 @@ export const useDashboardStore = defineStore('dashboard', {
           },
           signal: controller.signal
         });
-        if (response.data.success || response.data.status) {
+        if (response.data.success || response.data.success) {
           this.bookings = response.data.data;
         }
       } catch (error) {
@@ -351,7 +351,7 @@ export const useDashboardStore = defineStore('dashboard', {
           params: { limit },
           signal: controller.signal
         });
-        if (response.data.success || response.data.status) {
+        if (response.data.success || response.data.success) {
           this.recent_activities = response.data.data;
         }
       } catch (error) {

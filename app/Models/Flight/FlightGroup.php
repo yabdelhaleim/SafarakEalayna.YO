@@ -34,32 +34,7 @@ class FlightGroup extends Model
         ];
     }
 
-    protected static function booted(): void
-    {
-        static::created(function (FlightGroup $group) {
-            if ($group->account_id !== null) {
-                return;
-            }
 
-            $userId = $group->created_by ?: 1;
-
-            $account = \App\Models\Account::create([
-                'name' => 'مجموعة طيران — ' . $group->name . ' · ' . $group->code,
-                'type' => \App\Enums\AccountType::Supplier->value,
-                'currency' => 'EGP',
-                'balance' => 0,
-                'is_active' => true,
-                'owner_type' => \App\Models\Account::OWNER_TYPE_OFFICE,
-                'module_type' => 'tourism',
-                'module' => 'flight',
-                'notes' => 'حساب جاري مجموعة طيران، يُنشأ تلقائياً مع سجل المجموعة للربط المحاسبي.',
-                'created_by' => $userId,
-            ]);
-
-            $group->account_id = $account->id;
-            $group->saveQuietly();
-        });
-    }
 
     public function account(): BelongsTo
     {
@@ -74,6 +49,11 @@ class FlightGroup extends Model
     public function bookings(): HasMany
     {
         return $this->hasMany(\App\Models\Flight\FlightBooking::class);
+    }
+
+    public function groupTransactions(): HasMany
+    {
+        return $this->hasMany(FlightGroupTransaction::class, 'flight_group_id');
     }
 
     public function createdBy(): BelongsTo

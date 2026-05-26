@@ -76,6 +76,8 @@ Route::prefix('v1')->middleware([
             Route::post('accounts/{account}/deactivate', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'deactivate']);
             Route::get('accounts/{account}/statement', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'statement']);
             Route::post('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transfer']);
+            Route::get('transfers', [\App\Http\Controllers\Api\V1\Finance\AccountController::class, 'transferHistory']);
+
 
             // Transactions resource routes
             Route::apiResource('transactions', \App\Http\Controllers\Api\V1\Finance\TransactionController::class)->except(['index', 'show'])->names('finance_transactions');
@@ -108,6 +110,8 @@ Route::prefix('v1')->middleware([
         Route::apiResource('carriers', \App\Http\Controllers\Api\V1\Flight\FlightCarrierController::class)->names('flight_carriers');
         Route::get('carriers/{carrier}/balance', [\App\Http\Controllers\Api\V1\Flight\FlightCarrierController::class, 'balance']);
         Route::get('carriers/{carrier}/groups', [\App\Http\Controllers\Api\V1\Flight\FlightGroupController::class, 'getByCarrier']);
+        Route::get('groups/{group}/statement', [\App\Http\Controllers\Api\V1\Flight\FlightGroupController::class, 'statement']);
+        Route::post('groups/{group}/pay-debt', [\App\Http\Controllers\Api\V1\Flight\FlightGroupController::class, 'payDebt']);
         Route::apiResource('groups', \App\Http\Controllers\Api\V1\Flight\FlightGroupController::class)->names('flight_groups')->only(['index', 'show']);
 
         // Airports endpoints
@@ -307,6 +311,7 @@ Route::prefix('v1')->middleware([
 
     // Customers API
         Route::get('customers/{customer}/statement', [\App\Http\Controllers\Api\V1\CustomerController::class, 'statement']);
+        Route::post('customers/{customer}/pay-debt', [\App\Http\Controllers\Api\V1\CustomerController::class, 'payDebt'])->name('customers.pay_debt');
         Route::apiResource('customers', \App\Http\Controllers\Api\V1\CustomerController::class)->names('customers');
 
     // Hajj & Umra API

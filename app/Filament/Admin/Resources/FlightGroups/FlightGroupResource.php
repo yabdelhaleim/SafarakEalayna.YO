@@ -96,17 +96,6 @@ class FlightGroupResource extends Resource
                             ->placeholder('example@email.com'),
                     ])
                     ->columns(3),
-                Section::make('المعلومات المالية')
-                    ->schema([
-                        TextInput::make('commission_rate')
-                            ->label('نسبة العمولة (%)')
-                            ->numeric()
-                            ->minValue(0)
-                            ->maxValue(100)
-                            ->suffix('%')
-                            ->default(0)
-                            ->helperText('نسبة العمولة التي تحصل عليها المجموعة'),
-                    ]),
                 Section::make('معلومات إضافية')
                     ->schema([
                         Textarea::make('notes')
@@ -141,12 +130,6 @@ class FlightGroupResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
-                TextColumn::make('account.balance')
-                    ->label('الرصيد / المديونية')
-                    ->sortable()
-                    ->money('EGP')
-                    ->color(fn ($state): string => $state < 0 ? 'danger' : 'success')
-                    ->badge(),
                 TextColumn::make('carrier.name')
                     ->label('شركة الطيران')
                     ->badge()
@@ -162,12 +145,6 @@ class FlightGroupResource extends Resource
                         'USD' => 'primary',
                         default => 'gray',
                     }),
-                TextColumn::make('commission_rate')
-                    ->label('العمولة')
-                    ->suffix('%')
-                    ->sortable()
-                    ->badge()
-                    ->color('success'),
                 TextColumn::make('contact_person')
                     ->label('المسؤول')
                     ->searchable()
