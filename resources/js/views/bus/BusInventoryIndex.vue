@@ -565,7 +565,15 @@ const fetchFinanceAccounts = async () => {
       params: { per_page: 100, types: 'cashbox,wallet,bank,treasury', is_active: 1 },
     });
     let raw = res.data?.data;
-    if (raw && !Array.isArray(raw) && Array.isArray(raw.data)) raw = raw.data;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      if (Array.isArray(raw.items)) {
+        raw = raw.items;
+      } else if (raw.items && Array.isArray(raw.items.data)) {
+        raw = raw.items.data;
+      } else if (Array.isArray(raw.data)) {
+        raw = raw.data;
+      }
+    }
     financeAccounts.value = Array.isArray(raw) ? raw : [];
   } catch {
     financeAccounts.value = [];

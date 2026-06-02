@@ -279,9 +279,18 @@ const activeCompanies = computed(() => {
 
 const loadAccounts = async () => {
     try {
-        const res =await axios.get('/api/v1/finance/accounts', { params: { per_page: 100 } })
-
-        accounts.value = res.data?.data?.items || res.data?.data || [];
+        const res = await axios.get('/api/v1/finance/accounts', { params: { per_page: 100 } });
+        let raw = res.data?.data;
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          if (Array.isArray(raw.items)) {
+            raw = raw.items;
+          } else if (raw.items && Array.isArray(raw.items.data)) {
+            raw = raw.items.data;
+          } else if (Array.isArray(raw.data)) {
+            raw = raw.data;
+          }
+        }
+        accounts.value = Array.isArray(raw) ? raw : [];
         // For payments, usually we use accounts with module_type 'bus' or general treasury
         treasuryAccounts.value = accounts.value.filter(a => ['cashbox', 'bank', 'wallet', 'treasury'].includes(String(a.type?.value || a.type).toLowerCase()));
     } catch (e) {

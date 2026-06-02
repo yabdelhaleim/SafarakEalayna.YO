@@ -206,4 +206,71 @@ class BusApiCrudTest extends TestCase
         $this->deleteJson("/api/v1/bus/inventories/{$inventoryId}")->assertOk();
         $this->deleteJson("/api/v1/bus/companies/{$companyId}")->assertOk();
     }
+
+    public function test_bus_customers_index_works_successfully(): void
+    {
+        $company = \App\Models\Bus\BusCompany::query()->create([
+            'name' => 'Test Bus Company',
+            'phone' => '01009876543',
+            'is_active' => true,
+        ]);
+
+        $inventory = \App\Models\Bus\BusInventory::query()->create([
+            'company_id' => $company->id,
+            'route' => 'Cairo - Alexandria',
+            'travel_date' => now()->addDays(5)->toDateString(),
+            'departure_time' => '10:00:00',
+            'total_tickets' => 10,
+            'available_tickets' => 10,
+            'cost_per_ticket' => 100,
+            'total_cost' => 1000,
+            'remaining_debt' => 1000,
+            'selling_price' => 150,
+            'payment_type' => 'deferred',
+        ]);
+
+        $customer = \App\Models\Customer::query()->create([
+            'full_name' => 'John Doe Bus Customer',
+            'phone' => '01111222333',
+        ]);
+
+        \App\Models\Bus\BusBooking::query()->create([
+            'inventory_id' => $inventory->id,
+            'customer_id' => $customer->id,
+            'quantity' => 2,
+            'unit_price' => 150,
+            'total_price' => 300,
+            'paid_amount' => 100,
+            'profit' => 100,
+            'status' => \App\Enums\BusBookingStatus::Pending,
+            'payment_status' => \App\Enums\BusPaymentStatus::Partial,
+        ]);
+
+        $response = $this->getJson('/api/v1/bus/customers');
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'customers' => [
+                        'data' => [
+                            '*' => [
+                                'id',
+                                'full_name',
+                                'phone',
+                                'total_bus_bookings',
+                                'total_bus_amount',
+                                'total_bus_paid',
+                                'bus_remaining_debt',
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $this->assertCount(1, $response->json('data.customers.data'));
+        $this->assertEquals('John Doe Bus Customer', $response->json('data.customers.data.0.full_name'));
+        $this->assertEquals(300, $response->json('data.customers.data.0.total_bus_amount'));
+        $this->assertEquals(100, $response->json('data.customers.data.0.total_bus_paid'));
+        $this->assertEquals(200, $response->json('data.customers.data.0.bus_remaining_debt'));
+    }
 }

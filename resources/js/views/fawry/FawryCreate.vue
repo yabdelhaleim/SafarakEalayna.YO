@@ -664,8 +664,14 @@ const loadSettlementAccounts = async () => {
       },
     });
     let raw = accountsRes.data?.data;
-    if (raw && !Array.isArray(raw) && Array.isArray(raw.data)) {
-      raw = raw.data;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      if (Array.isArray(raw.items)) {
+        raw = raw.items;
+      } else if (raw.items && Array.isArray(raw.items.data)) {
+        raw = raw.items.data;
+      } else if (Array.isArray(raw.data)) {
+        raw = raw.data;
+      }
     }
     settlementAccounts.value = Array.isArray(raw) ? raw : [];
   } catch (error) {

@@ -16,7 +16,8 @@ use Illuminate\Http\Request;
 class BusCompanyController extends Controller
 {
     public function __construct(
-        protected BusCompanyService $companyService
+        protected BusCompanyService $companyService,
+        protected \App\Services\Finance\TransactionService $transactionService
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -74,7 +75,7 @@ class BusCompanyController extends Controller
     {
         try {
             // Load relations on the route model bound instance
-            $company->load(['createdBy']);
+            $company->load(['createdBy', 'account']);
 
             return ApiResponse::success(
                 'Bus company retrieved successfully.',
@@ -114,6 +115,7 @@ class BusCompanyController extends Controller
 
 public function statement(Request $request, BusCompany $company): JsonResponse
 {
+    $company->load('account');
     if (!$company->account_id) {
         return ApiResponse::success('Bus company statement retrieved.', [
             'company' => [
@@ -138,7 +140,16 @@ public function statement(Request $request, BusCompany $company): JsonResponse
             $q->where('from_account_id', $company->account_id)
                 ->orWhere('to_account_id', $company->account_id);
         })
-        ->with(['fromAccount:id,name', 'toAccount:id,name', 'createdBy:id,name'])
+        ->with([
+            'fromAccount:id,name',
+            'toAccount:id,name',
+            'createdBy:id,name',
+            'related' => function ($morphTo) {
+                $morphTo->morphWith([
+                    \App\Models\Bus\BusBooking::class => ['customer', 'inventory', 'relatedTransactions.fromAccount', 'relatedTransactions.toAccount'],
+                ]);
+            }
+        ])
         ->latest()
         ->paginate($perPage);
 
@@ -150,41 +161,80 @@ public function statement(Request $request, BusCompany $company): JsonResponse
         ],
         'transactions' => $paginator,
     ]);
-}    public function payDebt(Request $request, BusCompany $company): JsonResponse
+}
+
+    public function payDebt(Request $request, BusCompany $company): JsonResponse
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'from_account_id' => 'required|exists:accounts,id',
             'notes' => 'nullable|string|max:500',
-        ]); 
+            'booking_id' => 'nullable|integer',
+        ]);
 
+        $company->load('account');
         if (!$company->account_id) {
             return ApiResponse::error('هذه الشركة غير مربوطة بحساب مالي لتسديد الديون.', null, 422);
         }
 
         try {
             return \Illuminate\Support\Facades\DB::transaction(function () use ($company, $validated) {
+                // 🔒 Lock the account row to prevent concurrent double-payments (race condition fix)
+                $toAccount = \App\Models\Account::lockForUpdate()->findOrFail($company->account_id);
                 $fromAccount = \App\Models\Account::findOrFail($validated['from_account_id']);
-                $toAccount = $company->account;
 
-                // Create Transaction
-                $transaction = \App\Models\Transaction::create([
-                    'type' => \App\Enums\TransactionType::Transfer,
-                    'amount' => $validated['amount'],
-                    'from_account_id' => $fromAccount->id,
-                    'to_account_id' => $toAccount->id,
-                    'module' => \App\Enums\TransactionModule::Bus,
-                    'notes' => $validated['notes'] ?? 'تسديد دين شركة باصات',
-                    'created_by' => \Illuminate\Support\Facades\Auth::id(),
+                $currentDebt = (float) $toAccount->balance; // negative = we owe company
+                $actualDebt  = max(0, -$currentDebt);       // absolute debt amount
+
+                // 🛡️ Guard: do not allow overpayment beyond what is actually owed
+                if ($actualDebt <= 0) {
+                    throw new \Exception(
+                        'لا يوجد دين مستحق لهذه الشركة. الرصيد الحالي: ' . number_format($currentDebt, 2)
+                    );
+                }
+
+                $amount = (float) $validated['amount'];
+                $willOverpay = $amount > $actualDebt + 0.005; // 0.5 piaster tolerance
+
+                if ($willOverpay) {
+                    throw new \Exception(
+                        'مبلغ الدفع (' . number_format($amount, 2) . ' ج.م) يتجاوز الدين الفعلي (' . number_format($actualDebt, 2) . ' ج.م). استخدم المبلغ الصحيح لتجنب الدفع الزائد.'
+                    );
+                }
+
+                $bookingId = !empty($validated['booking_id']) ? (int) $validated['booking_id'] : null;
+
+                // Record transaction using TransactionService
+                $transaction = $this->transactionService->recordJournalTransfer([
+                    'amount'             => $amount,
+                    'from_account_id'    => $fromAccount->id,
+                    'to_account_id'      => $toAccount->id,
+                    'module'             => \App\Enums\TransactionModule::Bus->value,
+                    'notes'              => $validated['notes'] ?? 'تسديد دين شركة باصات',
+                    'created_by'         => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                    'allow_from_negative'=> false,
+                    'related_type'       => $bookingId ? \App\Models\Bus\BusBooking::class : null,
+                    'related_id'         => $bookingId,
                 ]);
 
-                // Update Balances
-                $fromAccount->decrement('balance', $validated['amount']);
-                $toAccount->increment('balance', $validated['amount']);
+                // Create BusCompanyPayment record
+                \App\Models\Bus\BusCompanyPayment::create([
+                    'company_id'     => $company->id,
+                    'inventory_id'   => null,
+                    'amount'         => $amount,
+                    'account_id'     => $fromAccount->id,
+                    'transaction_id' => $transaction->id,
+                    'status'         => \App\Enums\BusCompanyPaymentStatus::Paid,
+                    'notes'          => $validated['notes'] ?? 'تسديد دين شركة باصات',
+                    'created_by'     => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                ]);
+
+                $newBalance = $toAccount->fresh()->balance;
 
                 return ApiResponse::success('تم تسديد الدين بنجاح.', [
                     'transaction_id' => $transaction->id,
-                    'new_balance' => $toAccount->balance,
+                    'new_balance'    => $newBalance,
+                    'fully_settled'  => $newBalance >= -0.005, // true if debt is cleared
                 ]);
             });
         } catch (\Exception $e) {

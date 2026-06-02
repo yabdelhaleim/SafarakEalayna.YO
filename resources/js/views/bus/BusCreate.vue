@@ -872,9 +872,9 @@ const selectCompany = async (company) => {
   toSuggestions.value   = [];
 
   try {
-    // Fetch company bookings to calculate total tickets & debt
+    // Fetch all company bookings (fallback for ticket count — primary debt source is account balance below)
     const res = await axios.get('/api/v1/bus/bookings', {
-      params: { company_id: company.id, per_page: 1000, status: 'pending,partial,paid' },
+      params: { company_id: company.id, per_page: 500 },
     });
     const items = res.data?.data?.items || res.data?.data || [];
     let totalTickets  = 0;

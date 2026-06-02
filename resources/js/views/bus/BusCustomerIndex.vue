@@ -621,7 +621,17 @@ const paymentForm = ref({ amount: 0, from_account_id: '', notes: '' });
 const loadAccounts = async () => {
   try {
     const res = await axios.get('/api/v1/finance/accounts', { params: { per_page: 200 } });
-    const all = res.data?.data?.items || res.data?.data || [];
+    let raw = res.data?.data;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      if (Array.isArray(raw.items)) {
+        raw = raw.items;
+      } else if (raw.items && Array.isArray(raw.items.data)) {
+        raw = raw.items.data;
+      } else if (Array.isArray(raw.data)) {
+        raw = raw.data;
+      }
+    }
+    const all = Array.isArray(raw) ? raw : [];
     treasuryAccounts.value = all.filter(a => {
       const t = String(a.type?.value || a.type || '').toLowerCase();
       return ['cashbox', 'bank', 'wallet', 'treasury'].includes(t);

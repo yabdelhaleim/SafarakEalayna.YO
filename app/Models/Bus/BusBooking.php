@@ -84,6 +84,11 @@ class BusBooking extends Model
         return $this->hasMany(\App\Models\Bus\BusPayment::class, 'booking_id');
     }
 
+    public function relatedTransactions(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(\App\Models\Transaction::class, 'related');
+    }
+
     public function refundRequests(): HasMany
     {
         return $this->hasMany(BusRefundRequest::class, 'bus_booking_id');

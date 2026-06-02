@@ -149,4 +149,300 @@ class BusBookingFlowTest extends TestCase
 
         $this->assertSame(100.0, (float) BusBooking::query()->findOrFail($bookingId)->paid_amount);
     }
+
+    public function test_booking_creation_automatically_provisions_and_links_company_account_and_updates_balances(): void
+    {
+        // 1. Create a company without an account_id
+        $companyWithoutAccount = BusCompany::query()->create([
+            'name' => 'Legacy Company Without Account',
+            'phone' => '01009999999',
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->assertNull($companyWithoutAccount->account_id);
+
+        // Create inventory linked to this company
+        $tempInventory = BusInventory::query()->create([
+            'company_id' => $companyWithoutAccount->id,
+            'route' => 'Cairo - Giza',
+            'travel_date' => now()->addDay()->toDateString(),
+            'total_tickets' => 5,
+            'available_tickets' => 5,
+            'cost_per_ticket' => 60,
+            'selling_price' => 120,
+            'payment_type' => BusInventoryPaymentType::Deferred,
+            'total_cost' => 300,
+            'amount_paid' => 0,
+            'remaining_debt' => 300,
+            'created_by' => $this->user->id,
+        ]);
+
+        // 2. Fetch the dashboard stats initially
+        $dashResBefore = $this->getJson('/api/v1/bus/dashboard');
+        $dashResBefore->assertOk();
+        $initialDebt = (float) ($dashResBefore->json('data.total_company_debt') ?? 0);
+        $initialRevenue = (float) ($dashResBefore->json('data.stats.monthly_revenue') ?? 0);
+        $initialBookings = (int) ($dashResBefore->json('data.stats.total_bookings') ?? 0);
+
+        // 3. Create a booking on this inventory
+        $bookingResponse = $this->postJson('/api/v1/bus/bookings', [
+            'inventory_id' => $tempInventory->id,
+            'customer_name' => 'عميل حجز تلقائي',
+            'customer_phone' => '01009998877',
+            'quantity' => 2,
+        ]);
+        $bookingResponse->assertCreated();
+
+        // 4. Assert that the company now has a linked ledger account
+        $companyWithoutAccount->refresh();
+        $this->assertNotNull($companyWithoutAccount->account_id);
+        $this->assertNotNull($companyWithoutAccount->account);
+        $this->assertEquals('supplier', $companyWithoutAccount->account->type->value);
+
+        // 5. Assert the company balance reflects the cost-price debt (goes negative)
+        // 2 tickets * 60 cost = 120 cost. Since we owe 120, balance is -120.00.
+        $this->assertEquals(-120.00, (float) $companyWithoutAccount->account->balance);
+
+        // 6. Verify Dashboard stats updated
+        $dashResAfter = $this->getJson('/api/v1/bus/dashboard');
+        $dashResAfter->assertOk();
+        $this->assertEquals($initialBookings + 1, $dashResAfter->json('data.stats.total_bookings'));
+        $this->assertEquals($initialRevenue + 240.00, (float) $dashResAfter->json('data.stats.monthly_revenue'));
+        $this->assertEquals($initialDebt + 120.00, (float) $dashResAfter->json('data.total_company_debt'));
+
+        // 7. Verify current debt widget via Company Show API
+        $companyShowRes = $this->getJson("/api/v1/bus/companies/{$companyWithoutAccount->id}");
+        $companyShowRes->assertOk();
+        $companyShowRes->assertJsonPath('data.account_id', $companyWithoutAccount->account_id);
+        $this->assertEquals(-120.00, (float) $companyShowRes->json('data.balance'));
+        $companyShowRes->assertJsonStructure([
+            'data' => [
+                'account' => ['id', 'name', 'balance']
+            ]
+        ]);
+
+        // 8. Test paying the company debt
+        // Create a treasury account with enough balance to pay the company
+        $treasuryAccount = Account::query()->create([
+            'name' => 'Safe box',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 500.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $payDebtResponse = $this->postJson("/api/v1/bus/companies/{$companyWithoutAccount->id}/pay-debt", [
+            'amount' => 50.00,
+            'from_account_id' => $treasuryAccount->id,
+            'notes' => 'تسديد دفعة',
+        ]);
+        $payDebtResponse->assertOk();
+
+        // 9. Assert balances are updated correctly in both accounts
+        $treasuryAccount->refresh();
+        $companyWithoutAccount->refresh();
+        $this->assertEquals(450.00, (float) $treasuryAccount->balance); // 500 - 50 = 450
+        $this->assertEquals(-70.00, (float) $companyWithoutAccount->account->balance); // -120 + 50 = -70
+
+        // 10. Assert BusCompanyPayment was created
+        $this->assertDatabaseHas('bus_company_payments', [
+            'company_id' => $companyWithoutAccount->id,
+            'amount' => 50.00,
+            'account_id' => $treasuryAccount->id,
+            'status' => 'paid',
+        ]);
+    }
+
+    public function test_booking_creation_fails_and_rolls_back_if_exception_thrown(): void
+    {
+        $initialAvailableTickets = $this->inventory->available_tickets;
+
+        // Try to create booking with quantity exceeding available tickets
+        $response = $this->postJson('/api/v1/bus/bookings', [
+            'inventory_id' => $this->inventory->id,
+            'customer_name' => 'Rollback Test Customer',
+            'customer_phone' => '01009998877',
+            'quantity' => 100, // Exceeds available tickets (10)
+        ]);
+
+        $response->assertStatus(422);
+
+        // Verify that available tickets were not decremented
+        $this->inventory->refresh();
+        $this->assertEquals($initialAvailableTickets, $this->inventory->available_tickets);
+
+        // Verify no booking was created in the database
+        $this->assertDatabaseMissing('bus_bookings', [
+            'quantity' => 100,
+        ]);
+    }
+
+    /**
+     * 🔴 ACCOUNTING INTEGRITY: Cancel after payDebt must be BLOCKED.
+     *
+     * Scenario:
+     *   1. createBooking  → company balance: -100 (we owe them)
+     *   2. payDebt(100)   → company balance:    0 (debt cleared)
+     *   3. cancelBooking  → MUST THROW, NOT credit company +100 again
+     *
+     * If allowed, company balance would be +100 (phantom receivable),
+     * and 100 EGP would silently vanish from the treasury.
+     */
+    public function test_cancel_booking_after_pay_debt_is_blocked_to_prevent_accounting_fraud(): void
+    {
+        // 1. Create a booking (company gets debt: -100 balance)
+        $bookingRes = $this->postJson('/api/v1/bus/bookings', [
+            'inventory_id' => $this->inventory->id,
+            'customer_name' => 'عميل إلغاء بعد دفع',
+            'customer_phone' => '01011223344',
+            'quantity' => 2, // 2 × 50 cost = 100
+        ]);
+        $bookingRes->assertCreated();
+        $bookingId = $bookingRes->json('data.id');
+
+        // Confirm company balance is -100
+        $company = $this->inventory->company()->with('account')->first();
+        $this->assertEquals(-100.0, (float) $company->account->balance);
+
+        // 2. Pay the full debt (treasury → company account)
+        $treasury = Account::query()->create([
+            'name'       => 'Treasury for test',
+            'type'       => 'cashbox',
+            'currency'   => 'EGP',
+            'balance'    => 500.0,
+            'is_active'  => true,
+            'owner_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $payRes = $this->postJson("/api/v1/bus/companies/{$company->id}/pay-debt", [
+            'amount'          => 100.0,
+            'from_account_id' => $treasury->id,
+            'notes'           => 'تسديد كامل',
+        ]);
+        $payRes->assertOk();
+
+        // Confirm company balance is now 0
+        $company->refresh();
+        $this->assertEquals(0.0, (float) $company->account->balance);
+
+        // Confirm treasury is -100
+        $treasury->refresh();
+        $this->assertEquals(400.0, (float) $treasury->balance);
+
+        // 3. Now try to cancel the booking — MUST BE BLOCKED
+        $cancelRes = $this->postJson("/api/v1/bus/bookings/{$bookingId}/cancel");
+        $cancelRes->assertStatus(422);
+
+        // Verify the error message mentions debt settlement
+        $this->assertStringContainsString('تسديده', $cancelRes->json('message'));
+
+        // 🔑 CRITICAL: Company balance must NOT have changed
+        $company->refresh();
+        $this->assertEquals(0.0, (float) $company->account->balance,
+            'Company account balance must stay 0 — not become +100 (phantom receivable)'
+        );
+
+        // Treasury must also be unchanged after blocked cancel
+        $treasury->refresh();
+        $this->assertEquals(400.0, (float) $treasury->balance,
+            'Treasury must not gain or lose money from a blocked cancellation'
+        );
+    }
+
+    /**
+     * 🔴 ACCOUNTING INTEGRITY: payDebt must reject overpayment.
+     *
+     * Scenario: Debt is 50, but staff tries to pay 200.
+     * Must reject with a clear error — not allow overpayment.
+     */
+    public function test_pay_debt_rejects_amount_exceeding_actual_company_debt(): void
+    {
+        // 1. Create a booking → company debt: -50 (1 ticket × 50 cost)
+        $bookingRes = $this->postJson('/api/v1/bus/bookings', [
+            'inventory_id' => $this->inventory->id,
+            'customer_name' => 'عميل دفع زائد',
+            'customer_phone' => '01044556677',
+            'quantity' => 1, // 1 × 50 cost = 50
+        ]);
+        $bookingRes->assertCreated();
+
+        $company = $this->inventory->company()->with('account')->first();
+        $this->assertEquals(-50.0, (float) $company->account->balance);
+
+        $treasury = Account::query()->create([
+            'name'       => 'Treasury overpay test',
+            'type'       => 'cashbox',
+            'currency'   => 'EGP',
+            'balance'    => 500.0,
+            'is_active'  => true,
+            'owner_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        // 2. Try to overpay (200 > 50 debt) — MUST BE REJECTED
+        $overpayRes = $this->postJson("/api/v1/bus/companies/{$company->id}/pay-debt", [
+            'amount'          => 200.0,
+            'from_account_id' => $treasury->id,
+        ]);
+        $overpayRes->assertStatus(422);
+        $this->assertStringContainsString('يتجاوز', $overpayRes->json('message'));
+
+        // Balances must be unchanged
+        $treasury->refresh();
+        $company->refresh();
+        $this->assertEquals(500.0, (float) $treasury->balance);
+        $this->assertEquals(-50.0, (float) $company->account->balance);
+
+        // 3. Correct amount pays fine
+        $correctRes = $this->postJson("/api/v1/bus/companies/{$company->id}/pay-debt", [
+            'amount'          => 50.0,
+            'from_account_id' => $treasury->id,
+        ]);
+        $correctRes->assertOk();
+        $correctRes->assertJsonPath('data.fully_settled', true);
+
+        $treasury->refresh();
+        $company->refresh();
+        $this->assertEquals(450.0, (float) $treasury->balance);
+        $this->assertEquals(0.0, (float) $company->account->balance);
+    }
+
+    /**
+     * 🔴 ACCOUNTING INTEGRITY: payDebt must reject when no debt exists.
+     */
+    public function test_pay_debt_rejects_when_company_has_no_debt(): void
+    {
+        // Company without any bookings → no debt (balance = 0 or positive)
+        $company = $this->inventory->company()->with('account')->first();
+
+        // Ensure account exists but has zero balance
+        app(\App\Services\Bus\BusCompanyService::class)->ensureCompanyAccount($company);
+        $company->refresh();
+
+        $treasury = Account::query()->create([
+            'name'       => 'Treasury zero debt test',
+            'type'       => 'cashbox',
+            'currency'   => 'EGP',
+            'balance'    => 500.0,
+            'is_active'  => true,
+            'owner_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        // Try to pay even though there's no debt
+        $res = $this->postJson("/api/v1/bus/companies/{$company->id}/pay-debt", [
+            'amount'          => 100.0,
+            'from_account_id' => $treasury->id,
+        ]);
+        $res->assertStatus(422);
+        $this->assertStringContainsString('لا يوجد دين', $res->json('message'));
+
+        // Treasury and company balance must remain unchanged
+        $treasury->refresh();
+        $this->assertEquals(500.0, (float) $treasury->balance);
+    }
 }

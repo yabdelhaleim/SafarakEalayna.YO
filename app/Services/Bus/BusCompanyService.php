@@ -3,6 +3,9 @@
 namespace App\Services\Bus;
 
 use App\Models\Bus\BusCompany;
+use App\Models\Account;
+use App\Enums\AccountType;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +20,7 @@ class BusCompanyService
      */
     public function getAllCompanies(array $filters): LengthAwarePaginator
     {
-        $query = BusCompany::with('createdBy');
+        $query = BusCompany::with(['createdBy', 'account']);
 
         if (isset($filters['search']) && $filters['search']) {
             $search = $filters['search'];
@@ -55,12 +58,15 @@ class BusCompanyService
                     'created_by' => Auth::id(),
                 ]);
 
+                // Create the ledger account right away!
+                $this->ensureCompanyAccount($company);
+
                 Log::info('Bus company created', [
                     'company_id' => $company->id,
                     'created_by' => Auth::id(),
                 ]);
 
-                return $company->load('createdBy');
+                return $company->load(['createdBy', 'account']);
             });
         } catch (\Exception $e) {
             Log::error('BusCompanyService::createCompany failed', [
@@ -180,6 +186,43 @@ class BusCompanyService
      */
     public function getCompanyById(int $id): BusCompany
     {
-        return BusCompany::with('createdBy')->findOrFail($id);
+        return BusCompany::with(['createdBy', 'account'])->findOrFail($id);
+    }
+
+    /**
+     * Ensures the bus company has a ledger account. Creates one if missing.
+     */
+    public function ensureCompanyAccount(BusCompany $company): Account
+    {
+        if ($company->account_id) {
+            $account = Account::find($company->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($company) {
+            $account = Account::create([
+                'name' => 'حساب شركة باصات: ' . $company->name,
+                'type' => AccountType::Supplier,
+                'balance' => 0,
+                'currency' => 'EGP',
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'tourism',
+                'is_module_vault' => false,
+                'notes' => 'حساب تلقائي لشركة الباصات #' . $company->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            $company->update(['account_id' => $account->id]);
+
+            Log::info('Bus company ledger account created automatically', [
+                'company_id' => $company->id,
+                'account_id' => $account->id,
+            ]);
+
+            return $account;
+        }));
     }
 }

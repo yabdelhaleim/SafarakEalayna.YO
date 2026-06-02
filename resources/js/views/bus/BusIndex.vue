@@ -504,7 +504,15 @@ const fetchAccounts = async () => {
       params: { per_page: 100, types: 'cashbox,wallet,bank,treasury', is_active: 1, module: 'bus' },
     });
     let raw = response.data?.data;
-    if (raw && !Array.isArray(raw) && Array.isArray(raw.data)) raw = raw.data;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      if (Array.isArray(raw.items)) {
+        raw = raw.items;
+      } else if (raw.items && Array.isArray(raw.items.data)) {
+        raw = raw.items.data;
+      } else if (Array.isArray(raw.data)) {
+        raw = raw.data;
+      }
+    }
     accounts.value = Array.isArray(raw) ? raw : [];
   } catch (error) {
     console.error('Failed to fetch accounts:', error);
@@ -668,6 +676,15 @@ const confirmCancel = async (booking) => {
 
 // ─── Init ──────────────────────────────────────────────────
 onMounted(async () => {
+  // Reset filters to defaults on load to avoid showing stale cached filters
+  store.filters.search = '';
+  store.filters.status = '';
+  store.filters.company_id = '';
+  store.filters.route_from = '';
+  store.filters.route_to = '';
+  store.filters.date_from = '';
+  store.filters.date_to = '';
+  store.filters.page = 1;
   await Promise.all([store.fetchBookings(), store.fetchCompanies(), store.fetchStats(), fetchAccounts()]);
 });
 </script>

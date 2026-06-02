@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Bus;
 
 use App\Http\Controllers\Controller;
-use App\Http\Responses\ApiResponse;
+use App\Helpers\ApiResponse;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

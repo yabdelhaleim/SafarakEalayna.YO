@@ -341,31 +341,31 @@ class DashboardService
         $todayBookings = BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])->count();
         $yesterdayBookings = BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->count();
 
-        $nonCancelledScope = fn ($q) => (clone $q)->where('status', '!=', BusBookingStatus::Cancelled);
+        $nonCancelledScope = fn ($q) => (clone $q)->where('status', '!=', BusBookingStatus::Cancelled->value);
 
         $revenueRange = (float) $nonCancelledScope($bookingQuery)->sum('total_price');
         $profitRange = (float) $nonCancelledScope($bookingQuery)->sum('profit');
 
-        $cancelled = (clone $bookingQuery)->where('status', BusBookingStatus::Cancelled)->count();
+        $cancelled = (clone $bookingQuery)->where('status', BusBookingStatus::Cancelled->value)->count();
 
         $pendingPayments = (float) BusBooking::query()
             ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->selectRaw('COALESCE(SUM(total_price - paid_amount), 0) as aggregate')
             ->value('aggregate');
 
         $todayRevenue = (float) BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->sum('total_price');
         $yesterdayRevenue = (float) BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->sum('total_price');
 
         $todayProfit = (float) BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->sum('profit');
         $yesterdayProfit = (float) BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->sum('profit');
 
         $activeCompanies = (int) BusBooking::query()
@@ -409,7 +409,7 @@ class DashboardService
         $days = min(14, $start->diffInDays($end) + 1);
         $busStats = BusBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue, SUM(profit) as profit')
-            ->where('status', '!=', BusBookingStatus::Cancelled)
+            ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('date')
             ->get()
             ->keyBy('date');

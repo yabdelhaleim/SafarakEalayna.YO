@@ -16,6 +16,13 @@ class BusCompanyResource extends JsonResource
             'address' => $this->address,
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,
+            'balance' => (float) ($this->account?->balance ?? 0),
+            'account_id' => $this->account_id,
+            'account' => $this->account ? [
+                'id' => $this->account->id,
+                'name' => $this->account->name,
+                'balance' => (float) $this->account->balance,
+            ] : null,
             'total_inventories' => $this->whenLoaded('inventories', fn () => $this->inventories->count()),
             'created_by_id' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->id),
             'created_by_name' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->name),

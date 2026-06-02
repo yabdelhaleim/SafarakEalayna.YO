@@ -17,4 +17,10 @@ class EditFawryWallet extends EditRecord
             Actions\DeleteAction::make(),
         ];
     }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        $data['module_type'] = 'fawry';
+        return $data;
+    }
 }

@@ -204,9 +204,13 @@ class BusBookingService
                     'created_by'     => Auth::id(),
                 ]);
 
-                // ✅ Record company debt (cost) if company has an account
+                // ✅ Record company debt (cost) if company exists
                 $company = $inventory->company;
-                if ($company && $company->account_id && $costPerTicket > 0) {
+                if ($company && $costPerTicket > 0) {
+                    $companyService = app(\App\Services\Bus\BusCompanyService::class);
+                    $companyAccount = $companyService->ensureCompanyAccount($company);
+                    $company->account_id = $companyAccount->id;
+
                     $totalCost       = $costPerTicket * $data['quantity'];
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
@@ -450,6 +454,26 @@ class BusBookingService
             return DB::transaction(function () use ($booking) {
                 $inventory = $booking->inventory()->lockForUpdate()->first();
 
+                // 🛡️ ACCOUNTING INTEGRITY (inside transaction with lock — prevents TOCTOU race condition)
+                // If the company balance is >= 0, the debt was already settled via payDebt.
+                // Allowing cancellation would credit the company again, creating a phantom
+                // receivable and silently losing cash from the treasury.
+                $companyForCheck = $inventory->company;
+                if ($companyForCheck && $companyForCheck->account_id) {
+                    $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
+                    if ($costForThisBooking > 0) {
+                        // lockForUpdate prevents concurrent payDebt from changing balance mid-check
+                        $companyAccount = \App\Models\Account::lockForUpdate()->find($companyForCheck->account_id);
+                        if ($companyAccount && (float) $companyAccount->balance >= 0) {
+                            throw new \Exception(
+                                'لا يمكن إلغاء هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
+                                number_format((float) $companyAccount->balance, 2) . ' ج.م). ' .
+                                'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
+                            );
+                        }
+                    }
+                }
+
                 $inventory->increment('available_tickets', $booking->quantity);
                 $inventory->save();
 
@@ -459,21 +483,21 @@ class BusBookingService
                 ]);
 
                 // ✅ Reverse company cost if it was recorded
-                $company = $booking->inventory?->company;
+                $company = $inventory->company;
                 if ($company && $company->account_id) {
-                    $costPerTicket = $booking->inventory->cost_per_ticket;
+                    $costPerTicket = $inventory->cost_per_ticket;
                     $totalCost = $costPerTicket * $booking->quantity;
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                     if ($clearingAccountId && $totalCost > 0) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount' => $totalCost,
-                            'from_account_id' => $clearingAccountId, // Debit clearing (reverse)
-                            'to_account_id' => $company->account_id, // Credit company (reverse/increase balance)
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء تكلفة حجز باص #' . $booking->id,
+                            'amount'              => $totalCost,
+                            'from_account_id'     => $clearingAccountId,
+                            'to_account_id'       => $company->account_id,
+                            'module'              => TransactionModule::Bus->value,
+                            'related_type'        => BusBooking::class,
+                            'related_id'          => $booking->id,
+                            'notes'               => 'إلغاء تكلفة حجز باص #' . $booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
@@ -485,22 +509,22 @@ class BusBookingService
                     $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
                     if ($clearingAccountId) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount' => $booking->total_price,
-                            'from_account_id' => $customer->account_id,
-                            'to_account_id' => $clearingAccountId,
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+                            'amount'              => $booking->total_price,
+                            'from_account_id'     => $customer->account_id,
+                            'to_account_id'       => $clearingAccountId,
+                            'module'              => TransactionModule::Bus->value,
+                            'related_type'        => BusBooking::class,
+                            'related_id'          => $booking->id,
+                            'notes'               => 'إلغاء مديونية حجز باص #' . $booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
                 }
 
                 Log::info('Bus booking cancelled', [
-                    'booking_id' => $booking->id,
+                    'booking_id'   => $booking->id,
                     'inventory_id' => $inventory->id,
-                    'user_id' => Auth::id(),
+                    'user_id'      => Auth::id(),
                 ]);
 
                 return $booking->fresh([
@@ -513,11 +537,11 @@ class BusBookingService
             });
         } catch (\Exception $e) {
             Log::error('BusBookingService::cancelBooking failed', [
-                'error' => $e->getMessage(),
-                'user_id' => Auth::id(),
+                'error'        => $e->getMessage(),
+                'user_id'      => Auth::id(),
                 'inventory_id' => $booking->inventory_id,
-                'booking_id' => $booking->id,
-                'input' => null,
+                'booking_id'   => $booking->id,
+                'input'        => null,
             ]);
             throw $e;
         }
@@ -562,25 +586,41 @@ class BusBookingService
             DB::transaction(function () use ($booking) {
                 $inventory = $booking->inventory()->lockForUpdate()->first();
 
+                // 🛡️ ACCOUNTING INTEGRITY (same guard as cancelBooking — inside transaction with lock)
+                $companyForCheck = $inventory->company;
+                if ($companyForCheck && $companyForCheck->account_id) {
+                    $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
+                    if ($costForThisBooking > 0) {
+                        $companyAccount = \App\Models\Account::lockForUpdate()->find($companyForCheck->account_id);
+                        if ($companyAccount && (float) $companyAccount->balance >= 0) {
+                            throw new \Exception(
+                                'لا يمكن حذف هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
+                                number_format((float) $companyAccount->balance, 2) . ' ج.م). ' .
+                                'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
+                            );
+                        }
+                    }
+                }
+
                 $inventory->increment('available_tickets', $booking->quantity);
                 $inventory->save();
 
                 // ✅ Reverse company cost if it was recorded
-                $company = $booking->inventory?->company;
+                $company = $inventory->company;
                 if ($company && $company->account_id) {
-                    $costPerTicket = $booking->inventory->cost_per_ticket;
+                    $costPerTicket = $inventory->cost_per_ticket;
                     $totalCost = $costPerTicket * $booking->quantity;
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                     if ($clearingAccountId && $totalCost > 0) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount' => $totalCost,
-                            'from_account_id' => $clearingAccountId, // Debit clearing (reverse)
-                            'to_account_id' => $company->account_id, // Credit company (reverse/increase balance)
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء تكلفة حجز باص #' . $booking->id,
+                            'amount'              => $totalCost,
+                            'from_account_id'     => $clearingAccountId,
+                            'to_account_id'       => $company->account_id,
+                            'module'              => TransactionModule::Bus->value,
+                            'related_type'        => BusBooking::class,
+                            'related_id'          => $booking->id,
+                            'notes'               => 'إلغاء تكلفة حجز باص #' . $booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
@@ -592,13 +632,13 @@ class BusBookingService
                     $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
                     if ($clearingAccountId) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount' => $booking->total_price,
-                            'from_account_id' => $customer->account_id,
-                            'to_account_id' => $clearingAccountId,
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+                            'amount'              => $booking->total_price,
+                            'from_account_id'     => $customer->account_id,
+                            'to_account_id'       => $clearingAccountId,
+                            'module'              => TransactionModule::Bus->value,
+                            'related_type'        => BusBooking::class,
+                            'related_id'          => $booking->id,
+                            'notes'               => 'إلغاء مديونية حجز باص #' . $booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
@@ -607,20 +647,20 @@ class BusBookingService
                 $booking->delete();
 
                 Log::info('Bus booking deleted', [
-                    'booking_id' => $booking->id,
+                    'booking_id'   => $booking->id,
                     'inventory_id' => $inventory->id,
-                    'user_id' => Auth::id(),
+                    'user_id'      => Auth::id(),
                 ]);
             });
 
             return true;
         } catch (\Exception $e) {
             Log::error('BusBookingService::deleteBooking failed', [
-                'error' => $e->getMessage(),
-                'user_id' => Auth::id(),
+                'error'        => $e->getMessage(),
+                'user_id'      => Auth::id(),
                 'inventory_id' => $booking->inventory_id,
-                'booking_id' => $booking->id,
-                'input' => null,
+                'booking_id'   => $booking->id,
+                'input'        => null,
             ]);
             throw $e;
         }

@@ -102,7 +102,7 @@ class FawryTransactionResource extends Resource
 
                 Select::make('account_id')
                     ->label('حساب التسوية / الخزينة')
-                    ->relationship('account', 'name', fn ($query) => $query->where('module_type', 'fawry'))
+                    ->relationship('account', 'name', fn ($query) => $query->where('module_type', 'fawry')->where('is_active', true))
                     ->searchable()
                     ->preload()
                     ->required(),
