@@ -16,10 +16,12 @@ final class AccountModuleDivision
 
     public const LIQUIDITY_TYPES = ['cashbox', 'wallet', 'bank', 'treasury', 'post'];
 
-    /** @var array<string, string> Legacy `module` column values mapped to canonical module_type */
+    /** @var array<string, string> Vue/API singular or legacy keys → Filament canonical module_type */
     public const LEGACY_MODULE_TO_TYPE = [
         'flight' => 'flights',
         'visa' => 'visas',
+        'hajj' => 'hajj_umra',
+        'umrah' => 'hajj_umra',
         'wallet' => 'wallet_transfer',
         'wallets' => 'wallet_transfer',
     ];
@@ -83,17 +85,18 @@ final class AccountModuleDivision
             $q->where('module_type', $module)
                 ->orWhere('module', $module);
 
-            $legacy = array_search($module, self::LEGACY_MODULE_TO_TYPE, true);
-            if ($legacy !== false) {
-                $q->orWhere('module', $legacy);
+            // Vue/API singular keys → Filament canonical plural (flight → flights, visa → visas)
+            if (isset(self::LEGACY_MODULE_TO_TYPE[$module])) {
+                $canonical = self::LEGACY_MODULE_TO_TYPE[$module];
+                $q->orWhere('module_type', $canonical)
+                    ->orWhere('module', $canonical);
             }
 
-            if ($module === 'flights') {
-                $q->orWhere('module', 'flight')->orWhere('module_type', 'flight');
-            }
-
-            if ($module === 'visas') {
-                $q->orWhere('module', 'visa')->orWhere('module_type', 'visa');
+            // Filament canonical plural → legacy singular module column
+            $legacyKey = array_search($module, self::LEGACY_MODULE_TO_TYPE, true);
+            if ($legacyKey !== false) {
+                $q->orWhere('module', $legacyKey)
+                    ->orWhere('module_type', $legacyKey);
             }
 
             if (in_array($module, ['wallet', 'wallet_transfer', 'wallets'], true)) {

@@ -787,7 +787,7 @@ function round(n) {
 onMounted(async () => {
   await Promise.all([
     fetchBalances(),
-    store.fetchAccounts({ type: 'collection' })
+    store.fetchAccounts({ types: 'cashbox,wallet,bank,treasury,post' })
   ]);
 });
 </script>

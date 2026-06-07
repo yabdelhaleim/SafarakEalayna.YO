@@ -548,7 +548,7 @@ const submitPayment = async () => {
 onMounted(async () => {
   await Promise.all([
     store.fetchBookingById(id.value),
-    store.fetchAccounts({ module: 'hajj' }),
+    store.fetchAccounts({ module: 'hajj_umra' }),
     store.fetchSettings(),
     printSettingsStore.fetch().catch(() => {}),
   ]);

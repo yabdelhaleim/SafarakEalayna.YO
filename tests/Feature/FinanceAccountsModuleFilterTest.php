@@ -158,6 +158,149 @@ class FinanceAccountsModuleFilterTest extends TestCase
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
+    public function test_module_filter_flight_alias_includes_flights_module_type_from_filament(): void
+    {
+        $bank = Account::query()->create([
+            'name' => 'CIB Flight Bank',
+            'type' => AccountType::Bank,
+            'balance' => 5000,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'module' => 'flights',
+        ]);
+
+        Account::query()->create([
+            'name' => 'Bus Bank',
+            'type' => AccountType::Bank,
+            'balance' => 100,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?module=flight&types=bank&per_page=100');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.items'))->pluck('id')->all();
+        $this->assertContains($bank->id, $ids);
+        $this->assertCount(1, $ids);
+    }
+
+    public function test_module_filter_visa_alias_includes_visas_module_type_from_filament(): void
+    {
+        $wallet = Account::query()->create([
+            'name' => 'Visa Vodafone',
+            'type' => AccountType::Wallet,
+            'balance' => 800,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'visas',
+            'module' => 'visas',
+            'wallet_number' => '01011112222',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?module=visa&types=wallet&per_page=100');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.items'))->pluck('id')->all();
+        $this->assertContains($wallet->id, $ids);
+    }
+
+    public function test_module_filter_hajj_alias_includes_hajj_umra_module_type_from_filament(): void
+    {
+        $cashbox = Account::query()->create([
+            'name' => 'Hajj Cashbox',
+            'type' => AccountType::Cashbox,
+            'balance' => 1200,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'hajj_umra',
+            'module' => 'hajj_umra',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?module=hajj&types=cashbox&per_page=100');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.items'))->pluck('id')->all();
+        $this->assertContains($cashbox->id, $ids);
+    }
+
+    public function test_module_filter_wallet_alias_includes_wallet_transfer_module_type_from_filament(): void
+    {
+        $wallet = Account::query()->create([
+            'name' => 'Instapay Transfer',
+            'type' => AccountType::Wallet,
+            'balance' => 900,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'wallet_transfer',
+            'module' => 'wallet_transfer',
+            'wallet_number' => '01033334444',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?module=wallet&types=wallet&per_page=100');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.items'))->pluck('id')->all();
+        $this->assertContains($wallet->id, $ids);
+    }
+
+    public function test_module_filter_bus_fawry_and_online_match_filament_module_types(): void
+    {
+        $busBank = Account::query()->create([
+            'name' => 'Bus Bank',
+            'type' => AccountType::Bank,
+            'balance' => 300,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
+        ]);
+
+        $fawryWallet = Account::query()->create([
+            'name' => 'Fawry Wallet',
+            'type' => AccountType::Wallet,
+            'balance' => 400,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'module' => 'fawry',
+            'wallet_number' => '01055556666',
+        ]);
+
+        $onlineBank = Account::query()->create([
+            'name' => 'Online Bank',
+            'type' => AccountType::Bank,
+            'balance' => 600,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'online',
+            'module' => 'online',
+        ]);
+
+        $busResponse = $this->getJson('/api/v1/finance/accounts?module=bus&types=bank&per_page=100');
+        $busResponse->assertOk();
+        $this->assertContains($busBank->id, collect($busResponse->json('data.items'))->pluck('id')->all());
+
+        $fawryResponse = $this->getJson('/api/v1/finance/accounts?module=fawry&types=wallet&per_page=100');
+        $fawryResponse->assertOk();
+        $this->assertContains($fawryWallet->id, collect($fawryResponse->json('data.items'))->pluck('id')->all());
+
+        $onlineResponse = $this->getJson('/api/v1/finance/accounts?module=online&types=bank&per_page=100');
+        $onlineResponse->assertOk();
+        $this->assertContains($onlineBank->id, collect($onlineResponse->json('data.items'))->pluck('id')->all());
+    }
+
     public function test_search_matches_wallet_number(): void
     {
         $account = Account::query()->create([

@@ -939,7 +939,7 @@ async function saveBooking() {
 onMounted(async () => {
   await Promise.all([
     store.fetchSettings(), 
-    store.fetchAccounts({ type: 'collection' }),
+    store.fetchAccounts({ types: 'cashbox,wallet,bank,treasury,post' }),
     store.fetchSuppliers(),
   ]);
 });

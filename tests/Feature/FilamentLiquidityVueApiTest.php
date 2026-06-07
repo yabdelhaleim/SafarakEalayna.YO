@@ -159,6 +159,39 @@ class FilamentLiquidityVueApiTest extends TestCase
         $this->assertContains($bank->id, $ids);
     }
 
+    public function test_hajj_umra_treasury_overview_returns_filament_accounts(): void
+    {
+        $bank = $this->createLiquidityAccount([
+            'name' => 'Hajj Bank',
+            'type' => AccountType::Bank,
+            'module_type' => 'hajj_umra',
+            'module' => 'hajj_umra',
+        ]);
+
+        $response = $this->getJson('/api/v1/hajj-umra/treasury/overview');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.settlement_accounts'))->pluck('id')->all();
+        $this->assertContains($bank->id, $ids);
+    }
+
+    public function test_visa_treasury_overview_returns_filament_accounts(): void
+    {
+        $wallet = $this->createLiquidityAccount([
+            'name' => 'Visa Wallet',
+            'type' => AccountType::Wallet,
+            'module_type' => 'visas',
+            'module' => 'visas',
+            'wallet_number' => '01088887777',
+        ]);
+
+        $response = $this->getJson('/api/v1/visa/treasury/overview');
+
+        $response->assertOk();
+        $ids = collect($response->json('data.settlement_accounts'))->pluck('id')->all();
+        $this->assertContains($wallet->id, $ids);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
