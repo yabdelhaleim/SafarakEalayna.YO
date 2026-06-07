@@ -208,6 +208,7 @@ export const useEmployeeStore = defineStore('employee', {
           };
         }
         await this.fetchEmployeeReferenceData();
+        await this.fetchStats();
       } catch (error) {
         if (axios.isCancel(error)) {
           return;
@@ -263,6 +264,7 @@ export const useEmployeeStore = defineStore('employee', {
         if (index !== -1) {
           this.employees[index] = mappedRecord;
         }
+        await this.fetchStats();
         return mappedRecord;
       } catch (error) {
         this.errors = error.response?.data?.errors || {
@@ -283,6 +285,7 @@ export const useEmployeeStore = defineStore('employee', {
       try {
         await axios.delete(`/api/v1/employee/employees/${id}`);
         this.employees = this.employees.filter((e) => e.id !== id);
+        await this.fetchStats();
       } catch (error) {
         this.errors = {
           delete: error.response?.data?.message || 'Failed to delete employee',
@@ -319,6 +322,7 @@ export const useEmployeeStore = defineStore('employee', {
           date: item.date || item.attendance_date,
           present: item.present !== undefined ? item.present : (item.status === 'present' || item.status === 'late')
         }));
+        await this.fetchStats();
       } catch (error) {
         if (axios.isCancel(error)) {
           return;
