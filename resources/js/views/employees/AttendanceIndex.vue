@@ -355,7 +355,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onActivated, onDeactivated, watch } from 'vue';
 import { useEmployeeStore } from '@/stores/employeeStore';
 import {
   Search,
@@ -399,7 +399,7 @@ const attendanceForSelectedDate = computed(() => {
   const date = selectedDate.value;
   const list = Array.isArray(store.attendance) ? store.attendance : [];
   return list.filter(
-    (a) => a.date === date || a.attendance_date === date
+    (a) => a && (a.date === date || a.attendance_date === date)
   );
 });
 
@@ -415,7 +415,7 @@ const dateStats = computed(() => {
       return;
     }
 
-    const record = records.find((a) => a.employee_id === employee.id);
+    const record = records.find((a) => a && a.employee_id === employee.id);
     if (!record) {
       unregistered += 1;
       return;
@@ -442,7 +442,7 @@ const filteredRecords = computed(() => {
 
   let records = employees.map((employee) => {
     const attendance = attendanceList.find((a) =>
-      a.employee_id === employee.id &&
+      a && a.employee_id === employee.id &&
       (a.date === selectedDate.value || a.attendance_date === selectedDate.value)
     );
 
@@ -464,9 +464,11 @@ const filteredRecords = computed(() => {
 
 // Get initials
 const getInitials = (name) => {
-  if (!name) return '؟';
-  return name
+  const label = name == null ? '' : String(name).trim();
+  if (!label) return '؟';
+  return label
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .toUpperCase()
@@ -566,24 +568,35 @@ const submitAttendance = async () => {
   }
 };
 
+const loadAttendancePage = async () => {
+  const date = selectedDate.value;
+  await Promise.all([
+    store.fetchEmployees({ per_page: 100 }),
+    store.fetchAttendance({ from_date: date, to_date: date, per_page: 100 }),
+  ]);
+};
+
 watch(selectedDate, async (newDate) => {
   if (newDate) {
-    await store.fetchAttendance({ from_date: newDate, to_date: newDate, per_page: 100 });
+    try {
+      await store.fetchAttendance({ from_date: newDate, to_date: newDate, per_page: 100 });
+    } catch (error) {
+      console.error('Failed to load attendance for date:', error);
+    }
   }
 });
 
-onMounted(async () => {
+onActivated(async () => {
   try {
-    await store.fetchEmployees({ per_page: 100 });
-    await store.fetchAttendance({
-      from_date: selectedDate.value,
-      to_date: selectedDate.value,
-      per_page: 100,
-    });
+    await loadAttendancePage();
   } catch (error) {
     console.error('Failed to load attendance page:', error);
     store.addToast('تعذّر تحميل بيانات الحضور', 'error');
   }
+});
+
+onDeactivated(() => {
+  store.abortPendingRequests();
 });
 </script>
 

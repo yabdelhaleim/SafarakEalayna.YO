@@ -16,8 +16,11 @@ const parseAmount = (value) => {
 };
 
 const mapAttendance = (item) => {
-  if (!item) return item;
-  const status = item.status;
+  if (!item || typeof item !== 'object') return null;
+  const rawStatus = item.status;
+  const status = typeof rawStatus === 'object' && rawStatus !== null && 'value' in rawStatus
+    ? rawStatus.value
+    : rawStatus;
   const isPresent = item.present !== undefined
     ? item.present
     : (status === 'present' || status === 'late');
@@ -30,6 +33,13 @@ const mapAttendance = (item) => {
     present: isPresent,
     status,
   };
+};
+
+const normalizeListItems = (rawItems) => {
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+  return rawItems.filter((item) => item && typeof item === 'object');
 };
 
 const mapEmployee = (item) => {
@@ -116,6 +126,8 @@ export const useEmployeeStore = defineStore('employee', {
 
     departmentsList: [],
     employmentStatusesList: [],
+    attendanceRequestId: 0,
+    employeesRequestId: 0,
   }),
 
   getters: {
@@ -233,19 +245,26 @@ export const useEmployeeStore = defineStore('employee', {
       }
       const controller = new AbortController();
       this.fetchEmployeesController = controller;
+      const requestId = ++this.employeesRequestId;
 
       this.loading.employees = true;
       this.errors = {};
-      this.employees = []; // Reset before fetching
 
       try {
         const response = await axios.get('/api/v1/employee/employees', {
           params,
           signal: controller.signal
         });
+        if (requestId !== this.employeesRequestId) {
+          return;
+        }
+
         const data = response.data?.data || response.data;
-        const rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
-        this.employees = rawItems.map(mapEmployee);
+        let rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
+        if (rawItems?.data && Array.isArray(rawItems.data)) {
+          rawItems = rawItems.data;
+        }
+        this.employees = normalizeListItems(rawItems).map(mapEmployee);
         if (data && (data.meta || data.pagination)) {
           const meta = data.meta || data.pagination;
           this.pagination = {
@@ -261,11 +280,13 @@ export const useEmployeeStore = defineStore('employee', {
         if (axios.isCancel(error)) {
           return;
         }
+        if (requestId !== this.employeesRequestId) {
+          return;
+        }
         console.error('Failed to fetch employees:', error);
         this.errors = {
           fetch: error.response?.data?.message || 'Failed to load employees',
         };
-        this.employees = [];
       } finally {
         if (this.fetchEmployeesController === controller) {
           this.loading.employees = false;
@@ -351,36 +372,41 @@ export const useEmployeeStore = defineStore('employee', {
       }
       const controller = new AbortController();
       this.fetchAttendanceController = controller;
+      const requestId = ++this.attendanceRequestId;
 
       this.loading.attendance = true;
       this.errors = {};
-      this.attendance = []; // Reset before fetching
 
       try {
         const response = await axios.get('/api/v1/employee/attendances', {
           params,
           signal: controller.signal
         });
+        if (requestId !== this.attendanceRequestId) {
+          return;
+        }
+
         const data = response.data?.data || response.data;
         let rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
         if (rawItems?.data && Array.isArray(rawItems.data)) {
           rawItems = rawItems.data;
         }
-        if (!Array.isArray(rawItems)) {
-          rawItems = [];
-        }
 
-        this.attendance = rawItems.map(mapAttendance);
+        this.attendance = normalizeListItems(rawItems)
+          .map(mapAttendance)
+          .filter(Boolean);
         await this.fetchStats();
       } catch (error) {
         if (axios.isCancel(error)) {
+          return;
+        }
+        if (requestId !== this.attendanceRequestId) {
           return;
         }
         console.error('Failed to fetch attendance:', error);
         this.errors = {
           fetch: error.response?.data?.message || 'Failed to load attendance',
         };
-        this.attendance = [];
       } finally {
         if (this.fetchAttendanceController === controller) {
           this.loading.attendance = false;
@@ -475,11 +501,11 @@ export const useEmployeeStore = defineStore('employee', {
         const attendance = Array.isArray(this.attendance) ? this.attendance : [];
         const employees = Array.isArray(this.employees) ? this.employees : [];
         const presentToday = attendance.filter(
-          (a) => (a.date === today || a.attendance_date === today) && a.present
+          (a) => a && (a.date === today || a.attendance_date === today) && a.present
         );
         const absentToday = employees.filter((e) => {
           const record = attendance.find(
-            (a) => a.employee_id === e.id && (a.date === today || a.attendance_date === today)
+            (a) => a && a.employee_id === e.id && (a.date === today || a.attendance_date === today)
           );
           return !record || !record.present;
         });
@@ -508,6 +534,14 @@ export const useEmployeeStore = defineStore('employee', {
     /**
      * Transform frontend camelCase payload to backend snake_case format
      */
+    abortPendingRequests() {
+      this.fetchEmployeesController?.abort();
+      this.fetchAttendanceController?.abort();
+      this.fetchReferenceDataController?.abort();
+      this.employeesRequestId += 1;
+      this.attendanceRequestId += 1;
+    },
+
     transformEmployeePayload(payload) {
       return {
         full_name: payload.full_name || payload.name || '',

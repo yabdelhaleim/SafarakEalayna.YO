@@ -1,22 +1,5 @@
-<template>
-  <div class="space-y-6">
-    <!-- Stats -->
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      <div
-        v-for="s in summaryStats"
-        :key="s.label"
-        class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-5 shadow-lg"
-      >
-        <div class="absolute -right-3 -top-3 h-16 w-16 rounded-full opacity-10 blur-2xl" :class="s.glow" />
-        <div class="mb-3 flex items-center gap-2">
-          <div class="flex h-8 w-8 items-center justify-center rounded-lg" :class="s.iconBg">
-            <component :is="s.icon" class="h-4 w-4" :class="s.iconColor" />
-          </div>
-          <span class="text-[10px] font-bold uppercase tracking-widest text-muted/65">{{ s.label }}</span>
-        </div>
-        <p class="font-mono text-xl sm:text-2xl font-black tabular-nums" :class="s.valueColor">{{ s.value }}</p>
-      </div>
-    </div>
+
+
 
     <!-- Filters -->
     <div class="bg-card border border-white/10 rounded-2xl p-6">

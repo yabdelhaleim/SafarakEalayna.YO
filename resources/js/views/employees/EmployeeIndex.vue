@@ -412,7 +412,11 @@ const confirmDelete = async (employee) => {
 };
 
 onMounted(async () => {
-  await Promise.all([store.fetchEmployees(), store.fetchAttendance(), store.fetchStats()]);
+  const today = new Date().toISOString().split('T')[0];
+  await Promise.all([
+    store.fetchEmployees({ per_page: 100 }),
+    store.fetchAttendance({ from_date: today, to_date: today, per_page: 100 }),
+  ]);
 });
 </script>
 
