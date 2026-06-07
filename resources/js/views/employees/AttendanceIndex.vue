@@ -98,16 +98,23 @@
       <div class="flex-1 min-w-[240px] relative">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <input
+          id="attendance-search"
+          name="attendance_search"
           v-model="searchQuery"
-          type="text"
+          type="search"
           placeholder="بحث بالاسم..."
+          autocomplete="off"
+          aria-label="بحث بالاسم"
           class="w-full pl-10 pr-4 py-2.5 bg-input-bg border border-white/5 rounded-xl focus:border-gold outline-none text-sm"
         />
       </div>
 
       <input
+        id="attendance-filter-date"
+        name="attendance_filter_date"
         v-model="selectedDate"
         type="date"
+        aria-label="تاريخ الحضور"
         class="px-4 py-2.5 bg-input-bg border border-white/5 rounded-xl focus:border-gold outline-none text-sm"
       />
 
@@ -120,6 +127,10 @@
     </div>
 
     <!-- Attendance Table -->
+    <div v-if="store.errors.fetch" class="bg-error/10 border border-error/20 rounded-2xl p-4 text-sm text-error">
+      {{ store.errors.fetch }}
+    </div>
+
     <div v-if="store.loading.attendance" class="bg-card-bg border border-white/10 rounded-2xl p-12">
       <div class="flex items-center justify-center">
         <Loader2 class="w-8 h-8 text-gold animate-spin" />
@@ -156,8 +167,8 @@
           </thead>
           <tbody>
             <tr
-              v-for="employeeRecord in filteredRecords"
-              :key="employeeRecord.employee.id"
+              v-for="(employeeRecord, rowIndex) in filteredRecords"
+              :key="employeeRecord.employee?.id ?? `attendance-row-${rowIndex}`"
               class="border-b border-white/5 hover:bg-white/5 transition-colors"
             >
               <td class="px-6 py-4">
@@ -227,10 +238,12 @@
         </h3>
         <form @submit.prevent="submitAttendance" class="space-y-4">
           <div>
-            <label class="block text-sm font-semibold text-text-main mb-2">
+            <label for="attendance-employee-id" class="block text-sm font-semibold text-text-main mb-2">
               الموظف *
             </label>
             <select
+              id="attendance-employee-id"
+              name="employee_id"
               v-model="attendanceForm.employee_id"
               required
               class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer"
@@ -247,10 +260,12 @@
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-text-main mb-2">
+            <label for="attendance-date" class="block text-sm font-semibold text-text-main mb-2">
               التاريخ *
             </label>
             <input
+              id="attendance-date"
+              name="attendance_date"
               v-model="attendanceForm.date"
               type="date"
               required
@@ -260,10 +275,12 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-semibold text-text-main mb-2">
+              <label for="attendance-check-in" class="block text-sm font-semibold text-text-main mb-2">
                 وقت الحضور
               </label>
               <input
+                id="attendance-check-in"
+                name="check_in"
                 v-model="attendanceForm.check_in"
                 type="time"
                 class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm font-mono"
@@ -271,10 +288,12 @@
             </div>
 
             <div>
-              <label class="block text-sm font-semibold text-text-main mb-2">
+              <label for="attendance-check-out" class="block text-sm font-semibold text-text-main mb-2">
                 وقت الانصراف
               </label>
               <input
+                id="attendance-check-out"
+                name="check_out"
                 v-model="attendanceForm.check_out"
                 type="time"
                 class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm font-mono"
@@ -283,10 +302,12 @@
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-text-main mb-2">
+            <label for="attendance-status" class="block text-sm font-semibold text-text-main mb-2">
               الحالة *
             </label>
             <select
+              id="attendance-status"
+              name="status"
               v-model="attendanceForm.status"
               required
               class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer"
@@ -298,10 +319,12 @@
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-text-main mb-2">
+            <label for="attendance-notes" class="block text-sm font-semibold text-text-main mb-2">
               ملاحظات
             </label>
             <textarea
+              id="attendance-notes"
+              name="notes"
               v-model="attendanceForm.notes"
               rows="2"
               placeholder="أي ملاحظات..."
@@ -374,7 +397,8 @@ const activeEmployees = computed(() => store.activeEmployees);
 
 const attendanceForSelectedDate = computed(() => {
   const date = selectedDate.value;
-  return store.attendance.filter(
+  const list = Array.isArray(store.attendance) ? store.attendance : [];
+  return list.filter(
     (a) => a.date === date || a.attendance_date === date
   );
 });
@@ -413,8 +437,11 @@ const dateStats = computed(() => {
 
 // Employee records with attendance
 const filteredRecords = computed(() => {
-  let records = store.activeEmployees.map((employee) => {
-    const attendance = store.attendance.find((a) =>
+  const employees = Array.isArray(store.activeEmployees) ? store.activeEmployees : [];
+  const attendanceList = Array.isArray(store.attendance) ? store.attendance : [];
+
+  let records = employees.map((employee) => {
+    const attendance = attendanceList.find((a) =>
       a.employee_id === employee.id &&
       (a.date === selectedDate.value || a.attendance_date === selectedDate.value)
     );
@@ -546,9 +573,17 @@ watch(selectedDate, async (newDate) => {
 });
 
 onMounted(async () => {
-  await store.fetchEmployees({ per_page: 100 });
-  await store.fetchEmployeeReferenceData();
-  await store.fetchAttendance({ from_date: selectedDate.value, to_date: selectedDate.value, per_page: 100 });
+  try {
+    await store.fetchEmployees({ per_page: 100 });
+    await store.fetchAttendance({
+      from_date: selectedDate.value,
+      to_date: selectedDate.value,
+      per_page: 100,
+    });
+  } catch (error) {
+    console.error('Failed to load attendance page:', error);
+    store.addToast('تعذّر تحميل بيانات الحضور', 'error');
+  }
 });
 </script>
 

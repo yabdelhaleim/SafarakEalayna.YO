@@ -366,6 +366,9 @@ export const useEmployeeStore = defineStore('employee', {
         if (rawItems?.data && Array.isArray(rawItems.data)) {
           rawItems = rawItems.data;
         }
+        if (!Array.isArray(rawItems)) {
+          rawItems = [];
+        }
 
         this.attendance = rawItems.map(mapAttendance);
         await this.fetchStats();
@@ -468,11 +471,24 @@ export const useEmployeeStore = defineStore('employee', {
     // Fetch Stats
     async fetchStats() {
       try {
+        const today = new Date().toISOString().split('T')[0];
+        const attendance = Array.isArray(this.attendance) ? this.attendance : [];
+        const employees = Array.isArray(this.employees) ? this.employees : [];
+        const presentToday = attendance.filter(
+          (a) => (a.date === today || a.attendance_date === today) && a.present
+        );
+        const absentToday = employees.filter((e) => {
+          const record = attendance.find(
+            (a) => a.employee_id === e.id && (a.date === today || a.attendance_date === today)
+          );
+          return !record || !record.present;
+        });
+
         const stats = {
-          total_employees: Array.isArray(this.employees) ? this.employees.length : 0,
-          active_employees: Array.isArray(this.employees) ? this.employees.filter((e) => e.is_active).length : 0,
-          present_today: this.presentToday.length,
-          absent_today: this.absentToday.length,
+          total_employees: employees.length,
+          active_employees: employees.filter((e) => e.is_active).length,
+          present_today: presentToday.length,
+          absent_today: absentToday.length,
           total_bonuses: Array.isArray(this.bonuses)
             ? this.bonuses.reduce((sum, b) => sum + parseAmount(b.amount), 0)
             : 0,
