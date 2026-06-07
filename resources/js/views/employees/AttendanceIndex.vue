@@ -174,18 +174,18 @@
               <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-full bg-gold/10 flex items-center justify-center text-gold font-bold text-sm">
-                    {{ getInitials(employeeRecord.employee.name) }}
+                    {{ getInitials(employeeRecord.employee?.name) }}
                   </div>
                   <div>
-                    <div class="font-semibold text-sm">{{ employeeRecord.employee.name }}</div>
+                    <div class="font-semibold text-sm">{{ employeeRecord.employee?.name || '—' }}</div>
                     <div class="text-xs text-text-muted">
-                      {{ displayValue(employeeRecord.employee.position) }}
+                      {{ displayValue(employeeRecord.employee?.position) }}
                     </div>
                   </div>
                 </div>
               </td>
               <td class="px-6 py-4">
-                <span class="text-sm">{{ getDepartmentLabel(employeeRecord.employee.department) }}</span>
+                <span class="text-sm">{{ getDepartmentLabel(employeeRecord.employee?.department) }}</span>
               </td>
               <td class="px-6 py-4">
                 <span
@@ -355,7 +355,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onActivated, onDeactivated, watch } from 'vue';
+defineOptions({ name: 'EmployeesAttendance' });
+
+import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useEmployeeStore } from '@/stores/employeeStore';
 import {
   Search,
@@ -404,18 +406,21 @@ const attendanceForSelectedDate = computed(() => {
 });
 
 const dateStats = computed(() => {
-  const employees = store.activeEmployees;
+  const employees = Array.isArray(store.activeEmployees) ? store.activeEmployees : [];
   const records = attendanceForSelectedDate.value;
   let present = 0;
   let absent = 0;
   let unregistered = 0;
 
   employees.forEach((employee) => {
+    if (!employee) {
+      return;
+    }
     if (employee.status === 'on_leave') {
       return;
     }
 
-    const record = records.find((a) => a && a.employee_id === employee.id);
+    const record = records.find((a) => a && a.employee_id == employee.id);
     if (!record) {
       unregistered += 1;
       return;
@@ -428,7 +433,7 @@ const dateStats = computed(() => {
     }
   });
 
-  const onLeave = employees.filter((e) => e.status === 'on_leave').length;
+  const onLeave = employees.filter((e) => e && e.status === 'on_leave').length;
   const expected = employees.length - onLeave;
   const percentage = expected > 0 ? Math.round((present / expected) * 100) : 0;
 
@@ -440,23 +445,26 @@ const filteredRecords = computed(() => {
   const employees = Array.isArray(store.activeEmployees) ? store.activeEmployees : [];
   const attendanceList = Array.isArray(store.attendance) ? store.attendance : [];
 
-  let records = employees.map((employee) => {
-    const attendance = attendanceList.find((a) =>
-      a && a.employee_id === employee.id &&
-      (a.date === selectedDate.value || a.attendance_date === selectedDate.value)
-    );
+  let records = employees
+    .filter((employee) => employee && employee.id != null)
+    .map((employee) => {
+      const attendance = attendanceList.find((a) =>
+        a && a.employee_id == employee.id &&
+        (a.date === selectedDate.value || a.attendance_date === selectedDate.value)
+      );
 
-    return {
-      employee,
-      record: attendance || null,
-    };
-  });
+      return {
+        employee,
+        record: attendance || null,
+      };
+    });
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    records = records.filter((r) =>
-      r.employee.name?.toLowerCase().includes(query)
-    );
+    records = records.filter((r) => {
+      const name = r.employee?.name;
+      return typeof name === 'string' && name.toLowerCase().includes(query);
+    });
   }
 
   return records;
@@ -478,13 +486,16 @@ const getInitials = (name) => {
 // Get department label
 const getDepartmentLabel = (department) => {
   if (!department || department === '—') return '—';
-  const dept = store.departments.find((d) => d.value === department);
+  const departments = Array.isArray(store.departments) ? store.departments : [];
+  const dept = departments.find((d) => d && d.value === department);
   return dept?.label || department;
 };
 
 // Get attendance status class
 const getAttendanceStatusClass = (employeeRecord) => {
-  if (employeeRecord.employee.status === 'on_leave') return 'bg-warning/10 text-warning';
+  const employee = employeeRecord?.employee;
+  if (!employee) return 'bg-gray-500/10 text-gray-400';
+  if (employee.status === 'on_leave') return 'bg-warning/10 text-warning';
   if (!employeeRecord.record) return 'bg-gray-500/10 text-gray-400';
   if (employeeRecord.record.status === 'late') return 'bg-warning/10 text-warning';
   if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return 'bg-error/10 text-error';
@@ -493,7 +504,9 @@ const getAttendanceStatusClass = (employeeRecord) => {
 
 // Get attendance status icon
 const getAttendanceStatusIcon = (employeeRecord) => {
-  if (employeeRecord.employee.status === 'on_leave') return CalendarClock;
+  const employee = employeeRecord?.employee;
+  if (!employee) return AlertCircle;
+  if (employee.status === 'on_leave') return CalendarClock;
   if (!employeeRecord.record) return AlertCircle;
   if (employeeRecord.record.status === 'late') return Clock;
   if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return XCircle;
@@ -501,14 +514,18 @@ const getAttendanceStatusIcon = (employeeRecord) => {
 };
 
 const getWorkHours = (employeeRecord) => {
-  const checkIn = employeeRecord.record?.check_in;
-  const checkOut = employeeRecord.record?.check_out;
+  const checkIn = employeeRecord?.record?.check_in;
+  const checkOut = employeeRecord?.record?.check_out;
   if (!checkIn || !checkOut) {
     return null;
   }
 
-  const [inH, inM] = checkIn.split(':').map(Number);
-  const [outH, outM] = checkOut.split(':').map(Number);
+  const inParts = String(checkIn).split(':');
+  const outParts = String(checkOut).split(':');
+  const inH = Number(inParts[0]);
+  const inM = Number(inParts[1]);
+  const outH = Number(outParts[0]);
+  const outM = Number(outParts[1]);
   if ([inH, inM, outH, outM].some((n) => Number.isNaN(n))) {
     return null;
   }
@@ -576,27 +593,38 @@ const loadAttendancePage = async () => {
   ]);
 };
 
-watch(selectedDate, async (newDate) => {
-  if (newDate) {
-    try {
-      await store.fetchAttendance({ from_date: newDate, to_date: newDate, per_page: 100 });
-    } catch (error) {
-      console.error('Failed to load attendance for date:', error);
-    }
+watch(selectedDate, async (newDate, oldDate) => {
+  if (!newDate || newDate === oldDate) {
+    return;
   }
-});
-
-onActivated(async () => {
   try {
-    await loadAttendancePage();
+    await store.fetchAttendance({ from_date: newDate, to_date: newDate, per_page: 100 });
   } catch (error) {
-    console.error('Failed to load attendance page:', error);
-    store.addToast('تعذّر تحميل بيانات الحضور', 'error');
+    console.error('Failed to load attendance for date:', error);
   }
 });
 
-onDeactivated(() => {
-  store.abortPendingRequests();
+let pageLoadPromise = null;
+const ensurePageLoaded = () => {
+  if (!pageLoadPromise) {
+    pageLoadPromise = loadAttendancePage()
+      .catch((error) => {
+        console.error('Failed to load attendance page:', error);
+        store.addToast('تعذّر تحميل بيانات الحضور', 'error');
+      })
+      .finally(() => {
+        pageLoadPromise = null;
+      });
+  }
+  return pageLoadPromise;
+};
+
+onMounted(() => {
+  ensurePageLoaded();
+});
+
+onActivated(() => {
+  ensurePageLoaded();
 });
 </script>
 

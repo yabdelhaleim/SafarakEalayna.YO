@@ -350,7 +350,7 @@
         </div>
         <router-view v-else v-slot="{ Component }">
           <transition name="t-page">
-            <keep-alive :max="20">
+            <keep-alive :max="20" exclude="EmployeesAttendance">
               <component
                 v-if="Component"
                 :is="Component"
@@ -398,9 +398,10 @@ const authStore = useAuthStore();
 
 const error = ref(null);
 import { onErrorCaptured } from 'vue';
-onErrorCaptured((err) => {
+onErrorCaptured((err, instance, info) => {
+  console.error('[DashboardLayout] Render error:', err, info);
   error.value = err;
-  return false; // Prevent error from bubbling up further
+  return false;
 });
 
 const hasPermission = (perm) => {

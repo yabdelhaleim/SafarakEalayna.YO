@@ -42,29 +42,53 @@ const normalizeListItems = (rawItems) => {
   return rawItems.filter((item) => item && typeof item === 'object');
 };
 
+const normalizeStatus = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'object' && 'value' in value) {
+    return value.value;
+  }
+  return value;
+};
+
+const normalizeIsActive = (item) => {
+  if (item.is_active !== undefined && item.is_active !== null) {
+    return item.is_active === true || item.is_active === 1 || item.is_active === '1';
+  }
+  const status = normalizeStatus(item.status);
+  return status === 'active';
+};
+
 const mapEmployee = (item) => {
-  if (!item) return item;
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
   const personal = item.personal_info || {};
   const contact = item.contact_info || {};
   const employment = item.employment_info || {};
   const department = item.department || employment.department || null;
   const position = item.position || employment.position || employment.job_title || null;
+  const status = normalizeStatus(item.status ?? employment.employment_status);
   return {
     ...item,
-    name: item.name
+    name: String(
+      item.name
       || item.full_name
       || (item.user && item.user.name)
       || personal.full_name
       || `${personal.first_name || ''} ${personal.last_name || ''}`.trim()
-      || '—',
+      || '—'
+    ),
     phone: item.phone || contact.phone || (item.user && item.user.phone) || '—',
     email: item.email || contact.email || (item.user && item.user.email) || '—',
     address: item.address || contact.address || '',
     department,
     position,
+    status,
     hire_date: item.hire_date || employment.hire_date || null,
     salary: parseAmount(item.salary),
-    is_active: item.is_active ?? (item.status === 'active'),
+    is_active: normalizeIsActive(item),
   };
 };
 
@@ -133,15 +157,16 @@ export const useEmployeeStore = defineStore('employee', {
   getters: {
     // Filtered employees
     filteredEmployees: (state) => {
-      let filtered = Array.isArray(state.employees) ? [...state.employees] : [];
+      let filtered = Array.isArray(state.employees) ? state.employees : [];
+      filtered = filtered.filter((e) => e && typeof e === 'object');
 
       if (state.filters.search) {
         const query = state.filters.search.toLowerCase();
         filtered = filtered.filter(
           (e) =>
-            e.name?.toLowerCase().includes(query) ||
-            e.phone?.includes(query) ||
-            e.email?.toLowerCase().includes(query)
+            (typeof e.name === 'string' && e.name.toLowerCase().includes(query)) ||
+            (typeof e.phone === 'string' && e.phone.includes(query)) ||
+            (typeof e.email === 'string' && e.email.toLowerCase().includes(query))
         );
       }
 
@@ -165,7 +190,7 @@ export const useEmployeeStore = defineStore('employee', {
     // Active employees
     activeEmployees: (state) => {
       const employees = Array.isArray(state.employees) ? state.employees : [];
-      return employees.filter((e) => e.is_active);
+      return employees.filter((e) => e && e.is_active);
     },
 
     // Employees on leave
@@ -210,15 +235,15 @@ export const useEmployeeStore = defineStore('employee', {
           signal: controller.signal
         });
         const data = response.data?.data || {};
-        const fetchedDepartments = data.departments || [];
+        const fetchedDepartments = Array.isArray(data.departments) ? data.departments : [];
         const merged = [...DEFAULT_DEPARTMENTS];
         fetchedDepartments.forEach((dept) => {
-          if (!merged.some((d) => d.value === dept.value)) {
+          if (dept && typeof dept === 'object' && !merged.some((d) => d.value === dept.value)) {
             merged.push(dept);
           }
         });
         this.departmentsList = merged;
-        const rawStatuses = data.employment_statuses || [];
+        const rawStatuses = Array.isArray(data.employment_statuses) ? data.employment_statuses : [];
         this.employmentStatusesList = rawStatuses.map((s) => ({
           ...s,
           color:
@@ -264,7 +289,10 @@ export const useEmployeeStore = defineStore('employee', {
         if (rawItems?.data && Array.isArray(rawItems.data)) {
           rawItems = rawItems.data;
         }
-        this.employees = normalizeListItems(rawItems).map(mapEmployee);
+        if (!Array.isArray(rawItems)) {
+          rawItems = [];
+        }
+        this.employees = normalizeListItems(rawItems).map(mapEmployee).filter(Boolean);
         if (data && (data.meta || data.pagination)) {
           const meta = data.meta || data.pagination;
           this.pagination = {
@@ -538,8 +566,13 @@ export const useEmployeeStore = defineStore('employee', {
       this.fetchEmployeesController?.abort();
       this.fetchAttendanceController?.abort();
       this.fetchReferenceDataController?.abort();
+      this.fetchEmployeesController = null;
+      this.fetchAttendanceController = null;
+      this.fetchReferenceDataController = null;
       this.employeesRequestId += 1;
       this.attendanceRequestId += 1;
+      this.loading.employees = false;
+      this.loading.attendance = false;
     },
 
     transformEmployeePayload(payload) {

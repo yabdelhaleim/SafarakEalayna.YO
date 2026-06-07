@@ -323,9 +323,11 @@ const filteredEmployees = computed(() => store.filteredEmployees);
 
 // Get initials
 const getInitials = (name) => {
-  if (!name) return '؟';
-  return name
+  const label = name == null ? '' : String(name).trim();
+  if (!label) return '؟';
+  return label
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .toUpperCase()
@@ -335,7 +337,8 @@ const getInitials = (name) => {
 // Get department label
 const getDepartmentLabel = (department) => {
   if (!department || department === '—') return '—';
-  const dept = store.departments.find((d) => d.value === department);
+  const departments = Array.isArray(store.departments) ? store.departments : [];
+  const dept = departments.find((d) => d && d.value === department);
   return dept?.label || department;
 };
 
