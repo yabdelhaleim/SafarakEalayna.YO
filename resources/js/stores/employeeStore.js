@@ -1,20 +1,60 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+const DEFAULT_DEPARTMENTS = [
+  { value: 'sales', label: 'المبيعات' },
+  { value: 'finance', label: 'المالية' },
+  { value: 'operations', label: 'العمليات' },
+  { value: 'customer_service', label: 'خدمة العملاء' },
+  { value: 'admin', label: 'الإدارة' },
+  { value: 'it', label: 'تقنية المعلومات' },
+];
+
+const parseAmount = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const mapAttendance = (item) => {
+  if (!item) return item;
+  const status = item.status;
+  const isPresent = item.present !== undefined
+    ? item.present
+    : (status === 'present' || status === 'late');
+  return {
+    ...item,
+    date: item.date || item.attendance_date,
+    attendance_date: item.attendance_date || item.date,
+    check_in: item.check_in || null,
+    check_out: item.check_out || null,
+    present: isPresent,
+    status,
+  };
+};
+
 const mapEmployee = (item) => {
   if (!item) return item;
   const personal = item.personal_info || {};
   const contact = item.contact_info || {};
   const employment = item.employment_info || {};
+  const department = item.department || employment.department || null;
+  const position = item.position || employment.position || employment.job_title || null;
   return {
     ...item,
-    name: item.name || (item.user && item.user.name) || personal.full_name || `${personal.first_name || ''} ${personal.last_name || ''}`.trim() || '—',
+    name: item.name
+      || item.full_name
+      || (item.user && item.user.name)
+      || personal.full_name
+      || `${personal.first_name || ''} ${personal.last_name || ''}`.trim()
+      || '—',
     phone: item.phone || contact.phone || (item.user && item.user.phone) || '—',
     email: item.email || contact.email || (item.user && item.user.email) || '—',
-    department: item.department || employment.department || '—',
-    position: item.position || employment.position || '—',
+    address: item.address || contact.address || '',
+    department,
+    position,
     hire_date: item.hire_date || employment.hire_date || null,
-    is_active: item.is_active ?? (item.status === 'active')
+    salary: parseAmount(item.salary),
+    is_active: item.is_active ?? (item.status === 'active'),
   };
 };
 
@@ -158,7 +198,14 @@ export const useEmployeeStore = defineStore('employee', {
           signal: controller.signal
         });
         const data = response.data?.data || {};
-        this.departmentsList = data.departments || [];
+        const fetchedDepartments = data.departments || [];
+        const merged = [...DEFAULT_DEPARTMENTS];
+        fetchedDepartments.forEach((dept) => {
+          if (!merged.some((d) => d.value === dept.value)) {
+            merged.push(dept);
+          }
+        });
+        this.departmentsList = merged;
         const rawStatuses = data.employment_statuses || [];
         this.employmentStatusesList = rawStatuses.map((s) => ({
           ...s,
@@ -199,12 +246,13 @@ export const useEmployeeStore = defineStore('employee', {
         const data = response.data?.data || response.data;
         const rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
         this.employees = rawItems.map(mapEmployee);
-        if (data && data.meta) {
+        if (data && (data.meta || data.pagination)) {
+          const meta = data.meta || data.pagination;
           this.pagination = {
-            total: data.meta.total || 0,
-            current_page: data.meta.current_page || 1,
-            last_page: data.meta.last_page || 1,
-            per_page: data.meta.per_page || 15,
+            total: meta.total || 0,
+            current_page: meta.current_page || 1,
+            last_page: meta.last_page || 1,
+            per_page: meta.per_page || 15,
           };
         }
         await this.fetchEmployeeReferenceData();
@@ -232,7 +280,7 @@ export const useEmployeeStore = defineStore('employee', {
       this.errors = {};
 
       try {
-        const apiPayload = this.transformPayloadForApi(payload);
+        const apiPayload = this.transformEmployeePayload(payload);
         const response = await axios.post('/api/v1/employee/employees', apiPayload);
         const record = response.data.data || response.data;
         const mappedRecord = mapEmployee(record);
@@ -256,7 +304,7 @@ export const useEmployeeStore = defineStore('employee', {
       this.errors = {};
 
       try {
-        const apiPayload = this.transformPayloadForApi(payload);
+        const apiPayload = this.transformEmployeePayload(payload);
         const response = await axios.put(`/api/v1/employee/employees/${id}`, apiPayload);
         const record = response.data.data || response.data;
         const mappedRecord = mapEmployee(record);
@@ -314,14 +362,12 @@ export const useEmployeeStore = defineStore('employee', {
           signal: controller.signal
         });
         const data = response.data?.data || response.data;
-        const rawItems = data.items || (Array.isArray(data) ? data : []);
-        
-        // Map backend fields to frontend expectations
-        this.attendance = rawItems.map(item => ({
-          ...item,
-          date: item.date || item.attendance_date,
-          present: item.present !== undefined ? item.present : (item.status === 'present' || item.status === 'late')
-        }));
+        let rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
+        if (rawItems?.data && Array.isArray(rawItems.data)) {
+          rawItems = rawItems.data;
+        }
+
+        this.attendance = rawItems.map(mapAttendance);
         await this.fetchStats();
       } catch (error) {
         if (axios.isCancel(error)) {
@@ -349,18 +395,18 @@ export const useEmployeeStore = defineStore('employee', {
         const apiPayload = {
           employee_id: payload.employee_id,
           attendance_date: payload.date || payload.attendance_date,
-          status: payload.present ? 'present' : 'absent',
+          status: payload.status || (payload.present === false ? 'absent' : 'present'),
+          check_in: payload.check_in || null,
+          check_out: payload.check_out || null,
           notes: payload.notes || null,
         };
         const response = await axios.post('/api/v1/employee/attendances', apiPayload);
         const record = response.data.data || response.data;
-        
-        // Map backend record back to frontend expectations
-        const mappedRecord = {
+
+        const mappedRecord = mapAttendance({
           ...record,
           date: record.attendance_date,
-          present: record.status === 'present' || record.status === 'late'
-        };
+        });
 
         this.attendance.unshift(mappedRecord);
         await this.fetchStats();
@@ -427,9 +473,15 @@ export const useEmployeeStore = defineStore('employee', {
           active_employees: Array.isArray(this.employees) ? this.employees.filter((e) => e.is_active).length : 0,
           present_today: this.presentToday.length,
           absent_today: this.absentToday.length,
-          total_bonuses: Array.isArray(this.bonuses) ? this.bonuses.reduce((sum, b) => sum + (b.amount || 0), 0) : 0,
-          total_deductions: Array.isArray(this.deductions) ? this.deductions.reduce((sum, d) => sum + (d.amount || 0), 0) : 0,
-          net_payroll: Array.isArray(this.employees) ? this.employees.reduce((sum, e) => sum + (e.salary || 0), 0) : 0,
+          total_bonuses: Array.isArray(this.bonuses)
+            ? this.bonuses.reduce((sum, b) => sum + parseAmount(b.amount), 0)
+            : 0,
+          total_deductions: Array.isArray(this.deductions)
+            ? this.deductions.reduce((sum, d) => sum + parseAmount(d.amount), 0)
+            : 0,
+          net_payroll: Array.isArray(this.employees)
+            ? this.employees.reduce((sum, e) => sum + parseAmount(e.salary), 0)
+            : 0,
         };
         this.stats = stats;
       } catch (error) {
@@ -440,26 +492,30 @@ export const useEmployeeStore = defineStore('employee', {
     /**
      * Transform frontend camelCase payload to backend snake_case format
      */
-    transformPayloadForApi(payload) {
+    transformEmployeePayload(payload) {
       return {
-        name: payload.name || '',
-        email: payload.email || '',
-        phone: payload.phone || '',
-        department: payload.department || '',
-        position: payload.position || '',
-        salary: payload.salary || 0,
+        full_name: payload.full_name || payload.name || '',
+        phone: payload.phone || null,
+        department: payload.department || null,
+        position: payload.position || null,
+        salary: parseAmount(payload.salary),
         hire_date: payload.hireDate || payload.hire_date || null,
         is_active: payload.isActive ?? payload.is_active ?? true,
-        address: payload.address || '',
-        status: payload.status || 'active',
-        amount: payload.amount || 0,
-        reason: payload.reason || '',
-        date: payload.date || null,
-        check_in: payload.checkIn || payload.check_in || null,
-        check_out: payload.checkOut || payload.check_out || null,
-        present: payload.present ?? true,
         notes: payload.notes || null,
       };
+    },
+
+    transformPayloadForApi(payload) {
+      if (payload.amount !== undefined || payload.reason !== undefined) {
+        return {
+          amount: parseAmount(payload.amount),
+          reason: payload.reason || '',
+          date: payload.date || null,
+          type: payload.type || undefined,
+        };
+      }
+
+      return this.transformEmployeePayload(payload);
     },
 
     // Add toast notification

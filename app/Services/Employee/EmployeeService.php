@@ -40,6 +40,11 @@ class EmployeeService
     public function createEmployee(array $data): Employee
     {
         return DB::transaction(function () use ($data) {
+            if (isset($data['is_active'])) {
+                $data['status'] = $data['is_active'] ? 'active' : 'inactive';
+                unset($data['is_active']);
+            }
+
             $employee = Employee::create($data);
 
             Log::info('Employee created', [
@@ -54,6 +59,11 @@ class EmployeeService
     public function updateEmployee(Employee $employee, array $data): Employee
     {
         return DB::transaction(function () use ($employee, $data) {
+            if (isset($data['is_active'])) {
+                $data['status'] = $data['is_active'] ? 'active' : 'inactive';
+                unset($data['is_active']);
+            }
+
             $employee->update($data);
 
             Log::info('Employee updated', [

@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+const parseAmount = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     // Overview Data
@@ -83,11 +88,12 @@ export const useDashboardStore = defineStore('dashboard', {
   getters: {
     // Total bookings across all modules
     totalBookings: (state) => {
+      const b = state.bookings || {};
       return (
-        (state.bookings?.flights?.total || 0) +
-        (state.bookings?.buses?.total || 0) +
-        (state.bookings?.services?.total || 0) +
-        (state.bookings?.online?.total || 0)
+        parseAmount(b.flights?.total) +
+        parseAmount(b.buses?.total) +
+        parseAmount(b.services?.total) +
+        parseAmount(b.online?.total)
       );
     },
 
@@ -219,12 +225,19 @@ export const useDashboardStore = defineStore('dashboard', {
           signal: controller.signal
         });
 
-        if (response.data.success || response.data.success) {
+        if (response.data?.success) {
           const data = response.data.data;
 
-          // Update all state
           this.overview = data.overview || this.overview;
-          this.financial = data.financial || this.financial;
+          this.financial = {
+            ...this.financial,
+            ...data.financial,
+            total_income: parseAmount(data.financial?.total_income),
+            total_expense: parseAmount(data.financial?.total_expense),
+            net_profit: parseAmount(data.financial?.net_profit),
+            profit_margin: parseAmount(data.financial?.profit_margin),
+            transactions_count: parseAmount(data.financial?.transactions_count),
+          };
           this.bookings = data.bookings || this.bookings;
           this.top_customers = data.top_customers || [];
           this.recent_activities = data.recent_activities || [];

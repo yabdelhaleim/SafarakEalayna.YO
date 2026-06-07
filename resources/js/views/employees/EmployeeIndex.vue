@@ -92,8 +92,8 @@
         </div>
         <div>
           <div class="text-sm text-text-muted uppercase tracking-widest mb-1">إجمالي الرواتب</div>
-          <div class="text-2xl font-bold font-mono group-hover:text-teal-400 transition-colors">
-            {{ store.stats.net_payroll?.toLocaleString() }}
+          <div class="text-2xl font-bold font-mono group-hover:text-teal-400 transition-colors truncate">
+            {{ formatCurrency(store.stats.net_payroll) }}
           </div>
           <div class="text-xs text-text-muted mt-1">جنيه/شهر</div>
         </div>
@@ -209,11 +209,11 @@
                 <span class="text-sm">{{ getDepartmentLabel(employee.department) }}</span>
               </td>
               <td class="px-6 py-4">
-                <span class="text-sm">{{ employee.position }}</span>
+                <span class="text-sm">{{ displayValue(employee.position) }}</span>
               </td>
               <td class="px-6 py-4">
                 <span class="font-mono font-bold text-gold text-sm">
-                  {{ employee.salary?.toLocaleString() }} جنيه
+                  {{ formatCurrency(employee.salary) }}
                 </span>
               </td>
               <td class="px-6 py-4">
@@ -306,6 +306,18 @@ import {
 
 const store = useEmployeeStore();
 
+const formatCurrency = (amount) => {
+  const n = Number(amount) || 0;
+  return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+};
+
+const displayValue = (value) => {
+  if (value === null || value === undefined || value === '' || value === '—') {
+    return '—';
+  }
+  return value;
+};
+
 // Filtered employees
 const filteredEmployees = computed(() => store.filteredEmployees);
 
@@ -322,6 +334,7 @@ const getInitials = (name) => {
 
 // Get department label
 const getDepartmentLabel = (department) => {
+  if (!department || department === '—') return '—';
   const dept = store.departments.find((d) => d.value === department);
   return dept?.label || department;
 };
@@ -356,8 +369,9 @@ const getStatusLabel = (status, isActive) => {
 
 // Format date
 const formatDate = (dateString) => {
-  if (!dateString) return '';
+  if (!dateString) return '—';
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('ar-EG', {
     year: 'numeric',
     month: 'short',

@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'employee_id',
     'attendance_date',
     'status',
+    'check_in',
+    'check_out',
     'notes',
     'created_by',
 ])]

@@ -33,7 +33,7 @@
         <div>
           <div class="text-sm text-text-muted uppercase tracking-widest mb-1">الحاضرون اليوم</div>
           <div class="text-2xl font-bold font-mono group-hover:text-success transition-colors">
-            {{ store.stats.present_today }}
+            {{ dateStats.present }}
           </div>
         </div>
       </div>
@@ -50,7 +50,7 @@
         <div>
           <div class="text-sm text-text-muted uppercase tracking-widest mb-1">الغائبون اليوم</div>
           <div class="text-2xl font-bold font-mono group-hover:text-error transition-colors">
-            {{ store.stats.absent_today }}
+            {{ dateStats.absent }}
           </div>
         </div>
       </div>
@@ -67,7 +67,7 @@
         <div>
           <div class="text-sm text-text-muted uppercase tracking-widest mb-1">في إجازة</div>
           <div class="text-2xl font-bold font-mono group-hover:text-warning transition-colors">
-            {{ employeesOnLeave }}
+            {{ dateStats.onLeave }}
           </div>
         </div>
       </div>
@@ -84,7 +84,10 @@
         <div>
           <div class="text-sm text-text-muted uppercase tracking-widest mb-1">نسبة الحضور</div>
           <div class="text-2xl font-bold font-mono group-hover:text-blue-400 transition-colors">
-            {{ attendancePercentage }}%
+            {{ dateStats.percentage }}%
+          </div>
+          <div v-if="dateStats.unregistered > 0" class="text-xs text-text-muted mt-1">
+            {{ dateStats.unregistered }} غير مسجل
           </div>
         </div>
       </div>
@@ -165,7 +168,7 @@
                   <div>
                     <div class="font-semibold text-sm">{{ employeeRecord.employee.name }}</div>
                     <div class="text-xs text-text-muted">
-                      {{ employeeRecord.employee.position }}
+                      {{ displayValue(employeeRecord.employee.position) }}
                     </div>
                   </div>
                 </div>
@@ -189,12 +192,12 @@
               </td>
               <td class="px-6 py-4">
                 <span class="font-mono text-sm">
-                  {{ employeeRecord.record?.check_in || '--:--' }}
+                  {{ employeeRecord.record?.check_in || '—' }}
                 </span>
               </td>
               <td class="px-6 py-4">
                 <span class="font-mono text-sm">
-                  {{ employeeRecord.record?.check_out || '--:--' }}
+                  {{ employeeRecord.record?.check_out || '—' }}
                 </span>
               </td>
               <td class="px-6 py-4">
@@ -238,7 +241,7 @@
                 :key="employee.id"
                 :value="employee.id"
               >
-                {{ employee.name }} - {{ employee.position }}
+                {{ employee.name }}{{ employee.position ? ` — ${employee.position}` : '' }}
               </option>
             </select>
           </div>
@@ -284,12 +287,13 @@
               الحالة *
             </label>
             <select
-              v-model="attendanceForm.present"
+              v-model="attendanceForm.status"
               required
               class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer"
             >
-              <option :value="true">حاضر</option>
-              <option :value="false">غائب</option>
+              <option value="present">حاضر</option>
+              <option value="late">متأخر</option>
+              <option value="absent">غائب</option>
             </select>
           </div>
 
@@ -354,22 +358,57 @@ const attendanceForm = ref({
   date: new Date().toISOString().split('T')[0],
   check_in: '',
   check_out: '',
-  present: true,
+  status: 'present',
   notes: '',
 });
+
+const displayValue = (value) => {
+  if (value === null || value === undefined || value === '' || value === '—') {
+    return '—';
+  }
+  return value;
+};
 
 // Active employees
 const activeEmployees = computed(() => store.activeEmployees);
 
-// Employees on leave
-const employeesOnLeave = computed(() => store.employeesOnLeave.length);
+const attendanceForSelectedDate = computed(() => {
+  const date = selectedDate.value;
+  return store.attendance.filter(
+    (a) => a.date === date || a.attendance_date === date
+  );
+});
 
-// Attendance percentage
-const attendancePercentage = computed(() => {
-  const total = store.stats.total_employees;
-  const present = store.stats.present_today;
-  if (total === 0) return 0;
-  return Math.round((present / total) * 100);
+const dateStats = computed(() => {
+  const employees = store.activeEmployees;
+  const records = attendanceForSelectedDate.value;
+  let present = 0;
+  let absent = 0;
+  let unregistered = 0;
+
+  employees.forEach((employee) => {
+    if (employee.status === 'on_leave') {
+      return;
+    }
+
+    const record = records.find((a) => a.employee_id === employee.id);
+    if (!record) {
+      unregistered += 1;
+      return;
+    }
+
+    if (record.status === 'absent' || record.present === false) {
+      absent += 1;
+    } else {
+      present += 1;
+    }
+  });
+
+  const onLeave = employees.filter((e) => e.status === 'on_leave').length;
+  const expected = employees.length - onLeave;
+  const percentage = expected > 0 ? Math.round((present / expected) * 100) : 0;
+
+  return { present, absent, onLeave, unregistered, percentage };
 });
 
 // Employee records with attendance
@@ -409,51 +448,57 @@ const getInitials = (name) => {
 
 // Get department label
 const getDepartmentLabel = (department) => {
+  if (!department || department === '—') return '—';
   const dept = store.departments.find((d) => d.value === department);
   return dept?.label || department;
 };
 
 // Get attendance status class
 const getAttendanceStatusClass = (employeeRecord) => {
-  if (!employeeRecord.record) return 'bg-gray-500/10 text-gray-400';
-  if (!employeeRecord.record.present) return 'bg-error/10 text-error';
   if (employeeRecord.employee.status === 'on_leave') return 'bg-warning/10 text-warning';
+  if (!employeeRecord.record) return 'bg-gray-500/10 text-gray-400';
+  if (employeeRecord.record.status === 'late') return 'bg-warning/10 text-warning';
+  if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return 'bg-error/10 text-error';
   return 'bg-success/10 text-success';
 };
 
 // Get attendance status icon
 const getAttendanceStatusIcon = (employeeRecord) => {
-  if (!employeeRecord.record) return AlertCircle;
-  if (!employeeRecord.record.present) return XCircle;
   if (employeeRecord.employee.status === 'on_leave') return CalendarClock;
+  if (!employeeRecord.record) return AlertCircle;
+  if (employeeRecord.record.status === 'late') return Clock;
+  if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return XCircle;
   return CheckCircle;
 };
 
-// Get attendance status label
-const getAttendanceStatusLabel = (employeeRecord) => {
-  if (!employeeRecord.record) return 'غير مسجل';
-  if (!employeeRecord.record.present) return 'غائب';
-  if (employeeRecord.employee.status === 'on_leave') return 'إجازة';
-  return 'حاضر';
+const getWorkHours = (employeeRecord) => {
+  const checkIn = employeeRecord.record?.check_in;
+  const checkOut = employeeRecord.record?.check_out;
+  if (!checkIn || !checkOut) {
+    return null;
+  }
+
+  const [inH, inM] = checkIn.split(':').map(Number);
+  const [outH, outM] = checkOut.split(':').map(Number);
+  if ([inH, inM, outH, outM].some((n) => Number.isNaN(n))) {
+    return null;
+  }
+
+  const diff = (outH + outM / 60) - (inH + inM / 60);
+  return diff > 0 ? diff : null;
 };
 
 // Calculate work hours
 const calculateWorkHours = (employeeRecord) => {
-  if (!employeeRecord.record?.check_in || !employeeRecord.record?.check_out) {
-    return '--';
-  }
-
-  const checkIn = new Date(`2000-01-01T${employeeRecord.record.check_in}`);
-  const checkOut = new Date(`2000-01-01T${employeeRecord.record.check_out}`);
-  const diff = (checkOut - checkIn) / (1000 * 60 * 60);
-
-  return `${diff.toFixed(1)} ساعة`;
+  const hours = getWorkHours(employeeRecord);
+  if (hours === null) return '—';
+  return `${hours.toFixed(1)} ساعة`;
 };
 
 // Get hours class
 const getHoursClass = (employeeRecord) => {
-  const hours = parseFloat(calculateWorkHours(employeeRecord));
-  if (hours === '--') return 'text-text-muted';
+  const hours = getWorkHours(employeeRecord);
+  if (hours === null) return 'text-text-muted';
   if (hours >= 8) return 'text-success';
   if (hours >= 6) return 'text-warning';
   return 'text-error';
@@ -471,7 +516,7 @@ const openMarkModal = () => {
     date: selectedDate.value,
     check_in: '',
     check_out: '',
-    present: true,
+    status: 'present',
     notes: '',
   };
   showMarkModal.value = true;
@@ -488,8 +533,7 @@ const submitAttendance = async () => {
     await store.markAttendance(attendanceForm.value);
     store.addToast('تم تسجيل الحضور بنجاح');
     closeMarkModal();
-    await store.fetchAttendance();
-    await store.fetchStats();
+    await store.fetchAttendance({ from_date: selectedDate.value, to_date: selectedDate.value, per_page: 100 });
   } catch (error) {
     store.addToast('فشل تسجيل الحضور', 'error');
   }
@@ -502,9 +546,9 @@ watch(selectedDate, async (newDate) => {
 });
 
 onMounted(async () => {
-  await store.fetchEmployees();
+  await store.fetchEmployees({ per_page: 100 });
+  await store.fetchEmployeeReferenceData();
   await store.fetchAttendance({ from_date: selectedDate.value, to_date: selectedDate.value, per_page: 100 });
-  await store.fetchStats();
 });
 </script>
 

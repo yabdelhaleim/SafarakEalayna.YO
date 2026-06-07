@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\AccountType;
 use App\Enums\BusBookingStatus;
+use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Customer;
 use App\Models\Employee;
@@ -11,6 +13,7 @@ use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Invoice;
 use App\Models\Online\OnlineTransaction;
+use App\Support\Finance\AccountModuleDivision;
 use Carbon\Carbon;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -48,18 +51,17 @@ class DashboardService
 
     public function getFinancialStats(string $from, string $to): array
     {
-        // Use created_at instead of date (column doesn't exist)
         $transactions = DB::table('transactions')
-            ->whereBetween('created_at', [$from, $to])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->get();
 
-        $income = $transactions->where('type', 'income')->sum('amount');
-        $expense = $transactions->where('type', 'expense')->sum('amount');
+        $income = (float) $transactions->where('type', 'income')->sum('amount');
+        $expense = (float) $transactions->where('type', 'expense')->sum('amount');
 
         return [
-            'total_income' => (float) $income,
-            'total_expense' => (float) $expense,
-            'net_profit' => (float) ($income - $expense),
+            'total_income' => $income,
+            'total_expense' => $expense,
+            'net_profit' => $income - $expense,
             'profit_margin' => $income > 0 ? round((($income - $expense) / $income) * 100, 2) : 0,
             'transactions_count' => $transactions->count(),
         ];
@@ -67,25 +69,28 @@ class DashboardService
 
     public function getBookingsStats(string $from, string $to): array
     {
+        $fromDt = $from.' 00:00:00';
+        $toDt = $to.' 23:59:59';
+
         return [
             'flights' => [
-                'total' => FlightBooking::whereBetween('created_at', [$from, $to])->count(),
-                'confirmed' => FlightBooking::whereBetween('created_at', [$from, $to])
+                'total' => FlightBooking::whereBetween('created_at', [$fromDt, $toDt])->count(),
+                'confirmed' => FlightBooking::whereBetween('created_at', [$fromDt, $toDt])
                     ->where('status', 'CONFIRMED')->count(),
             ],
             'buses' => [
-                'total' => BusBooking::whereBetween('created_at', [$from, $to])->count(),
-                'paid' => BusBooking::whereBetween('created_at', [$from, $to])
+                'total' => BusBooking::whereBetween('created_at', [$fromDt, $toDt])->count(),
+                'paid' => BusBooking::whereBetween('created_at', [$fromDt, $toDt])
                     ->where('status', 'paid')->count(),
             ],
             'services' => [
-                'total' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$from, $to])),
-                'completed' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$from, $to])
+                'total' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$fromDt, $toDt])),
+                'completed' => $this->countServiceOrders(fn ($q) => $q->whereBetween('created_at', [$fromDt, $toDt])
                     ->where('status', 'completed')),
             ],
             'online' => [
-                'total' => OnlineTransaction::whereBetween('created_at', [$from, $to])->count(),
-                'success' => OnlineTransaction::whereBetween('created_at', [$from, $to])
+                'total' => OnlineTransaction::whereBetween('created_at', [$fromDt, $toDt])->count(),
+                'success' => OnlineTransaction::whereBetween('created_at', [$fromDt, $toDt])
                     ->where('status', 'success')->count(),
             ],
         ];
@@ -254,26 +259,31 @@ class DashboardService
         $fawryRevenue = (float) (clone $fawryTx)->sum('selling_price');
         $fawryProfit = (float) (clone $fawryTx)->sum('profit');
 
-        // Total accounts breakdown
-        $accounts = \App\Models\Account::where('is_active', true)->get();
-        $totalBalance = 0.0;
+        // Treasury: liquidity accounts only (exclude customer/supplier ledgers)
+        $liquidityQuery = Account::query()->where('is_active', true);
+        AccountModuleDivision::applyLiquidityTreasuryScope($liquidityQuery);
+        $accounts = $liquidityQuery
+            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
+            ->get();
+
         $cashboxBalance = 0.0;
         $bankBalance = 0.0;
         $walletBalance = 0.0;
+
         foreach ($accounts as $acc) {
             $val = (float) $acc->balance;
-            $totalBalance += $val;
-            $typeStr = $acc->type instanceof \BackedEnum ? $acc->type->value : (string) $acc->type;
-            if (in_array($typeStr, ['cashbox', 'treasury', 'صندوق', 'خزينة'])) {
-                $cashboxBalance += $val;
-            } elseif (in_array($typeStr, ['bank', 'بنك'])) {
-                $bankBalance += $val;
-            } elseif (in_array($typeStr, ['wallet', 'محفظة'])) {
-                $walletBalance += $val;
-            } else {
-                $cashboxBalance += $val;
-            }
+            $type = $acc->type instanceof AccountType
+                ? $acc->type
+                : AccountType::tryFrom((string) $acc->type);
+
+            match ($type) {
+                AccountType::Bank => $bankBalance += $val,
+                AccountType::Wallet => $walletBalance += $val,
+                default => $cashboxBalance += $val,
+            };
         }
+
+        $totalBalance = $cashboxBalance + $bankBalance + $walletBalance;
 
         $tourismSummary = [
             'flights' => [

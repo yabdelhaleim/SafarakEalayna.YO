@@ -385,7 +385,7 @@
           <div class="text-3xl font-black text-emerald-400 font-mono">{{ formatCurrency(officeSummary.total_profit) }}</div>
           <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
-            <span>ربح الخدمات: {{ formatCompactNumber(officeSummary.online.profit + officeSummary.fawry.profit) }}</span>
+            <span>ربح الخدمات: {{ formatCompactNumber(officeServiceProfit) }}</span>
           </div>
         </div>
 
@@ -395,7 +395,7 @@
           <div class="text-3xl font-black text-white font-mono">{{ officeSummary.total_count }} <span class="text-sm font-normal text-gray-400">حركة</span></div>
           <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>حجوزات باص: {{ officeSummary.bus.count }}</span>
-            <span>حركات فوري وأونلاين: {{ officeSummary.fawry.count + officeSummary.online.count }}</span>
+            <span>حركات فوري وأونلاين: {{ officeServiceCount }}</span>
           </div>
         </div>
       </div>
@@ -775,24 +775,77 @@ const busKpis = ref({
 const busBookingsChart = ref([]);
 const busCompanyPerformance = ref([]);
 
+const parseAmount = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const normalizeModuleBlock = (block = {}) => ({
+  count: parseAmount(block.count),
+  revenue: parseAmount(block.revenue),
+  profit: parseAmount(block.profit),
+});
+
+const normalizeTourismSummary = (raw = {}) => ({
+  flights: normalizeModuleBlock(raw.flights),
+  hajj: normalizeModuleBlock(raw.hajj),
+  total_count: parseAmount(raw.total_count),
+  total_revenue: parseAmount(raw.total_revenue),
+  total_profit: parseAmount(raw.total_profit),
+});
+
+const normalizeOfficeSummary = (raw = {}) => ({
+  bus: normalizeModuleBlock(raw.bus),
+  fawry: normalizeModuleBlock(raw.fawry),
+  online: normalizeModuleBlock(raw.online),
+  total_count: parseAmount(raw.total_count),
+  total_revenue: parseAmount(raw.total_revenue),
+  total_profit: parseAmount(raw.total_profit),
+});
+
+const normalizeTreasurySummary = (raw = {}) => ({
+  total: parseAmount(raw.total),
+  cashbox: parseAmount(raw.cashbox),
+  bank: parseAmount(raw.bank),
+  wallet: parseAmount(raw.wallet),
+});
+
+const normalizeFinancial = (raw = {}) => ({
+  total_income: parseAmount(raw.total_income),
+  total_expense: parseAmount(raw.total_expense),
+  net_profit: parseAmount(raw.net_profit),
+  profit_margin: parseAmount(raw.profit_margin),
+  transactions_count: parseAmount(raw.transactions_count),
+});
+
+const officeServiceProfit = computed(() =>
+  officeSummary.value.fawry.profit + officeSummary.value.online.profit
+);
+
+const officeServiceCount = computed(() =>
+  officeSummary.value.fawry.count + officeSummary.value.online.count
+);
+
 // Methods
 const formatCurrency = (amount) => {
+  const n = parseAmount(amount);
   return new Intl.NumberFormat('ar-EG', {
     style: 'currency',
     currency: 'EGP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount || 0);
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 };
 
 const formatCompactNumber = (amount) => {
-  const val = Number(amount) || 0;
+  const val = parseAmount(amount);
   if (val >= 1000000) {
     return (val / 1000000).toFixed(1) + 'M';
-  } else if (val >= 1000) {
+  }
+  if (val >= 1000) {
     return (val / 1000).toFixed(1) + 'K';
   }
-  return val.toString();
+  return val.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 };
 
 const refreshData = async () => {
@@ -844,28 +897,61 @@ const fetchDashboardData = async () => {
 
     const data = response.data?.data || {};
 
-    // Map unified summaries
-    if (data.tourism_summary) tourismSummary.value = data.tourism_summary;
-    if (data.office_summary) officeSummary.value = data.office_summary;
-    if (data.treasury_summary) treasurySummary.value = data.treasury_summary;
+    if (data.tourism_summary) {
+      tourismSummary.value = normalizeTourismSummary(data.tourism_summary);
+    }
+    if (data.office_summary) {
+      officeSummary.value = normalizeOfficeSummary(data.office_summary);
+    }
+    if (data.treasury_summary) {
+      treasurySummary.value = normalizeTreasurySummary(data.treasury_summary);
+    }
 
-    // Overview & financial aggregates
     overviewStats.value = {
       overview: data.overview || {},
-      financial: data.financial || {},
+      financial: normalizeFinancial(data.financial || {}),
     };
 
-    // Sub module lists mapping
-    carrierBalanceCards.value = data.carrier_balance_cards || [];
-    bookingsChart.value = data.bookings_chart || [];
+    carrierBalanceCards.value = (data.carrier_balance_cards || []).map((card) => ({
+      ...card,
+      balance: parseAmount(card.balance),
+      available_balance: parseAmount(card.available_balance),
+    }));
+    bookingsChart.value = (data.bookings_chart || []).map((day) => ({
+      ...day,
+      count: parseAmount(day.count),
+    }));
     revenueChart.value = data.revenue_chart || [];
-    carrierPerformance.value = data.carrier_performance || [];
-    topRoutes.value = data.top_routes || [];
+    carrierPerformance.value = (data.carrier_performance || []).map((item) => ({
+      ...item,
+      profit: parseAmount(item.profit),
+      revenue: parseAmount(item.revenue),
+      bookings: parseAmount(item.bookings),
+    }));
+    topRoutes.value = (data.top_routes || []).map((route) => ({
+      ...route,
+      profit: parseAmount(route.profit),
+      revenue: parseAmount(route.revenue),
+      bookings: parseAmount(route.bookings),
+    }));
     recentActivity.value = data.recent_activities || data.recent_activity || [];
 
-    if (data.bus_kpis) busKpis.value = data.bus_kpis;
-    busBookingsChart.value = data.bus_bookings_chart || [];
-    busCompanyPerformance.value = data.bus_company_performance || [];
+    if (data.bus_kpis) {
+      busKpis.value = {
+        ...data.bus_kpis,
+        pending_payments: parseAmount(data.bus_kpis.pending_payments),
+      };
+    }
+    busBookingsChart.value = (data.bus_bookings_chart || []).map((day) => ({
+      ...day,
+      count: parseAmount(day.count),
+    }));
+    busCompanyPerformance.value = (data.bus_company_performance || []).map((item) => ({
+      ...item,
+      profit: parseAmount(item.profit),
+      revenue: parseAmount(item.revenue),
+      bookings: parseAmount(item.bookings),
+    }));
 
     setSuccess();
   } catch (error) {

@@ -21,6 +21,8 @@ class EmployeeAttendanceService
                 ],
                 [
                     'status' => $data['status'],
+                    'check_in' => $data['check_in'] ?? null,
+                    'check_out' => $data['check_out'] ?? null,
                     'notes' => $data['notes'] ?? null,
                     'created_by' => auth()->id(),
                 ]
@@ -42,6 +44,8 @@ class EmployeeAttendanceService
         return DB::transaction(function () use ($attendance, $data) {
             $attendance->update([
                 'status' => $data['status'] ?? $attendance->status,
+                'check_in' => $data['check_in'] ?? $attendance->check_in,
+                'check_out' => $data['check_out'] ?? $attendance->check_out,
                 'notes' => $data['notes'] ?? $attendance->notes,
             ]);
 
