@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Bus;
 
+use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\ValidationException;
 
@@ -23,7 +24,7 @@ class StoreBusInventoryRequest extends FormRequest
             'cost_per_ticket' => 'required|numeric|min:0.01',
             'selling_price' => 'required|numeric|min:0.01',
             'payment_type' => 'required|in:cash,deferred',
-            'account_id' => 'required_if:payment_type,cash|integer|exists:accounts,id',
+            'account_id' => ['required_if:payment_type,cash', 'integer', 'exists:accounts,id', new BusLiquidityAccount],
             'notes' => 'nullable|string|max:1000',
         ];
     }

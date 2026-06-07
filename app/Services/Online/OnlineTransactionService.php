@@ -2,13 +2,17 @@
 
 namespace App\Services\Online;
 
+use App\Enums\AccountType;
 use App\Enums\OnlineTransactionStatus;
 use App\Enums\TransactionModule;
+use App\Models\Account;
 use App\Models\Customer;
 use App\Models\Online\OnlineServiceProvider;
 use App\Models\Online\OnlineServiceType;
 use App\Models\Online\OnlineTransaction;
+use App\Models\Transaction;
 use App\Services\Finance\TransactionService;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -105,6 +109,7 @@ class OnlineTransactionService
 
                 $purchase = (float) $data['purchase_price'];
                 $selling = (float) $data['selling_price'];
+                $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $selling;
                 $profit = $selling - $purchase;
 
                 $status = OnlineTransactionStatus::tryFrom($data['status'] ?? OnlineTransactionStatus::Completed->value)
@@ -120,6 +125,7 @@ class OnlineTransactionService
                     'employee_id' => $data['employee_id'] ?? null,
                     'purchase_price' => $purchase,
                     'selling_price' => $selling,
+                    'amount_paid' => $amountPaid,
                     'profit' => $profit,
                     'payment_method' => $data['payment_method'],
                     'account_id' => $data['account_id'],
@@ -219,31 +225,17 @@ class OnlineTransactionService
     {
         try {
             return DB::transaction(function () use ($tx) {
-                if ($tx->expense_transaction_id) {
-                    $this->transactionService->recordIncome([
-                        'amount' => (float) $tx->purchase_price,
-                        'to_account_id' => $tx->account_id,
-                        'module' => TransactionModule::Online->value,
-                        'related_type' => OnlineTransaction::class,
-                        'related_id' => $tx->id,
-                        'notes' => 'عكس قيد مصروف لخدمة أونلاين #'.$tx->id,
-                    ]);
-                }
+                $relatedTransactions = Transaction::where('related_type', OnlineTransaction::class)
+                    ->where('related_id', $tx->id)
+                    ->get();
 
-                if ($tx->income_transaction_id) {
-                    $this->transactionService->recordExpense([
-                        'amount' => (float) $tx->selling_price,
-                        'from_account_id' => $tx->account_id,
-                        'module' => TransactionModule::Online->value,
-                        'related_type' => OnlineTransaction::class,
-                        'related_id' => $tx->id,
-                        'notes' => 'عكس قيد تحصيل لخدمة أونلاين #'.$tx->id,
-                    ]);
+                foreach ($relatedTransactions as $rt) {
+                    $this->transactionService->reverseTransaction($rt);
                 }
 
                 $tx->delete();
 
-                Log::info('Online transaction deleted', [
+                Log::info('Online transaction deleted and ledger reversed', [
                     'online_transaction_id' => $tx->id,
                     'deleted_by' => Auth::id(),
                 ]);
@@ -294,16 +286,49 @@ class OnlineTransactionService
     ): void {
         $module = TransactionModule::Online->value;
         $providerLabel = $provider?->name_ar ? " - {$provider->name_ar}" : '';
+        $createdBy = Auth::id() ?? 1;
 
         if ($selling > 0) {
-            $income = $this->transactionService->recordIncome([
-                'amount' => $selling,
-                'to_account_id' => $tx->account_id,
-                'module' => $module,
-                'related_type' => OnlineTransaction::class,
-                'related_id' => $tx->id,
-                'notes' => "تحصيل خدمة أونلاين - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
-            ]);
+            if ($tx->customer_id) {
+                $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
+
+                // 1. مديونية العميل بالقيمة الإجمالية
+                $income = $this->transactionService->recordIncome([
+                    'amount' => $selling,
+                    'to_account_id' => $customerAccount->id,
+                    'module' => $module,
+                    'related_type' => OnlineTransaction::class,
+                    'related_id' => $tx->id,
+                    'notes' => "تحصيل خدمة أونلاين (مديونية) - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
+                    'created_by' => $createdBy,
+                ]);
+
+                // 2. سداد جزء من المبلغ نقدياً (المدفوع الآن)
+                $amountPaid = (float) ($tx->amount_paid ?? $selling);
+                if ($amountPaid > 0) {
+                    $this->transactionService->recordIncome([
+                        'amount' => $amountPaid,
+                        'to_account_id' => $tx->account_id,
+                        'contra_account_id' => $customerAccount->id,
+                        'module' => $module,
+                        'related_type' => OnlineTransaction::class,
+                        'related_id' => $tx->id,
+                        'notes' => "تحصيل خدمة أونلاين (سداد جزئي) - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
+                        'created_by' => $createdBy,
+                    ]);
+                }
+            } else {
+                // عميل نقدي فوري مباشر
+                $income = $this->transactionService->recordIncome([
+                    'amount' => $selling,
+                    'to_account_id' => $tx->account_id,
+                    'module' => $module,
+                    'related_type' => OnlineTransaction::class,
+                    'related_id' => $tx->id,
+                    'notes' => "تحصيل خدمة أونلاين - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
+                    'created_by' => $createdBy,
+                ]);
+            }
             $tx->income_transaction_id = $income->id;
         }
 
@@ -316,11 +341,43 @@ class OnlineTransactionService
                 'related_type' => OnlineTransaction::class,
                 'related_id' => $tx->id,
                 'notes' => "تكلفة خدمة أونلاين - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
+                'created_by' => $createdBy,
             ]);
             $tx->expense_transaction_id = $expense->id;
         }
 
         $tx->save();
+    }
+
+    protected function ensureCustomerAccount(int $customerId): Account
+    {
+        $customer = Customer::findOrFail($customerId);
+
+        if ($customer->account_id) {
+            $account = Account::find($customer->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+            $account = Account::create([
+                'name' => 'حساب العميل: '.$customer->full_name,
+                'type' => AccountType::Customer,
+                'balance' => 0,
+                'currency' => 'EGP',
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'tourism',
+                'is_module_vault' => false,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            $customer->update(['account_id' => $account->id]);
+
+            return $account;
+        }));
     }
 
     /**

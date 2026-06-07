@@ -47,8 +47,8 @@ class RechargeFlightSystemRequest extends FormRequest
                 $v->errors()->add('from_account_id', 'حساب المصدر غير مفعّل.');
             }
 
-            if ($account->module_type !== 'tourism') {
-                $v->errors()->add('from_account_id', 'يُسمح فقط بحسابات وحدة العمل «سياحة».');
+            if ($account->module_type !== 'flights') {
+                $v->errors()->add('from_account_id', 'يُسمح فقط بحسابات وحدة العمل «طيران».');
             }
 
             $type = $account->type instanceof AccountType ? $account->type : AccountType::tryFrom((string) $account->type);

@@ -150,17 +150,6 @@
                     </select>
                   </div>
 
-                  <div class="md:col-span-2">
-                    <label class="block text-xs text-muted mb-2">وكيل التأشيرة (إعدادات)</label>
-                    <select v-model="form.visa_details.visa_agent_id"
-                      class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
-                      <option :value="null">— اختر —</option>
-                      <option v-for="a in store.agents" :key="a.id" :value="a.id">
-                        {{ a.name }}{{ a.phone ? ` — ${a.phone}` : '' }}
-                      </option>
-                    </select>
-                  </div>
-
                   <div>
                     <label class="block text-xs text-muted mb-2">تاريخ التقديم</label>
                     <input v-model="form.visa_details.submission_date" type="date"
@@ -183,6 +172,17 @@
               <p class="text-muted text-sm text-center mb-6">سعر الشراء = تكلفة التأشيرة من الوكيل، سعر البيع = ما تتقاضاه من العميل.</p>
 
               <div class="space-y-6">
+                <div>
+                  <label class="block text-xs text-muted mb-2">المورِّد (وكيل / شركة) *</label>
+                  <select v-model="form.visa_details.visa_agent_id" @change="fetchAgentCostPrice"
+                    class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
+                    <option :value="null">— اختر المورِّد —</option>
+                    <option v-for="a in store.agents" :key="a.id" :value="a.id">
+                      {{ a.name }}{{ a.phone ? ` — ${a.phone}` : '' }}
+                    </option>
+                  </select>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <label class="block text-xs text-muted mb-2 uppercase tracking-widest">سعر الشراء</label>
@@ -263,10 +263,10 @@
 
                   <label class="block text-xs text-muted mb-2">حساب التسوية *</label>
                   <select v-model="form.account_id"
-                    class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
+                    class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white">
                     <option :value="null">— اختر حساب —</option>
                     <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
-                      {{ acc.name }} — {{ acc.code }}
+                      {{ acc.name }} ({{ accountTypeLabel(acc) }}) — {{ formatMoney(acc.balance, acc.currency || 'EGP') }}
                     </option>
                   </select>
                   <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-2">
@@ -301,7 +301,7 @@
                         class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
                         <option :value="null">— نفس حساب التسوية —</option>
                         <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
-                          {{ acc.name }} — {{ acc.code }}
+                          {{ acc.name }} ({{ acc.currency }})
                         </option>
                       </select>
                     </div>
@@ -377,9 +377,23 @@
                   <span class="text-muted">حساب التسوية</span>
                   <span class="font-bold">{{ accountName }}</span>
                 </div>
-                <div v-if="addPayment" class="flex justify-between items-center">
-                  <span class="text-muted">الدفعة الأولى</span>
-                  <span class="font-bold font-mono text-gold">{{ Number(form.initial_payment.amount || 0).toLocaleString() }} ج.م</span>
+                <div class="flex justify-between items-center pb-3 border-b border-white/10">
+                  <span class="text-muted">حالة الدفع</span>
+                  <span :class="['px-3 py-1 rounded-full text-[10px] font-bold tracking-wider', paymentStatusClass]">
+                    {{ paymentStatusLabel }}
+                  </span>
+                </div>
+                <div class="flex justify-between items-center pb-3 border-b border-white/10">
+                  <span class="text-muted">المبلغ الإجمالي المطلوب</span>
+                  <span class="font-bold font-mono text-white">{{ Number(totalRequiredAmount || 0).toLocaleString() }} ج.م</span>
+                </div>
+                <div class="flex justify-between items-center pb-3 border-b border-white/10">
+                  <span class="text-muted">المبلغ المدفوع مقدمًا</span>
+                  <span class="font-bold font-mono text-success">{{ Number(paidAmount || 0).toLocaleString() }} ج.م</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-muted font-bold text-warning">المتبقي (مديونية آجل)</span>
+                  <span class="font-bold font-mono text-warning">{{ Number(remainingBalance || 0).toLocaleString() }} ج.م</span>
                 </div>
               </div>
             </div>
@@ -415,6 +429,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
 import { useRouter } from 'vue-router';
+import axios from 'axios';
 import { 
   ArrowLeft, Check, Loader2, Search, Plus, TrendingUp, TrendingDown,
   Banknote, Wallet, Landmark
@@ -529,7 +544,35 @@ const agentName = computed(() => {
 
 const accountName = computed(() => {
   const a = store.accounts.find(x => x.id === form.value.account_id);
-  return a ? `${a.name} — ${a.code}` : '—';
+  return a ? `${a.name} (${a.currency})` : '—';
+});
+
+const totalRequiredAmount = computed(() => {
+  return Number(form.value.selling_price || 0) + Number(form.value.service_fee || 0);
+});
+
+const paidAmount = computed(() => {
+  return addPayment.value ? Number(form.value.initial_payment.amount || 0) : 0;
+});
+
+const remainingBalance = computed(() => {
+  return Math.max(0, totalRequiredAmount.value - paidAmount.value);
+});
+
+const paymentStatusLabel = computed(() => {
+  const rem = remainingBalance.value;
+  const paid = paidAmount.value;
+  if (rem <= 0) return 'مسدد بالكامل';
+  if (paid > 0) return 'آجل جزئي (مدفوع مقدمًا)';
+  return 'عميل آجل (مديونية بالكامل)';
+});
+
+const paymentStatusClass = computed(() => {
+  const rem = remainingBalance.value;
+  const paid = paidAmount.value;
+  if (rem <= 0) return 'bg-success/20 text-success';
+  if (paid > 0) return 'bg-warning/20 text-warning';
+  return 'bg-error/20 text-error';
 });
 
 const isStepValid = computed(() => {
@@ -571,6 +614,21 @@ const createNewCustomer = async () => {
   }
 };
 
+const fetchAgentCostPrice = async () => {
+  const agentId = form.value.visa_details.visa_agent_id;
+  const visaType = form.value.visa_details.visa_type;
+  if (!agentId) return;
+
+  try {
+    const response = await axios.get(`/api/visa-agents/${agentId}/cost-price?visa_type=${encodeURIComponent(visaType)}`);
+    if (response.data && response.data.success) {
+      form.value.purchase_price = response.data.data.cost_price || 0;
+    }
+  } catch (error) {
+    console.error('Failed to fetch agent cost price', error);
+  }
+};
+
 const applyMarkup = (percent) => {
   const cost = Number(form.value.purchase_price || 0);
   form.value.selling_price = Math.round(cost * (1 + percent / 100) * 100) / 100;
@@ -599,6 +657,7 @@ const buildPayload = () => {
   const f = form.value;
   const payload = {
     customer_id: f.customer?.id || null,
+    agent_id: f.visa_details.visa_agent_id || null,
     visa_details: {
       visa_type: f.visa_details.visa_type,
       country: f.visa_details.country,
@@ -640,12 +699,32 @@ const saveBooking = async () => {
     }
   } catch (error) {
     console.error('Failed to save booking', error);
-    const msg = store.errors?.message || 'فشل حفظ الطلب. يرجى التحقق من المدخلات.';
+    let msg = 'فشل حفظ الطلب. يرجى التحقق من المدخلات.';
+    if (store.errors) {
+      if (store.errors.message) {
+        msg = store.errors.message;
+      } else if (typeof store.errors === 'object') {
+        const firstErrorArray = Object.values(store.errors)[0];
+        if (Array.isArray(firstErrorArray) && firstErrorArray.length > 0) {
+          msg = firstErrorArray[0];
+        }
+      }
+    }
     store.addToast(msg, 'error');
   } finally {
     isSaving.value = false;
   }
 };
+
+function formatMoney(n, curr = 'EGP') {
+  const num = Number(n) || 0;
+  return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: curr }).format(num);
+}
+
+function accountTypeLabel(a) {
+  const map = { cashbox: 'صندوق نقدية', bank: 'بنك', wallet: 'محفظة', treasury: 'خزينة', customer: 'عميل', supplier: 'مورّد' };
+  return map[a.type] || a.type || '-';
+}
 
 onMounted(async () => {
   await Promise.all([

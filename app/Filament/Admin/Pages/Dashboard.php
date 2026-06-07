@@ -2,8 +2,9 @@
 
 namespace App\Filament\Admin\Pages;
 
-use Filament\Pages\Dashboard as BaseDashboard;
+use App\Filament\Admin\Widgets\AdminPortalWidget;
 use Filament\Notifications\Notification;
+use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
 {
@@ -22,6 +23,13 @@ class Dashboard extends BaseDashboard
                 ->danger()
                 ->send();
         }
+    }
+
+    public function getWidgets(): array
+    {
+        return [
+            AdminPortalWidget::class,
+        ];
     }
 
     public static function getNavigationIcon(): string|\BackedEnum|null

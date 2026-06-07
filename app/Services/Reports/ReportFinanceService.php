@@ -2,6 +2,18 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\AccountType;
+use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
+use App\Models\Account;
+use App\Models\Bus\BusBooking;
+use App\Models\FlightBooking;
+use App\Models\HajjUmraBooking;
+use App\Models\Online\OnlineTransaction;
+use App\Models\Transaction;
+use App\Models\VisaBooking;
+use App\Services\Finance\LedgerClearingAccounts;
+use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,81 +27,122 @@ class ReportFinanceService
      */
     public function getFinancialSummary(array $filters): array
     {
-        $query = DB::table('transactions');
+        $fromDate = $filters['from_date'] ?? now()->startOfMonth()->toDateString();
+        $toDate = $filters['to_date'] ?? now()->toDateString();
+        $moduleFilter = $filters['module'] ?? null;
+        $category = $filters['category'] ?? null;
 
-        if (! empty($filters['from_date'])) {
-            $query->whereDate('created_at', '>=', $filters['from_date']);
-        }
+        if (is_array($moduleFilter) && count($moduleFilter) > 1) {
+            $breakdown = app(ProfitLossReportService::class)->moduleBreakdown([
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+                'category' => $category,
+            ]);
 
-        if (! empty($filters['module'])) {
-            if (is_array($filters['module'])) {
-                $query->whereIn('module', $filters['module']);
-            } else {
-                $query->where('module', $filters['module']);
+            $totalIncome = 0.0;
+            $totalExpense = 0.0;
+            foreach ($breakdown['by_module'] as $row) {
+                if ($this->moduleMatchesFilter($row['module'], $moduleFilter)) {
+                    $totalIncome += (float) $row['income'];
+                    $totalExpense += (float) $row['expense'];
+                }
             }
+
+            return [
+                'total_income' => round($totalIncome, 2),
+                'total_expense' => round($totalExpense, 2),
+                'total_refunds' => 0.0,
+                'total_transfers' => 0.0,
+                'net_profit' => round($totalIncome - $totalExpense, 2),
+                'period' => [
+                    'from' => $fromDate,
+                    'to' => $toDate,
+                ],
+            ];
         }
 
-        if (! empty($filters['to_date'])) {
-            $query->whereDate('created_at', '<=', $filters['to_date']);
+        $plFilters = [
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'category' => $category,
+        ];
+
+        if (is_array($moduleFilter) && count($moduleFilter) === 1) {
+            $plFilters['module'] = $moduleFilter[0];
+        } elseif (is_string($moduleFilter) && $moduleFilter !== '') {
+            $plFilters['module'] = $moduleFilter;
         }
 
-        $totals = $query->selectRaw('
-            SUM(CASE WHEN type = "income" THEN amount ELSE 0 END) as total_income,
-            SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) as total_expense,
-            SUM(CASE WHEN type = "refund" THEN amount ELSE 0 END) as total_refunds,
-            SUM(CASE WHEN type = "transfer" THEN amount ELSE 0 END) as total_transfers
-        ')->first();
+        $report = app(ProfitLossReportService::class)->report($plFilters);
 
-        $total_income = (float) ($totals->total_income ?? 0);
-        $total_expense = (float) ($totals->total_expense ?? 0);
-        $total_refunds = (float) ($totals->total_refunds ?? 0);
-        $net_profit = $total_income - $total_expense - $total_refunds;
+        if (($filters['expense_scope'] ?? null) === 'operating') {
+            $operating = (float) $report['totalExpenses'];
+
+            return [
+                'total_income' => 0.0,
+                'total_expense' => round($operating, 2),
+                'total_refunds' => 0.0,
+                'total_transfers' => 0.0,
+                'net_profit' => round(-$operating, 2),
+                'period' => [
+                    'from' => $fromDate,
+                    'to' => $toDate,
+                ],
+            ];
+        }
+
+        $totalExpense = (float) $report['totalCogs'] + (float) $report['totalExpenses'];
 
         return [
-            'total_income' => round($total_income, 2),
-            'total_expense' => round($total_expense, 2),
-            'total_refunds' => round($total_refunds, 2),
-            'total_transfers' => round((float) ($totals->total_transfers ?? 0), 2),
-            'net_profit' => round($net_profit, 2),
+            'total_income' => (float) $report['totalRevenues'],
+            'total_cogs' => (float) $report['totalCogs'],
+            'total_operating_expenses' => (float) $report['totalExpenses'],
+            'total_expense' => round($totalExpense, 2),
+            'total_refunds' => (float) $report['totalRefunds'],
+            'total_transfers' => 0.0,
+            'net_profit' => (float) $report['netProfit'],
             'period' => [
-                'from' => $filters['from_date'] ?? null,
-                'to' => $filters['to_date'] ?? null,
+                'from' => $fromDate,
+                'to' => $toDate,
             ],
         ];
     }
 
     /**
-     * Get balance summary for all accounts.
-     * No date filter — shows current state.
+     * Liquidity balances for treasury/cashbox/bank/wallet accounts only.
      */
     public function getAccountsBalance(): array
     {
-        $accounts = DB::table('accounts')
-            ->select('id', 'name', 'type', 'currency', 'balance')
-            ->get()
-            ->map(function ($account) {
-                return [
-                    'id' => $account->id,
-                    'name' => $account->name,
-                    'type' => $account->type,
-                    'currency' => $account->currency,
-                    'balance' => round((float) $account->balance, 2),
-                ];
-            });
+        $query = Account::query()
+            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
+            ->where('is_active', true);
+        AccountModuleDivision::applyLiquidityTreasuryScope($query);
 
-        $totals = DB::table('accounts')->selectRaw('
-            SUM(CASE WHEN type = "cashbox" THEN balance ELSE 0 END) as cashbox,
-            SUM(CASE WHEN type = "wallet" THEN balance ELSE 0 END) as wallet,
-            SUM(CASE WHEN type = "bank" THEN balance ELSE 0 END) as bank,
-            SUM(balance) as grand_total
-        ')->first();
+        $accounts = $query
+            ->orderBy('name')
+            ->get(['id', 'name', 'type', 'currency', 'balance'])
+            ->map(fn (Account $account) => [
+                'id' => $account->id,
+                'name' => $account->name,
+                'type' => $account->type instanceof AccountType ? $account->type->value : (string) $account->type,
+                'currency' => $account->currency,
+                'balance' => round((float) $account->balance, 2),
+            ]);
+
+        $totalCashbox = (float) $accounts->where('type', 'cashbox')->sum('balance');
+        $totalWallet = (float) $accounts->where('type', 'wallet')->sum('balance');
+        $totalBank = (float) $accounts->where('type', 'bank')->sum('balance');
+        $totalTreasury = (float) $accounts->where('type', 'treasury')->sum('balance');
+        $totalPost = (float) $accounts->where('type', 'post')->sum('balance');
 
         return [
-            'accounts' => $accounts,
-            'total_cashbox' => round((float) ($totals->cashbox ?? 0), 2),
-            'total_wallet' => round((float) ($totals->wallet ?? 0), 2),
-            'total_bank' => round((float) ($totals->bank ?? 0), 2),
-            'grand_total' => round((float) ($totals->grand_total ?? 0), 2),
+            'accounts' => $accounts->values(),
+            'total_cashbox' => round($totalCashbox, 2),
+            'total_wallet' => round($totalWallet, 2),
+            'total_bank' => round($totalBank, 2),
+            'total_treasury' => round($totalTreasury, 2),
+            'total_post' => round($totalPost, 2),
+            'grand_total' => round((float) $accounts->sum('balance'), 2),
         ];
     }
 
@@ -226,11 +279,30 @@ class ReportFinanceService
             $query->where('transactions.type', $filters['type']);
         }
 
+        if (! empty($filters['expenses_only'])) {
+            $query->where(function ($q): void {
+                $q->where('transactions.type', 'expense')
+                    ->orWhere(function ($sub): void {
+                        $sub->where('transactions.type', 'transfer')
+                            ->where('to_account.type', 'expense');
+                    });
+            });
+        }
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('transactions.notes', 'like', "%{$search}%")
+                    ->orWhere('transactions.id', 'like', "%{$search}%")
+                    ->orWhere('from_account.name', 'like', "%{$search}%")
+                    ->orWhere('to_account.name', 'like', "%{$search}%");
+            });
+        }
+
         if (! empty($filters['module'])) {
-            if (is_array($filters['module'])) {
-                $query->whereIn('transactions.module', $filters['module']);
-            } else {
-                $query->where('transactions.module', $filters['module']);
+            $modules = $this->expandModuleFilter($filters['module']);
+            if ($modules !== []) {
+                $query->whereIn('transactions.module', $modules);
             }
         }
 
@@ -258,8 +330,20 @@ class ReportFinanceService
         }
 
         $perPage = max(1, min((int) ($filters['per_page'] ?? 20), 100));
+        $page = max(1, (int) ($filters['page'] ?? 1));
 
-        return $query->orderBy('transactions.created_at', 'desc')->paginate($perPage);
+        $paginator = $query->orderBy('transactions.created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
+        $maps = app(LedgerClearingAccounts::class)->moduleAccountMaps();
+
+        $paginator->setCollection(
+            collect($paginator->items())->map(function ($row) use ($maps) {
+                $row->flow_kind = $this->classifyTransactionFlow($row, $maps);
+
+                return $row;
+            })
+        );
+
+        return $paginator;
     }
 
     /**
@@ -267,32 +351,33 @@ class ReportFinanceService
      */
     public function getTransactionDetail(int $id): ?\stdClass
     {
-        $txModel = \App\Models\Transaction::with([
+        $txModel = Transaction::with([
             'createdBy',
             'fromAccount',
             'toAccount',
             'entries.account',
-            'related' => function($morph) {
+            'related' => function ($morph) {
                 $morph->morphWith([
-                    \App\Models\FlightBooking::class => ['customer', 'passengers', 'airlineAccount', 'flightSystem', 'flightCarrier', 'flightGroup'],
-                    \App\Models\VisaBooking::class => ['customer', 'visaDetail'],
-                    \App\Models\HajjUmraBooking::class => ['customer', 'program'],
-                    \App\Models\Bus\BusBooking::class => ['customer', 'inventory.company'],
-                    \App\Models\Online\OnlineTransaction::class => ['customer', 'serviceType', 'provider'],
+                    FlightBooking::class => ['customer', 'passengers', 'airlineAccount', 'flightSystem', 'flightCarrier', 'flightGroup'],
+                    VisaBooking::class => ['customer', 'visaDetail'],
+                    HajjUmraBooking::class => ['customer', 'program'],
+                    BusBooking::class => ['customer', 'inventory.company'],
+                    OnlineTransaction::class => ['customer', 'serviceType', 'provider'],
                 ]);
-            }
+            },
         ])->find($id);
 
-        if (!$txModel) {
+        if (! $txModel) {
             return null;
         }
 
         // Convert to standard object to match original signature and fields
-        $transaction = new \stdClass();
+        $transaction = new \stdClass;
         $transaction->id = $txModel->id;
-        $transaction->type = $txModel->type instanceof \App\Enums\TransactionType ? $txModel->type->value : (string)$txModel->type;
-        $transaction->amount = (float)$txModel->amount;
-        $transaction->module = $txModel->module instanceof \App\Enums\TransactionModule ? $txModel->module->value : (string)$txModel->module;
+        $transaction->type = $txModel->type instanceof TransactionType ? $txModel->type->value : (string) $txModel->type;
+        $transaction->amount = (float) $txModel->amount;
+        $transaction->currency = $txModel->currency ?: 'EGP';
+        $transaction->module = $txModel->module instanceof TransactionModule ? $txModel->module->value : (string) $txModel->module;
         $transaction->notes = $txModel->notes;
         $transaction->created_at = $txModel->created_at ? $txModel->created_at->toDateTimeString() : null;
         $transaction->from_account_id = $txModel->from_account_id;
@@ -306,16 +391,17 @@ class ReportFinanceService
         $transaction->to_account_currency = $txModel->toAccount?->currency;
 
         // Map entries
-        $transaction->entries = $txModel->entries->map(function($e) {
-            $entry = new \stdClass();
+        $transaction->entries = $txModel->entries->map(function ($e) {
+            $entry = new \stdClass;
             $entry->id = $e->id;
             $entry->account_id = $e->account_id;
-            $entry->debit = (float)$e->debit;
-            $entry->credit = (float)$e->credit;
-            $entry->balance_after = (float)$e->balance_after;
+            $entry->debit = (float) $e->debit;
+            $entry->credit = (float) $e->credit;
+            $entry->balance_after = (float) $e->balance_after;
             $entry->account_name = $e->account?->name ?? '—';
             $entry->account_type = $e->account?->type ?? '—';
             $entry->account_currency = $e->account?->currency ?? 'EGP';
+
             return $entry;
         })->toArray();
 
@@ -323,13 +409,13 @@ class ReportFinanceService
         $transaction->related_meta = null;
         if ($txModel->related) {
             $related = $txModel->related;
-            $meta = new \stdClass();
+            $meta = new \stdClass;
             $meta->type = class_basename($related);
-            
+
             // Extract person name and phone
             $meta->person_name = null;
             $meta->person_phone = null;
-            
+
             if (isset($related->customer) && $related->customer) {
                 $meta->person_name = $related->customer->full_name ?: $related->customer->name;
                 $meta->person_phone = $related->customer->phone;
@@ -337,35 +423,35 @@ class ReportFinanceService
                 $meta->person_name = $related->customer_name;
                 $meta->person_phone = $related->customer_phone ?? null;
             }
-            
+
             // Extract financial data
             $meta->total_amount = 0.0;
             $meta->paid_amount = 0.0;
-            
-            if ($related instanceof \App\Models\FlightBooking) {
-                $meta->total_amount = (float)$related->selling_price;
-                $meta->paid_amount = (float)$related->payments()->sum('amount');
-                $meta->details = "حجز طيران - PNR: " . ($related->pnr ?: '—') . " - خط الطيران: " . ($related->airline_name ?: '—') . " (" . ($related->origin ?: '—') . " -> " . ($related->destination ?: '—') . ")";
-            } elseif ($related instanceof \App\Models\VisaBooking) {
-                $meta->total_amount = (float)$related->selling_price + (float)($related->service_fee ?? 0);
-                $meta->paid_amount = (float)$related->payments()->sum('amount');
-                $meta->details = "حجز تأشيرة - النوع: " . ($related->visaDetail?->title ?: '—') . " - الوكيل: " . ($related->agent_name ?: '—');
-            } elseif ($related instanceof \App\Models\HajjUmraBooking) {
-                $meta->total_amount = (float)$related->selling_price;
-                $meta->paid_amount = (float)$related->payments()->sum('amount');
-                $meta->details = "حجز حج وعمرة - البرنامج: " . ($related->program?->name ?: '—') . " - الوكيل: " . ($related->agent_name ?: '—');
-            } elseif ($related instanceof \App\Models\Bus\BusBooking) {
-                $meta->total_amount = (float)$related->total_price;
-                $meta->paid_amount = (float)$related->paid_amount;
-                $meta->details = "حجز باص - الرحلة: " . ($related->inventory?->origin ?: '—') . " -> " . ($related->inventory?->destination ?: '—') . " - الشركة: " . ($related->inventory?->company?->name ?: '—');
-            } elseif ($related instanceof \App\Models\Online\OnlineTransaction) {
-                $meta->total_amount = (float)$related->selling_price;
-                $meta->paid_amount = (float)$related->selling_price; // Online services are generally fully paid
-                $meta->details = "خدمة إلكترونية - النوع: " . ($related->serviceType?->name ?: '—') . " - المزود: " . ($related->provider?->name ?: '—');
+
+            if ($related instanceof FlightBooking) {
+                $meta->total_amount = (float) $related->selling_price;
+                $meta->paid_amount = (float) $related->payments()->sum('amount');
+                $meta->details = 'حجز طيران - PNR: '.($related->pnr ?: '—').' - خط الطيران: '.($related->airline_name ?: '—').' ('.($related->origin ?: '—').' -> '.($related->destination ?: '—').')';
+            } elseif ($related instanceof VisaBooking) {
+                $meta->total_amount = (float) $related->selling_price + (float) ($related->service_fee ?? 0);
+                $meta->paid_amount = (float) $related->payments()->sum('amount');
+                $meta->details = 'حجز تأشيرة - النوع: '.($related->visaDetail?->title ?: '—').' - الوكيل: '.($related->agent_name ?: '—');
+            } elseif ($related instanceof HajjUmraBooking) {
+                $meta->total_amount = (float) $related->selling_price;
+                $meta->paid_amount = (float) $related->payments()->sum('amount');
+                $meta->details = 'حجز حج وعمرة - البرنامج: '.($related->program?->name ?: '—').' - الوكيل: '.($related->agent_name ?: '—');
+            } elseif ($related instanceof BusBooking) {
+                $meta->total_amount = (float) $related->total_price;
+                $meta->paid_amount = (float) $related->paid_amount;
+                $meta->details = 'حجز باص - الرحلة: '.($related->inventory?->origin ?: '—').' -> '.($related->inventory?->destination ?: '—').' - الشركة: '.($related->inventory?->company?->name ?: '—');
+            } elseif ($related instanceof OnlineTransaction) {
+                $meta->total_amount = (float) $related->selling_price;
+                $meta->paid_amount = (float) $related->selling_price; // Online services are generally fully paid
+                $meta->details = 'خدمة إلكترونية - النوع: '.($related->serviceType?->name ?: '—').' - المزود: '.($related->provider?->name ?: '—');
             }
-            
+
             $meta->remaining_amount = max(0.0, $meta->total_amount - $meta->paid_amount);
-            
+
             $transaction->related_meta = $meta;
         }
 
@@ -402,75 +488,138 @@ class ReportFinanceService
 
     public function getProfitLossReport(array $filters): array
     {
-        $tourismModules = ['flight', 'hajj_umra', 'visa'];
-        $officeModules = ['bus', 'fawry', 'online', 'wallet'];
-        
-        $query = DB::table('transactions');
-        
-        if (!empty($filters['from_date'])) {
-            $query->whereDate('created_at', '>=', $filters['from_date']);
+        return app(ProfitLossReportService::class)->report($filters);
+    }
+
+    /**
+     * @param  array<int, string>|string|null  $filter
+     */
+    private function expandModuleFilter(array|string|null $filter): array
+    {
+        if ($filter === null || $filter === '') {
+            return [];
         }
-        if (!empty($filters['to_date'])) {
-            $query->whereDate('created_at', '<=', $filters['to_date']);
-        }
-        
-        if (!empty($filters['module']) && $filters['module'] !== 'all') {
-            $query->where('module', $filters['module']);
-        } elseif (!empty($filters['category']) && $filters['category'] !== 'all') {
-            if ($filters['category'] === 'tourism') {
-                $query->whereIn('module', $tourismModules);
-            } elseif ($filters['category'] === 'office') {
-                $query->whereIn('module', $officeModules);
+
+        $modules = is_array($filter) ? $filter : [$filter];
+        $expanded = [];
+
+        foreach ($modules as $module) {
+            $expanded[] = $module;
+            $normalized = $this->normalizeModuleKey((string) $module);
+
+            if ($normalized === 'wallet') {
+                $expanded[] = 'wallet_transfer';
+                $expanded[] = 'wallets';
+            }
+            if ($normalized === 'flight') {
+                $expanded[] = 'flights';
+            }
+            if ($normalized === 'visa') {
+                $expanded[] = 'visas';
             }
         }
-        
-        $transactions = $query->select('type', 'module', DB::raw('SUM(amount) as total'))
-            ->whereIn('type', ['income', 'expense'])
-            ->groupBy('type', 'module')
-            ->get();
-            
-        $revenuesList = [];
-        $expensesList = [];
-        $cogsList = []; // Assuming no explicit COGS yet, we keep it empty or map it if you have specific COGS accounts.
-        
-        $totalRevenues = 0;
-        $totalExpenses = 0;
-        
-        foreach ($transactions as $tx) {
-            $moduleName = $this->getModuleName($tx->module);
-            $amount = (float) $tx->total;
-            
-            if ($tx->type === 'income') {
-                $revenuesList[] = ['name' => "إيرادات " . $moduleName, 'amount' => $amount];
-                $totalRevenues += $amount;
-            } else if ($tx->type === 'expense') {
-                $expensesList[] = ['name' => "مصروفات " . $moduleName, 'amount' => $amount];
-                $totalExpenses += $amount;
-            }
+
+        return array_values(array_unique($expanded));
+    }
+
+    /**
+     * @param  array<int, string>|string|null  $filter
+     */
+    private function moduleMatchesFilter(string $module, array|string|null $filter): bool
+    {
+        if ($filter === null || $filter === '' || (is_array($filter) && $filter === [])) {
+            return true;
         }
-        
+
+        $allowed = array_map(
+            fn (string $m) => $this->normalizeModuleKey($m),
+            $this->expandModuleFilter($filter)
+        );
+
+        return in_array($this->normalizeModuleKey($module), $allowed, true);
+    }
+
+    private function normalizeModuleKey(string $module): string
+    {
+        $module = strtolower(trim($module));
+
+        return match ($module) {
+            '', 'general' => 'general',
+            'flights', 'flight' => 'flight',
+            'visas', 'visa' => 'visa',
+            'wallet_transfer', 'wallets', 'wallet' => 'wallet',
+            default => $module,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function enrichLedgerRowArray(object $row): array
+    {
+        $maps = app(LedgerClearingAccounts::class)->moduleAccountMaps();
+
         return [
-            'totalRevenues' => round($totalRevenues, 2),
-            'totalCogs' => 0,
-            'totalExpenses' => round($totalExpenses, 2),
-            'revenuesList' => $revenuesList,
-            'cogsList' => $cogsList,
-            'expensesList' => $expensesList
+            'id' => $row->id ?? null,
+            'type' => $row->type ?? null,
+            'flow_kind' => $this->classifyTransactionFlow($row, $maps),
+            'amount' => round((float) ($row->amount ?? 0), 2),
+            'module' => $row->module ?? null,
+            'notes' => $row->notes ?? null,
+            'created_at' => $row->created_at ?? null,
+            'created_by_name' => $row->created_by_name ?? null,
         ];
     }
-    
-    private function getModuleName(?string $module): string
+
+    /**
+     * @param  array{income: array<int, string>, expense: array<int, string>}  $maps
+     */
+    private function classifyTransactionFlow(object $tx, array $maps): string
     {
-        return match($module) {
-            'flight' => 'وحدة الطيران',
-            'hajj_umra' => 'الحج والعمرة',
-            'visa' => 'التأشيرات',
-            'bus' => 'وحدة الباص',
-            'fawry' => 'فوري',
-            'online' => 'الخدمات الإلكترونية',
-            'wallet' => 'المحافظ الإلكترونية',
-            'general' => 'عام',
-            default => 'أخرى (' . ($module ?? 'غير محدد') . ')',
-        };
+        $type = (string) ($tx->type ?? '');
+        $fromId = (int) ($tx->from_account_id ?? 0);
+        $toId = (int) ($tx->to_account_id ?? 0);
+        $toType = (string) ($tx->to_account_type ?? '');
+        $incomeClearing = $maps['income'];
+        $expenseClearing = $maps['expense'];
+
+        if ($type === 'income') {
+            return 'inflow';
+        }
+
+        if ($type === 'expense' || $type === 'refund') {
+            return 'outflow';
+        }
+
+        if ($type !== 'transfer') {
+            return 'neutral';
+        }
+
+        $fromIncome = $fromId > 0 && isset($incomeClearing[$fromId]);
+        $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
+        $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
+        $toExpense = $toId > 0 && isset($expenseClearing[$toId]);
+
+        if ($fromIncome && ! $toIncome) {
+            return 'inflow';
+        }
+
+        if ($toIncome && ! $fromIncome) {
+            return 'outflow';
+        }
+
+        if ($toExpense && ! $fromExpense) {
+            return 'outflow';
+        }
+
+        if ($fromExpense && ! $toExpense) {
+            return 'inflow';
+        }
+
+        if ($toType === 'expense') {
+            return 'outflow';
+        }
+
+        return 'neutral';
     }
 }

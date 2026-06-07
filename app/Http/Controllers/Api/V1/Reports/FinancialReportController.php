@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Reports;
 
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
+use App\Models\Account;
 use App\Models\LedgerReconciliationRun;
 use App\Services\Reports\FinancialReportService;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +23,7 @@ class FinancialReportController extends Controller
     {
         try {
             $treasuryId = $request->input('treasury_id');
-            $treasury = \App\Models\Account::findOrFail($treasuryId);
+            $treasury = Account::findOrFail($treasuryId);
 
             $report = $this->reportService->getTreasuryReport($treasury, $request->all());
 
@@ -91,7 +92,10 @@ class FinancialReportController extends Controller
     public function profitByModule(Request $request): JsonResponse
     {
         try {
-            return ApiResponse::success('Profit by module calculated.', $this->reportService->getProfitByModule($request->all()));
+            return ApiResponse::success(
+                'Profit by module calculated.',
+                $this->reportService->getProfitByModule($request->all())
+            )->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -146,7 +150,8 @@ class FinancialReportController extends Controller
         try {
             $report = $this->reportService->getDebtsReport($request->all());
 
-            return ApiResponse::success('Debts and receivables report generated successfully.', $report);
+            return ApiResponse::success('Debts and receivables report generated successfully.', $report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

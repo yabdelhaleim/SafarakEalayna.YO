@@ -90,7 +90,7 @@
         </button>
       </div>
 
-      <!-- Search -->
+      <!-- Search + Balance Filter -->
       <div class="search-row">
         <div class="search-box">
           <Search class="search-icon w-4 h-4" />
@@ -101,6 +101,17 @@
             class="search-input"
             @input="onSearch"
           />
+        </div>
+        <div class="balance-filter-chips">
+          <button
+            v-for="chip in balanceFilterOptions"
+            :key="chip.value"
+            type="button"
+            @click="setBalanceFilter(chip.value)"
+            :class="['balance-filter-chip', balanceFilter === chip.value ? 'balance-filter-chip--active' : '']"
+          >
+            {{ chip.label }}
+          </button>
         </div>
       </div>
 
@@ -114,8 +125,8 @@
         </div>
         <div v-else-if="customers.length === 0" class="empty-state">
           <Users class="w-12 h-12 text-muted/20" />
-          <p class="empty-title">لا يوجد عملاء</p>
-          <p class="empty-sub">لم يتم العثور على أي عملاء كوانتر</p>
+          <p class="empty-title">{{ balanceFilter === 'outstanding' ? 'لا يوجد عملاء مديونين' : balanceFilter === 'settled' ? 'لا يوجد عملاء مسددين' : 'لا يوجد عملاء' }}</p>
+          <p class="empty-sub">{{ balanceFilter !== 'all' ? 'جرّب تغيير الفلتر أو البحث' : 'لم يتم العثور على أي عملاء كوانتر' }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table class="data-table">
@@ -226,8 +237,8 @@
         </div>
         <div v-else-if="customers.length === 0" class="empty-state">
           <Building2 class="w-12 h-12 text-muted/20" />
-          <p class="empty-title">لا يوجد عملاء شركات</p>
-          <p class="empty-sub">أضف عملاء الشركات أو مكاتب الطيران هنا</p>
+          <p class="empty-title">{{ balanceFilter === 'outstanding' ? 'لا يوجد شركات مديونة' : balanceFilter === 'settled' ? 'لا يوجد شركات مسددة' : 'لا يوجد عملاء شركات' }}</p>
+          <p class="empty-sub">{{ balanceFilter !== 'all' ? 'جرّب تغيير الفلتر أو البحث' : 'أضف عملاء الشركات أو مكاتب الطيران هنا' }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table class="data-table">
@@ -326,8 +337,8 @@
         </div>
         <div v-else-if="customers.length === 0" class="empty-state">
           <LayoutGrid class="w-12 h-12 text-muted/20" />
-          <p class="empty-title">لا توجد مجموعات</p>
-          <p class="empty-sub">لم يتم العثور على مجموعات طيران مسجلة</p>
+          <p class="empty-title">{{ balanceFilter === 'outstanding' ? 'لا توجد مجموعات عليها مديونية' : balanceFilter === 'settled' ? 'لا توجد مجموعات مسددة' : 'لا توجد مجموعات' }}</p>
+          <p class="empty-sub">{{ balanceFilter !== 'all' ? 'جرّب تغيير الفلتر أو البحث' : 'لم يتم العثور على مجموعات طيران مسجلة' }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table class="data-table">
@@ -465,7 +476,7 @@
     <!-- MODAL: Customer Statement                                     -->
     <!-- ============================================================ -->
     <div v-if="showStatementModal" class="modal-overlay modal-overlay--lg" dir="rtl">
-      <div class="modal-box modal-box--xl print-area">
+      <div class="modal-box modal-box--xl print-statement-area">
         <!-- Header -->
         <div class="modal-header print:hidden">
           <div class="flex items-center gap-3">
@@ -486,9 +497,9 @@
               <DollarSign class="w-3.5 h-3.5" />
               {{ selectedCustomerForStatement?.is_group_flag ? 'سند صرف' : 'سند قبض' }}
             </button>
-            <button @click="printReceipt" class="btn-sm btn-sm--gold">
+            <button @click="printStatement" class="btn-sm btn-sm--gold">
               <Printer class="w-3.5 h-3.5" />
-              طباعة
+              طباعة الكشف
             </button>
             <button @click="closeStatementModal" class="modal-close"><X class="w-5 h-5" /></button>
           </div>
@@ -702,6 +713,9 @@
                           <button @click="openReceipt(item)" class="action-btn action-btn--blue" title="عرض السند">
                             <FileText class="w-3.5 h-3.5" />
                           </button>
+                          <button @click="printSingleVoucher(item)" class="action-btn action-btn--gold" title="طباعة السند">
+                            <Printer class="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -897,9 +911,14 @@
                       </td>
                       <td class="text-xs text-muted max-w-xs whitespace-normal">{{ item.description }}</td>
                       <td class="text-left">
-                        <button @click="openReceipt(item)" class="action-btn action-btn--blue" title="عرض السند">
-                          <FileText class="w-3.5 h-3.5" />
-                        </button>
+                        <div class="action-btns">
+                          <button @click="openReceipt(item)" class="action-btn action-btn--blue" title="عرض السند">
+                            <FileText class="w-3.5 h-3.5" />
+                          </button>
+                          <button @click="printSingleVoucher(item)" class="action-btn action-btn--gold" title="طباعة السند">
+                            <Printer class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   </tbody>
@@ -921,8 +940,8 @@
     <!-- ============================================================ -->
     <!-- MODAL: Receipt / Voucher Detail                              -->
     <!-- ============================================================ -->
-    <div v-if="selectedReceipt" class="modal-overlay" dir="rtl">
-      <div class="modal-box modal-box--sm print-area">
+    <div v-if="selectedReceipt" class="modal-overlay modal-overlay--receipt" dir="rtl" @click.self="selectedReceipt = null">
+      <div class="modal-box modal-box--sm print-voucher-area">
         <div class="modal-header print:hidden">
           <div class="flex items-center gap-2 text-gold">
             <Printer class="w-5 h-5" />
@@ -961,7 +980,7 @@
           </div>
         </div>
         <div class="p-4 bg-white/5 border-t border-white/10 print:hidden">
-          <button @click="printReceipt" class="btn-primary w-full justify-center">
+          <button @click="printCurrentVoucher" class="btn-primary w-full justify-center">
             <Printer class="w-4 h-4" /> طباعة السند
           </button>
         </div>
@@ -971,7 +990,7 @@
     <!-- ============================================================ -->
     <!-- MODAL: Pay Debt                                               -->
     <!-- ============================================================ -->
-    <div v-if="showPayDebtModal" class="modal-overlay print:hidden" dir="rtl">
+    <div v-if="showPayDebtModal" class="modal-overlay modal-overlay--pay print:hidden" dir="rtl">
       <div class="modal-box modal-box--sm">
         <div class="modal-header">
           <div class="flex items-center gap-3">
@@ -1111,7 +1130,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed, nextTick } from 'vue';
 import { useCustomerStore } from '@/stores/customerStore';
 import {
   Search, Users, Plus, Pen, Trash2, Building2, MapPin, Globe2,
@@ -1128,6 +1147,7 @@ const store = useCustomerStore();
 // ——————————————————
 const activeTab = ref('regular'); // 'regular' | 'counter' | 'group'
 const searchQuery = ref('');
+const balanceFilter = ref('all'); // 'all' | 'outstanding' | 'settled'
 const showModal = ref(false);
 const isEditMode = ref(false);
 const editingCustomerId = ref(null);
@@ -1174,29 +1194,49 @@ const searchPlaceholder = computed(() => {
   return 'ابحث بالاسم أو رقم الهاتف أو الرقم القومي...';
 });
 
+const balanceFilterOptions = computed(() => {
+  const outstandingLabel = activeTab.value === 'group' ? 'عليها مديونية' : 'مديونين';
+  const settledLabel = activeTab.value === 'group' ? 'مسددة بالكامل' : 'مسددين';
+  return [
+    { value: 'all', label: 'الكل' },
+    { value: 'outstanding', label: outstandingLabel },
+    { value: 'settled', label: settledLabel },
+  ];
+});
+
+const applyBalanceFilter = (items, isGroup = false) => {
+  if (balanceFilter.value === 'settled') {
+    return items.filter((row) => Math.abs(parseFloat(row.balance || 0)) < 0.00001);
+  }
+  if (balanceFilter.value === 'outstanding') {
+    if (isGroup) {
+      return items.filter((row) => Math.abs(parseFloat(row.balance || 0)) >= 0.00001);
+    }
+    return items.filter((row) => parseFloat(row.balance || 0) > 0);
+  }
+  return items;
+};
+
 const isReceiptDisabled = computed(() => {
   if (!selectedCustomerForPayment.value) return false;
   const bal = parseFloat(selectedCustomerForPayment.value.balance || 0);
   const isGroup = selectedCustomerForPayment.value.is_group_flag;
-  // Receipt (collection) is disabled when we owe them (bal < 0 for customer, bal > 0 for group since group signs are inverted)
-  // For both customer and group: receipt is disabled when bal < 0 (we owe them)
+  // Customer bal>0 = owes us → collect (receipt). Group bal<0 = credit in our favor → collect (receipt).
   if (isGroup) {
-    return bal < 0; // FIXED: group bal<0 means WE owe them → disable receipt
-  } else {
-    return bal < 0; // customer bal<0 means we owe customer → disable receipt
+    return bal > 0;
   }
+  return bal < 0;
 });
 
 const isPaymentDisabled = computed(() => {
   if (!selectedCustomerForPayment.value) return false;
   const bal = parseFloat(selectedCustomerForPayment.value.balance || 0);
   const isGroup = selectedCustomerForPayment.value.is_group_flag;
-  // Payment (outgoing) is disabled when they owe us (bal > 0)
+  // Customer bal<0 = we owe them → pay. Group bal>0 = we owe group → pay.
   if (isGroup) {
-    return bal > 0; // FIXED: group bal>0 means they owe us → disable outgoing payment
-  } else {
-    return bal > 0; // customer bal>0 means they owe us → disable outgoing payment
+    return bal < 0;
   }
+  return bal > 0;
 });
 
 const outstandingBookings = computed(() => {
@@ -1326,7 +1366,7 @@ const fetchCustomersList = async (page = 1) => {
           g.contact_phone?.toLowerCase().includes(q)
         );
       }
-      customers.value = raw.map(g => ({
+      raw = applyBalanceFilter(raw.map(g => ({
         id: g.id,
         name: g.name,
         code: g.code,
@@ -1336,10 +1376,17 @@ const fetchCustomersList = async (page = 1) => {
         balance: parseFloat(g.balance || 0),
         notes: g.notes,
         is_group_flag: true
-      }));
+      })), true);
+      customers.value = raw;
       pagination.value = { total: customers.value.length, currentPage: 1, lastPage: 1, perPage: 1000 };
     } else {
-      await store.fetchCustomers({ type: activeTab.value, search: searchQuery.value, page, per_page: 15 });
+      const params = { type: activeTab.value, search: searchQuery.value, page, per_page: 15 };
+      if (balanceFilter.value === 'settled') {
+        params.balance_status = 'settled';
+      } else if (balanceFilter.value === 'outstanding') {
+        params.balance_status = 'debtors';
+      }
+      await store.fetchCustomers(params);
       customers.value = store.customers;
       pagination.value = store.pagination;
     }
@@ -1385,6 +1432,7 @@ const fetchStats = async () => {
 const changeTab = (tab) => {
   activeTab.value = tab;
   searchQuery.value = '';
+  balanceFilter.value = 'all';
   pagination.value.currentPage = 1;
   fetchCustomersList(1);
 };
@@ -1392,6 +1440,12 @@ const changeTab = (tab) => {
 const changePage = (page) => fetchCustomersList(page);
 
 const onSearch = useDebounceFn(() => fetchCustomersList(1), 350);
+
+const setBalanceFilter = (value) => {
+  if (balanceFilter.value === value) return;
+  balanceFilter.value = value;
+  fetchCustomersList(1);
+};
 
 // ——————————————————
 // Create / Edit Modal
@@ -1542,7 +1596,28 @@ const fetchCustomerBookings = async (customerId) => {
 
 const closeStatementModal = () => { showStatementModal.value = false; selectedCustomerForStatement.value = null; };
 const openReceipt = (item) => { selectedReceipt.value = item; };
-const printReceipt = () => setTimeout(() => window.print(), 100);
+
+const printCurrentVoucher = () => {
+  document.body.classList.add('printing-voucher');
+  setTimeout(() => {
+    window.print();
+    document.body.classList.remove('printing-voucher');
+  }, 120);
+};
+
+const printSingleVoucher = async (item) => {
+  selectedReceipt.value = item;
+  await nextTick();
+  printCurrentVoucher();
+};
+
+const printStatement = () => {
+  document.body.classList.add('printing-statement');
+  setTimeout(() => {
+    window.print();
+    document.body.classList.remove('printing-statement');
+  }, 120);
+};
 
 // ——————————————————
 // Pay Debt Modal
@@ -1573,9 +1648,9 @@ const openPayDebtModal = (customerRef, booking = null) => {
 
   let defaultType = 'receipt';
   if (isGroup) {
-    // bal > 0 means group owes us → collect (debt/receipt)
-    // bal < 0 means we owe group → pay out (payment)
-    defaultType = parseFloat(customer.balance || 0) > 0 ? 'debt' : 'payment';
+    // bal > 0 = مستحق لهم (علينا) → سند صرف
+    // bal < 0 = مستحق لنا → سند قبض
+    defaultType = parseFloat(customer.balance || 0) > 0 ? 'payment' : 'debt';
   } else {
     // bal > 0 means customer owes us → collect (receipt)
     // bal < 0 means we owe customer → refund (payment)
@@ -1801,8 +1876,12 @@ onMounted(() => {
 /* ===================================================
    SEARCH
    =================================================== */
-.search-row { display: flex; gap: 0.75rem; }
-.search-box { position: relative; display: flex; align-items: center; flex: 1; }
+.search-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.search-box { position: relative; display: flex; align-items: center; flex: 1; min-width: 220px; }
+.balance-filter-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.balance-filter-chip { padding: 0.55rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text-muted); transition: all 0.2s; cursor: pointer; white-space: nowrap; }
+.balance-filter-chip:hover { color: white; border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); }
+.balance-filter-chip--active { background: rgba(212,175,55,0.12); border-color: var(--gold); color: var(--gold); }
 .search-icon { position: absolute; right: 1rem; pointer-events: none; color: var(--text-muted); }
 .search-input { width: 100%; padding: 0.75rem 2.75rem 0.75rem 1rem; border-radius: 1rem; font-size: 0.875rem; outline: none; transition: all 0.2s; text-align: right; background: var(--input-bg); border: 1px solid rgba(255,255,255,0.08); color: white; }
 .search-input:focus { border-color: var(--gold); }
@@ -1874,6 +1953,8 @@ onMounted(() => {
    =================================================== */
 .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
 .modal-overlay--lg { z-index: 110; }
+.modal-overlay--pay { z-index: 115; }
+.modal-overlay--receipt { z-index: 120; }
 .modal-box { width: 100%; max-width: 680px; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; max-height: 90vh; background: var(--card-bg); }
 .modal-box--xl { max-width: 900px; }
 .modal-box--sm { max-width: 520px; }
@@ -1948,8 +2029,12 @@ select.form-input { appearance: none; cursor: pointer; }
 
 @media print {
   body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; color: #1e293b !important; }
+  body.printing-statement .print-statement-area,
+  body.printing-statement .print-statement-area * { visibility: visible; }
+  body.printing-voucher .print-voucher-area,
+  body.printing-voucher .print-voucher-area * { visibility: visible; }
+  .print-statement-area,
+  .print-voucher-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; color: #1e293b !important; }
   .print\:hidden { display: none !important; }
   .data-table th, .data-table td { border: 1px solid #e2e8f0 !important; padding: 8px 12px !important; font-size: 11px !important; color: #334155 !important; }
   .data-table th { background: #f8fafc !important; }

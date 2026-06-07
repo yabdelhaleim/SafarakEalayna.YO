@@ -13,6 +13,7 @@ class FawryTransactionResource extends JsonResource
 
         return [
             'id' => $this->id,
+            'client_id' => $this->client_id,
             'client_name' => $this->client_name,
             'operation_type' => $this->operation_type,
             'client_amount' => number_format((float) $this->client_amount, 2),

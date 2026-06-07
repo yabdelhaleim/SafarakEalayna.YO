@@ -12,6 +12,11 @@ export const useFawryStore = defineStore('fawry', {
     paymentMethods: [],
     currencies: [],
 
+    // Machines
+    machines: [],
+    machineTransactions: [],
+    fawryAccounts: [],
+
     // Stats
     stats: {
       total_transactions: 0,
@@ -37,6 +42,10 @@ export const useFawryStore = defineStore('fawry', {
       delete: false,
       daily_summary: false,
       settings: false,
+      machines: false,
+      machineTransactions: false,
+      recharge: false,
+      fawryAccounts: false,
     },
 
     // Errors
@@ -148,6 +157,7 @@ export const useFawryStore = defineStore('fawry', {
       this.loading.settings = true;
       try {
         const response = await axios.get('/api/v1/fawry/settings/all', {
+          params: { _t: Date.now() },
           signal: controller.signal
         });
         const settings = response.data?.data || {};
@@ -198,7 +208,7 @@ export const useFawryStore = defineStore('fawry', {
 
       try {
         const response = await axios.get('/api/v1/fawry/transactions', {
-          params: { ...this.filters, ...params },
+          params: { ...this.filters, ...params, _t: Date.now() },
           signal: controller.signal
         });
         this.lastApiEnvelope = response.data ?? null;
@@ -253,7 +263,8 @@ export const useFawryStore = defineStore('fawry', {
         this.errors = error.response?.data?.errors || {
           message: 'حدث خطأ، حاول مرة أخرى',
         };
-        this.addToast('حدث خطأ أثناء إنشاء المعاملة', 'error');
+        const errMsg = error.response?.data?.message || 'حدث خطأ أثناء إنشاء المعاملة';
+        this.addToast(errMsg, 'error');
         throw error;
       } finally {
         this.loading.create = false;
@@ -285,7 +296,8 @@ export const useFawryStore = defineStore('fawry', {
         this.errors = error.response?.data?.errors || {
           message: 'حدث خطأ، حاول مرة أخرى',
         };
-        this.addToast('حدث خطأ أثناء التحديث', 'error');
+        const errMsg = error.response?.data?.message || 'حدث خطأ أثناء التحديث';
+        this.addToast(errMsg, 'error');
         throw error;
       } finally {
         this.loading.update = false;
@@ -329,6 +341,7 @@ export const useFawryStore = defineStore('fawry', {
       this.errors = {};
       try {
         const response = await axios.get(`/api/v1/fawry/transactions/${id}`, {
+          params: { _t: Date.now() },
           signal: controller.signal
         });
         this.lastApiEnvelope = response.data ?? null;
@@ -376,7 +389,7 @@ export const useFawryStore = defineStore('fawry', {
       try {
         const targetDate = date || new Date().toISOString().split('T')[0];
         const response = await axios.get('/api/v1/fawry/transactions/daily-summary', {
-          params: { date: targetDate },
+          params: { date: targetDate, _t: Date.now() },
           signal: controller.signal
         });
         const summary = response.data?.data || response.data;
@@ -450,6 +463,15 @@ export const useFawryStore = defineStore('fawry', {
         }
       }
 
+      const rawMachine = payload.fawry_machine_id ?? payload.fawryMachineId ?? payload.machine?.id;
+      let machineId = null;
+      if (rawMachine !== null && rawMachine !== undefined && rawMachine !== '') {
+        const n = Number(rawMachine);
+        if (Number.isFinite(n) && n > 0) {
+          machineId = n;
+        }
+      }
+
       const rawEmployee = payload.employee_id ?? payload.employeeId ?? payload.employee?.id;
       let employeeId = null;
       if (rawEmployee !== null && rawEmployee !== undefined && rawEmployee !== '') {
@@ -478,8 +500,9 @@ export const useFawryStore = defineStore('fawry', {
         selling_price: payload.selling_price || payload.sellingPrice || 0,
         employee_id: employeeId,
         account_id: accountId,
+        fawry_machine_id: machineId,
         payment_method: payload.payment_method || payload.paymentMethod || '',
-        amount: payload.amount || payload.selling_price || payload.sellingPrice || 0,
+        amount: (payload.amount !== null && payload.amount !== undefined && payload.amount !== '') ? Number(payload.amount) : (payload.selling_price || payload.sellingPrice || 0),
         reference_number: payload.reference_number || payload.referenceNumber || null,
         notes: payload.notes || null,
         payment_details: payload.payment_details || payload.paymentDetails || {},
@@ -504,6 +527,7 @@ export const useFawryStore = defineStore('fawry', {
       this.loading.transactions = true;
       try {
         const { data } = await axios.get('/api/v1/fawry/treasury/overview', {
+          params: { _t: Date.now() },
           signal: controller.signal
         });
         this.treasuryOverview = data?.data ?? null;
@@ -523,7 +547,9 @@ export const useFawryStore = defineStore('fawry', {
 
     async fetchAccountFawryTransactions(accountId, params = {}) {
       try {
-        const { data } = await axios.get(`/api/v1/fawry/treasury/accounts/${accountId}/transactions`, { params });
+        const { data } = await axios.get(`/api/v1/fawry/treasury/accounts/${accountId}/transactions`, {
+          params: { ...params, _t: Date.now() }
+        });
         return data?.data;
       } catch (e) {
         console.error('fetchAccountFawryTransactions failed', e);
@@ -541,6 +567,7 @@ export const useFawryStore = defineStore('fawry', {
       this.loading.transactions = true;
       try {
         const { data } = await axios.get('/api/v1/fawry/dashboard', {
+          params: { _t: Date.now() },
           signal: controller.signal
         });
         return data?.data;
@@ -554,6 +581,81 @@ export const useFawryStore = defineStore('fawry', {
         if (this.fetchFawryDashboardController === controller) {
           this.loading.transactions = false;
         }
+      }
+    },
+
+    // Fetch Fawry Machines
+    async fetchMachines(params = {}) {
+      this.loading.machines = true;
+      this.errors = {};
+      try {
+        const { data } = await axios.get('/api/v1/fawry/machines', {
+          params: { ...params, _t: Date.now() }
+        });
+        this.machines = data?.data?.machines || [];
+        return this.machines;
+      } catch (e) {
+        console.error('fetchMachines failed', e);
+        this.errors.machines = 'فشل في تحميل ماكينات الشحن';
+        throw e;
+      } finally {
+        this.loading.machines = false;
+      }
+    },
+
+    // Fetch Machine Transaction History
+    async fetchMachineTransactions(machineId, params = {}) {
+      this.loading.machineTransactions = true;
+      this.errors = {};
+      try {
+        const { data } = await axios.get(`/api/v1/fawry/machines/${machineId}/transactions`, {
+          params: { ...params, _t: Date.now() }
+        });
+        this.machineTransactions = data?.data?.transactions?.data || [];
+        return data?.data;
+      } catch (e) {
+        console.error('fetchMachineTransactions failed', e);
+        this.errors.machineTransactions = 'فشل في تحميل سجل حركات الماكينة';
+        throw e;
+      } finally {
+        this.loading.machineTransactions = false;
+      }
+    },
+
+    // Recharge Machine Balance
+    async rechargeMachine(machineId, payload) {
+      this.loading.recharge = true;
+      this.errors = {};
+      try {
+        const { data } = await axios.post(`/api/v1/fawry/machines/${machineId}/recharge`, payload);
+        this.addToast('تم شحن الماكينة بنجاح', 'success');
+        return data?.data;
+      } catch (e) {
+        console.error('rechargeMachine failed', e);
+        this.errors.recharge = e.response?.data?.message || 'فشل شحن الماكينة';
+        this.addToast(this.errors.recharge, 'error');
+        throw e;
+      } finally {
+        this.loading.recharge = false;
+      }
+    },
+
+    // Fetch Fawry Ledger Accounts (module_type = fawry)
+    async fetchFawryAccounts() {
+      this.loading.fawryAccounts = true;
+      this.errors = {};
+      try {
+        const { data } = await axios.get('/api/v1/fawry/accounts', {
+          params: { _t: Date.now() }
+        });
+        this.fawryAccounts = data?.data?.accounts || [];
+        return this.fawryAccounts;
+      } catch (e) {
+        console.error('fetchFawryAccounts failed', e);
+        this.errors.fawryAccounts = 'فشل في تحميل الحسابات التمويلية';
+        throw e;
+      } finally {
+        this.loading.fawryAccounts = false;
       }
     },
 
@@ -605,6 +707,9 @@ export const useFawryStore = defineStore('fawry', {
         per_page: 15,
       };
       this.treasuryOverview = null;
+      this.machines = [];
+      this.machineTransactions = [];
+      this.fawryAccounts = [];
     },
   },
 });

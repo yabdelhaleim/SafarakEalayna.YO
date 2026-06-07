@@ -26,6 +26,11 @@
       </div>
     </div>
 
+    <div v-if="loadError" class="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300">
+      {{ loadError }}
+      <button class="mr-3 underline font-bold" @click="fetchUsers">إعادة المحاولة</button>
+    </div>
+
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center py-20">
       <div class="flex flex-col items-center gap-4">
@@ -72,10 +77,15 @@
                 </td>
                 <td class="p-4 max-w-xs">
                   <div class="flex flex-wrap gap-1">
-                    <span v-if="!user.permissions || user.permissions.length === 0" class="text-white/30 text-xs">لا يوجد صلاحيات محددة</span>
-                    <span v-for="perm in user.permissions" :key="perm" class="px-2 py-0.5 bg-white/10 text-white/80 rounded text-xs">
-                      {{ getPermissionLabel(perm) }}
+                    <span v-if="user.role === 'admin' || user.role === 'owner'" class="px-2 py-0.5 bg-gold/10 text-gold rounded text-xs font-bold">
+                      صلاحيات كاملة
                     </span>
+                    <template v-else-if="displayPermissions(user).length">
+                      <span v-for="perm in displayPermissions(user)" :key="perm" class="px-2 py-0.5 bg-white/10 text-white/80 rounded text-xs">
+                        {{ getPermissionLabel(perm) }}
+                      </span>
+                    </template>
+                    <span v-else class="text-white/30 text-xs">لا يوجد صلاحيات محددة</span>
                   </div>
                 </td>
                 <td class="p-4 text-center">
@@ -94,7 +104,12 @@
                     <button @click="openModal(user)" class="p-2 bg-white/10 hover:bg-indigo-500/20 text-white hover:text-indigo-400 rounded-lg transition-colors" title="تعديل">
                       <Edit class="w-4 h-4" />
                     </button>
-                    <button @click="deleteUser(user.id)" class="p-2 bg-white/10 hover:bg-rose-500/20 text-white hover:text-rose-400 rounded-lg transition-colors" title="حذف">
+                    <button
+                      v-if="user.role !== 'owner'"
+                      @click="deleteUser(user.id)"
+                      class="p-2 bg-white/10 hover:bg-rose-500/20 text-white hover:text-rose-400 rounded-lg transition-colors"
+                      title="حذف"
+                    >
                       <Trash2 class="w-4 h-4" />
                     </button>
                   </div>
@@ -169,7 +184,17 @@
                 <p class="text-xs text-white/50 mb-4">حدد ما يمكن للمستخدم رؤيته والعمل عليه في البرنامج.</p>
                 
                 <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                  <label v-for="perm in availablePermissions" :key="perm.id" class="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-colors border border-transparent hover:border-white/10">
+                  <p class="text-xs font-bold text-indigo-300">موديولات التشغيل</p>
+                  <label v-for="perm in modulePermissions" :key="perm.id" class="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-colors border border-transparent hover:border-white/10">
+                    <input type="checkbox" :value="perm.id" v-model="modal.form.permissions" class="w-5 h-5 rounded border-white/20 bg-black/40 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0" />
+                    <div class="flex flex-col">
+                      <span class="text-white font-bold">{{ perm.name }}</span>
+                      <span class="text-white/40 text-xs">{{ perm.desc }}</span>
+                    </div>
+                  </label>
+
+                  <p class="text-xs font-bold text-sky-300 pt-2">الإدارة والمالية</p>
+                  <label v-for="perm in adminPermissions" :key="perm.id" class="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-colors border border-transparent hover:border-white/10">
                     <input type="checkbox" :value="perm.id" v-model="modal.form.permissions" class="w-5 h-5 rounded border-white/20 bg-black/40 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0" />
                     <div class="flex flex-col">
                       <span class="text-white font-bold">{{ perm.name }}</span>
@@ -197,8 +222,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
+import {
+  USER_PERMISSIONS,
+  DEFAULT_EMPLOYEE_MODULE_PERMISSIONS,
+  getPermissionLabel,
+} from '@/constants/userPermissions';
 import {
   ShieldCheck,
   UserPlus,
@@ -210,21 +240,19 @@ import {
 } from 'lucide-vue-next';
 
 const loading = ref(true);
+const loadError = ref('');
 const users = ref([]);
+const availablePermissions = ref([...USER_PERMISSIONS]);
+let fetchController = null;
 
-const availablePermissions = [
-  { id: 'view_dashboard', name: 'التقارير والإحصائيات', desc: 'مشاهدة لوحة التقارير الرئيسية (P&L)' },
-  { id: 'manage_flights', name: 'موديول الطيران', desc: 'إضافة وإدارة حجوزات وتذاكر الطيران' },
-  { id: 'manage_bus', name: 'موديول النقل البري (الباصات)', desc: 'إدارة حجوزات الباصات والشركات الناقلة' },
-  { id: 'manage_hajj', name: 'موديول الحج والعمرة', desc: 'إدارة برامج الحج والعمرة وتأشيراتها' },
-  { id: 'manage_online', name: 'موديول الأونلاين (Online)', desc: 'إدارة طلبات الفيزا والخدمات الإلكترونية' },
-  { id: 'manage_treasury', name: 'الخزينة والمحاسبة', desc: 'مشاهدة أرصدة الخزينة، والمحفظة وإضافة مصروفات' },
-  { id: 'manage_employees', name: 'شؤون الموظفين', desc: 'إدارة الموظفين والمكافآت والخصومات' },
-];
+const modulePermissions = computed(() => availablePermissions.value.filter((perm) => perm.group === 'modules'));
+const adminPermissions = computed(() => availablePermissions.value.filter((perm) => perm.group === 'admin'));
 
-const getPermissionLabel = (id) => {
-  const perm = availablePermissions.find(p => p.id === id);
-  return perm ? perm.name : id;
+const displayPermissions = (user) => {
+  if (user.permissions?.length) {
+    return user.permissions;
+  }
+  return user.effective_permissions || [];
 };
 
 const modal = ref({
@@ -244,13 +272,31 @@ const modal = ref({
 });
 
 const fetchUsers = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const { signal } = fetchController;
+
   loading.value = true;
+  loadError.value = '';
   try {
-    const res = await axios.get('/api/v1/users');
-    users.value = res.data.data;
+    const res = await axios.get('/api/v1/users', {
+      params: { _t: Date.now() },
+      signal,
+    });
+    const payload = res.data?.data || {};
+    users.value = Array.isArray(payload) ? payload : (payload.users || []);
+    if (payload.available_permissions?.length) {
+      availablePermissions.value = payload.available_permissions;
+    }
   } catch (error) {
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error('Failed to fetch users', error);
-    if(window.addToast) window.addToast('حدث خطأ أثناء جلب المستخدمين', 'error');
+    loadError.value = error.response?.data?.message || 'حدث خطأ أثناء جلب المستخدمين';
+    if (window.addToast) window.addToast(loadError.value, 'error');
   } finally {
     loading.value = false;
   }
@@ -279,7 +325,7 @@ const openModal = (user = null) => {
       password: '',
       role: 'employee',
       is_active: true,
-      permissions: []
+      permissions: [...DEFAULT_EMPLOYEE_MODULE_PERMISSIONS],
     };
   }
   modal.value.isOpen = true;
@@ -294,11 +340,11 @@ const saveUser = async () => {
   modal.value.error = '';
   
   try {
-    const payload = { ...modal.value.form };
-    
+    const { id, ...payload } = modal.value.form;
+
     if (modal.value.isEditing) {
       if (!payload.password) delete payload.password;
-      await axios.put(`/api/v1/users/${payload.id}`, payload);
+      await axios.put(`/api/v1/users/${id}`, payload);
       if(window.addToast) window.addToast('تم تحديث المستخدم بنجاح', 'success');
     } else {
       await axios.post('/api/v1/users', payload);
@@ -328,6 +374,12 @@ const deleteUser = async (id) => {
 
 onMounted(() => {
   fetchUsers();
+});
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
 });
 </script>
 

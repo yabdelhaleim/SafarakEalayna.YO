@@ -338,10 +338,8 @@ const store = useFawryStore();
 
 // Methods
 const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('ar-EG', {
-    style: 'currency',
-    currency: 'EGP',
-  }).format(amount || 0);
+  const n = Number(amount) || 0;
+  return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
 };
 
 const formatDate = (dateString) => {

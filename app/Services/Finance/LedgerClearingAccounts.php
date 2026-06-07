@@ -82,4 +82,57 @@ class LedgerClearingAccounts
             ->where('is_active', true)
             ->value('id');
     }
+
+    /**
+     * Resolve all income/expense clearing account IDs in a single query (no response caching).
+     *
+     * @return array{income: array<int, string>, expense: array<int, string>}
+     */
+    public function moduleAccountMaps(): array
+    {
+        $incomeNames = config('accounting.clearing.income', []);
+        $expenseNames = config('accounting.clearing.expense', []);
+
+        $nameToModule = [];
+        foreach ($incomeNames as $module => $name) {
+            if (is_string($name) && $name !== '') {
+                $nameToModule[$name] = ['kind' => 'income', 'module' => $this->normalizeModuleKey($module)];
+            }
+        }
+        foreach ($expenseNames as $module => $name) {
+            if (is_string($name) && $name !== '') {
+                $nameToModule[$name] = ['kind' => 'expense', 'module' => $this->normalizeModuleKey($module)];
+            }
+        }
+
+        $flightName = config('flight_accounting.ledger_clearing_account_name');
+        if (is_string($flightName) && $flightName !== '') {
+            $nameToModule[$flightName] = ['kind' => 'income', 'module' => TransactionModule::Flight->value];
+        }
+
+        if ($nameToModule === []) {
+            return ['income' => [], 'expense' => []];
+        }
+
+        $accounts = Account::query()
+            ->whereIn('name', array_keys($nameToModule))
+            ->where('is_active', true)
+            ->get(['id', 'name']);
+
+        $income = [];
+        $expense = [];
+        foreach ($accounts as $account) {
+            $meta = $nameToModule[$account->name] ?? null;
+            if ($meta === null) {
+                continue;
+            }
+            if ($meta['kind'] === 'income') {
+                $income[(int) $account->id] = $meta['module'];
+            } else {
+                $expense[(int) $account->id] = $meta['module'];
+            }
+        }
+
+        return ['income' => $income, 'expense' => $expense];
+    }
 }

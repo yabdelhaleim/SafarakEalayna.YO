@@ -147,7 +147,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { 
   Plane, 
@@ -183,7 +183,22 @@ const fetchDashboard = async () => {
   }
 };
 
+let pollingInterval = null;
+
 onMounted(() => {
   fetchDashboard();
+  
+  // Auto-refresh every 15 seconds to fetch new sales/attendance/activity data without manual reload
+  pollingInterval = setInterval(async () => {
+    if (!isLoading()) {
+      await fetchDashboard();
+    }
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
 });
 </script>

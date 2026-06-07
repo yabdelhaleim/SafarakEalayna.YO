@@ -28,6 +28,7 @@ class OnlineTransaction extends Model
         'employee_id',
         'purchase_price',
         'selling_price',
+        'amount_paid',
         'profit',
         'payment_method',
         'account_id',
@@ -43,6 +44,7 @@ class OnlineTransaction extends Model
     protected $casts = [
         'purchase_price' => 'decimal:2',
         'selling_price' => 'decimal:2',
+        'amount_paid' => 'decimal:2',
         'profit' => 'decimal:2',
         'status' => OnlineTransactionStatus::class,
     ];

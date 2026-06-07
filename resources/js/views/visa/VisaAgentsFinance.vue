@@ -32,6 +32,14 @@
             <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
             تحديث
           </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-indigo-500"
+            @click="openAddAgentModal"
+          >
+            <Plus class="h-4 w-4" />
+            إضافة وكيل
+          </button>
         </div>
       </div>
     </header>
@@ -114,8 +122,17 @@
           </div>
 
           <form @submit.prevent="submitAction" class="p-8 space-y-6">
+
+            <!-- إجمالي المديونية (للعرض فقط عند السداد) -->
+            <div v-if="actionModal.type === 'repay'" class="rounded-xl bg-red-500/10 border border-red-500/20 px-5 py-3 flex justify-between items-center">
+              <span class="text-xs font-bold text-red-400">إجمالي المديونية على الوكيل:</span>
+              <span class="font-mono text-lg font-black text-red-400">
+                {{ Number(Math.abs(actionModal.agent?.net_due || 0)).toLocaleString('ar-EG') }} ج.م
+              </span>
+            </div>
+
             <div class="space-y-2">
-              <label class="text-xs font-bold text-white/40">المبلغ</label>
+              <label class="text-xs font-bold text-white/40">المبلغ المراد {{ actionModal.type === 'repay' ? 'سداده' : 'سحبه' }}</label>
               <div class="relative">
                 <input
                   v-model.number="form.amount"
@@ -127,6 +144,23 @@
                   placeholder="0.00"
                 />
                 <span class="absolute left-5 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20">ج.م</span>
+              </div>
+              <!-- أزرار الاختصار السريع -->
+              <div v-if="actionModal.type === 'repay'" class="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  @click="form.amount = Math.abs(Number(actionModal.agent?.net_due || 0))"
+                  class="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-[10px] font-black text-indigo-300 transition-all"
+                >
+                  كامل المديونية
+                </button>
+                <button
+                  type="button"
+                  @click="form.amount = Math.round(Math.abs(Number(actionModal.agent?.net_due || 0)) / 2 * 100) / 100"
+                  class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold text-white/50 transition-all"
+                >
+                  نصف المبلغ
+                </button>
               </div>
             </div>
 
@@ -176,13 +210,114 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Add Agent Modal -->
+    <Teleport to="body">
+      <div
+        v-if="addAgentModal.show"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        @click.self="closeAddAgentModal"
+      >
+        <div class="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0a111e] shadow-2xl animate-in zoom-in-95 duration-200">
+          <div class="border-b border-white/5 px-8 py-6 flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-indigo-400">إدارة الوكلاء</p>
+              <h3 class="text-xl font-black text-white">إضافة وكيل جديد</h3>
+            </div>
+            <button @click="closeAddAgentModal" class="text-white/20 hover:text-white transition">✕</button>
+          </div>
+
+          <form @submit.prevent="submitAddAgent" class="p-8 space-y-4">
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-white/40">الاسم *</label>
+              <input
+                v-model="addAgentForm.name"
+                type="text"
+                required
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500/50"
+                placeholder="اسم الوكيل أو الشركة المورِّدة"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-white/40">رقم الهاتف</label>
+              <input
+                v-model="addAgentForm.phone"
+                type="text"
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500/50"
+                placeholder="رقم الهاتف"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-white/40">نوع التأشيرة</label>
+              <select
+                v-model="addAgentForm.visa_type"
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500/50"
+              >
+                <option value="">— اختر نوع التأشيرة —</option>
+                <option v-for="t in (store.statuses?.visa_types || [])" :key="t.value" :value="t.value">
+                  {{ t.label }}
+                </option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-white/40">سعر التكلفة الافتراضي</label>
+              <div class="relative">
+                <input
+                  v-model.number="addAgentForm.default_cost_price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-white outline-none focus:border-indigo-500/50"
+                  placeholder="0.00"
+                />
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/20">ج.م</span>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-white/40">الحساب البنكي المرتبط</label>
+              <select
+                v-model="addAgentForm.account_id"
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500/50"
+              >
+                <option :value="null">— إنشاء حساب تلقائي للوكيل —</option>
+                <option v-for="acc in settlementAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
+            </div>
+
+            <div class="flex gap-3 pt-4">
+              <button
+                type="submit"
+                :disabled="submitting"
+                class="flex-1 rounded-2xl bg-indigo-600 py-4 text-sm font-black text-white shadow-xl shadow-indigo-600/20 transition-all hover:bg-indigo-500 disabled:opacity-30 active:scale-95"
+              >
+                <span v-if="submitting">جاري الحفظ…</span>
+                <span v-else>حفظ الوكيل</span>
+              </button>
+              <button
+                type="button"
+                @click="closeAddAgentModal"
+                class="flex-1 rounded-2xl border border-white/10 bg-white/5 py-4 text-sm font-bold text-white/60 transition hover:bg-white/10"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
-import { ArrowRight, RefreshCw, Building2, CreditCard } from 'lucide-vue-next';
+import { ArrowRight, RefreshCw, Building2, CreditCard, Plus } from 'lucide-vue-next';
 
 const store = useVisaStore();
 const loading = ref(false);
@@ -212,7 +347,9 @@ const form = ref({ amount: 0, account_id: '', notes: '' });
 
 const openActionModal = (type, agent) => {
   actionModal.value = { show: true, type, agent };
-  form.value = { amount: 0, account_id: '', notes: '' };
+  // تعبئة المبلغ تلقائياً بقيمة المديونية عند السداد
+  const defaultAmount = type === 'repay' ? Math.abs(Number(agent.net_due) || 0) : 0;
+  form.value = { amount: defaultAmount, account_id: '', notes: '' };
 };
 
 const closeActionModal = () => {
@@ -238,6 +375,44 @@ const submitAction = async () => {
     
     closeActionModal();
     await reload();
+  } finally {
+    submitting.value = false;
+  }
+};
+
+const addAgentModal = ref({ show: false });
+const addAgentForm = ref({
+  name: '',
+  phone: '',
+  visa_type: '',
+  default_cost_price: 0,
+  account_id: null,
+});
+
+const openAddAgentModal = () => {
+  addAgentModal.value.show = true;
+  addAgentForm.value = {
+    name: '',
+    phone: '',
+    visa_type: '',
+    default_cost_price: 0,
+    account_id: null,
+  };
+};
+
+const closeAddAgentModal = () => {
+  addAgentModal.value.show = false;
+};
+
+const submitAddAgent = async () => {
+  if (submitting.value) return;
+  submitting.value = true;
+  try {
+    await store.createVisaAgent(addAgentForm.value);
+    closeAddAgentModal();
+    await reload();
+  } catch (error) {
+    console.error('Failed to create visa agent', error);
   } finally {
     submitting.value = false;
   }

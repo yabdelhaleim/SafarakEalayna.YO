@@ -9,8 +9,12 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class TopDestinationsWidget extends BaseWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected static ?int $sort = 4;
+
     protected static bool $isLazy = true;
+
     protected static ?string $heading = 'الرحلات النشطة وتوفر المقاعد';
 
     public function table(Table $table): Table
@@ -28,7 +32,7 @@ class TopDestinationsWidget extends BaseWidget
                     ->label('الشركة'),
                 Tables\Columns\TextColumn::make('destination')
                     ->label('الوجهة')
-                    ->formatStateUsing(fn ($state) => match($state) {
+                    ->formatStateUsing(fn ($state) => match ($state) {
                         'CAI' => 'القاهرة 🇪🇬',
                         'DXB' => 'دبي 🇦🇪',
                         'IST' => 'إسطنبول 🇹🇷',

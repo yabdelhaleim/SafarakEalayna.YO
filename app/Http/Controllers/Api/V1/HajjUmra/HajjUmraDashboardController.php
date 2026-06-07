@@ -18,9 +18,11 @@ class HajjUmraDashboardController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
-        $monthlyRevenue = HajjUmraBooking::query()
+        $monthlyRevenue = (float) HajjUmraBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
-            ->sum('selling_price');
+            ->where('status', '!=', 'cancelled')
+            ->selectRaw('COALESCE(SUM(selling_price + COALESCE(companion_selling_price, 0) + COALESCE(accommodation_extra_charge, 0)), 0) as total')
+            ->value('total');
 
         $totalBookings = HajjUmraBooking::query()->count();
 
@@ -86,4 +88,3 @@ class HajjUmraDashboardController extends Controller
         ]);
     }
 }
-

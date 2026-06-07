@@ -328,7 +328,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useEmployeeStore } from '@/stores/employeeStore';
 import {
   Search,
@@ -377,7 +377,7 @@ const filteredRecords = computed(() => {
   let records = store.activeEmployees.map((employee) => {
     const attendance = store.attendance.find((a) =>
       a.employee_id === employee.id &&
-      new Date(a.date).toDateString() === new Date(selectedDate.value).toDateString()
+      (a.date === selectedDate.value || a.attendance_date === selectedDate.value)
     );
 
     return {
@@ -495,8 +495,16 @@ const submitAttendance = async () => {
   }
 };
 
+watch(selectedDate, async (newDate) => {
+  if (newDate) {
+    await store.fetchAttendance({ from_date: newDate, to_date: newDate, per_page: 100 });
+  }
+});
+
 onMounted(async () => {
-  await Promise.all([store.fetchEmployees(), store.fetchAttendance(), store.fetchStats()]);
+  await store.fetchEmployees();
+  await store.fetchAttendance({ from_date: selectedDate.value, to_date: selectedDate.value, per_page: 100 });
+  await store.fetchStats();
 });
 </script>
 

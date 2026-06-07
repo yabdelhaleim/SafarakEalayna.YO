@@ -139,7 +139,7 @@
             <Clock class="w-5 h-5 text-indigo-400" />
             آخر الحركات المالية للقسم
           </h2>
-          <div class="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02]">
+          <div class="overflow-x-auto rounded-2xl border border-white/5 bg-white/[0.02]">
             <table class="min-w-full text-right text-sm">
               <thead class="border-b border-white/5 bg-black/20">
                 <tr class="text-[11px] uppercase tracking-widest text-white/40">
@@ -200,7 +200,7 @@
             </div>
             <button type="button" class="rounded-lg p-2 text-white/30 hover:bg-white/5 hover:text-white" @click="closeModal">✕</button>
           </div>
-          <div class="max-h-[60vh] overflow-y-auto p-6">
+          <div class="max-h-[60vh] overflow-auto p-6">
             <table class="min-w-full text-right text-xs">
               <thead class="sticky top-0 bg-[#0a111e] text-white/40 uppercase tracking-wider">
                 <tr>

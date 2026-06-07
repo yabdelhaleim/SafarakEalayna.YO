@@ -53,7 +53,7 @@ class UpdateFlightBookingRequest extends FormRequest
             'airline_name' => 'sometimes|nullable|string|max:150',
             'airline' => 'sometimes|nullable|string|max:150',
             'system_type' => 'sometimes|nullable|string|max:50',
-            'pnr' => 'sometimes|nullable|string|max:50',
+            'pnr' => 'sometimes|required|string|max:50',
             'trip_type' => 'sometimes|nullable|in:one_way,round_trip,multi_city',
             'from_airport' => 'sometimes|nullable|string|max:10',
             'to_airport' => 'sometimes|nullable|string|max:10',
@@ -79,10 +79,10 @@ class UpdateFlightBookingRequest extends FormRequest
             'baggage_allowance_kg' => 'sometimes|nullable|numeric|min:0',
             'notes' => 'sometimes|nullable|string|max:1000',
             'agent_name' => 'sometimes|nullable|string|max:150',
-            'passengers' => 'sometimes|nullable|array|min:1',
+            'passengers' => 'sometimes|required|array|min:1',
             'passengers.*.name' => 'nullable|string|max:200',
-            'passengers.*.first_name' => 'nullable|string|max:100',
-            'passengers.*.last_name' => 'nullable|string|max:100',
+            'passengers.*.first_name' => 'required_with:passengers|string|max:100',
+            'passengers.*.last_name' => 'required_with:passengers|string|max:100',
             'passengers.*.type' => 'nullable|string|max:20',
             'passengers.*.passenger_type' => 'nullable|string|max:20',
             'passengers.*.passport_number' => 'nullable|string|max:50',
@@ -173,8 +173,13 @@ class UpdateFlightBookingRequest extends FormRequest
 
         if (isset($input['passengers']) && is_array($input['passengers'])) {
             foreach ($input['passengers'] as $i => $passenger) {
-                if (is_array($passenger) && array_key_exists('date_of_birth', $passenger) && $passenger['date_of_birth'] === '') {
-                    $input['passengers'][$i]['date_of_birth'] = null;
+                if (! is_array($passenger)) {
+                    continue;
+                }
+                foreach (['date_of_birth', 'national_id', 'passport_number'] as $pk) {
+                    if (array_key_exists($pk, $passenger) && $passenger[$pk] === '') {
+                        $input['passengers'][$i][$pk] = null;
+                    }
                 }
             }
         }

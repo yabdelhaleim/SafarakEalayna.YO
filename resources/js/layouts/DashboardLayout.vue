@@ -110,6 +110,7 @@
               <router-link v-if="isAdminOrOwner" to="/hajj-umra/treasury" class="nl-sub">إدارة القسم (مالية الحج والعمرة)</router-link>
               <router-link v-if="isAdminOrOwner" to="/hajj-umra/programs" class="nl-sub">إدارة البرامج</router-link>
               <router-link v-if="isAdminOrOwner" to="/hajj-umra/executing-companies" class="nl-sub">إدارة الشركات</router-link>
+              <router-link to="/hajj-umra/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
             </div>
           </div>
 
@@ -123,6 +124,7 @@
             <div v-show="isVisasOpen" class="dropdown-content-styled">
               <router-link to="/visas/list" class="nl-sub">قائمة التأشيرات</router-link>
               <router-link to="/visas/create" class="nl-sub">طلب جديد</router-link>
+              <router-link to="/visas/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
               <router-link v-if="isAdminOrOwner" to="/visas/treasury" class="nl-sub">إدارة القسم (مالية التأشيرات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/visas/agents-finance" class="nl-sub">إدارة الوكلاء</router-link>
             </div>
@@ -161,6 +163,8 @@
             <div v-show="isFawryOpen" class="dropdown-content-styled">
               <router-link to="/fawry/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/fawry/list" class="nl-sub">قائمة المعاملات</router-link>
+              <router-link to="/fawry/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
+              <router-link to="/fawry/machines" class="nl-sub">إدارة الماكينات</router-link>
               <router-link v-if="isAdminOrOwner" to="/fawry/treasury" class="nl-sub">إدارة القسم (مالية فوري)</router-link>
             </div>
           </div>
@@ -174,6 +178,7 @@
             </button>
             <div v-show="isOnlineOpen" class="dropdown-content-styled">
               <router-link to="/online" class="nl-sub">قائمة المعاملات</router-link>
+              <router-link to="/online/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
               <router-link v-if="isAdminOrOwner" to="/online/treasury" class="nl-sub">إدارة القسم (مالية الخدمات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/online/service-types" class="nl-sub">أنواع الخدمات</router-link>
               <router-link v-if="isAdminOrOwner" to="/online/providers" class="nl-sub">مزودي الخدمات</router-link>
@@ -189,14 +194,34 @@
             </button>
             <div v-show="isWalletOpen" class="dropdown-content-styled">
               <router-link to="/wallet/dashboard" class="nl-sub">لوحة التحكم</router-link>
-              <router-link to="/wallet" class="nl-sub">قائمة العمليات</router-link>
+              <router-link to="/wallet/list" class="nl-sub">قائمة العمليات</router-link>
+              <router-link to="/wallet/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
+              <router-link v-if="isAdminOrOwner" to="/wallet/treasury" class="nl-sub">إدارة القسم (مالية المحافظ)</router-link>
             </div>
           </div>
+        </div>
+
+        <!-- CUSTOMERS MODULE -->
+        <div class="nav-grp">
+          <span class="grp-label text-amber-400">العملاء والمديونيات</span>
+
+          <router-link to="/customers" class="nl" :class="{'nl-active': $route.path.startsWith('/customers')}">
+            <span class="nl-i text-amber-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                <path d="M16 3.13a4 4 0 010 7.75"/>
+              </svg>
+            </span>
+            <span class="nl-t">إدارة العملاء</span>
+          </router-link>
         </div>
 
         <!-- ADMINISTRATION & FINANCE -->
         <div class="nav-grp" v-if="hasPermission('manage_finance') || hasPermission('manage_employees') || hasPermission('view_reports') || hasPermission('manage_users')">
           <span class="grp-label text-sky-400">الإدارة والمالية</span>
+
 
           <!-- Finance Module -->
           <div class="nav-dropdown" v-if="(authStore.isAdmin || authStore.user?.role === 'owner') && hasPermission('manage_finance')">
@@ -213,10 +238,7 @@
               <router-link to="/finance/expenses" class="nl-sub">المصروفات</router-link>
               <router-link to="/finance/transactions" class="nl-sub">سجل المعاملات</router-link>
               <router-link to="/finance/transactions/create" class="nl-sub">معاملة جديدة</router-link>
-              <router-link to="/finance/transfers" class="nl-sub">التحويلات</router-link>
-              <router-link to="/finance/transfers/create" class="nl-sub">تحويل جديد</router-link>
-              <router-link to="/finance/transfers/history" class="nl-sub">سجل التحويلات</router-link>
-              <router-link to="/finance/invoices" class="nl-sub">الفواتير</router-link>
+              <router-link to="/finance/transfers" class="nl-sub">التحويلات المالية</router-link>
               <router-link to="/finance/profit-loss" class="nl-sub">الأرباح والخسائر</router-link>
               <router-link to="/finance/department/tourism" class="nl-sub">المركز المالي - السياحة</router-link>
               <router-link to="/finance/department/office" class="nl-sub">المركز المالي - المكتب</router-link>
@@ -264,7 +286,9 @@
 
       <!-- Footer -->
       <div class="sb-footer">
-        <button class="sf-btn"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/></svg><span>الإعدادات</span></button>
+        <router-link to="/settings/print" class="sf-btn">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/></svg><span>الإعدادات</span>
+        </router-link>
         <button class="sf-btn sf-logout" @click="handleLogout"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M7 17H4a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 014 3h3M13 14l4-4-4-4M17 10H7"/></svg><span>خروج</span></button>
       </div>
 
@@ -292,7 +316,7 @@
         <div class="tb-end gap-2 sm:gap-4">
           <div class="hdr-search">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="9" r="6.5"/><path d="M17 17l-3.5-3.5"/></svg>
-            <input type="search" placeholder="بحث سريع..." aria-label="بحث" />
+            <input id="global-quick-search" name="global_quick_search" type="search" placeholder="بحث سريع..." aria-label="بحث" autocomplete="off" />
             <kbd>K</kbd>
           </div>
 
@@ -366,6 +390,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { useFlightStore } from '@/stores/flightStore';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
 const router = useRouter();
 const route = useRoute();
@@ -380,21 +405,7 @@ onErrorCaptured((err) => {
 
 const hasPermission = (perm) => {
   if (authStore.isAdmin || authStore.user?.role === 'owner') return true;
-
-  // Specific permissions allowed for employees by default
-  const employeeAllowed = [
-    'manage_flights', 
-    'manage_hajj', 
-    'manage_online', 
-    'manage_bus', 
-    'manage_treasury'
-  ];
-
-  if (authStore.user?.role === 'employee' && employeeAllowed.includes(perm)) {
-    return true;
-  }
-
-  return authStore.user?.permissions && authStore.user.permissions.includes(perm);
+  return Array.isArray(authStore.user?.permissions) && authStore.user.permissions.includes(perm);
 };
 
 const currentPageTitle = computed(() => {
@@ -405,6 +416,7 @@ const currentPageTitle = computed(() => {
   return 'لوحة التحكم';
 });
 const flightStore = useFlightStore();
+const printSettingsStore = usePrintSettingsStore();
 
 const DESKTOP = 1024;
 const windowWidth   = ref(window.innerWidth);
@@ -505,6 +517,9 @@ onMounted(async () => {
   );
   // Initialize auth - load user data if token exists
   await authStore.initAuth();
+  if (authStore.isAuthenticated) {
+    printSettingsStore.fetch().catch(() => {});
+  }
 });
 onUnmounted(() => {
   window.removeEventListener('resize', onResize);

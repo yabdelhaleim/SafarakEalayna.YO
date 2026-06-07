@@ -41,11 +41,13 @@ const routes = [
     name: 'customers.index',
     component: () => import('@/layouts/DashboardLayout.vue'),
     meta: { title: 'العملاء', requiresAuth: true },
+    redirect: { name: 'customers.list' },
     children: [
       {
         path: '',
         name: 'customers.list',
         component: () => import('@/views/customers/CustomerIndex.vue'),
+        meta: { title: 'قائمة العملاء' },
       },
     ],
   },
@@ -134,6 +136,12 @@ const routes = [
         meta: { title: 'إنشاء حجز حج/عمرة' },
       },
       {
+        path: 'customer-balances',
+        name: 'hajj.customer-balances',
+        component: () => import('@/views/hajjUmra/HajjUmraCustomerBalances.vue'),
+        meta: { title: 'مديونيات العملاء (الحج والعمرة)' },
+      },
+      {
         path: 'treasury',
         name: 'hajj.treasury',
         component: () => import('@/views/hajjUmra/HajjUmraTreasury.vue'),
@@ -170,14 +178,11 @@ const routes = [
           },
           {
             path: 'create',
-            name: 'hajj.programs.create',
-            component: () => import('@/views/hajjUmra/Programs/ProgramCreate.vue'),
+            redirect: { name: 'hajj.programs.list' },
           },
           {
             path: ':id/edit',
-            name: 'hajj.programs.edit',
-            component: () => import('@/views/hajjUmra/Programs/ProgramEdit.vue'),
-            props: true,
+            redirect: { name: 'hajj.programs.list' },
           },
         ],
       },
@@ -209,6 +214,12 @@ const routes = [
         meta: { title: 'مالية وكلاء التأشيرات' }
       },
       {
+        path: 'customer-balances',
+        name: 'visa.customer-balances',
+        component: () => import('@/views/visa/VisaCustomerBalances.vue'),
+        meta: { title: 'مديونيات عملاء التأشيرات' }
+      },
+      {
         path: 'create',
         name: 'visa.create',
         component: () => import('@/views/visa/VisaCreate.vue'),
@@ -228,6 +239,7 @@ const routes = [
       },
     ],
   },
+
   // Bus Module
   {
     path: '/bus',
@@ -326,6 +338,12 @@ const routes = [
         component: () => import('@/views/wallet/WalletCreate.vue'),
         meta: { title: 'عملية جديدة' },
       },
+      {
+        path: 'customer-balances',
+        name: 'wallet.customer-balances',
+        component: () => import('@/views/wallet/WalletCustomerBalances.vue'),
+        meta: { title: 'مديونيات العملاء' },
+      },
     ],
   },
   // Online Module
@@ -350,6 +368,12 @@ const routes = [
         path: 'execute',
         name: 'online.execute',
         component: () => import('@/views/online/OnlineExecute.vue'),
+      },
+      {
+        path: 'customer-balances',
+        name: 'online.customer-balances',
+        component: () => import('@/views/online/OnlineCustomerBalances.vue'),
+        meta: { title: 'مديونيات العملاء (أونلاين)' },
       },
     ],
   },
@@ -399,6 +423,18 @@ const routes = [
         path: 'list',
         name: 'fawry.list',
         component: () => import('@/views/fawry/FawryIndex.vue'),
+      },
+      {
+        path: 'customer-balances',
+        name: 'fawry.customer-balances',
+        component: () => import('@/views/fawry/FawryCustomerBalances.vue'),
+        meta: { title: 'مديونيات العملاء' },
+      },
+      {
+        path: 'machines',
+        name: 'fawry.machines',
+        component: () => import('@/views/fawry/FawryMachinesIndex.vue'),
+        meta: { title: 'إدارة ماكينات الشحن' },
       },
       {
         path: 'treasury',
@@ -529,9 +565,7 @@ const routes = [
       },
       {
         path: 'transfers/history',
-        name: 'finance.transfers.history',
-        component: () => import('@/views/finance/TransferHistory.vue'),
-        meta: { title: 'سجل التحويلات' },
+        redirect: { name: 'finance.transfers' },
       },
       {
         path: 'transactions/create',
@@ -550,12 +584,6 @@ const routes = [
         name: 'finance.accounts.statement.detail',
         component: () => import('@/views/finance/AccountStatement.vue'),
         meta: { title: 'كشف حساب تفصيلي' },
-      },
-      {
-        path: 'invoices',
-        name: 'finance.invoices',
-        component: () => import('@/views/finance/InvoicesIndex.vue'),
-        meta: { title: 'الفواتير' },
       },
       {
         path: 'profit-loss',
@@ -636,6 +664,22 @@ const routes = [
         path: '',
         name: 'users.list',
         component: () => import('@/views/users/UsersIndex.vue'),
+      },
+    ],
+  },
+
+  // Settings
+  {
+    path: '/settings',
+    component: () => import('@/layouts/DashboardLayout.vue'),
+    meta: { title: 'الإعدادات', requiresAuth: true },
+    redirect: { name: 'settings.print' },
+    children: [
+      {
+        path: 'print',
+        name: 'settings.print',
+        component: () => import('@/views/settings/PrintSettings.vue'),
+        meta: { title: 'إعدادات الطباعة' },
       },
     ],
   },

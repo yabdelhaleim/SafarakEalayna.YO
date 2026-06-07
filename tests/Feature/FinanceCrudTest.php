@@ -219,4 +219,62 @@ class FinanceCrudTest extends TestCase
 
         $this->assertDatabaseMissing('approval_workflows', ['id' => $approvalId]);
     }
+
+    public function test_currency_conversion_and_rates_endpoints(): void
+    {
+        // 1. Create a rate from USD to EGP (50.00)
+        $rate1 = $this->postJson('/api/v1/finance/currencies/set-rate', [
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'rate' => 50.00,
+            'effective_date' => now()->toDateString(),
+            'is_active' => true,
+        ]);
+        $rate1->assertOk()->assertJsonPath('success', true);
+
+        // 2. Create a rate from KWD to EGP (160.00)
+        $rate2 = $this->postJson('/api/v1/finance/currencies/set-rate', [
+            'from_currency' => 'KWD',
+            'to_currency' => 'EGP',
+            'rate' => 160.00,
+            'effective_date' => now()->toDateString(),
+            'is_active' => true,
+        ]);
+        $rate2->assertOk()->assertJsonPath('success', true);
+
+        // 3. Test active rates endpoint
+        $activeRates = $this->getJson('/api/v1/finance/currencies/active-rates');
+        $activeRates->assertOk()->assertJsonPath('success', true);
+
+        // 4. Convert USD to EGP (direct rate)
+        $conv1 = $this->postJson('/api/v1/finance/currencies/convert', [
+            'amount' => 10,
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+        ]);
+        $conv1->assertOk()
+            ->assertJsonPath('data.to_amount', 500)
+            ->assertJsonPath('data.rate', 50);
+
+        // 5. Convert EGP to USD (inverse rate)
+        $conv2 = $this->postJson('/api/v1/finance/currencies/convert', [
+            'amount' => 100,
+            'from_currency' => 'EGP',
+            'to_currency' => 'USD',
+        ]);
+        $conv2->assertOk()
+            ->assertJsonPath('data.to_amount', 2)
+            ->assertJsonPath('data.rate', 0.02);
+
+        // 6. Convert KWD to USD (cross rate through EGP)
+        // 10 KWD = 1600 EGP = 32 USD
+        $conv3 = $this->postJson('/api/v1/finance/currencies/convert', [
+            'amount' => 10,
+            'from_currency' => 'KWD',
+            'to_currency' => 'USD',
+        ]);
+        $conv3->assertOk()
+            ->assertJsonPath('data.to_amount', 32)
+            ->assertJsonPath('data.rate', 3.2);
+    }
 }

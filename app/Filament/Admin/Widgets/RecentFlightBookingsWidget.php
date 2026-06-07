@@ -2,18 +2,20 @@
 
 namespace App\Filament\Admin\Widgets;
 
+use App\Filament\Admin\Resources\FlightBookings\FlightBookingResource;
 use App\Models\Flight\FlightBooking;
 use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
 
 class RecentFlightBookingsWidget extends BaseWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected static ?string $heading = 'أحدث حجوزات الطيران';
 
-    protected int | string | array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
 
     public function table(Table $table): Table
     {
@@ -48,7 +50,7 @@ class RecentFlightBookingsWidget extends BaseWidget
                 Tables\Actions\Action::make('view')
                     ->label('عرض')
                     ->icon('heroicon-o-eye')
-                    ->url(fn (FlightBooking $record): string => "/admin/flight-bookings/{$record->id}"),
+                    ->url(fn (FlightBooking $record): string => FlightBookingResource::getUrl('edit', ['record' => $record])),
             ]);
     }
 }

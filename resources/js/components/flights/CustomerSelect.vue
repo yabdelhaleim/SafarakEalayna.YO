@@ -1,13 +1,27 @@
 <template>
   <div class="relative">
     <!-- Selected Customer Card -->
-    <div v-if="modelValue" class="p-4 bg-input rounded-xl border border-gold/30 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+    <div
+      v-if="modelValue"
+      class="p-4 rounded-xl border flex justify-between items-center animate-in fade-in slide-in-from-top-2"
+      :class="props.type === 'counter'
+        ? 'bg-sky-500/10 border-sky-500/30'
+        : 'bg-input border-gold/30'"
+    >
       <div>
-        <h3 class="font-bold text-gold">{{ modelValue.name || modelValue.full_name }}</h3>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">
+          {{ props.type === 'counter' ? 'اسم الشركة (جهة التعاقد)' : 'اسم العميل' }}
+        </span>
+        <h3 class="font-bold" :class="props.type === 'counter' ? 'text-sky-300' : 'text-gold'">
+          {{ modelValue.name || modelValue.full_name }}
+        </h3>
         <p class="text-sm text-muted">
           {{ modelValue.phone }}
-          <span v-if="modelValue.national_id"> | الرقم القومي: {{ modelValue.national_id }}</span>
-          <span v-if="modelValue.travel_country"> | دولة السفر: {{ modelValue.travel_country }}</span>
+          <span v-if="modelValue.national_id && props.type !== 'counter'"> | الرقم القومي: {{ modelValue.national_id }}</span>
+          <span v-if="modelValue.travel_country && props.type !== 'counter'"> | دولة السفر: {{ modelValue.travel_country }}</span>
+        </p>
+        <p v-if="props.type === 'counter'" class="mt-2 text-[11px] text-sky-300/80">
+          هذه الشركة تُسجَّل عليها المديونية — وليست اسم المسافر
         </p>
       </div>
       <button @click="$emit('update:modelValue', null)" class="text-xs bg-error/10 text-error px-3 py-1 rounded-lg hover:bg-error hover:text-white transition-colors">
@@ -23,7 +37,9 @@
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="ابحث عن العميل بالاسم، رقم الهاتف، أو الرقم القومي..."
+        :placeholder="props.type === 'counter'
+          ? 'ابحث باسم الشركة أو رقم الهاتف...'
+          : 'ابحث عن العميل بالاسم، رقم الهاتف، أو الرقم القومي...'"
         class="w-full pl-10 pr-4 py-3 bg-input border border-white/10 rounded-xl focus:border-gold focus:ring-1 focus:ring-gold outline-none transition-all text-right"
         dir="rtl"
         @input="onSearch"

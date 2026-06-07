@@ -7,6 +7,7 @@ use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Rules\BusLiquidityAccount;
 use App\Models\Bus\BusCompany;
 use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
@@ -62,7 +63,7 @@ class BusTreasuryController extends Controller
             ->limit(40)
             ->get(['id', 'type', 'amount', 'from_account_id', 'to_account_id', 'notes', 'related_type', 'related_id', 'created_at']);
 
-        return ApiResponse::success('Bus treasury overview', [
+        return ApiResponse::success('نظرة عامة على خزينة الباصات.', [
             'settlement_accounts' => $accounts,
             'companies' => $companies,
             'recent_bus_transactions' => $recentTransactions,
@@ -71,6 +72,10 @@ class BusTreasuryController extends Controller
 
     public function accountBusTransactions(Request $request, Account $account): JsonResponse
     {
+        if (! BusLiquidityAccount::belongsToBusModule($account)) {
+            return ApiResponse::error('الحساب المحدد ليس تابعاً لموديول الباصات.', null, 422);
+        }
+
         $perPage = min((int) $request->query('per_page', 30), 100);
 
         $paginator = Transaction::query()
@@ -83,6 +88,6 @@ class BusTreasuryController extends Controller
             ->latest()
             ->paginate($perPage);
 
-        return ApiResponse::success('Account bus transactions', $paginator);
+        return ApiResponse::success('معاملات الباصات للحساب.', $paginator);
     }
 }

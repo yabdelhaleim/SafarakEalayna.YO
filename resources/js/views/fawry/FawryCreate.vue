@@ -90,7 +90,7 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- Operation Type -->
-          <div>
+          <div class="md:col-span-2">
             <label class="block text-sm font-medium text-text-muted mb-2">
               نوع العملية <span class="text-error">*</span>
             </label>
@@ -106,25 +106,30 @@
             </select>
           </div>
 
-          <!-- Currency -->
-          <div>
+          <!-- Fawry Machine -->
+          <div class="md:col-span-2">
             <label class="block text-sm font-medium text-text-muted mb-2">
-              العملة <span class="text-error">*</span>
+              ماكينة الشحن فوري / أمان <span class="text-error">*</span>
             </label>
             <select
-              v-model="form.currency_id"
-              :required="store.currencies.length > 0"
+              v-model="form.fawry_machine_id"
+              required
               class="form-select-dark"
             >
-              <option value="">{{ store.currencies.length ? 'اختر العملة' : 'لا توجد عملات مفعّلة — أضفها من فيليمنت' }}</option>
-              <option
-                v-for="currency in store.currencies"
-                :key="currency.currencyId || currency.id"
-                :value="currency.currencyId"
-              >
-                {{ currency.label }} ({{ currency.symbol }})
+              <option value="">اختر الماكينة</option>
+              <option v-for="mach in store.machines" :key="mach.id" :value="mach.id">
+                {{ mach.name }} ({{ formatMachineType(mach.type) }}) — رصيدها الحالي: {{ formatMoney(mach.balance) }}
               </option>
             </select>
+            <p v-if="selectedMachine" class="text-xs text-text-muted mt-2">
+              نوع الشبكة: <span class="font-bold text-text-main">{{ formatMachineType(selectedMachine.type) }}</span> · 
+              الرصيد المتوقع بعد العملية: 
+              <span 
+                :class="selectedMachine.balance - form.fawry_price >= 0 ? 'text-success font-mono font-bold' : 'text-error font-mono font-bold'"
+              >
+                {{ formatMoney(selectedMachine.balance - form.fawry_price) }}
+              </span>
+            </p>
           </div>
         </div>
       </div>
@@ -301,6 +306,26 @@
               >
                 تصفير
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Summary Breakdown (Credit/Debt) -->
+        <div v-if="form.client_id" class="mt-6 p-5 rounded-2xl border border-white/10 bg-white/[0.02] space-y-2">
+          <div class="flex items-center justify-between text-xs text-text-muted">
+            <span>إجمالي سعر البيع:</span>
+            <span class="font-mono font-bold">{{ formatCurrency(form.selling_price) }}</span>
+          </div>
+          <div class="flex items-center justify-between text-xs text-text-muted">
+            <span>المبلغ المدفوع الآن:</span>
+            <span class="font-mono font-bold text-emerald-400">{{ formatCurrency(form.amount || 0) }}</span>
+          </div>
+          <div class="flex items-center justify-between border-t border-white/5 pt-2.5 font-bold">
+            <span class="text-sm text-text-main">الآجل المتبقي (مديونية العميل):</span>
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-lg text-error">{{ formatCurrency(Math.max(0, (form.selling_price || 0) - (form.amount || 0))) }}</span>
+              <span v-if="(form.selling_price || 0) - (form.amount || 0) > 0" class="rounded-full bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold text-red-400 border border-red-500/20">سيتم تسجيلها كآجل</span>
+              <span v-else class="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20">مدفوع بالكامل ✓</span>
             </div>
           </div>
         </div>
@@ -486,6 +511,7 @@ const form = ref({
   payment_method: '',
   amount: 0,
   account_id: '',
+  fawry_machine_id: '',
   reference_number: '',
   notes: '',
   payment_detail_note: '',
@@ -548,6 +574,23 @@ const selectedSettlementAccount = computed(() => {
   return settlementAccounts.value.find((x) => String(x.id) === String(id)) ?? null;
 });
 
+const selectedMachine = computed(() => {
+  const id = form.value.fawry_machine_id;
+  if (!id) return null;
+  return store.machines.find(m => String(m.id) === String(id)) ?? null;
+});
+
+const formatMachineType = (type) => {
+  const types = {
+    fawry: 'فوري',
+    aman: 'أمان',
+    momtaz: 'ممتاز',
+    masary: 'مصاري',
+    other: 'أخرى',
+  };
+  return types[type] || type;
+};
+
 const balancePreview = computed(() => {
   const a = selectedSettlementAccount.value;
   if (!a) return null;
@@ -574,22 +617,12 @@ watch(
   }
 );
 
-watch(
-  () => form.value.selling_price,
-  (v) => {
-    const n = Number(v) || 0;
-    if (!form.value.amount || form.value.amount === 0) {
-      form.value.amount = n;
-    }
-  }
-);
+
 
 // Methods
 const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('ar-EG', {
-    style: 'currency',
-    currency: 'EGP',
-  }).format(amount || 0);
+  const n = Number(amount) || 0;
+  return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
 };
 
 const applySellMarkupPercent = (pct) => {
@@ -613,16 +646,8 @@ const setPaidPercentOfSelling = (pct) => {
 const formatMoney = (amount, currencyCode = 'EGP') => {
   const n = Number(amount) || 0;
   const code = currencyCode || 'EGP';
-  try {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'currency',
-      currency: code,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
-  } catch {
-    return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${code}`;
-  }
+  const label = code === 'EGP' ? 'ج.م' : code;
+  return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${label}`;
 };
 
 const getAccountTypeLabel = (type) => {
@@ -653,6 +678,20 @@ const onPaymentMethodChange = () => {
   }
 };
 
+const extractAccountsFromResponse = (res) => {
+  let raw = res.data?.data;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    if (Array.isArray(raw.items)) {
+      raw = raw.items;
+    } else if (raw.items && Array.isArray(raw.items.data)) {
+      raw = raw.items.data;
+    } else if (Array.isArray(raw.data)) {
+      raw = raw.data;
+    }
+  }
+  return Array.isArray(raw) ? raw : [];
+};
+
 const loadSettlementAccounts = async () => {
   try {
     const accountsRes = await axios.get('/api/v1/finance/accounts', {
@@ -661,19 +700,24 @@ const loadSettlementAccounts = async () => {
         types: 'cashbox,wallet,bank,treasury,post',
         is_active: 1,
         module: 'fawry',
+        _t: Date.now(),
       },
     });
-    let raw = accountsRes.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (Array.isArray(raw.data)) {
-        raw = raw.data;
+    settlementAccounts.value = extractAccountsFromResponse(accountsRes);
+    if (settlementAccounts.value.length === 0) {
+      const fallbackRes = await axios.get('/api/v1/finance/accounts', {
+        params: {
+          per_page: 100,
+          types: 'cashbox,wallet,bank,treasury,post',
+          is_active: 1,
+          _t: Date.now(),
+        },
+      });
+      const fallback = extractAccountsFromResponse(fallbackRes);
+      if (fallback.length > 0) {
+        settlementAccounts.value = fallback;
       }
     }
-    settlementAccounts.value = Array.isArray(raw) ? raw : [];
   } catch (error) {
     console.error('Failed to load settlement accounts:', error);
   }
@@ -698,8 +742,8 @@ const handleSubmit = async () => {
     return;
   }
   const sp = roundMoney(Number(form.value.selling_price) || 0);
-  if (!Number(form.value.amount) && sp) {
-    form.value.amount = sp;
+  if (form.value.amount === null || form.value.amount === undefined || form.value.amount === '') {
+    form.value.amount = 0;
   }
 
   const payload = {
@@ -741,13 +785,11 @@ onMounted(async () => {
     form.value.employee_id = authStore.user.id;
   }
 
-  await Promise.all([store.fetchSettings(), fetchCustomers(), loadSettlementAccounts()]);
-
-  const list = store.currencies;
-  if (list.length && list[0].currencyId != null) {
-    form.value.currency_id = list[0].currencyId;
-  } else {
-    form.value.currency_id = '';
-  }
+  await Promise.all([
+    store.fetchSettings(),
+    fetchCustomers(),
+    loadSettlementAccounts(),
+    store.fetchMachines({ is_active: 1 })
+  ]);
 });
 </script>

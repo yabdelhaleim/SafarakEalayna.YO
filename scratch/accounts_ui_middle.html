@@ -1,0 +1,134 @@
+      <!-- Deficit Alerts -->
+      <div v-if="hasDeficits" class="flight-panel border-error/30 bg-error/10 !p-5">
+        <h3 class="mb-4 flex items-center gap-2 text-lg font-black text-error">
+          <AlertTriangle class="h-5 w-5" />
+          تنبيهات العجز
+        </h3>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="acc in deficitAccounts"
+            :key="acc.id"
+            class="flex items-center justify-between rounded-xl border border-error/20 bg-black/20 px-4 py-3"
+          >
+            <span class="text-base font-black text-text-main">{{ acc.name }}</span>
+            <span class="font-mono text-base font-black text-error">{{ formatCurrency(acc.balance) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Portfolio + Recent Activity -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div class="flight-panel !p-6">
+          <h3 class="mb-5 text-lg font-black text-text-main">توزيع المحفظة المالية</h3>
+          <div v-if="dbStats.total_balance > 0" class="space-y-5">
+            <div v-for="(val, type) in dbStats.liquidity" :key="type">
+              <div class="mb-2 flex items-center justify-between gap-3">
+                <span class="text-base font-black text-text-main">{{ getTypeLabel(type) }}</span>
+                <div class="text-left">
+                  <span class="block font-mono text-base font-black text-gold">{{ formatCurrency(val) }}</span>
+                  <span class="text-sm font-bold text-text-muted">{{ getLiquidityPercent(type).toFixed(1) }}%</span>
+                </div>
+              </div>
+              <div class="h-3 w-full overflow-hidden rounded-full bg-white/5">
+                <div
+                  class="h-full rounded-full transition-all duration-700"
+                  :class="type === 'cashbox' ? 'bg-gold' : type === 'bank' ? 'bg-success' : type === 'wallet' ? 'bg-sky-400' : 'bg-violet-400'"
+                  :style="{ width: getLiquidityPercent(type) + '%' }"
+                />
+              </div>
+            </div>
+          </div>
+          <p v-else class="py-8 text-center text-base font-bold text-text-muted">لا توجد بيانات سيولة</p>
+        </div>
+
+        <div class="flight-panel !p-0 overflow-hidden">
+          <div class="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-5 py-4">
+            <h3 class="flex items-center gap-2 text-lg font-black text-text-main">
+              <RefreshCw class="h-5 w-5 text-sky-400" />
+              آخر العمليات
+            </h3>
+          </div>
+          <div v-if="isLoading()" class="p-5">
+            <TextLineSkeleton :lines="5" heightClass="h-14" gapClass="gap-3" />
+          </div>
+          <div v-else class="max-h-[420px] overflow-y-auto">
+            <p v-if="!recentTransactions.length" class="p-8 text-center text-base font-bold text-text-muted">
+              لا توجد حركات مسجلة مؤخراً
+            </p>
+            <div
+              v-for="tx in recentTransactions"
+              :key="tx.id"
+              class="border-b border-white/5 px-5 py-4 last:border-0 hover:bg-white/[0.02]"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <p class="text-base font-black leading-snug text-text-main">{{ tx.notes || 'معاملة مالية' }}</p>
+                  <p class="mt-1 text-sm font-bold text-text-muted">{{ formatDate(tx.created_at) }}</p>
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="rounded-lg bg-white/5 px-2.5 py-1 text-sm font-black text-gold">
+                      {{ getModuleLabel(tx.module) }}
+                    </span>
+                    <span class="text-sm font-bold text-text-muted">{{ tx.created_by_name || 'النظام' }}</span>
+                  </div>
+                </div>
+                <span
+                  class="shrink-0 font-mono text-lg font-black"
+                  :class="tx.type === 'income' ? 'text-success' : 'text-error'"
+                >
+                  {{ tx.type === 'income' ? '+' : '-' }}{{ formatCurrency(tx.amount) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="border-t border-white/5 bg-white/[0.02] px-5 py-3 text-center">
+            <router-link to="/finance/transactions" class="text-base font-black text-gold hover:underline">
+              عرض السجل الكامل
+            </router-link>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Profitability -->
+      <div v-if="!isLoading() && Object.keys(dbStats.performance).length" class="flight-panel !p-6">
+        <h3 class="mb-5 flex items-center gap-2 text-lg font-black text-text-main">
+          <Activity class="h-5 w-5 text-gold" />
+          ربحية الأقسام
+        </h3>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div
+            v-for="(perf, mod) in dbStats.performance"
+            :key="mod"
+            v-show="perf.profit !== 0 || perf.income !== 0"
+            class="rounded-2xl border border-white/5 bg-white/[0.02] p-5"
+          >
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="rounded-xl bg-gold/10 p-2.5 text-gold">
+                  <component :is="getModuleIcon(mod)" class="h-5 w-5" />
+                </div>
+                <div>
+                  <p class="text-sm font-black text-text-muted">قسم {{ getModuleLabel(mod) }}</p>
+                  <p class="text-base font-black text-text-main">صافي الربح</p>
+                </div>
+              </div>
+              <span
+                class="font-mono text-xl font-black"
+                :class="perf.profit >= 0 ? 'text-success' : 'text-error'"
+              >
+                {{ formatCurrency(perf.profit) }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-3 border-t border-white/5 pt-4">
+              <div class="rounded-xl bg-success/10 p-3">
+                <p class="text-sm font-black text-success/80">المبيعات</p>
+                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.income) }}</p>
+              </div>
+              <div class="rounded-xl bg-error/10 p-3">
+                <p class="text-sm font-black text-error/80">التكاليف</p>
+                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.expense) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+

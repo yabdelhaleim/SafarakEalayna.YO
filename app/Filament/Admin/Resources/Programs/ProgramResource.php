@@ -16,11 +16,15 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Forms\Get;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -35,9 +39,13 @@ class ProgramResource extends Resource
     protected static string|\UnitEnum|null $navigationGroup = 'الحج والعمرة';
 
     protected static ?string $navigationLabel = 'برامج الحج والعمرة';
+
     protected static ?string $pluralLabel = 'البرامج';
+
     protected static ?string $modelLabel = 'برنامج';
+
     protected static ?int $navigationSort = 1;
+
     protected static ?string $recordTitleAttribute = 'program_name';
 
     public static function form(Schema $schema): Schema
@@ -147,54 +155,11 @@ class ProgramResource extends Resource
                 SelectFilter::make('program_type')->label('النوع')->options(['hajj' => 'حج', 'umra' => 'عمرة']),
             ])
             ->actions([
-                \Filament\Tables\Actions\Action::make('addCost')
-                    ->label('تسجيل مصروف')
-                    ->icon('heroicon-o-minus-circle')
-                    ->color('danger')
-                    ->form([
-                        TextInput::make('amount')->label('المبلغ')->numeric()->required()->prefix('ج.م'),
-                        Select::make('account_id')->label('حساب الصرف (الخزينة)')
-                            ->relationship('account', 'name', fn ($q) => $q->where('is_active', true))
-                            ->searchable()->preload()->required(),
-                        Select::make('supplier_type')
-                            ->label('نوع المورد')
-                            ->options([
-                                'bus' => 'شركة باص',
-                                'hotel' => 'فندق',
-                                'agent' => 'شركة منفذة',
-                                'other' => 'أخرى',
-                            ])->reactive(),
-                        Select::make('supplier_id')
-                            ->label('المورد')
-                            ->options(function (get $get) {
-                                $type = $get('supplier_type');
-                                if ($type === 'bus') return \App\Models\Bus\BusCompany::pluck('name', 'id');
-                                if ($type === 'hotel') return \App\Models\HajjUmra\Hotel::pluck('name', 'id');
-                                if ($type === 'agent') return \App\Models\HajjUmra\HajjUmraExecutingCompany::pluck('name', 'id');
-                                return [];
-                            })
-                            ->searchable()
-                            ->visible(fn ($get) => in_array($get('supplier_type'), ['bus', 'hotel', 'agent'])),
-                        TextInput::make('notes')->label('ملاحظات')->maxLength(255),
-                    ])
-                    ->action(function (Program $record, array $data) {
-                        $transaction = \App\Models\Transaction::create([
-                            'type' => \App\Enums\TransactionType::Expense->value,
-                            'amount' => $data['amount'],
-                            'module' => \App\Enums\TransactionModule::HajjUmra->value,
-                            'from_account_id' => $data['account_id'],
-                            'program_id' => $record->id,
-                            'notes' => "مصروف تشغيلي لبرنامج {$record->program_name}: " . ($data['notes'] ?? ''),
-                            'created_by' => auth()->id(),
-                        ]);
-                        
-                        \Filament\Notifications\Notification::make()->title('تم تسجيل المصروف')->success()->send();
-                    }),
-                \Filament\Tables\Actions\ViewAction::make(),
-                \Filament\Tables\Actions\EditAction::make(),
-                \Filament\Tables\Actions\DeleteAction::make()
+                ViewAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
             ])
-            ->bulkActions([\Filament\Tables\Actions\BulkActionGroup::make([\Filament\Tables\Actions\DeleteBulkAction::make()])]);
+            ->bulkActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
     }
 
     public static function getPages(): array

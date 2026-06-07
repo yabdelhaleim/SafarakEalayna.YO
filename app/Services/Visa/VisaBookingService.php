@@ -2,13 +2,18 @@
 
 namespace App\Services\Visa;
 
+use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Enums\VisaStatus;
+use App\Models\Account;
 use App\Models\Customer;
+use App\Models\HajjUmra\VisaAgent;
+use App\Models\Transaction;
 use App\Models\VisaBooking;
 use App\Models\VisaDetail;
 use App\Models\VisaPayment;
 use App\Services\Finance\TransactionService;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -39,22 +44,22 @@ class VisaBookingService
 
     protected function applyFilters(Builder $query, array $filters): void
     {
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
-        if (!empty($filters['country'])) {
+        if (! empty($filters['country'])) {
             $query->whereHas('visaDetail', fn ($q) => $q->where('country', $filters['country']));
         }
-        if (!empty($filters['visa_type'])) {
+        if (! empty($filters['visa_type'])) {
             $query->whereHas('visaDetail', fn ($q) => $q->where('visa_type', $filters['visa_type']));
         }
-        if (!empty($filters['from_date'])) {
+        if (! empty($filters['from_date'])) {
             $query->whereDate('created_at', '>=', $filters['from_date']);
         }
-        if (!empty($filters['to_date'])) {
+        if (! empty($filters['to_date'])) {
             $query->whereDate('created_at', '<=', $filters['to_date']);
         }
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $term = $filters['search'];
             $query->whereHas('customer', function ($q) use ($term) {
                 $q->where('full_name', 'like', "%{$term}%")
@@ -110,13 +115,13 @@ class VisaBookingService
 
             $accountId = (int) ($data['account_id'] ?? 0);
             if ($accountId === 0) {
-                $vault = \App\Models\Account::getModuleVault('visas');
-                if (!$vault) {
+                $vault = Account::getModuleVault('visas');
+                if (! $vault) {
                     throw new \RuntimeException('لم يتم العثور على الخزينة الرسمية لموديول التأشيرات. يرجى اختيار حساب أو ضبط الخزينة الرسمية.');
                 }
                 $accountId = $vault->id;
             }
-            
+
             $createdBy = Auth::id() ?? ($data['employee_id'] ?? null);
 
             $booking = VisaBooking::create([
@@ -136,9 +141,20 @@ class VisaBookingService
                 'created_by' => $createdBy,
             ]);
 
+            $customerAccount = $this->ensureCustomerAccount($customer->id);
+
+            $expenseAccountId = $accountId;
+            $agentId = $detailData['visa_agent_id'] ?? null;
+            if ($agentId) {
+                $agent = VisaAgent::find($agentId);
+                if ($agent && $agent->account_id) {
+                    $expenseAccountId = $agent->account_id;
+                }
+            }
+
             $expense = $this->transactions->recordExpense([
                 'amount' => $purchase,
-                'from_account_id' => $accountId,
+                'from_account_id' => $expenseAccountId,
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -148,7 +164,7 @@ class VisaBookingService
 
             $income = $this->transactions->recordIncome([
                 'amount' => $selling + $serviceFee,
-                'to_account_id' => $accountId,
+                'to_account_id' => $customerAccount->id,
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -161,7 +177,7 @@ class VisaBookingService
                 'income_transaction_id' => $income->id,
             ]);
 
-            if (!empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
+            if (! empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
                 $this->addPayment($booking, $data['initial_payment']);
             }
 
@@ -183,6 +199,7 @@ class VisaBookingService
                 'status', 'agent_name', 'notes', 'employee_id',
             ])->all();
 
+            $hasPriceChange = false;
             if (array_key_exists('purchase_price', $data) || array_key_exists('selling_price', $data) || array_key_exists('service_fee', $data)) {
                 $purchase = (float) ($data['purchase_price'] ?? $booking->purchase_price);
                 $selling = (float) ($data['selling_price'] ?? $booking->selling_price);
@@ -191,11 +208,12 @@ class VisaBookingService
                 $fields['selling_price'] = $selling;
                 $fields['service_fee'] = $fee;
                 $fields['profit'] = round(($selling + $fee) - $purchase, 2);
+                $hasPriceChange = true;
             }
 
             $booking->update($fields);
 
-            if (!empty($data['visa_details']) && is_array($data['visa_details']) && $booking->visaDetail) {
+            if (! empty($data['visa_details']) && is_array($data['visa_details']) && $booking->visaDetail) {
                 $detailPayload = collect($data['visa_details'])
                     ->only([
                         'visa_type', 'country', 'duration', 'visa_duration_id', 'entry_type',
@@ -212,6 +230,17 @@ class VisaBookingService
             // رقم التأشيرة من الحقل المسطح (لتوافق الطلبات القديمة)
             if (array_key_exists('visa_number', $data) && $data['visa_number'] !== null && $booking->visaDetail) {
                 $booking->visaDetail->update(['visa_number' => $data['visa_number']]);
+            }
+
+            // Sync accounting amounts
+            if ($hasPriceChange) {
+                $booking->load(['expenseTransaction.entries', 'incomeTransaction.entries']);
+                if ($booking->expenseTransaction) {
+                    $this->updateTransactionAmount($booking->expenseTransaction, $fields['purchase_price']);
+                }
+                if ($booking->incomeTransaction) {
+                    $this->updateTransactionAmount($booking->incomeTransaction, $fields['selling_price'] + $fields['service_fee']);
+                }
             }
 
             return $this->find($booking->id);
@@ -244,9 +273,12 @@ class VisaBookingService
             $accountId = (int) ($data['account_id'] ?? $booking->account_id);
             $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
 
+            $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+
             $income = $this->transactions->recordIncome([
                 'amount' => $amount,
                 'to_account_id' => $accountId,
+                'contra_account_id' => $customerAccount->id,
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -275,7 +307,7 @@ class VisaBookingService
             return Customer::findOrFail($existingId);
         }
 
-        if (!$data || empty($data['phone'])) {
+        if (! $data || empty($data['phone'])) {
             throw new \InvalidArgumentException('بيانات العميل (الاسم والهاتف) مطلوبة.');
         }
 
@@ -286,5 +318,77 @@ class VisaBookingService
                 'date_of_birth', 'city', 'affiliation', 'notes',
             ])->all()
         );
+    }
+
+    protected function updateTransactionAmount(Transaction $transaction, float $newAmount)
+    {
+        $oldAmount = (float) $transaction->amount;
+        if ($oldAmount === $newAmount) {
+            return;
+        }
+        $diff = $newAmount - $oldAmount;
+
+        $fromAccount = $transaction->fromAccount;
+        $toAccount = $transaction->toAccount;
+
+        if ($fromAccount) {
+            $fromAccount->getConnection()->statement('UPDATE accounts SET balance = balance - ? WHERE id = ?', [$diff, $fromAccount->id]);
+        }
+        if ($toAccount) {
+            $toAccount->getConnection()->statement('UPDATE accounts SET balance = balance + ? WHERE id = ?', [$diff, $toAccount->id]);
+        }
+
+        $transaction->update(['amount' => $newAmount]);
+
+        foreach ($transaction->entries as $entry) {
+            if ((float) $entry->debit > 0) {
+                $entry->update([
+                    'debit' => $newAmount,
+                    'balance_after' => $entry->account->fresh()->balance,
+                ]);
+            } elseif ((float) $entry->credit > 0) {
+                $entry->update([
+                    'credit' => $newAmount,
+                    'balance_after' => $entry->account->fresh()->balance,
+                ]);
+            }
+        }
+    }
+
+    protected function ensureCustomerAccount(int $customerId): Account
+    {
+        $customer = Customer::findOrFail($customerId);
+
+        if ($customer->account_id) {
+            $account = Account::find($customer->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        // Create new account for customer
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+            $account = Account::create([
+                'name' => 'حساب العميل: '.$customer->full_name,
+                'type' => AccountType::Customer,
+                'balance' => 0,
+                'currency' => 'EGP',
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'tourism',
+                'is_module_vault' => false,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            $customer->update(['account_id' => $account->id]);
+
+            Log::info('Customer ledger account created automatically', [
+                'customer_id' => $customer->id,
+                'account_id' => $account->id,
+            ]);
+
+            return $account;
+        }));
     }
 }

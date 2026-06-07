@@ -51,6 +51,7 @@ class OnlineTransactionResource extends JsonResource
 
             'purchase_price' => (float) $this->purchase_price,
             'selling_price' => (float) $this->selling_price,
+            'amount_paid' => (float) ($this->amount_paid ?? $this->selling_price),
             'profit' => (float) $this->profit,
 
             'payment_method' => $this->payment_method,

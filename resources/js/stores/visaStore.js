@@ -227,6 +227,24 @@ export const useVisaStore = defineStore('visa', {
       return created;
     },
 
+    async createVisaAgent(payload) {
+      const { data } = await axios.post('/api/visa-agents', payload);
+      const created = data?.data ?? data;
+      if (created) {
+        // Enforce formatting to match existing agents format
+        const formatted = {
+          id: created.id,
+          name: created.name,
+          phone: created.phone,
+          visa_type: created.visa_type,
+          default_cost_price: created.default_cost_price,
+          account_id: created.account_id,
+        };
+        this.agents.push(formatted);
+      }
+      return created;
+    },
+
     async fetchSettings() {
       this.loading.settings = true;
       try {
@@ -323,6 +341,39 @@ export const useVisaStore = defineStore('visa', {
         return data?.data;
       } catch (e) {
         const msg = e.response?.data?.message || 'فشل تسجيل السداد';
+        this.addToast(msg, 'error');
+        throw e;
+      }
+    },
+
+    /** مديونيات عملاء التأشيرات */
+    async fetchVisaCustomerBalances(params = {}) {
+      try {
+        const { data } = await axios.get('/api/v1/visa/customer-balances', { params });
+        return data?.data ?? [];
+      } catch (e) {
+        console.error('fetchVisaCustomerBalances failed', e);
+        throw e;
+      }
+    },
+
+    async fetchVisaCustomerStatement(clientId) {
+      try {
+        const { data } = await axios.get('/api/v1/visa/customer-statement', { params: { client_id: clientId } });
+        return data?.data ?? null;
+      } catch (e) {
+        console.error('fetchVisaCustomerStatement failed', e);
+        throw e;
+      }
+    },
+
+    async payVisaCustomerDebt(customerId, payload) {
+      try {
+        const { data } = await axios.post(`/api/v1/visa/customers/${customerId}/pay-debt`, payload);
+        this.addToast('تم تسجيل سند القبض بنجاح ✓');
+        return data?.data;
+      } catch (e) {
+        const msg = e.response?.data?.message || 'فشل تسجيل سند القبض';
         this.addToast(msg, 'error');
         throw e;
       }

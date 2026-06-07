@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Bus;
 
 use App\Enums\AccountType;
+use App\Enums\BusBookingStatus;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
@@ -20,9 +21,14 @@ class BusDashboardController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
-        // 1. Monthly Revenue
-        $monthlyRevenue = BusBooking::query()
+        // 1. Monthly Revenue (exclude cancelled / refunded)
+        $monthlyRevenue = (float) BusBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+            ->whereNotIn('status', [
+                BusBookingStatus::Cancelled->value,
+                BusBookingStatus::Refunded->value,
+                BusBookingStatus::PartiallyRefunded->value,
+            ])
             ->sum('total_price');
 
         // 2. Total Bookings
@@ -67,7 +73,7 @@ class BusDashboardController extends Controller
                 ];
             });
 
-        return ApiResponse::success('Bus dashboard data fetched', [
+        return ApiResponse::success('تم جلب بيانات لوحة تحكم الباصات.', [
             'stats' => [
                 'monthly_revenue' => $monthlyRevenue,
                 'total_bookings' => $totalBookings,

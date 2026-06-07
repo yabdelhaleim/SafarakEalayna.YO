@@ -41,33 +41,33 @@
         <div class="flex-1">
           <label class="block text-sm font-semibold text-text-main mb-2">حساب المرسل</label>
           <select
+            id="transfer-history-from-account"
+            name="transfer_history_from_account"
             v-model="filters.from_account_id"
             class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm"
           >
             <option value="">جميع الحسابات</option>
-            <option
-              v-for="account in accounts"
-              :key="account.id"
-              :value="account.id"
-            >
-              {{ account.name }}
-            </option>
+            <optgroup v-for="group in treasuryAccountGroups" :key="`from-${group.key}`" :label="group.label">
+              <option v-for="account in group.accounts" :key="account.id" :value="account.id">
+                {{ account.name }} — {{ formatAccountType(account.type) }}
+              </option>
+            </optgroup>
           </select>
         </div>
         <div class="flex-1">
           <label class="block text-sm font-semibold text-text-main mb-2">حساب المستلم</label>
           <select
+            id="transfer-history-to-account"
+            name="transfer_history_to_account"
             v-model="filters.to_account_id"
             class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm"
           >
             <option value="">جميع الحسابات</option>
-            <option
-              v-for="account in accounts"
-              :key="account.id"
-              :value="account.id"
-            >
-              {{ account.name }}
-            </option>
+            <optgroup v-for="group in treasuryAccountGroups" :key="`to-${group.key}`" :label="group.label">
+              <option v-for="account in group.accounts" :key="account.id" :value="account.id">
+                {{ account.name }} — {{ formatAccountType(account.type) }}
+              </option>
+            </optgroup>
           </select>
         </div>
         <div class="flex items-end">
@@ -173,13 +173,21 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useFinanceStore } from '@/stores/financeStore'
+import { useAccountStore } from '@/stores/accountStore'
+import { storeToRefs } from 'pinia'
+import {
+  formatAccountType,
+  useTreasuryAccountGroups,
+} from '@/composables/useTreasuryAccountGroups'
 import axios from 'axios'
 import { ArrowRightLeft, Search } from 'lucide-vue-next'
 
 const store = useFinanceStore()
+const accountStore = useAccountStore()
+const { accounts } = storeToRefs(accountStore)
+const treasuryAccountGroups = useTreasuryAccountGroups(accounts)
 
 const transfers = ref([])
-const accounts = ref([])
 const pagination = ref({
   total: 0,
   current_page: 1,
@@ -203,10 +211,11 @@ const fetchTransfers = async () => {
       per_page: pagination.value.per_page,
     }
     const response = await axios.get('/api/v1/reports/transactions', { params: { ...params, type: 'transfer' } })
-    const data = response.data
-    transfers.value = Array.isArray(data) ? data : data.data || []
-    if (data.pagination) {
-      pagination.value = { ...data.pagination }
+    const payload = response.data?.data
+    transfers.value = payload?.items ?? (Array.isArray(payload) ? payload : [])
+    const pag = payload?.pagination ?? response.data?.pagination
+    if (pag) {
+      pagination.value = { ...pagination.value, ...pag }
     }
   } catch (error) {
     console.error('Failed to fetch transfers:', error)
@@ -216,10 +225,11 @@ const fetchTransfers = async () => {
 }
 
 const fetchAccounts = async () => {
-  if (store.accounts.length === 0) {
-    await store.fetchAccounts()
-  }
-  accounts.value = store.accounts
+  await accountStore.fetchAccounts({
+    types: 'cashbox,bank,treasury,wallet,post',
+    is_active: true,
+    per_page: 100,
+  })
 }
 
 const prevPage = () => {

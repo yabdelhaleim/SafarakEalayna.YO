@@ -42,6 +42,7 @@ class StoreOnlineTransactionRequest extends FormRequest
 
             'purchase_price' => ['required', 'numeric', 'min:0'],
             'selling_price' => ['required', 'numeric', 'min:0'],
+            'amount_paid' => ['nullable', 'numeric', 'min:0'],
 
             'payment_method' => ['required', 'string', Rule::exists(PaymentMethod::class, 'code')],
             'account_id' => [
@@ -90,7 +91,7 @@ class StoreOnlineTransactionRequest extends FormRequest
             }
         }
 
-        foreach (['purchase_price', 'selling_price'] as $key) {
+        foreach (['purchase_price', 'selling_price', 'amount_paid'] as $key) {
             if (! $this->exists($key)) {
                 continue;
             }

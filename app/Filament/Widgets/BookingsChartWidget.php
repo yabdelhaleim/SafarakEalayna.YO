@@ -7,8 +7,12 @@ use Filament\Widgets\ChartWidget;
 
 class BookingsChartWidget extends ChartWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected static ?int $sort = 2;
+
     protected static bool $isLazy = true;
+
     protected ?string $heading = 'مخطط الحجوزات الشهرية';
 
     protected function getData(): array

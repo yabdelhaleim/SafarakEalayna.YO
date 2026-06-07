@@ -57,7 +57,7 @@
 
       <template v-else-if="data">
         <!-- KPI Cards -->
-        <section class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <section :class="['grid gap-5', isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4']">
           <!-- Today Volume -->
           <div class="group relative overflow-hidden rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-transparent p-6 transition hover:border-blue-500/40 hover:shadow-lg hover:shadow-blue-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-blue-500/10 blur-2xl group-hover:bg-blue-500/20 transition"></div>
@@ -127,6 +127,23 @@
               <p class="text-[11px] text-white/30 mt-1">جنيه مصري</p>
             </div>
           </div>
+
+          <!-- Customers Debt -->
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-500/10 to-transparent p-6 transition hover:border-red-500/40 hover:shadow-lg hover:shadow-red-500/10">
+            <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-red-500/15 blur-2xl group-hover:bg-red-500/25 transition"></div>
+            <div class="relative">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/20 text-red-400">
+                  <AlertTriangle class="h-5 w-5" />
+                </div>
+              </div>
+              <p class="text-xs font-bold uppercase tracking-wider text-red-400/70 mb-1">مديونيات العملاء</p>
+              <p class="font-mono text-2xl font-black text-white tabular-nums">
+                {{ fmt(data.stats.customers_debt) }}
+              </p>
+              <p class="text-[11px] text-white/30 mt-1">جنيه مصري</p>
+            </div>
+          </div>
         </section>
 
         <!-- Main Grid -->
@@ -144,7 +161,7 @@
               </router-link>
             </div>
 
-            <div class="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02]">
+            <div class="overflow-x-auto rounded-2xl border border-white/5 bg-white/[0.02]">
               <table class="min-w-full text-right text-sm">
                 <thead class="border-b border-white/5 bg-black/20">
                   <tr class="text-[11px] uppercase tracking-widest text-white/40">
@@ -190,6 +207,21 @@
 
           <!-- Sidebar Column -->
           <div class="space-y-6">
+            <!-- Total Liquidity Card -->
+            <div v-if="isAdmin" class="rounded-2xl border border-blue-500/20 bg-gradient-to-b from-blue-950/60 to-transparent p-6 text-center relative overflow-hidden">
+              <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none"></div>
+              <div class="relative">
+                <div class="flex items-center justify-center gap-2 mb-4">
+                  <Activity class="w-4 h-4 text-blue-400" />
+                  <h2 class="text-xs font-bold uppercase tracking-widest text-blue-400/80">إجمالي السيولة</h2>
+                </div>
+                <p class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-300 drop-shadow tabular-nums mb-2">
+                  {{ fmt(data.stats.total_liquidity) }}
+                </p>
+                <p class="text-xs text-white/30">يشمل جميع حسابات المحافظ (الخزائن، البنوك، والمحافظ)</p>
+              </div>
+            </div>
+
             <!-- Quick Actions -->
             <div class="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
               <h2 class="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">وصول سريع</h2>
@@ -202,17 +234,33 @@
                   <span class="text-xs font-bold text-blue-200">عملية جديدة</span>
                 </router-link>
                 <router-link
+                  :to="{ name: 'wallet.list' }"
+                  class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-indigo-500/10 bg-indigo-500/5 p-4 transition hover:border-indigo-500/30 hover:bg-indigo-500/10"
+                >
+                  <ListOrdered class="h-6 w-6 text-indigo-400 transition group-hover:scale-110" />
+                  <span class="text-xs font-bold text-indigo-200">العمليات</span>
+                </router-link>
+                <router-link
+                  v-if="isAdmin"
                   :to="{ name: 'wallet.treasury' }"
                   class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-amber-500/10 bg-amber-500/5 p-4 transition hover:border-amber-500/30 hover:bg-amber-500/10"
                 >
                   <Vault class="h-6 w-6 text-amber-400 transition group-hover:scale-110" />
                   <span class="text-xs font-bold text-amber-200">الخزينة</span>
                 </router-link>
+                <router-link
+                  :to="{ name: 'wallet.customer-balances' }"
+                  class="group flex flex-col items-center justify-center gap-2 rounded-xl border border-red-500/10 bg-red-500/5 p-4 transition hover:border-red-500/30 hover:bg-red-500/10"
+                  :class="isAdmin ? '' : 'col-span-2'"
+                >
+                  <Users class="h-6 w-6 text-red-400 transition group-hover:scale-110" />
+                  <span class="text-xs font-bold text-red-200">مديونيات العملاء</span>
+                </router-link>
               </div>
             </div>
 
             <!-- Liquidity Breakdown -->
-            <div class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
+            <div v-if="isAdmin" class="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-3">
               <h2 class="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">توزيع السيولة</h2>
               <div class="flex items-center justify-between py-2 border-b border-white/5">
                 <div class="flex items-center gap-2">
@@ -265,8 +313,9 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { useWalletStore } from '@/stores/walletStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   Wallet,
   RefreshCw,
@@ -278,10 +327,16 @@ import {
   Plus,
   ArrowLeft,
   AlertCircle,
+  AlertTriangle,
+  Activity,
+  ListOrdered,
+  Users,
 } from 'lucide-vue-next';
 import { Wallet as Vault } from 'lucide-vue-next';
 
 const store = useWalletStore();
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 const data = ref(null);
 const loading = ref(true);
 
@@ -307,8 +362,23 @@ const reload = async () => {
   }
 };
 
+let pollingInterval = null;
+
 onMounted(() => {
   reload();
+  
+  // Auto-refresh every 15 seconds to fetch new dashboard metrics without manual reload
+  pollingInterval = setInterval(async () => {
+    if (!loading.value) {
+      await reload();
+    }
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
 });
 </script>
 

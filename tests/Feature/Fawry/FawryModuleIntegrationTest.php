@@ -34,7 +34,7 @@ class FawryModuleIntegrationTest extends TestCase
 
         $this->service = app(FawryTransactionService::class);
         $this->user = User::factory()->create();
-        $this->account = Account::factory()->create();
+        $this->account = Account::factory()->active()->create();
         $this->client = Customer::factory()->create();
 
         Auth::login($this->user);

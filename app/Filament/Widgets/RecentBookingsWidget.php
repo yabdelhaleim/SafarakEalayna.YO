@@ -9,8 +9,12 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class RecentBookingsWidget extends BaseWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected static ?int $sort = 3;
+
     protected static bool $isLazy = true;
+
     protected static ?string $heading = 'آخر الحجوزات المضافة';
 
     public function table(Table $table): Table
@@ -32,16 +36,16 @@ class RecentBookingsWidget extends BaseWidget
                 Tables\Columns\TextColumn::make('booking_status')
                     ->label('الحالة')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'pending'    => 'قيد الانتظار',
-                        'confirmed'  => 'مؤكد',
-                        'cancelled'  => 'ملغي',
+                    ->formatStateUsing(fn ($state) => match ($state) {
+                        'pending' => 'قيد الانتظار',
+                        'confirmed' => 'مؤكد',
+                        'cancelled' => 'ملغي',
                         default => $state,
                     })
-                    ->color(fn ($state) => match($state) {
-                        'pending'    => 'warning',
-                        'confirmed'  => 'success',
-                        'cancelled'  => 'danger',
+                    ->color(fn ($state) => match ($state) {
+                        'pending' => 'warning',
+                        'confirmed' => 'success',
+                        'cancelled' => 'danger',
                         default => 'gray',
                     }),
             ]);

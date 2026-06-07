@@ -28,6 +28,7 @@ class UpdateOnlineTransactionRequest extends FormRequest
 
             'purchase_price' => ['sometimes', 'numeric', 'min:0'],
             'selling_price' => ['sometimes', 'numeric', 'min:0'],
+            'amount_paid' => ['nullable', 'numeric', 'min:0'],
 
             'payment_method' => ['sometimes', 'string', 'exists:payment_methods,code'],
             'account_id' => ['sometimes', 'integer', 'exists:accounts,id'],

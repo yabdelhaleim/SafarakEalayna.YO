@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\V1\Fawry;
 
 use App\Enums\AccountType;
-use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,17 +30,17 @@ class FawryDashboardController extends Controller
 
         // 2. Account Balances (Fawry module only)
         $accounts = Account::where('module_type', 'fawry')->where('is_active', true)->get();
-        
+
         $stats['cashboxes'] = [
             'count' => $accounts->whereIn('type', [AccountType::Cashbox->value, AccountType::Treasury->value])->count(),
             'balance' => (float) $accounts->whereIn('type', [AccountType::Cashbox->value, AccountType::Treasury->value])->sum('balance'),
         ];
-        
+
         $stats['banks'] = [
             'count' => $accounts->where('type', AccountType::Bank->value)->count(),
             'balance' => (float) $accounts->where('type', AccountType::Bank->value)->sum('balance'),
         ];
-        
+
         $stats['wallets'] = [
             'count' => $accounts->where('type', AccountType::Wallet->value)->count(),
             'balance' => (float) $accounts->where('type', AccountType::Wallet->value)->sum('balance'),
@@ -48,7 +48,16 @@ class FawryDashboardController extends Controller
 
         $stats['total_liquidity'] = $stats['cashboxes']['balance'] + $stats['banks']['balance'] + $stats['wallets']['balance'];
 
-        // 3. Recent Transactions
+        // 3. Customers Debt (مديونية العملاء)
+        $stats['customers_debt'] = (float) FawryTransaction::sum(DB::raw('selling_price - amount'));
+
+        // 4. Machines Info (ماكينات الشحن)
+        $stats['machines'] = [
+            'count' => FawryMachine::where('is_active', true)->count(),
+            'balance' => (float) FawryMachine::where('is_active', true)->sum('balance'),
+        ];
+
+        // 5. Recent Transactions
         $recentTransactions = FawryTransaction::with(['employee:id,name', 'currency:id,name_ar'])
             ->latest()
             ->limit(10)

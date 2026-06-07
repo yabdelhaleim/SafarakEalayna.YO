@@ -95,6 +95,34 @@
           </button>
         </div>
         <p v-if="errors.wallet_type_id" class="text-error text-sm mt-3">{{ errors.wallet_type_id }}</p>
+
+        <!-- المحافظ المتاحة لهذا النوع -->
+        <div v-if="form.wallet_type_id" class="mt-6 pt-6 border-t border-white/5">
+          <label class="block text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
+            المحافظ المتاحة (رقم المحفظة والرصيد) <span class="text-error">*</span>
+          </label>
+          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400">
+            ⚠️ لا توجد محافظ مسجلة في لوحة التحكم لهذا النوع حالياً.
+          </div>
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <button
+              v-for="acc in filteredWalletAccounts"
+              :key="acc.id"
+              type="button"
+              @click="form.wallet_account_id = acc.id"
+              :class="[
+                'p-4 rounded-xl border text-right transition-all flex flex-col gap-1',
+                form.wallet_account_id === acc.id
+                  ? 'border-gold/60 bg-gold/15 text-gold ring-2 ring-gold/20'
+                  : 'border-white/10 bg-white/5 hover:border-white/20 text-text-main',
+              ]"
+            >
+              <span class="font-bold text-sm">{{ acc.name }}</span>
+              <span class="text-xs font-mono text-text-muted">الرقم: {{ acc.wallet_number || '—' }}</span>
+              <span class="text-xs font-mono text-emerald-400 font-bold mt-1">الرصيد: {{ formatCurrency(acc.balance) }}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- بيانات العميل -->
@@ -108,18 +136,38 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label class="block text-sm font-medium text-text-muted mb-2">
+              العميل المسجّل
+            </label>
+            <select
+              v-model="form.customer_id"
+              class="form-select-dark"
+            >
+              <option value="">— بدون اختيار (عميل جديد) —</option>
+              <option v-for="customer in customers" :key="customer.id" :value="customer.id">
+                {{ customer.full_name }}
+              </option>
+            </select>
+            <p class="text-xs text-text-muted mt-1">
+              <router-link to="/customers" class="text-gold hover:underline">إدارة العملاء</router-link>
+            </p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-text-muted mb-2">
               اسم العميل <span class="text-error">*</span>
+              <span v-if="form.customer_id" class="text-text-muted font-normal text-xs">(يُحدَّث من القائمة)</span>
             </label>
             <input
               v-model="form.customer_name"
               type="text"
-              placeholder="اسم العميل"
-              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
+              :readonly="!!form.customer_id"
+              :required="!form.customer_id"
+              placeholder="اسم العميل كما سيظهر في السجل"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all read-only:opacity-70"
               :class="{ '!border-error': errors.customer_name }"
             />
             <p v-if="errors.customer_name" class="text-error text-xs mt-1">{{ errors.customer_name }}</p>
           </div>
-          <div>
+          <div class="md:col-span-2">
             <label class="block text-sm font-medium text-text-muted mb-2">
               رقم المحفظة (الهاتف) <span class="text-error">*</span>
             </label>
@@ -176,6 +224,31 @@
               <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-sm">ج.م</span>
             </div>
           </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-text-muted mb-2">
+              المبلغ المدفوع الآن <span class="text-error">*</span>
+            </label>
+            <div class="relative">
+              <input
+                v-model.number="form.amount_paid"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all font-mono tabular-nums"
+                :class="{ '!border-error': errors.amount_paid }"
+              />
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-sm">ج.م</span>
+            </div>
+            <p v-if="errors.amount_paid" class="text-error text-xs mt-1">{{ errors.amount_paid }}</p>
+            <!-- Quick amounts -->
+            <div class="mt-2 flex gap-2">
+              <button v-for="pct in [25,50,75,100]" :key="pct" type="button"
+                @click="setPaidPercent(pct)"
+                class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-text-muted hover:border-gold/40 hover:text-gold transition">
+                {{ pct }}٪
+              </button>
+            </div>
+          </div>
         </div>
 
         <div
@@ -189,9 +262,13 @@
         >
           <template v-if="form.type === 'send'">
             <p class="text-text-muted mb-1">
-              العميل يدفع:
+              العميل يلتزم بـ:
               <strong class="text-text-main">{{ formatCurrency(totalAmount) }}</strong>
               ({{ formatCurrency(form.amount) }} + خدمة {{ formatCurrency(form.service_fee || 0) }})
+            </p>
+            <p class="text-text-muted mb-1">
+              المسدد حالياً: <strong class="text-emerald-400 font-mono">{{ formatCurrency(form.amount_paid || 0) }}</strong> · 
+              المتبقي آجل: <strong class="text-red-400 font-mono">{{ formatCurrency(totalAmount - (form.amount_paid || 0)) }}</strong>
             </p>
             <p class="text-text-muted">
               ربح الوكالة: <strong class="text-success">{{ formatCurrency(form.service_fee || 0) }}</strong>
@@ -199,9 +276,13 @@
           </template>
           <template v-else>
             <p class="text-text-muted mb-1">
-              العميل يستلم:
+              العميل يستحق:
               <strong class="text-text-main">{{ formatCurrency(totalAmount) }}</strong>
               ({{ formatCurrency(form.amount) }} − خدمة {{ formatCurrency(form.service_fee || 0) }})
+            </p>
+            <p class="text-text-muted mb-1">
+              المصروف له حالياً: <strong class="text-emerald-400 font-mono">{{ formatCurrency(form.amount_paid || 0) }}</strong> · 
+              المتبقي دائن للعميل: <strong class="text-red-400 font-mono">{{ formatCurrency(totalAmount - (form.amount_paid || 0)) }}</strong>
             </p>
             <p class="text-text-muted">
               ربح الوكالة: <strong class="text-success">{{ formatCurrency(form.service_fee || 0) }}</strong>
@@ -229,7 +310,9 @@
               :class="{ '!border-error': errors.wallet_account_id }"
             >
               <option value="">— اختر الحساب —</option>
-              <option v-for="acc in walletAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
+              <option v-for="acc in filteredWalletAccounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }} — {{ acc.wallet_number }} ({{ formatCurrency(acc.balance) }})
+              </option>
             </select>
             <p v-if="errors.wallet_account_id" class="text-error text-xs mt-1">{{ errors.wallet_account_id }}</p>
           </div>
@@ -296,11 +379,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import axios from 'axios';
 import { useWalletStore } from '@/stores/walletStore';
+import { useCustomerStore } from '@/stores/customerStore';
 import {
   ArrowRight,
   ArrowUpCircle,
@@ -316,15 +400,18 @@ import {
 
 const router = useRouter();
 const store = useWalletStore();
+const customerStore = useCustomerStore();
 const { activeWalletTypes, loading } = storeToRefs(store);
 
 const form = ref({
   type: 'send',
   wallet_type_id: '',
+  customer_id: '',
   customer_name: '',
   wallet_number: '',
   amount: '',
   service_fee: '',
+  amount_paid: 0,
   wallet_account_id: '',
   cash_account_id: '',
   notes: '',
@@ -334,6 +421,7 @@ const errors = ref({});
 const globalError = ref('');
 const walletAccounts = ref([]);
 const cashAccounts = ref([]);
+const customers = ref([]);
 
 const totalAmount = computed(() => {
   const amt = parseFloat(form.value.amount) || 0;
@@ -341,10 +429,73 @@ const totalAmount = computed(() => {
   return form.value.type === 'send' ? amt + fee : amt - fee;
 });
 
+const roundMoney = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const setPaidPercent = (pct) => {
+  const tot = totalAmount.value;
+  if (tot <= 0) {
+    store.addToast('يرجى تحديد المبلغ والعمولة أولاً', 'error');
+    return;
+  }
+  form.value.amount_paid = roundMoney((tot * pct) / 100);
+};
+
+watch(totalAmount, (newVal) => {
+  if (!form.value.amount_paid || form.value.amount_paid === 0) {
+    form.value.amount_paid = newVal;
+  }
+});
+
+watch(
+  () => form.value.customer_id,
+  (id) => {
+    if (!id) {
+      form.value.customer_name = '';
+      return;
+    }
+    const c = customers.value.find((x) => String(x.id) === String(id));
+    if (c?.full_name) {
+      form.value.customer_name = c.full_name;
+    }
+  }
+);
+
+const selectedWalletType = computed(() => {
+  return activeWalletTypes.value.find((w) => w.id === form.value.wallet_type_id) ?? null;
+});
+
+const filteredWalletAccounts = computed(() => {
+  const type = selectedWalletType.value;
+  if (!type) {
+    return walletAccounts.value;
+  }
+  return walletAccounts.value.filter((a) => a.wallet_provider === type.code);
+});
+
+watch(filteredWalletAccounts, (newAccounts) => {
+  if (newAccounts.length === 1) {
+    form.value.wallet_account_id = newAccounts[0].id;
+  } else if (!newAccounts.some((a) => a.id === form.value.wallet_account_id)) {
+    form.value.wallet_account_id = '';
+  }
+});
+
 onMounted(async () => {
   await store.fetchWalletTypes();
-  await fetchAccounts();
+  await Promise.all([
+    fetchAccounts(),
+    fetchCustomers()
+  ]);
 });
+
+async function fetchCustomers() {
+  try {
+    await customerStore.fetchCustomers({ per_page: 200 });
+    customers.value = customerStore.customers || [];
+  } catch (error) {
+    console.error('Failed to fetch customers:', error);
+  }
+}
 
 async function fetchAccounts() {
   try {
@@ -353,6 +504,7 @@ async function fetchAccounts() {
         module: 'wallet',
         is_active: 1,
         per_page: 200,
+        _t: Date.now()
       }
     });
     const all = res.data?.data?.items || res.data?.data || [];
@@ -401,6 +553,9 @@ async function submit() {
     errors.value.amount = 'المبلغ مطلوب';
     return;
   }
+  if (form.value.amount_paid === null || form.value.amount_paid === undefined || form.value.amount_paid === '') {
+    form.value.amount_paid = 0;
+  }
   if (!form.value.wallet_account_id) {
     errors.value.wallet_account_id = 'حساب المحفظة مطلوب';
     return;
@@ -414,6 +569,7 @@ async function submit() {
     await store.createTransaction({
       ...form.value,
       service_fee: parseFloat(form.value.service_fee) || 0,
+      amount_paid: parseFloat(form.value.amount_paid) || 0,
     });
     router.push('/wallet');
   } catch (e) {

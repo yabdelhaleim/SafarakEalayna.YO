@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\HajjUmra;
 
+use App\Rules\HajjUmraLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreHajjUmraPaymentRequest extends FormRequest
@@ -16,7 +17,7 @@ class StoreHajjUmraPaymentRequest extends FormRequest
         return [
             'amount' => ['required', 'numeric', 'gt:0'],
             'payment_method' => ['required', 'string', 'max:50'],
-            'account_id' => ['required', 'integer', 'exists:accounts,id'],
+            'account_id' => ['required', 'integer', 'exists:accounts,id', new HajjUmraLiquidityAccount],
             'payment_date' => ['nullable', 'date'],
             'reference' => ['nullable', 'string', 'max:100'],
             'paid_by' => ['nullable', 'string', 'max:150'],

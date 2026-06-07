@@ -2,10 +2,13 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountEntry;
+use App\Models\Customer;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Transfer;
 use App\Support\Finance\LedgerBalanceMutationGuard;
@@ -13,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class TransactionService
 {
@@ -217,11 +221,11 @@ class TransactionService
                 $account->save();
 
                 AccountEntry::create([
-                    'account_id'     => $account->id,
+                    'account_id' => $account->id,
                     'transaction_id' => $transaction->id,
-                    'debit'          => $transaction->amount,
-                    'credit'         => 0.00,
-                    'balance_after'  => $account->balance,
+                    'debit' => $transaction->amount,
+                    'credit' => 0.00,
+                    'balance_after' => $account->balance,
                 ]);
             } elseif ($transaction->type === TransactionType::Expense->value || $transaction->type === TransactionType::Expense) {
                 $account = Account::where('id', $transaction->from_account_id)->lockForUpdate()->firstOrFail();
@@ -229,11 +233,36 @@ class TransactionService
                 $account->save();
 
                 AccountEntry::create([
-                    'account_id'     => $account->id,
+                    'account_id' => $account->id,
                     'transaction_id' => $transaction->id,
-                    'debit'          => 0.00,
-                    'credit'         => $transaction->amount,
-                    'balance_after'  => $account->balance,
+                    'debit' => 0.00,
+                    'credit' => $transaction->amount,
+                    'balance_after' => $account->balance,
+                ]);
+            } elseif ($transaction->type === TransactionType::Transfer->value || $transaction->type === TransactionType::Transfer) {
+                $fromAccount = Account::where('id', $transaction->from_account_id)->lockForUpdate()->firstOrFail();
+                $toAccount = Account::where('id', $transaction->to_account_id)->lockForUpdate()->firstOrFail();
+
+                $fromAccount->balance = (float) $fromAccount->balance + $transaction->amount;
+                $fromAccount->save();
+
+                AccountEntry::create([
+                    'account_id' => $fromAccount->id,
+                    'transaction_id' => $transaction->id,
+                    'debit' => 0.00,
+                    'credit' => $transaction->amount,
+                    'balance_after' => $fromAccount->balance,
+                ]);
+
+                $toAccount->balance = (float) $toAccount->balance - $transaction->amount;
+                $toAccount->save();
+
+                AccountEntry::create([
+                    'account_id' => $toAccount->id,
+                    'transaction_id' => $transaction->id,
+                    'debit' => $transaction->amount,
+                    'credit' => 0.00,
+                    'balance_after' => $toAccount->balance,
                 ]);
             }
 
@@ -242,9 +271,9 @@ class TransactionService
 
             Log::info('Transaction reversed', [
                 'transaction_id' => $transaction->id,
-                'type'           => $transaction->type,
-                'amount'         => $transaction->amount,
-                'user_id'        => Auth::id(),
+                'type' => $transaction->type,
+                'amount' => $transaction->amount,
+                'user_id' => Auth::id(),
             ]);
 
             return $transaction;
@@ -481,13 +510,26 @@ class TransactionService
             $fromAccount = $accounts->get($fromId);
             $toAccount = $accounts->get($toId);
 
-            if (!$fromAccount || !$toAccount) {
+            if (! $fromAccount || ! $toAccount) {
                 throw new \Exception('One or both accounts were not found.');
             }
 
-            if (!$allowFromNegative && (float) $fromAccount->balance < $amount) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'amount' => 'رصيد الحساب غير كافٍ: ' . $fromAccount->name
+            $typeStr = $fromAccount->type instanceof AccountType
+                ? $fromAccount->type->value
+                : (string) $fromAccount->type;
+            $isFund = in_array($typeStr, ['cashbox', 'wallet', 'bank', 'treasury', 'post']);
+
+            if ($isFund) {
+                $isCustomerOrSupplier = Customer::where('account_id', $fromAccount->id)->exists()
+                    || Supplier::where('account_id', $fromAccount->id)->exists();
+                if ($isCustomerOrSupplier) {
+                    $isFund = false;
+                }
+            }
+
+            if (! $allowFromNegative && $isFund && (float) $fromAccount->balance < $amount) {
+                throw ValidationException::withMessages([
+                    'amount' => 'رصيد الحساب غير كافٍ: '.$fromAccount->name,
                 ]);
             }
 
@@ -523,5 +565,34 @@ class TransactionService
 
             return $transaction;
         }));
+    }
+
+    /**
+     * Undo all ledger lines for a transaction (multi-leg safe) and remove entries.
+     */
+    public function voidTransactionJournal(Transaction $transaction): void
+    {
+        LedgerBalanceMutationGuard::run(function () use ($transaction): void {
+            DB::transaction(function () use ($transaction): void {
+                $entries = AccountEntry::query()
+                    ->where('transaction_id', $transaction->id)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($entries as $entry) {
+                    $account = Account::query()->lockForUpdate()->find($entry->account_id);
+                    if (! $account) {
+                        continue;
+                    }
+
+                    $delta = round((float) $entry->credit - (float) $entry->debit, 2);
+                    $account->balance = round((float) $account->balance - $delta, 2);
+                    $account->save();
+                }
+
+                AccountEntry::query()->where('transaction_id', $transaction->id)->delete();
+            });
+        });
     }
 }

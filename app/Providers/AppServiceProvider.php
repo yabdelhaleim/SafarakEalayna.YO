@@ -2,8 +2,20 @@
 
 namespace App\Providers;
 
+use App\Events\TicketModified;
+use App\Listeners\ProcessTicketModificationAccounting;
+use App\Models\Customer;
+use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Models\HajjUmra\UmrahSupplier;
+use App\Models\HajjUmra\VisaAgent;
+use App\Observers\CustomerLedgerObserver;
+use App\Observers\HajjUmraExecutingCompanyObserver;
+use App\Observers\UmrahSupplierObserver;
+use App\Observers\VisaAgentObserver;
+use App\Support\Finance\PostingContextRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -14,7 +26,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(\App\Support\Finance\PostingContextRegistry::class);
+        $this->app->singleton(PostingContextRegistry::class);
 
         $aliases = [
             'Action',
@@ -38,7 +50,7 @@ class AppServiceProvider extends ServiceProvider
         foreach ($aliases as $alias) {
             $target = "Filament\\Actions\\{$alias}";
             $source = "Filament\\Tables\\Actions\\{$alias}";
-            if (!class_exists($source) && class_exists($target)) {
+            if (! class_exists($source) && class_exists($target)) {
                 class_alias($target, $source);
             }
         }
@@ -53,11 +65,14 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
-        \App\Models\Customer::observe(\App\Observers\CustomerLedgerObserver::class);
+        Customer::observe(CustomerLedgerObserver::class);
+        VisaAgent::observe(VisaAgentObserver::class);
+        UmrahSupplier::observe(UmrahSupplierObserver::class);
+        HajjUmraExecutingCompany::observe(HajjUmraExecutingCompanyObserver::class);
 
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\TicketModified::class,
-            \App\Listeners\ProcessTicketModificationAccounting::class
+        Event::listen(
+            TicketModified::class,
+            ProcessTicketModificationAccounting::class
         );
     }
 }

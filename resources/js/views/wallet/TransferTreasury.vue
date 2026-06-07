@@ -152,7 +152,7 @@
             </div>
             <button type="button" class="rounded-lg p-2 text-white/30 hover:bg-white/5 hover:text-white" @click="closeModal">✕</button>
           </div>
-          <div class="max-h-[60vh] overflow-y-auto p-6">
+          <div class="max-h-[60vh] overflow-auto p-6">
             <table class="min-w-full text-right text-xs">
               <thead class="sticky top-0 bg-[#0a111e] text-white/40 uppercase tracking-wider">
                 <tr>

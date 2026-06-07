@@ -74,6 +74,8 @@ class HajjUmraReferenceController extends Controller
             'phone' => $v->phone,
             'email' => $v->email,
             'country' => $v->country,
+            'visa_type' => $v->visa_type,
+            'default_cost_price' => (float) ($v->default_cost_price ?? 0),
         ]);
 
         return ApiResponse::success('قائمة وكلاء التأشيرات', $items);

@@ -1,5 +1,24 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { unwrapAccountItems } from '@/composables/useTreasuryAccountGroups';
+
+function unwrapAccountsList(payload) {
+  return unwrapAccountItems(payload);
+}
+
+function unwrapTransferItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function unwrapTransferPagination(payload, fallback = {}) {
+  if (payload?.pagination && typeof payload.pagination === 'object') {
+    return payload.pagination;
+  }
+  return fallback;
+}
 
 export const useFinanceStore = defineStore('finance', {
   state: () => ({
@@ -13,6 +32,10 @@ export const useFinanceStore = defineStore('finance', {
 
     // Transfers
     transfers: [],
+    transferSummary: {
+      total_amount: 0,
+      today_count: 0,
+    },
     currentTransfer: null,
 
     // Account Entries
@@ -79,43 +102,7 @@ export const useFinanceStore = defineStore('finance', {
   getters: {
     // Filtered transactions
     filteredTransactions: (state) => {
-      let filtered = [...state.transactions];
-
-      if (state.filters.search) {
-        const query = state.filters.search.toLowerCase();
-        filtered = filtered.filter((t) =>
-          t.description?.toLowerCase().includes(query) ||
-          t.id?.toString().includes(query)
-        );
-      }
-
-      if (state.filters.type) {
-        filtered = filtered.filter((t) => t.type === state.filters.type);
-      }
-
-      if (state.filters.module) {
-        filtered = filtered.filter((t) => t.module === state.filters.module);
-      }
-
-      if (state.filters.account_id) {
-        filtered = filtered.filter((t) =>
-          t.entries?.some((e) => e.account_id === state.filters.account_id)
-        );
-      }
-
-      if (state.filters.date_from) {
-        filtered = filtered.filter(
-          (t) => new Date(t.date) >= new Date(state.filters.date_from)
-        );
-      }
-
-      if (state.filters.date_to) {
-        filtered = filtered.filter(
-          (t) => new Date(t.date) <= new Date(state.filters.date_to)
-        );
-      }
-
-      return filtered;
+      return state.transactions;
     },
 
     // Accounts by type
@@ -195,12 +182,12 @@ export const useFinanceStore = defineStore('finance', {
       this.accounts = [];
 
       try {
-        const response = await axios.get('/api/v1/finance/accounts', { 
-          params,
-          signal: controller.signal
+        const response = await axios.get('/api/v1/finance/accounts', {
+          params: { per_page: 100, ...params },
+          signal: controller.signal,
         });
         const responseData = response.data?.data || response.data;
-        this.accounts = Array.isArray(responseData) ? responseData : [];
+        this.accounts = unwrapAccountsList(responseData);
         if (!this.meta.accountTypes.length) {
           await this.fetchSettingsMeta();
         }
@@ -233,20 +220,21 @@ export const useFinanceStore = defineStore('finance', {
       this.transactions = [];
 
       try {
-        const filters = this.filters;
+        const storeFilters = this.filters;
         const apiParams = {
-          ...params,
-          type: filters.type || params.type || undefined,
-          module: filters.module || params.module || undefined,
-          account_id: filters.account_id || params.account_id || undefined,
-          per_page: params.per_page ?? filters.per_page ?? 15,
-          page: params.page ?? filters.page ?? 1,
-          from_date: params.from_date ?? filters.date_from ?? undefined,
-          to_date: params.to_date ?? filters.date_to ?? undefined,
+          per_page: params.per_page ?? storeFilters.per_page ?? 15,
+          page: params.page ?? storeFilters.page ?? 1,
+          from_date: params.from_date ?? params.date_from ?? storeFilters.date_from ?? undefined,
+          to_date: params.to_date ?? params.date_to ?? storeFilters.date_to ?? undefined,
+          search: params.search ?? storeFilters.search ?? undefined,
+          type: params.type ?? storeFilters.type ?? undefined,
+          module: params.module ?? storeFilters.module ?? undefined,
+          account_id: params.account_id ?? storeFilters.account_id ?? undefined,
+          _t: Date.now(),
         };
         const response = await axios.get('/api/v1/reports/transactions', {
           params: apiParams,
-          signal: controller.signal
+          signal: controller.signal,
         });
         const responseData = response.data?.data || response.data;
         this.transactions = responseData.items || (Array.isArray(responseData) ? responseData : []);
@@ -347,10 +335,26 @@ export const useFinanceStore = defineStore('finance', {
 
       try {
         const response = await axios.get('/api/v1/finance/transfers', {
-          params,
-          signal: controller.signal
+          params: { per_page: 20, ...params },
+          signal: controller.signal,
         });
-        this.transfers = response.data.data || response.data;
+        const body = response.data?.data ?? response.data;
+        this.transfers = unwrapTransferItems(body);
+        const pagination = unwrapTransferPagination(body, this.pagination);
+        if (body?.summary && typeof body.summary === 'object') {
+          this.transferSummary = {
+            total_amount: Number(body.summary.total_amount) || 0,
+            today_count: Number(body.summary.today_count) || 0,
+          };
+        }
+        if (pagination.total != null) {
+          this.pagination = {
+            total: pagination.total ?? this.transfers.length,
+            current_page: pagination.current_page ?? 1,
+            last_page: pagination.last_page ?? 1,
+            per_page: pagination.per_page ?? params.per_page ?? 20,
+          };
+        }
       } catch (error) {
         if (axios.isCancel(error)) {
           return;
@@ -387,10 +391,11 @@ export const useFinanceStore = defineStore('finance', {
       };
 
       try {
-        const summaryParams = {};
-        const from = extra.from_date ?? this.filters.date_from;
-        const to = extra.to_date ?? this.filters.date_to;
+        const summaryParams = { _t: Date.now() };
+        const from = extra.from_date ?? extra.date_from ?? this.filters.date_from;
+        const to = extra.to_date ?? extra.date_to ?? this.filters.date_to;
         const module = extra.module ?? this.filters.module;
+        const category = extra.category ?? this.filters.category;
         if (from) {
           summaryParams.from_date = from;
         }
@@ -400,10 +405,13 @@ export const useFinanceStore = defineStore('finance', {
         if (module) {
           summaryParams.module = module;
         }
+        if (category) {
+          summaryParams.category = category;
+        }
 
         const [summaryRes, balRes] = await Promise.all([
           axios.get('/api/v1/reports/financial/summary', { params: summaryParams, signal: controller.signal }),
-          axios.get('/api/v1/reports/financial/accounts-balance', { signal: controller.signal }),
+          axios.get('/api/v1/reports/financial/accounts-balance', { params: { _t: Date.now() }, signal: controller.signal }),
         ]);
 
         const data = summaryRes.data?.data || {};
@@ -448,13 +456,34 @@ export const useFinanceStore = defineStore('finance', {
     },
 
     // Create Transaction
+    buildTransactionPayload(payload) {
+      const accountId = payload.account_id ?? payload.accountId;
+      return {
+        type: payload.type,
+        amount: Number(payload.amount),
+        account_id: accountId ? Number(accountId) : null,
+        module: payload.module || 'general',
+        description: payload.description || payload.notes || '',
+        notes: payload.notes || null,
+        reference: payload.reference || null,
+        date: payload.date || new Date().toISOString().split('T')[0],
+      };
+    },
+
     async createTransaction(payload) {
       if (this.loading.create) return;
       this.loading.create = true;
       this.errors = {};
 
+      const apiPayload = this.buildTransactionPayload(payload);
+      if (!apiPayload.account_id) {
+        this.errors = { account_id: ['يجب اختيار الحساب'] };
+        this.loading.create = false;
+        throw new Error('account_id required');
+      }
+
       try {
-        const response = await axios.post('/api/v1/finance/transactions', payload);
+        const response = await axios.post('/api/v1/finance/transactions', apiPayload);
         this.transactions.unshift(response.data.data || response.data);
         await this.fetchStats();
         return response.data.data || response.data;
@@ -542,13 +571,36 @@ export const useFinanceStore = defineStore('finance', {
      * Transform frontend camelCase payload to backend snake_case format
      */
     transformPayloadForApi(payload) {
-      return {
-        from_account_id: payload.fromAccount?.id || payload.fromAccountId || payload.from_account_id,
-        to_account_id: payload.toAccount?.id || payload.toAccountId || payload.to_account_id,
-        amount: payload.amount || 0,
-        description: payload.description || payload.notes || '',
-        date: payload.date || new Date().toISOString().split('T')[0],
+      const fromId =
+        payload.fromAccount?.id ??
+        payload.fromAccountId ??
+        payload.from_account_id;
+      const toId =
+        payload.toAccount?.id ??
+        payload.toAccountId ??
+        payload.to_account_id;
+
+      const apiPayload = {
+        from_account_id: fromId != null ? Number(fromId) : null,
+        to_account_id: toId != null ? Number(toId) : null,
+        amount: Number(payload.amount) || 0,
+        notes: payload.notes ?? payload.description ?? '',
       };
+
+      if (payload.converted_amount != null) {
+        apiPayload.converted_amount = Number(payload.converted_amount);
+      }
+      if (payload.exchange_rate != null) {
+        apiPayload.exchange_rate = Number(payload.exchange_rate);
+      }
+      if (payload.module) {
+        apiPayload.module = payload.module;
+      }
+      if (payload.type) {
+        apiPayload.type = payload.type;
+      }
+
+      return apiPayload;
     },
 
     // Add toast notification
@@ -564,6 +616,7 @@ export const useFinanceStore = defineStore('finance', {
       this.transactions = [];
       this.currentTransaction = null;
       this.transfers = [];
+      this.transferSummary = { total_amount: 0, today_count: 0 };
       this.currentTransfer = null;
       this.entries = [];
       this.stats = {

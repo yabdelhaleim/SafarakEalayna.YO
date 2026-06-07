@@ -182,7 +182,7 @@ export const useWalletStore = defineStore('wallet', {
 
     async fetchDailySummary(date = null) {
       try {
-        const params = date ? { date } : {};
+        const params = date ? { date, _t: Date.now() } : { _t: Date.now() };
         const res    = await axios.get('/api/v1/wallet/transactions/daily-summary', { params });
         this.stats   = res.data?.data || this.stats;
       } catch (err) {
@@ -192,7 +192,9 @@ export const useWalletStore = defineStore('wallet', {
 
     async fetchTransferDashboard() {
       try {
-        const res = await axios.get('/api/v1/wallet/dashboard');
+        const res = await axios.get('/api/v1/wallet/dashboard', {
+          params: { _t: Date.now() }
+        });
         return res.data?.data;
       } catch (err) {
         console.error('Failed to fetch transfer dashboard:', err);
@@ -202,7 +204,9 @@ export const useWalletStore = defineStore('wallet', {
 
     async fetchTransferTreasury() {
       try {
-        const res = await axios.get('/api/v1/wallet/treasury/overview');
+        const res = await axios.get('/api/v1/wallet/treasury/overview', {
+          params: { _t: Date.now() }
+        });
         return res.data?.data;
       } catch (err) {
         console.error('Failed to fetch transfer treasury:', err);

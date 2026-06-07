@@ -2,6 +2,7 @@
 
 namespace App\Models\Flight;
 
+use App\Models\Account;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'flight_carrier_id',
+    'account_id',
     'name',
     'code',
     'contact_person',
@@ -33,11 +35,9 @@ class FlightGroup extends Model
         ];
     }
 
-
-
     public function account(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Account::class, 'account_id');
+        return $this->belongsTo(Account::class, 'account_id');
     }
 
     public function carrier(): BelongsTo
@@ -47,7 +47,7 @@ class FlightGroup extends Model
 
     public function bookings(): HasMany
     {
-        return $this->hasMany(\App\Models\Flight\FlightBooking::class);
+        return $this->hasMany(FlightBooking::class);
     }
 
     public function groupTransactions(): HasMany

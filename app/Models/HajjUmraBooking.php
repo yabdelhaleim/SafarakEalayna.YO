@@ -3,9 +3,7 @@
 namespace App\Models;
 
 use App\Enums\HajjUmraStatus;
-use App\Models\HajjUmra\AccommodationType;
-use App\Models\HajjUmra\HajjUmraExecutingCompany;
-use App\Models\HajjUmra\TripSupervisor;
+use App\Models\HajjUmra\UmrahSupplier;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,12 +19,17 @@ class HajjUmraBooking extends Model
         'customer_id',
         'companion_customer_id',
         'program_id',
+        'supplier_id',
         'module',
         'purchase_price',
+        'companion_purchase_price',
         'selling_price',
+        'companion_selling_price',
         'profit',
         'currency',
         'per_person',
+        'accommodation_choice',
+        'accommodation_extra_charge',
         'status',
         'agent_name',
         'notes',
@@ -42,8 +45,11 @@ class HajjUmraBooking extends Model
     {
         return [
             'purchase_price' => 'decimal:2',
+            'companion_purchase_price' => 'decimal:2',
             'selling_price' => 'decimal:2',
+            'companion_selling_price' => 'decimal:2',
             'profit' => 'decimal:2',
+            'accommodation_extra_charge' => 'decimal:2',
             'per_person' => 'boolean',
             'status' => HajjUmraStatus::class,
         ];
@@ -69,6 +75,16 @@ class HajjUmraBooking extends Model
     public function program(): BelongsTo
     {
         return $this->belongsTo(Program::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(UmrahSupplier::class, 'supplier_id');
+    }
+
+    public function passengers(): HasMany
+    {
+        return $this->hasMany(UmrahTransactionPassenger::class, 'transaction_id');
     }
 
     public function employee(): BelongsTo
@@ -106,9 +122,16 @@ class HajjUmraBooking extends Model
         return $query->where('status', $status->value);
     }
 
+    public function getTotalSellingPriceAttribute(): float
+    {
+        return (float) $this->selling_price +
+               (float) ($this->companion_selling_price ?? 0) +
+               (float) ($this->accommodation_extra_charge ?? 0);
+    }
+
     public function getRemainingAmountAttribute(): float
     {
-        return (float) $this->selling_price - $this->paid_amount;
+        return $this->total_selling_price - $this->paid_amount;
     }
 
     public function getPaidAmountAttribute(): float
@@ -120,7 +143,7 @@ class HajjUmraBooking extends Model
 
     public function getIsFullyPaidAttribute(): bool
     {
-        return $this->paid_amount >= (float) $this->selling_price;
+        return $this->paid_amount >= $this->total_selling_price;
     }
 
     public function toArray(): array
@@ -131,8 +154,10 @@ class HajjUmraBooking extends Model
             $data['status_label'] = $this->status->label();
         }
         $data['paid_amount'] = $this->paid_amount;
+        $data['total_selling_price'] = $this->total_selling_price;
         $data['remaining_amount'] = $this->remaining_amount;
         $data['is_fully_paid'] = $this->is_fully_paid;
+
         return $data;
     }
 }

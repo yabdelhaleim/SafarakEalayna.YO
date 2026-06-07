@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+let tokenRefreshTimer = null;
+
+function clearTokenRefreshTimer() {
+  if (tokenRefreshTimer) {
+    clearInterval(tokenRefreshTimer);
+    tokenRefreshTimer = null;
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
@@ -29,20 +38,65 @@ export const useAuthStore = defineStore('auth', {
     /**
      * Set the auth token in localStorage and axios defaults
      */
-    setToken(token) {
+    setToken(token, expiresInMinutes = null) {
       this.token = token;
       localStorage.setItem('auth_token', token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      if (expiresInMinutes != null && expiresInMinutes > 0) {
+        localStorage.setItem('auth_token_expires_minutes', String(expiresInMinutes));
+      }
     },
 
     /**
      * Clear auth state
      */
     clearAuth() {
+      clearTokenRefreshTimer();
       this.token = null;
       this.user = null;
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_token_expires_minutes');
       delete axios.defaults.headers.common['Authorization'];
+    },
+
+    scheduleTokenRefresh(expiresInMinutes) {
+      clearTokenRefreshTimer();
+
+      const minutes = Number(expiresInMinutes);
+      if (!minutes || minutes <= 0) {
+        return;
+      }
+
+      const intervalMs = Math.max(Math.floor(minutes * 0.8 * 60 * 1000), 60_000);
+      tokenRefreshTimer = setInterval(() => {
+        this.refreshToken().catch(() => {});
+      }, intervalMs);
+    },
+
+    async refreshToken() {
+      if (!this.token) {
+        return { success: false };
+      }
+
+      try {
+        const response = await axios.post('/api/v1/auth/refresh');
+        const result = response.data;
+
+        if (result.success || result.status) {
+          const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
+          this.setToken(token, expiresInMinutes);
+          if (user) {
+            this.user = user;
+          }
+          this.scheduleTokenRefresh(expiresInMinutes);
+          return { success: true };
+        }
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+      }
+
+      return { success: false };
     },
 
     /**
@@ -57,9 +111,10 @@ export const useAuthStore = defineStore('auth', {
 
         const result = response.data;
         if (result.success || result.status) {
-          const { token, user } = response.data.data;
-          this.setToken(token);
+          const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
+          this.setToken(token, expiresInMinutes);
           this.user = user;
+          this.scheduleTokenRefresh(expiresInMinutes);
           return { success: true };
         } else {
           this.errors = { message: response.data.message || 'فشل تسجيل الدخول' };
@@ -92,9 +147,10 @@ export const useAuthStore = defineStore('auth', {
 
         const result = response.data;
         if (result.success || result.status) {
-          const { token, user } = response.data.data;
-          this.setToken(token);
+          const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
+          this.setToken(token, expiresInMinutes);
           this.user = user;
+          this.scheduleTokenRefresh(expiresInMinutes);
           return { success: true };
         } else {
           this.errors = { message: response.data.message || 'فشل إنشاء الحساب' };
@@ -169,6 +225,11 @@ export const useAuthStore = defineStore('auth', {
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
         if (!this.user) {
           await this.fetchMe();
+        }
+
+        const storedExpiry = parseInt(localStorage.getItem('auth_token_expires_minutes') || '', 10);
+        if (storedExpiry > 0) {
+          this.scheduleTokenRefresh(storedExpiry);
         }
       }
     },

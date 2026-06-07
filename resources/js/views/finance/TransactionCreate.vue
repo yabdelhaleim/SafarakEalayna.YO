@@ -26,7 +26,7 @@
           </label>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <button
-              v-for="t in store.transactionTypes"
+              v-for="t in creatableTypes"
               :key="t.value"
               type="button"
               @click="form.type = t.value"
@@ -114,9 +114,10 @@
             </label>
             <select
               v-model="form.account_id"
+              required
               class="w-full px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm"
             >
-              <option value="">اختر الحساب</option>
+              <option :value="null" disabled>اختر الحساب</option>
               <option
                 v-for="account in store.accounts"
                 :key="account.id"
@@ -177,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useFinanceStore } from '@/stores/financeStore';
 import {
@@ -200,18 +201,33 @@ const form = ref({
   date: new Date().toISOString().split('T')[0],
   module: 'general',
   description: '',
-  account_id: '',
+  account_id: null,
   reference: '',
   notes: '',
 });
 
+const creatableTypeValues = ['income', 'expense'];
+
+const creatableTypes = computed(() =>
+  store.transactionTypes.filter((t) => creatableTypeValues.includes(t.value))
+);
+
 const handleSubmit = async () => {
+  if (!form.value.account_id) {
+    store.addToast('يجب اختيار حساب السيولة', 'error');
+    return;
+  }
+  if (!creatableTypeValues.includes(form.value.type)) {
+    store.addToast('استخدم شاشة التحويلات للتحويل بين الحسابات', 'warning');
+    return;
+  }
   try {
     await store.createTransaction(form.value);
     store.addToast('تم إضافة المعاملة بنجاح');
     router.push('/finance/transactions');
   } catch (error) {
-    store.addToast('فشل إضافة المعاملة', 'error');
+    const msg = error.response?.data?.message || store.errors?.message || 'فشل إضافة المعاملة';
+    store.addToast(msg, 'error');
   }
 };
 
@@ -248,11 +264,12 @@ onMounted(async () => {
   await store.fetchAccounts();
   const types = store.transactionTypes;
   
-  if (route.query.type) {
+  const allowedTypes = types.filter((t) => creatableTypeValues.includes(t.value));
+  if (route.query.type && creatableTypeValues.includes(route.query.type)) {
     form.value.type = route.query.type;
-  } else if (types.length) {
-    const has = types.some((t) => t.value === form.value.type);
-    if (!has) form.value.type = types[0].value;
+  } else if (allowedTypes.length) {
+    const has = allowedTypes.some((t) => t.value === form.value.type);
+    if (!has) form.value.type = allowedTypes[0].value;
   }
 
   const mods = store.transactionModules;

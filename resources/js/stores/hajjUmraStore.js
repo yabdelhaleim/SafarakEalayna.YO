@@ -14,6 +14,7 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
     executingCompaniesFinance: [],
     tripSupervisors: [],
     accommodationTypes: [],
+    suppliers: [],
     statuses: { hajj_umra: [], visa: [], visa_types: [], visa_entry_types: [] },
     loading: {
       list: false,
@@ -312,6 +313,33 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
       } catch (e) {
         const msg = e.response?.data?.message || 'فشل تسجيل السداد';
         this.addToast(msg, 'error');
+        throw e;
+      }
+    },
+
+    async fetchSuppliers() {
+      try {
+        const { data } = await axios.get('/api/v1/umrah-suppliers');
+        const items = data?.data ?? [];
+        this.suppliers = Array.isArray(items) ? items : [];
+        return this.suppliers;
+      } catch (e) {
+        console.error('fetchSuppliers failed', e);
+        this.suppliers = [];
+        return [];
+      }
+    },
+
+    async createSupplier(payload) {
+      try {
+        const { data } = await axios.post('/api/v1/umrah-suppliers', payload);
+        const created = data?.data;
+        if (created) {
+          this.suppliers.unshift(created);
+        }
+        return created;
+      } catch (e) {
+        console.error('createSupplier failed', e);
         throw e;
       }
     },

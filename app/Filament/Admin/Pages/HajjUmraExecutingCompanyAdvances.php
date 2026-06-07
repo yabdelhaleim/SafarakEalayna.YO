@@ -120,7 +120,7 @@ class HajjUmraExecutingCompanyAdvances extends Page implements HasTable
                 ->label('كشف حساب (الحساب المالي)')
                 ->icon('heroicon-o-document-text')
                 ->color('info')
-                ->url(fn (): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl([
+                ->url(fn (): string => \App\Filament\Admin\Pages\AccountStatement::getUrl([
                     'accountId' => $companyAccountId,
                 ])),
         ];

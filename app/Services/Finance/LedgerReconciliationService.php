@@ -2,13 +2,15 @@
 
 namespace App\Services\Finance;
 
-use App\Models\AccountEntry;
 use App\Models\Account;
+use App\Models\AccountEntry;
 use App\Models\LedgerReconciliationFinding;
 use App\Models\LedgerReconciliationRun;
 use App\Models\Transaction;
+use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
 
 class LedgerReconciliationService
 {
@@ -19,7 +21,7 @@ class LedgerReconciliationService
     {
         $tolerance = (float) config('accounting.reconciliation.tolerance', 0.02);
 
-        /** @var \Illuminate\Support\LazyCollection<int, \stdClass> $imbalanced */
+        /** @var LazyCollection<int, \stdClass> $imbalanced */
         $imbalanced = AccountEntry::query()
             ->select('transaction_id')
             ->selectRaw('SUM(debit) as debit_sum, SUM(credit) as credit_sum, COUNT(*) as line_count')
@@ -31,7 +33,7 @@ class LedgerReconciliationService
             ->doesntHave('entries')
             ->pluck('id');
 
-        return DB::transaction(function () use ($imbalanced, $missingIds, $tolerance) {
+        return DB::transaction(function () use ($imbalanced, $missingIds) {
             $run = LedgerReconciliationRun::query()->create([
                 'run_at' => now(),
                 'transactions_scanned' => Transaction::query()->count(),
@@ -118,29 +120,44 @@ class LedgerReconciliationService
             ->map(fn ($v) => round((float) $v, 2));
 
         $driftSamples = [];
+        $treasuryDriftSamples = [];
+        $customerDriftSamples = [];
 
-        foreach (Account::query()->select(['id', 'balance'])->cursor() as $account) {
+        foreach (Account::query()->select(['id', 'name', 'type', 'balance'])->cursor() as $account) {
             /** @var Account $account */
-            $ledgerNet = round((float) (
-                $ledgerNetByAccountId->get((int) $account->id)
-                ?? $ledgerNetByAccountId->get((string) $account->id)
-                ?? 0.0
-            ), 2);
+            $ledgerNet = $this->ledgerBalanceForAccount($account->id, $ledgerNetByAccountId);
             $stored = round((float) $account->balance, 2);
 
-            if (abs($stored - $ledgerNet) > $balanceTol) {
-                $driftSamples[] = [
-                    'account_id' => $account->id,
-                    'stored_balance' => $stored,
-                    'ledger_net_credit_minus_debit' => $ledgerNet,
-                    'difference' => round($stored - $ledgerNet, 2),
-                ];
+            if (abs($stored - $ledgerNet) <= $balanceTol) {
+                continue;
+            }
 
-                if (count($driftSamples) >= 500) {
-                    logger()->warning('balance_vs_ledger_scan_truncated', ['limit' => 500]);
+            $row = [
+                'account_id' => $account->id,
+                'account_name' => $account->name,
+                'stored_balance' => $stored,
+                'ledger_net_credit_minus_debit' => $ledgerNet,
+                'difference' => round($stored - $ledgerNet, 2),
+            ];
 
-                    break;
-                }
+            $driftSamples[] = $row;
+
+            $type = $account->type instanceof \BackedEnum ? $account->type->value : (string) $account->type;
+            $isLiquidity = in_array($type, AccountModuleDivision::LIQUIDITY_TYPES, true);
+            $isCustomer = $type === 'customer'
+                || str_contains((string) $account->name, 'عميل')
+                || str_contains((string) $account->name, 'ذممة');
+
+            if ($isLiquidity && ! str_contains((string) $account->name, 'إقفال') && ! str_contains((string) $account->name, '(نظام)')) {
+                $treasuryDriftSamples[] = $row;
+            } elseif ($isCustomer) {
+                $customerDriftSamples[] = $row;
+            }
+
+            if (count($driftSamples) >= 500) {
+                logger()->warning('balance_vs_ledger_scan_truncated', ['limit' => 500]);
+
+                break;
             }
         }
 
@@ -156,13 +173,49 @@ class LedgerReconciliationService
             }
         }
 
+        $legacySingleLeg = AccountEntry::query()
+            ->whereNotNull('transaction_id')
+            ->select('transaction_id')
+            ->groupBy('transaction_id')
+            ->havingRaw('COUNT(*) = 1')
+            ->get()
+            ->count();
+
         return [
             'global_totals_ok' => $globalOk,
             'global_total_debit' => $totalDebit,
             'global_total_credit' => $totalCredit,
             'global_totals_delta' => $globalDelta,
             'accounts_with_balance_drift' => count($driftSamples),
+            'treasury_liquidity_drift_count' => count($treasuryDriftSamples),
+            'customer_drift_count' => count($customerDriftSamples),
+            'legacy_single_leg_transactions' => $legacySingleLeg,
             'balance_drift_samples' => array_slice($driftSamples, 0, 25),
+            'treasury_drift_samples' => array_slice($treasuryDriftSamples, 0, 25),
+            'customer_drift_samples' => array_slice($customerDriftSamples, 0, 10),
         ];
+    }
+
+    /**
+     * Prefer the last running balance_after (authoritative) over raw Σ(credit−debit)
+     * when historical entries have inconsistent running totals.
+     */
+    protected function ledgerBalanceForAccount(int $accountId, Collection $ledgerNetByAccountId): float
+    {
+        $lastAfter = AccountEntry::query()
+            ->where('account_id', $accountId)
+            ->whereNotNull('balance_after')
+            ->orderByDesc('id')
+            ->value('balance_after');
+
+        if ($lastAfter !== null) {
+            return round((float) $lastAfter, 2);
+        }
+
+        return round((float) (
+            $ledgerNetByAccountId->get($accountId)
+            ?? $ledgerNetByAccountId->get((string) $accountId)
+            ?? 0.0
+        ), 2);
     }
 }

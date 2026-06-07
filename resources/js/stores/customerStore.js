@@ -5,11 +5,13 @@ export const useCustomerStore = defineStore('customer', {
   state: () => ({
     customers: [],
     currentCustomer: null,
+    accounts: [],
     loading: {
       list: false,
       create: false,
       update: false,
-      delete: false
+      delete: false,
+      accounts: false
     },
     errors: {},
     toasts: [],
@@ -184,14 +186,32 @@ export const useCustomerStore = defineStore('customer', {
       }
     },
 
+    async fetchAccounts(params = {}) {
+      this.loading.accounts = true;
+      try {
+        const { data } = await axios.get('/api/v1/finance/accounts', {
+          params: { per_page: 200, is_active: 1, ...params },
+        });
+        const items = data?.data?.items ?? data?.data ?? [];
+        this.accounts = Array.isArray(items) ? items : [];
+      } catch (e) {
+        console.error('fetchAccounts failed', e);
+        this.accounts = [];
+      } finally {
+        this.loading.accounts = false;
+      }
+    },
+
     reset() {
       this.customers = [];
       this.currentCustomer = null;
+      this.accounts = [];
       this.loading = {
         list: false,
         create: false,
         update: false,
-        delete: false
+        delete: false,
+        accounts: false
       };
       this.errors = {};
       this.toasts = [];

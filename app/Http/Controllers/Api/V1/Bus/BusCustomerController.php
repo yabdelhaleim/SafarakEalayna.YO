@@ -59,8 +59,8 @@ class BusCustomerController extends Controller
             ];
         });
 
-        return ApiResponse::success('Bus customers retrieved.', [
-            'customers' => $customers
-        ]);
+        return ApiResponse::success('تم جلب عملاء الباصات.', [
+            'customers' => $customers,
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 }

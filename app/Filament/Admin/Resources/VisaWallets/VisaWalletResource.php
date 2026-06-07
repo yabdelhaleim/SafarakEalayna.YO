@@ -85,7 +85,7 @@ class VisaWalletResource extends Resource
                     ->label('كشف الحساب')
                     ->icon('heroicon-o-document-text')
                     ->color('info')
-                    ->url(fn (Model $record): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
+                    ->url(fn (Model $record): string => \App\Filament\Admin\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
             ])
             ->emptyStateHeading('لا توجد محافظ')
             ->emptyStateDescription('ابدأ بإضافة محفظة جديدة لموديول التأشيرات')

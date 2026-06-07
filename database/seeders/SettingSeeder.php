@@ -6,11 +6,13 @@ use App\Models\Setting\Currency;
 use App\Models\Setting\OperationType;
 use App\Models\Setting\PaymentMethod;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class SettingSeeder extends Seeder
 {
     public function run(): void
     {
+        $adminId = cache('seed_admin_id') ?? 1;
         $now = now();
 
         $paymentMethods = [
@@ -73,6 +75,37 @@ class SettingSeeder extends Seeder
                 'created_at' => $now,
                 'updated_at' => $now,
             ]));
+        }
+
+        // Seeding online service types (Fawry, InstaPay, Vodafone Cash, Bill Payment)
+        $onlineServiceTypes = [
+            ['code' => 'fawry', 'name_ar' => 'فوري', 'name_en' => 'Fawry', 'is_active' => true, 'created_by' => $adminId],
+            ['code' => 'instapay', 'name_ar' => 'إنستاباي', 'name_en' => 'InstaPay', 'is_active' => true, 'created_by' => $adminId],
+            ['code' => 'vodafone_cash', 'name_ar' => 'فودافون كاش', 'name_en' => 'Vodafone Cash', 'is_active' => true, 'created_by' => $adminId],
+            ['code' => 'bill_payment', 'name_ar' => 'دفع الفواتير', 'name_en' => 'Bill Payment', 'is_active' => true, 'created_by' => $adminId],
+        ];
+
+        foreach ($onlineServiceTypes as $type) {
+            DB::table('online_service_types')->updateOrInsert(['code' => $type['code']], $type + [
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        // Seeding wallet types (Vodafone Cash, InstaPay, Orange Cash, Etisalat Cash, We Pay)
+        $walletTypes = [
+            ['code' => 'vodafone_cash', 'name' => 'فودافون كاش', 'is_active' => true, 'sort_order' => 1],
+            ['code' => 'instapay', 'name' => 'إنستا باي', 'is_active' => true, 'sort_order' => 2],
+            ['code' => 'orange_cash', 'name' => 'أورانج كاش', 'is_active' => true, 'sort_order' => 3],
+            ['code' => 'etisalat_cash', 'name' => 'اتصالات كاش', 'is_active' => true, 'sort_order' => 4],
+            ['code' => 'we_pay', 'name' => 'وي باي', 'is_active' => true, 'sort_order' => 5],
+        ];
+
+        foreach ($walletTypes as $wt) {
+            DB::table('wallet_types')->updateOrInsert(['code' => $wt['code']], $wt + [
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
         }
     }
 }

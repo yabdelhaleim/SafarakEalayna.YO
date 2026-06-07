@@ -26,6 +26,8 @@ class CurrencyService
         }
 
         $date = $date ?? now();
+
+        // 1. Try direct rate
         $rate = ExchangeRate::where('from_currency', $fromCurrency)
             ->where('to_currency', $toCurrency)
             ->where('effective_date', '<=', $date)
@@ -33,20 +35,63 @@ class CurrencyService
             ->orderBy('effective_date', 'desc')
             ->first();
 
-        if (!$rate) {
-            throw new \Exception("لا يوجد سعر صرف متاح من {$fromCurrency} إلى {$toCurrency} في تاريخ {$date}");
+        if ($rate) {
+            $convertedAmount = $amount * $rate->rate;
+
+            return [
+                'from_amount' => $amount,
+                'from_currency' => $fromCurrency,
+                'to_amount' => $convertedAmount,
+                'to_currency' => $toCurrency,
+                'rate' => (float) $rate->rate,
+                'rate_date' => $rate->effective_date,
+            ];
         }
 
-        $convertedAmount = $amount * $rate->rate;
+        // 2. Try inverse rate (e.g., EGP to USD using USD to EGP rate)
+        $inverseRate = ExchangeRate::where('from_currency', $toCurrency)
+            ->where('to_currency', $fromCurrency)
+            ->where('effective_date', '<=', $date)
+            ->where('is_active', true)
+            ->orderBy('effective_date', 'desc')
+            ->first();
 
-        return [
-            'from_amount' => $amount,
-            'from_currency' => $fromCurrency,
-            'to_amount' => $convertedAmount,
-            'to_currency' => $toCurrency,
-            'rate' => $rate->rate,
-            'rate_date' => $rate->effective_date,
-        ];
+        if ($inverseRate && $inverseRate->rate > 0) {
+            $rateValue = 1.0 / $inverseRate->rate;
+            $convertedAmount = $amount * $rateValue;
+
+            return [
+                'from_amount' => $amount,
+                'from_currency' => $fromCurrency,
+                'to_amount' => $convertedAmount,
+                'to_currency' => $toCurrency,
+                'rate' => $rateValue,
+                'rate_date' => $inverseRate->effective_date,
+            ];
+        }
+
+        // 3. Fallback: try converting through EGP if both currencies are foreign and direct rate doesn't exist
+        if ($fromCurrency !== 'EGP' && $toCurrency !== 'EGP') {
+            try {
+                // Convert from $fromCurrency to EGP
+                $toEgp = $this->convert($amount, $fromCurrency, 'EGP', $date);
+                // Convert from EGP to $toCurrency
+                $fromEgp = $this->convert($toEgp['to_amount'], 'EGP', $toCurrency, $date);
+
+                return [
+                    'from_amount' => $amount,
+                    'from_currency' => $fromCurrency,
+                    'to_amount' => $fromEgp['to_amount'],
+                    'to_currency' => $toCurrency,
+                    'rate' => $amount > 0 ? ($fromEgp['to_amount'] / $amount) : 0.0,
+                    'rate_date' => $toEgp['rate_date'],
+                ];
+            } catch (\Exception $e) {
+                // If it fails, let it throw the standard exception below
+            }
+        }
+
+        throw new \Exception("لا يوجد سعر صرف متاح من {$fromCurrency} إلى {$toCurrency} في تاريخ {$date}");
     }
 
     /**

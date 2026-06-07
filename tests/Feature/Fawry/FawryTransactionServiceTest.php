@@ -10,6 +10,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Fawry\FawryTransactionService;
 use App\Services\Finance\TransactionService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
@@ -19,9 +20,13 @@ class FawryTransactionServiceTest extends TestCase
     use RefreshDatabase;
 
     protected FawryTransactionService $service;
+
     protected User $user;
+
     protected Account $account;
+
     protected Customer $client;
+
     protected FawryOperationType $operationType;
 
     protected function setUp(): void
@@ -30,7 +35,7 @@ class FawryTransactionServiceTest extends TestCase
 
         $this->service = new FawryTransactionService(app(TransactionService::class));
         $this->user = User::factory()->create();
-        $this->account = Account::factory()->create();
+        $this->account = Account::factory()->active()->create();
         $this->client = Customer::factory()->create();
         $this->operationType = FawryOperationType::factory()->create([
             'code' => 'bill_payment',
@@ -339,7 +344,7 @@ class FawryTransactionServiceTest extends TestCase
 
     public function test_get_transaction_by_id_throws_exception_if_not_found()
     {
-        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        $this->expectException(ModelNotFoundException::class);
 
         $this->service->getTransactionById(999);
     }
@@ -401,5 +406,27 @@ class FawryTransactionServiceTest extends TestCase
         $this->assertEquals('2024-01-20', $result->items()[0]->created_at->format('Y-m-d'));
         $this->assertEquals('2024-01-15', $result->items()[1]->created_at->format('Y-m-d'));
         $this->assertEquals('2024-01-10', $result->items()[2]->created_at->format('Y-m-d'));
+    }
+
+    public function test_create_transaction_fails_if_account_is_inactive()
+    {
+        $inactiveAccount = Account::factory()->create(['is_active' => false]);
+
+        $data = [
+            'client_name' => 'Test Client',
+            'operation_type' => 'bill_payment',
+            'client_amount' => 100.00,
+            'fawry_price' => 95.00,
+            'selling_price' => 100.00,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 100.00,
+            'account_id' => $inactiveAccount->id,
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('يجب اختيار حساب تحصيل صالح ونشط');
+
+        $this->service->createTransaction($data);
     }
 }

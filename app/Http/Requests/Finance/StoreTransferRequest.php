@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Finance;
 
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -24,6 +26,7 @@ class StoreTransferRequest extends FormRequest
             'converted_amount' => 'nullable|numeric|min:0.01',
             'exchange_rate' => 'nullable|numeric|min:0.000001',
             'module' => ['nullable', 'string', Rule::enum(TransactionModule::class)],
+            'type' => ['nullable', 'string', Rule::enum(TransactionType::class)],
             'notes' => 'nullable|string|max:1000',
             'attachment' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
         ];
@@ -40,6 +43,26 @@ class StoreTransferRequest extends FormRequest
             $to = Account::query()->find($this->input('to_account_id'));
             if (! $from || ! $to) {
                 return;
+            }
+
+            foreach (['from' => $from, 'to' => $to] as $label => $account) {
+                $type = $account->type?->value ?? $account->type;
+                if (! in_array($type, AccountModuleDivision::LIQUIDITY_TYPES, true)) {
+                    $validator->errors()->add(
+                        $label === 'from' ? 'from_account_id' : 'to_account_id',
+                        'يُسمح بالتحويل بين حسابات السيولة فقط (خزينة، بنك، محفظة).'
+                    );
+                }
+                if (! $account->is_active) {
+                    $validator->errors()->add(
+                        $label === 'from' ? 'from_account_id' : 'to_account_id',
+                        'الحساب غير نشط ولا يمكن استخدامه في التحويل.'
+                    );
+                }
+            }
+
+            if (! $this->filled('type') && $to->type?->value === 'expense') {
+                $this->merge(['type' => TransactionType::Expense->value]);
             }
 
             $same = strtoupper((string) $from->currency) === strtoupper((string) $to->currency);

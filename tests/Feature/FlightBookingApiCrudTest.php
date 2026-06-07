@@ -47,6 +47,7 @@ class FlightBookingApiCrudTest extends TestCase
     {
         return [
             'customer_id' => $this->customer->id,
+            'pnr' => 'API123',
             'selling_price' => 500,
             'purchase_price' => 300,
             'currency' => 'EGP',
@@ -58,7 +59,11 @@ class FlightBookingApiCrudTest extends TestCase
             'from_airport' => 'CAI',
             'to_airport' => 'JED',
             'passengers' => [
-                ['name' => 'API Pax', 'type' => 'adult'],
+                [
+                    'first_name' => 'API',
+                    'last_name' => 'Pax',
+                    'type' => 'adult',
+                ],
             ],
         ];
     }

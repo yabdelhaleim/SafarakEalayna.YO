@@ -32,7 +32,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class AccountFormSchema
 {
-    public static function configure(Schema $schema, ?AccountType $fixedType = null, string $defaultModule = 'general'): Schema
+    public static function configure(Schema $schema, ?AccountType $fixedType = null, string $defaultModule = 'general', bool $lockModuleType = false): Schema
     {
         $definitionFields = [
             TextInput::make('name')
@@ -73,21 +73,28 @@ final class AccountFormSchema
             ->required()
             ->native(false);
 
-        $definitionFields[] = Select::make('module_type')
-            ->label('وحدة العمل (القسم)')
-            ->options([
-                'general' => 'عام / إدارة عليا',
-                'flights' => 'قسم الطيران',
-                'bus' => 'قسم الباصات والنقل',
-                'hajj_umra' => 'قسم الحج والعمرة',
-                'visas' => 'قسم التأشيرات',
-                'fawry' => 'قسم فوري',
-                'tourism' => 'سياحة (أخرى)',
-                'office' => 'مكتب / إداري',
-            ])
-            ->default($defaultModule)
-            ->required()
-            ->native(false);
+        if ($lockModuleType) {
+            $definitionFields[] = Hidden::make('module_type')
+                ->default($defaultModule)
+                ->required()
+                ->dehydrated();
+        } else {
+            $definitionFields[] = Select::make('module_type')
+                ->label('وحدة العمل (القسم)')
+                ->options([
+                    'general' => 'عام / إدارة عليا',
+                    'flights' => 'قسم الطيران',
+                    'bus' => 'قسم الباصات والنقل',
+                    'hajj_umra' => 'قسم الحج والعمرة',
+                    'visas' => 'قسم التأشيرات',
+                    'fawry' => 'قسم فوري',
+                    'tourism' => 'سياحة (أخرى)',
+                    'office' => 'مكتب / إداري',
+                ])
+                ->default($defaultModule)
+                ->required()
+                ->native(false);
+        }
 
         $definitionFields[] = Toggle::make('is_module_vault')
             ->label('خزنة الموديول الرسمية')
@@ -344,7 +351,7 @@ final class AccountFormSchema
             });
     }
 
-    public static function configureTable(Table $table, bool $showTypeColumn, bool $showWalletDetails = false): Table
+    public static function configureTable(Table $table, bool $showTypeColumn, bool $showWalletDetails = false, bool $includeViewAction = false): Table
     {
         $columns = [
             TextColumn::make('id', 'الرقم')
@@ -458,18 +465,18 @@ final class AccountFormSchema
             ->columns($columns)
             ->filters($filters)
             ->defaultSort('name', 'asc')
-            ->recordActions([
+            ->recordActions(array_values(array_filter([
                 Action::make('statement')
                     ->label('كشف الحساب')
                     ->icon('heroicon-o-document-text')
                     ->color('info')
-                    ->url(fn (Account $record): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
+                    ->url(fn (Account $record): string => \App\Filament\Admin\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
                 self::makeVaultTransferAction(),
                 self::makeRechargeAccountAction(),
-                ViewAction::make()->modal(false),
+                $includeViewAction ? ViewAction::make()->modal(false) : null,
                 EditAction::make()->modal(false),
                 DeleteAction::make(),
-            ])
+            ])))
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make(),

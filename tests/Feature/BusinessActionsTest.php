@@ -248,6 +248,7 @@ class BusinessActionsTest extends TestCase
             'balance' => 100000,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'hajj_umra',
             'created_by' => $this->user->id,
         ]);
 

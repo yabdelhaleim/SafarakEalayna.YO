@@ -16,10 +16,17 @@ class CustomerService
      *
      * @param  array  $filters  Available keys: search, per_page
      */
-
     public function getAllCustomers(array $filters): LengthAwarePaginator
     {
         $query = Customer::with(['createdBy', 'ledgerAccount'])
+            ->withCount([
+                'flightBookings',
+                'busBookings',
+                'hajjUmraBookings',
+                'visaBookings',
+                'fawryTransactions',
+                'onlineTransactions',
+            ])
             ->leftJoin('accounts', 'customers.account_id', '=', 'accounts.id')
             ->select('customers.*');
 
@@ -46,7 +53,36 @@ class CustomerService
             $query->where('customers.type', $type);
         }
 
-        $perPage = min($filters['per_page'] ?? 15, 100);
+        if (isset($filters['module']) && $filters['module'] && $filters['module'] !== 'all') {
+            $module = $filters['module'];
+            if ($module === 'flight') {
+                $query->has('flightBookings');
+            } elseif ($module === 'visa') {
+                $query->has('visaBookings');
+            } elseif ($module === 'hajj_umra') {
+                $query->has('hajjUmraBookings');
+            } elseif ($module === 'bus') {
+                $query->has('busBookings');
+            } elseif ($module === 'fawry') {
+                $query->has('fawryTransactions');
+            } elseif ($module === 'online') {
+                $query->has('onlineTransactions');
+            }
+        }
+
+        if (! empty($filters['balance_status'])) {
+            match ($filters['balance_status']) {
+                'settled' => $query->where(function ($q) {
+                    $q->whereNull('accounts.id')
+                        ->orWhere('accounts.balance', 0);
+                }),
+                'outstanding' => $query->where('accounts.balance', '!=', 0),
+                'debtors' => $query->where('accounts.balance', '>', 0),
+                default => null,
+            };
+        }
+
+        $perPage = min($filters['per_page'] ?? 50, 100);
 
         return $query->orderBy('customers.created_at', 'desc')
             ->paginate($perPage);
@@ -187,10 +223,10 @@ class CustomerService
     public function searchCustomers(string $query): Collection
     {
         return Customer::where(function ($q) use ($query) {
-                $q->where('full_name', 'like', "%{$query}%")
-                    ->orWhere('phone', 'like', "%{$query}%")
-                    ->orWhere('national_id', 'like', "%{$query}%");
-            })
+            $q->where('full_name', 'like', "%{$query}%")
+                ->orWhere('phone', 'like', "%{$query}%")
+                ->orWhere('national_id', 'like', "%{$query}%");
+        })
             ->limit(10)
             ->get(['id', 'full_name', 'phone', 'national_id', 'customer_tier']);
     }

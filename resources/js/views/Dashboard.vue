@@ -680,7 +680,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-xs text-white font-medium truncate">{{ act.description }}</div>
-            <div class="text-[10px] text-gray-500 mt-0.5">{{ act.time }}</div>
+            <div class="text-[10px] text-gray-500 mt-0.5">{{ act.time || act.created_at }}</div>
           </div>
           </div>
         </div>
@@ -691,7 +691,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
 import axios from 'axios';
 import { useAsyncState } from '@/composables/useAsyncState';
@@ -874,8 +874,23 @@ const fetchDashboardData = async () => {
   }
 };
 
+let pollingInterval = null;
+
 onMounted(async () => {
   await fetchDashboardData();
+  
+  // Auto-refresh every 15 seconds to fetch new data without manual reload
+  pollingInterval = setInterval(async () => {
+    if (!isLoading()) {
+      await fetchDashboardData();
+    }
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
 });
 </script>
 

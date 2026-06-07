@@ -4,7 +4,7 @@
     <div class="hidden print:block print:mb-8">
       <div class="flex items-center justify-between border-b-2 border-black pb-4">
         <div>
-          <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+          <h2 class="text-2xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
           <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
         </div>
         <div class="text-right">
@@ -231,6 +231,11 @@
       </div>
     </div>
 
+    <div v-if="loadError" class="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300">
+      {{ loadError }}
+      <button class="mr-3 underline font-bold" @click="fetchDebts">إعادة المحاولة</button>
+    </div>
+
     <!-- Data Table Section -->
     <div class="bg-card-bg border border-white/10 rounded-3xl overflow-hidden shadow-xl">
       <!-- Loading State -->
@@ -356,8 +361,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+
+const printSettingsStore = usePrintSettingsStore();
 import {
   Scale,
   ArrowUpRight,
@@ -383,6 +391,8 @@ const filters = ref({
 });
 
 const loading = ref(true);
+const loadError = ref('');
+let fetchController = null;
 
 const reportData = ref({
   total_receivables: 0,
@@ -417,7 +427,7 @@ const availableModules = computed(() => {
       { label: 'حجز باصات', value: 'bus' },
       { label: 'خدمات فوري', value: 'fawry' },
       { label: 'بوابة الدفع الإلكتروني', value: 'online' },
-      { label: 'المحافظ الإلكترونية', value: 'wallet' },
+      { label: 'المحافظ والتحويلات', value: 'wallet' },
       { label: 'عام / كاش', value: 'general' }
     ];
   } else if (filters.value.department === 'tourism') {
@@ -468,26 +478,38 @@ const debouncedSearch = () => {
 
 // Fetch Report Data from API
 const fetchDebts = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const { signal } = fetchController;
+
   loading.value = true;
+  loadError.value = '';
   try {
     const params = {
       department: filters.value.department || undefined,
       module: filters.value.module || undefined,
       direction: filters.value.direction !== 'all' ? filters.value.direction : undefined,
       entity_type: filters.value.entity_type !== 'all' ? filters.value.entity_type : undefined,
-      search: filters.value.search || undefined
+      search: filters.value.search || undefined,
+      _t: Date.now(),
     };
 
-    const response = await axios.get('/api/v1/reports/debts', { params });
+    const response = await axios.get('/api/v1/reports/debts', { params, signal });
     if (response.data?.success) {
       reportData.value = response.data.data;
     } else {
       throw new Error(response.data?.message || 'Failed to fetch debts');
     }
   } catch (error) {
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error('Failed to fetch debts report:', error);
+    loadError.value = error.response?.data?.message || 'فشل تحميل تقرير الديون والمديونيات';
     if (window.addToast) {
-      window.addToast('فشل تحميل تقرير الديون والمديونيات', 'error');
+      window.addToast(loadError.value, 'error');
     }
   } finally {
     loading.value = false;
@@ -527,7 +549,8 @@ const getModuleLabel = (val) => {
     { label: 'تأشيرات سياحية', value: 'visa' },
     { label: 'خدمات فوري', value: 'fawry' },
     { label: 'بوابة الدفع الإلكتروني', value: 'online' },
-    { label: 'المحافظ الإلكترونية', value: 'wallet' },
+    { label: 'المحافظ والتحويلات', value: 'wallet' },
+    { label: 'المحافظ والتحويلات', value: 'wallet_transfer' },
     { label: 'عام / كاش', value: 'general' }
   ];
   return allMods.find(m => m.value === val)?.label || val;
@@ -535,6 +558,16 @@ const getModuleLabel = (val) => {
 
 onMounted(() => {
   fetchDebts();
+  printSettingsStore.fetch().catch(() => {});
+});
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+  }
 });
 </script>
 

@@ -13,6 +13,14 @@ class CreateFawryTreasury extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['module_type'] = 'fawry';
+        $data['module'] = 'fawry';
+        $data['type'] = \App\Enums\AccountType::Treasury->value;
+
         return $data;
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
     }
 }

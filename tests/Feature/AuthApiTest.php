@@ -137,6 +137,26 @@ class AuthApiTest extends TestCase
             ]);
     }
 
+    public function test_authenticated_user_can_refresh_token(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/auth/refresh');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ])
+            ->assertJsonStructure([
+                'data' => ['token', 'token_type', 'expires_in_minutes', 'user'],
+            ]);
+
+        $this->assertNotSame($token, $response->json('data.token'));
+        $this->assertSame(1, $user->tokens()->count());
+    }
+
     public function test_authenticated_user_can_logout(): void
     {
         $user = User::factory()->create(['is_active' => true]);

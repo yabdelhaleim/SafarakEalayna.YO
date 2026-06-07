@@ -50,11 +50,27 @@ class HajjUmraBookingResource extends JsonResource
             ]),
             'pricing' => [
                 'purchase_price' => (float) $this->purchase_price,
+                'companion_purchase_price' => (float) ($this->companion_purchase_price ?? 0),
                 'selling_price' => (float) $this->selling_price,
+                'companion_selling_price' => (float) ($this->companion_selling_price ?? 0),
                 'profit' => (float) $this->profit,
                 'currency' => $this->currency,
                 'per_person' => (bool) $this->per_person,
+                'accommodation_choice' => $this->accommodation_choice,
+                'accommodation_extra_charge' => (float) ($this->accommodation_extra_charge ?? 0),
             ],
+            'supplier' => $this->whenLoaded('supplier', fn () => $this->supplier ? [
+                'id' => $this->supplier->id,
+                'name' => $this->supplier->name,
+                'phone' => $this->supplier->phone,
+            ] : null),
+            'passengers' => $this->whenLoaded('passengers', fn () => $this->passengers->map(fn ($p) => [
+                'id' => $p->id,
+                'category' => $p->category,
+                'count' => $p->count,
+                'unit_price' => (float) $p->unit_price,
+                'subtotal' => (float) $p->subtotal,
+            ])),
             'finance' => [
                 'account' => $this->whenLoaded('account', fn () => $this->account ? [
                     'id' => $this->account->id,

@@ -1,6 +1,23 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+const mapEmployee = (item) => {
+  if (!item) return item;
+  const personal = item.personal_info || {};
+  const contact = item.contact_info || {};
+  const employment = item.employment_info || {};
+  return {
+    ...item,
+    name: item.name || (item.user && item.user.name) || personal.full_name || `${personal.first_name || ''} ${personal.last_name || ''}`.trim() || '—',
+    phone: item.phone || contact.phone || (item.user && item.user.phone) || '—',
+    email: item.email || contact.email || (item.user && item.user.email) || '—',
+    department: item.department || employment.department || '—',
+    position: item.position || employment.position || '—',
+    hire_date: item.hire_date || employment.hire_date || null,
+    is_active: item.is_active ?? (item.status === 'active')
+  };
+};
+
 export const useEmployeeStore = defineStore('employee', {
   state: () => ({
     // Employees
@@ -107,21 +124,21 @@ export const useEmployeeStore = defineStore('employee', {
 
     // Present today
     presentToday: (state) => {
-      const today = new Date().toDateString();
+      const today = new Date().toISOString().split('T')[0];
       const attendance = Array.isArray(state.attendance) ? state.attendance : [];
       return attendance.filter((a) =>
-        new Date(a.date).toDateString() === today && a.present
+        (a.date === today || a.attendance_date === today) && a.present
       );
     },
 
     // Absent today
     absentToday: (state) => {
-      const today = new Date().toDateString();
+      const today = new Date().toISOString().split('T')[0];
       const employees = Array.isArray(state.employees) ? state.employees : [];
       const attendanceList = Array.isArray(state.attendance) ? state.attendance : [];
       return employees.filter((e) => {
         const attendance = attendanceList.find((a) =>
-          a.employee_id === e.id && new Date(a.date).toDateString() === today
+          a.employee_id === e.id && (a.date === today || a.attendance_date === today)
         );
         return !attendance || !attendance.present;
       });
@@ -180,7 +197,16 @@ export const useEmployeeStore = defineStore('employee', {
           signal: controller.signal
         });
         const data = response.data?.data || response.data;
-        this.employees = data.items || (Array.isArray(data) ? data : []);
+        const rawItems = data.items || data.data || (Array.isArray(data) ? data : []);
+        this.employees = rawItems.map(mapEmployee);
+        if (data && data.meta) {
+          this.pagination = {
+            total: data.meta.total || 0,
+            current_page: data.meta.current_page || 1,
+            last_page: data.meta.last_page || 1,
+            per_page: data.meta.per_page || 15,
+          };
+        }
         await this.fetchEmployeeReferenceData();
       } catch (error) {
         if (axios.isCancel(error)) {
@@ -207,9 +233,11 @@ export const useEmployeeStore = defineStore('employee', {
       try {
         const apiPayload = this.transformPayloadForApi(payload);
         const response = await axios.post('/api/v1/employee/employees', apiPayload);
-        this.employees.unshift(response.data.data || response.data);
+        const record = response.data.data || response.data;
+        const mappedRecord = mapEmployee(record);
+        this.employees.unshift(mappedRecord);
         await this.fetchStats();
-        return response.data.data || response.data;
+        return mappedRecord;
       } catch (error) {
         this.errors = error.response?.data?.errors || {
           message: 'Failed to create employee',
@@ -229,11 +257,13 @@ export const useEmployeeStore = defineStore('employee', {
       try {
         const apiPayload = this.transformPayloadForApi(payload);
         const response = await axios.put(`/api/v1/employee/employees/${id}`, apiPayload);
+        const record = response.data.data || response.data;
+        const mappedRecord = mapEmployee(record);
         const index = this.employees.findIndex((e) => e.id === id);
         if (index !== -1) {
-          this.employees[index] = response.data.data || response.data;
+          this.employees[index] = mappedRecord;
         }
-        return response.data.data || response.data;
+        return mappedRecord;
       } catch (error) {
         this.errors = error.response?.data?.errors || {
           message: 'Failed to update employee',
@@ -281,7 +311,14 @@ export const useEmployeeStore = defineStore('employee', {
           signal: controller.signal
         });
         const data = response.data?.data || response.data;
-        this.attendance = data.items || (Array.isArray(data) ? data : []);
+        const rawItems = data.items || (Array.isArray(data) ? data : []);
+        
+        // Map backend fields to frontend expectations
+        this.attendance = rawItems.map(item => ({
+          ...item,
+          date: item.date || item.attendance_date,
+          present: item.present !== undefined ? item.present : (item.status === 'present' || item.status === 'late')
+        }));
       } catch (error) {
         if (axios.isCancel(error)) {
           return;
@@ -305,11 +342,25 @@ export const useEmployeeStore = defineStore('employee', {
       this.errors = {};
 
       try {
-        const apiPayload = this.transformPayloadForApi(payload);
+        const apiPayload = {
+          employee_id: payload.employee_id,
+          attendance_date: payload.date || payload.attendance_date,
+          status: payload.present ? 'present' : 'absent',
+          notes: payload.notes || null,
+        };
         const response = await axios.post('/api/v1/employee/attendances', apiPayload);
-        this.attendance.unshift(response.data.data || response.data);
+        const record = response.data.data || response.data;
+        
+        // Map backend record back to frontend expectations
+        const mappedRecord = {
+          ...record,
+          date: record.attendance_date,
+          present: record.status === 'present' || record.status === 'late'
+        };
+
+        this.attendance.unshift(mappedRecord);
         await this.fetchStats();
-        return response.data.data || response.data;
+        return mappedRecord;
       } catch (error) {
         this.errors = error.response?.data?.errors || {
           message: 'Failed to mark attendance',

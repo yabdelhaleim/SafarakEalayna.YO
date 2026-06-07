@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 class DashboardChartWidget extends ChartWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected ?string $heading = 'إحصائيات شهرية';
 
     protected static ?int $sort = 3;
@@ -19,11 +21,11 @@ class DashboardChartWidget extends ChartWidget
 
     protected string $color = 'info';
 
-    protected int | string | array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
 
     protected function getData(): array
     {
-        if (!Schema::hasTable('transactions')) {
+        if (! Schema::hasTable('transactions')) {
             return [
                 'datasets' => [],
                 'labels' => [],

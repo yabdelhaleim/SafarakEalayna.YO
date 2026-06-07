@@ -4,12 +4,15 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight">برامج الحج والعمرة</h1>
-        <p class="text-muted mt-1">إشاء وإدارة برامج الحج والعمرة</p>
+        <p class="text-muted mt-1">عرض البرامج النشطة — الإنشاء والتعديل من لوحة الإعدادات (Filament)</p>
       </div>
-      <router-link :to="{ name: 'hajj.programs.create' }"
-        class="bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-gold/20">
-        <Plus class="w-5 h-5" /> برنامج جديد
-      </router-link>
+      <a
+        :href="adminProgramsUrl"
+        target="_blank"
+        class="bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-gold/20"
+      >
+        <Plus class="w-5 h-5" /> إدارة البرامج (لوحة الإعدادات)
+      </a>
     </div>
 
     <!-- Programs List -->
@@ -20,9 +23,9 @@
         </div>
         <h3 class="text-xl font-bold mb-2">لا توجد برامج حالياً</h3>
         <p class="text-muted text-sm mb-4">ابدأ بإنشاء برنامج حج أو عمرة جديد</p>
-        <router-link :to="{ name: 'hajj.programs.create' }" class="text-gold font-bold hover:underline">
-          إنشاء برنامج جديد
-        </router-link>
+        <a :href="adminProgramsUrl" target="_blank" class="text-gold font-bold hover:underline">
+          إنشاء برنامج من لوحة الإعدادات
+        </a>
       </div>
 
       <div v-else class="overflow-x-auto">
@@ -36,12 +39,11 @@
               <th class="px-6 py-4 font-semibold">فندق المدينة</th>
               <th class="px-6 py-4 font-semibold">الطيران</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
-              <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading" v-for="i in 5" :key="i" class="border-b border-white/5">
-              <td v-for="j in 8" :key="j" class="px-6 py-4">
+              <td v-for="j in 7" :key="j" class="px-6 py-4">
                 <div class="h-4 animate-shimmer rounded w-full"></div>
               </td>
             </tr>
@@ -75,16 +77,6 @@
                   {{ program.booking_status === 'active' ? 'نشط' : 'مغلق' }}
                 </div>
               </td>
-              <td class="px-6 py-4 text-right">
-                <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <router-link :to="{ name: 'hajj.programs.edit', params: { id: program.id } }" class="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-gold transition-all">
-                    <Edit2 class="w-4 h-4" />
-                  </router-link>
-                  <button @click="confirmDelete(program)" class="p-2 hover:bg-error/10 rounded-lg text-muted hover:text-error transition-all">
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
             </tr>
           </tbody>
         </table>
@@ -94,13 +86,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
-import { useRouter } from 'vue-router';
-import { Plus, Calendar, Edit2, Trash2 } from 'lucide-vue-next';
+import { useAuthStore } from '@/stores/authStore';
+import { Plus, Calendar } from 'lucide-vue-next';
 
 const store = useHajjUmraStore();
-const router = useRouter();
+const authStore = useAuthStore();
+
+const adminProgramsUrl = computed(() => {
+  const token = authStore.token || localStorage.getItem('auth_token') || '';
+  return token ? `/admin/programs?token=${encodeURIComponent(token)}` : '/admin/programs';
+});
 
 const programs = ref([]);
 const loading = ref(false);
@@ -114,18 +111,6 @@ const loadPrograms = async () => {
     console.error('Failed to load programs', error);
   } finally {
     loading.value = false;
-  }
-};
-
-const confirmDelete = async (program) => {
-  if (confirm(`هل أنت متأكد من حذف برنامج "${program.program_name}"؟`)) {
-    try {
-      // Note: You'll need to add deleteProgram to the store
-      programs.value = programs.value.filter(p => p.id !== program.id);
-      store.addToast('تم حذف البرنامج بنجاح');
-    } catch (error) {
-      store.addToast('فشل حذف البرنامج', 'error');
-    }
   }
 };
 

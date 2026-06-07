@@ -12,7 +12,12 @@ class ManageTransferTreasuries extends ManageRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->mutateFormDataUsing(function (array $data): array {
+                    $data['module_type'] = 'wallet_transfer';
+
+                    return $data;
+                }),
         ];
     }
 }

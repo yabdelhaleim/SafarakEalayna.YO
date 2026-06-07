@@ -43,7 +43,7 @@
           @change="handleFilterChange"
           class="px-4 py-3 bg-input-bg border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[160px] transition-all hover:bg-white/5"
         >
-          <option :value="allowedModules">جميع أقسام {{ title }}</option>
+          <option :value="ALL_MODULES">جميع أقسام {{ title }}</option>
           <option
             v-for="m in filteredModuleOptions"
             :key="m.value"
@@ -195,13 +195,13 @@
                   <span
                     :class="[
                       'font-mono font-black text-sm',
-                      transaction.type === 'income' ? 'text-success' : 'text-error'
+                      flowKindClass(transaction)
                     ]"
                   >
-                    {{ transaction.type === 'income' ? '+' : '-' }}
+                    {{ flowKindPrefix(transaction) }}
                     {{ formatNumber(transaction.amount) }}
                   </span>
-                  <span class="text-[10px] font-bold text-text-muted">{{ transaction.type === 'income' ? 'قبض' : 'صرف' }}</span>
+                  <span class="text-[10px] font-bold text-text-muted">{{ flowKindLabel(transaction) }}</span>
                 </div>
               </td>
               <td class="px-6 py-4 text-left">
@@ -263,7 +263,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive } from 'vue';
+import { computed, onMounted, onBeforeUnmount, reactive } from 'vue';
 import { useFinanceStore } from '@/stores/financeStore';
 import { useDebounceFn } from '@vueuse/core';
 import {
@@ -287,11 +287,12 @@ const props = defineProps({
 });
 
 const store = useFinanceStore();
+const ALL_MODULES = '__all__';
 
 // Local Filters
 const filters = reactive({
   search: '',
-  module: props.allowedModules,
+  module: ALL_MODULES,
   account_id: '',
   date_from: '',
   date_to: '',
@@ -299,10 +300,23 @@ const filters = reactive({
   per_page: 15
 });
 
+const moduleFilterParam = computed(() =>
+  filters.module === ALL_MODULES ? props.allowedModules : filters.module
+);
+
 // Computed
-const filteredModuleOptions = computed(() => {
-  return store.transactionModules.filter(m => props.allowedModules.includes(m.value));
-});
+const moduleAllowed = (value) => {
+  const aliases = {
+    wallet: ['wallet', 'wallet_transfer', 'wallets'],
+    wallet_transfer: ['wallet', 'wallet_transfer', 'wallets'],
+  };
+  const accepted = aliases[value] || [value];
+  return props.allowedModules.some((m) => accepted.includes(m));
+};
+
+const filteredModuleOptions = computed(() =>
+  store.transactionModules.filter((m) => moduleAllowed(m.value))
+);
 
 const groupedAccounts = computed(() => {
   if (!store.accounts.length) return [];
@@ -324,22 +338,23 @@ const handleFilterChange = useDebounceFn(() => {
 }, 400);
 
 const fetchData = async () => {
+  const module = moduleFilterParam.value;
   await Promise.all([
     store.fetchTransactions({
       ...filters,
-      module: filters.module
+      module,
     }),
     store.fetchStats({
       from_date: filters.date_from,
       to_date: filters.date_to,
-      module: filters.module
-    })
+      module,
+    }),
   ]);
 };
 
 const resetFilters = () => {
   filters.search = '';
-  filters.module = props.allowedModules;
+  filters.module = ALL_MODULES;
   filters.account_id = '';
   filters.date_from = '';
   filters.date_to = '';
@@ -381,6 +396,41 @@ const getAccountTypeLabel = (val) => {
   return store.accountTypes.find(t => t.value === val)?.label || val;
 };
 
+const resolveFlowKind = (transaction) => {
+  if (transaction.flow_kind) {
+    return transaction.flow_kind;
+  }
+  if (transaction.type === 'income') {
+    return 'inflow';
+  }
+  if (transaction.type === 'expense' || transaction.type === 'refund') {
+    return 'outflow';
+  }
+  return 'neutral';
+};
+
+const flowKindClass = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return 'text-success';
+  if (kind === 'outflow') return 'text-error';
+  return 'text-sky-400';
+};
+
+const flowKindPrefix = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return '+';
+  if (kind === 'outflow') return '-';
+  return '';
+};
+
+const flowKindLabel = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return 'قبض / إيراد';
+  if (kind === 'outflow') return 'صرف / تكلفة';
+  if (transaction.type === 'transfer') return 'تحويل';
+  return transaction.type || '—';
+};
+
 const confirmDelete = async (id) => {
   if (confirm('هل أنت متأكد من رغبتك في حذف أو إلغاء هذه المعاملة؟ هذا قد يؤثر على أرصدة الحسابات.')) {
     try {
@@ -396,9 +446,18 @@ const confirmDelete = async (id) => {
 onMounted(async () => {
   await Promise.all([
     store.fetchSettingsMeta(),
-    store.fetchAccounts()
+    store.fetchAccounts(),
   ]);
   fetchData();
+});
+
+onBeforeUnmount(() => {
+  if (store.fetchTransactionsController) {
+    store.fetchTransactionsController.abort();
+  }
+  if (store.fetchStatsController) {
+    store.fetchStatsController.abort();
+  }
 });
 </script>
 

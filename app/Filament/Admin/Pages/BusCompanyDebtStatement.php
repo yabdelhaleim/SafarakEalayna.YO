@@ -59,7 +59,7 @@ class BusCompanyDebtStatement extends Page implements HasTable
                 ->icon('heroicon-o-document-text')
                 ->color('info')
                 ->visible(fn (): bool => $accountId > 0)
-                ->url(fn (): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl([
+                ->url(fn (): string => \App\Filament\Admin\Pages\AccountStatement::getUrl([
                     'accountId' => $accountId,
                 ])),
         ];

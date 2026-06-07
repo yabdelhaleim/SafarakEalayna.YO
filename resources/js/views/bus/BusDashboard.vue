@@ -172,7 +172,7 @@
               </router-link>
             </div>
 
-            <div class="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02]">
+            <div class="overflow-x-auto rounded-2xl border border-white/5 bg-white/[0.02]">
               <table class="min-w-full text-right text-sm">
                 <thead class="border-b border-white/5 bg-black/20">
                   <tr class="text-[11px] uppercase tracking-widest text-white/40">
@@ -333,7 +333,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { useBusStore } from '@/stores/busStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -391,7 +391,22 @@ const reload = async () => {
   lastUpdated.value = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 };
 
+let pollingInterval = null;
+
 onMounted(() => {
   reload();
+  
+  // Auto-refresh every 15 seconds to fetch new dashboard metrics without manual reload
+  pollingInterval = setInterval(async () => {
+    if (!loading.value) {
+      await reload();
+    }
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
 });
 </script>

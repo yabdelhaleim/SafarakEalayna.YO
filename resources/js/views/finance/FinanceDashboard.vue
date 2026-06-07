@@ -118,7 +118,7 @@
             </div>
           </div>
           <div>
-            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">إجمالي المصروف</div>
+            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">تكاليف ومصروفات</div>
             <div class="font-mono text-2xl font-bold text-error transition-colors">
               {{ formatCurrency(stats.total_expense) }}
             </div>
@@ -259,35 +259,17 @@
                       <span
                       :class="[
                         'inline-flex rounded-full px-2 py-1 text-[11px] font-bold',
-                        transaction.type === 'income'
-                          ? 'bg-success/15 text-success'
-                          : transaction.type === 'expense'
-                            ? 'bg-error/15 text-error'
-                            : transaction.type === 'refund'
-                              ? 'bg-violet-500/15 text-violet-300'
-                              : 'bg-gold/10 text-gold',
+                        flowKindBadgeClass(transaction),
                       ]"
                       >
-                        {{ getTransactionTypeLabel(transaction.type) }}
+                        {{ flowKindLabel(transaction) }}
                       </span>
                     </td>
                     <td
                       class="px-4 py-3 font-mono text-sm font-bold"
-                      :class="[
-                        transaction.type === 'income'
-                          ? 'text-success'
-                          : transaction.type === 'expense'
-                            ? 'text-error'
-                            : 'text-text-main',
-                      ]"
+                      :class="flowKindAmountClass(transaction)"
                     >
-                      {{
-                        transaction.type === 'income'
-                          ? '+'
-                          : transaction.type === 'expense'
-                            ? '-'
-                            : ''
-                      }}
+                      {{ flowKindPrefix(transaction) }}
                       {{ formatCurrency(transaction.amount) }}
                     </td>
                     <td class="px-4 py-3 text-sm text-text-muted">{{ transaction.account?.name || '-' }}</td>
@@ -379,7 +361,7 @@
                   </div>
                   <span class="text-sm text-text-muted">المعاملات اليوم</span>
                 </div>
-                <span class="font-mono font-bold text-text-main">{{ todayTransactionsCount }}</span>
+                <span class="font-mono font-bold text-text-main">{{ todayTransactionsTotal }}</span>
               </div>
             </div>
           </div>
@@ -409,7 +391,7 @@
 
               <div>
                 <div class="mb-2 flex items-center justify-between">
-                  <span class="text-sm text-text-muted">المصروف</span>
+                  <span class="text-sm text-text-muted">تكاليف ومصروفات</span>
                   <span class="text-sm font-bold text-error">{{ formatCurrency(stats.total_expense) }}</span>
                 </div>
                 <div class="h-2.5 overflow-hidden rounded-full bg-white/10">
@@ -462,7 +444,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { useFinanceStore } from '@/stores/financeStore';
 import { useAsyncState } from '@/composables/useAsyncState';
@@ -503,9 +485,13 @@ const transactions = ref([]);
 const stats = ref({
   total_balance: 0,
   total_income: 0,
+  total_cogs: 0,
+  total_operating_expenses: 0,
   total_expense: 0,
   net_profit: 0,
 });
+
+const todayTransactionsTotal = ref(0);
 
 const pagination = ref({
   total: 0,
@@ -513,6 +499,8 @@ const pagination = ref({
   last_page: 1,
   per_page: 15,
 });
+
+let fetchController = null;
 
 // Computed
 const isProfitable = computed(() => stats.value.net_profit > 0);
@@ -537,13 +525,6 @@ const incomePercentage = computed(() => {
 const expensePercentage = computed(() => {
   const total = stats.value.total_income + stats.value.total_expense;
   return total > 0 ? ((stats.value.total_expense / total) * 100).toFixed(0) : 0;
-});
-
-const todayTransactionsCount = computed(() => {
-  const today = new Date().toISOString().split('T')[0];
-  return transactions.value.filter((t) =>
-    String(t.created_at ?? '').startsWith(today)
-  ).length;
 });
 
 const topAccounts = computed(() => {
@@ -621,6 +602,48 @@ const getTransactionTypeLabel = (type) => {
   return row?.label || type;
 };
 
+const resolveFlowKind = (transaction) => {
+  if (transaction.flow_kind) {
+    return transaction.flow_kind;
+  }
+  if (transaction.type === 'income') {
+    return 'inflow';
+  }
+  if (transaction.type === 'expense' || transaction.type === 'refund') {
+    return 'outflow';
+  }
+  return 'neutral';
+};
+
+const flowKindLabel = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return 'قبض / إيراد';
+  if (kind === 'outflow') return 'صرف / مصروف';
+  return getTransactionTypeLabel(transaction.type);
+};
+
+const flowKindBadgeClass = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return 'bg-success/15 text-success';
+  if (kind === 'outflow') return 'bg-error/15 text-error';
+  if (transaction.type === 'refund') return 'bg-violet-500/15 text-violet-300';
+  return 'bg-gold/10 text-gold';
+};
+
+const flowKindAmountClass = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return 'text-success';
+  if (kind === 'outflow') return 'text-error';
+  return 'text-text-main';
+};
+
+const flowKindPrefix = (transaction) => {
+  const kind = resolveFlowKind(transaction);
+  if (kind === 'inflow') return '+';
+  if (kind === 'outflow') return '-';
+  return '';
+};
+
 const applyFilters = async () => {
   pagination.value.current_page = 1;
   await fetchData();
@@ -643,18 +666,27 @@ const goToPage = (page) => {
 };
 
 const fetchData = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const { signal } = fetchController;
+
   setLoading();
   try {
     const accountParams = {
       per_page: 100,
       is_active: true,
+      _t: Date.now(),
     };
     if (filters.value.account_type) {
       accountParams.account_type = filters.value.account_type;
     }
 
-    const [accountsRes, txRes, summaryRes, balRes] = await Promise.all([
-      axios.get('/api/v1/finance/accounts', { params: accountParams }),
+    const today = new Date().toISOString().split('T')[0];
+
+    const [accountsRes, txRes, summaryRes, balRes, todayTxRes] = await Promise.all([
+      axios.get('/api/v1/finance/accounts', { params: accountParams, signal }),
       axios.get('/api/v1/reports/transactions', {
         params: {
           from_date: filters.value.date_from,
@@ -663,18 +695,36 @@ const fetchData = async () => {
           account_type: filters.value.account_type || undefined,
           page: pagination.value.current_page,
           per_page: pagination.value.per_page,
+          _t: Date.now(),
         },
+        signal,
       }),
       axios.get('/api/v1/reports/financial/summary', {
         params: {
           from_date: filters.value.date_from,
           to_date: filters.value.date_to,
+          _t: Date.now(),
         },
+        signal,
       }),
-      axios.get('/api/v1/reports/financial/accounts-balance'),
+      axios.get('/api/v1/reports/financial/accounts-balance', {
+        params: { _t: Date.now() },
+        signal,
+      }),
+      axios.get('/api/v1/reports/transactions', {
+        params: {
+          from_date: today,
+          to_date: today,
+          per_page: 1,
+          page: 1,
+          _t: Date.now(),
+        },
+        signal,
+      }),
     ]);
 
-    accounts.value = unwrapAccountsPayload(accountsRes.data?.data);
+    const accountsPayload = accountsRes.data?.data;
+    accounts.value = unwrapAccountsPayload(accountsPayload);
 
     const { items, pagination: pag } = unwrapPaginatedItems(txRes.data);
     transactions.value = items.map(normalizeReportTransaction);
@@ -688,16 +738,28 @@ const fetchData = async () => {
     };
 
     const s = summaryRes.data?.data || {};
-    const grand = balRes.data?.data?.grand_total;
+    const liquidityTotal =
+      accountsPayload?.stats?.total_balance ??
+      balRes.data?.data?.grand_total ??
+      accounts.value.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0);
+
+    const { pagination: todayPag } = unwrapPaginatedItems(todayTxRes.data);
+    todayTransactionsTotal.value = Number(todayPag.total) || 0;
+
     stats.value = {
-      total_balance: grand != null ? Number(grand) : 0,
+      total_balance: Number(liquidityTotal) || 0,
       total_income: Number(s.total_income) || 0,
+      total_cogs: Number(s.total_cogs) || 0,
+      total_operating_expenses: Number(s.total_operating_expenses) || 0,
       total_expense: Number(s.total_expense) || 0,
       net_profit: Number(s.net_profit) || 0,
     };
     
     setSuccess();
   } catch (error) {
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error('Failed to fetch finance data:', error);
     setError(error);
     accounts.value = [];
@@ -705,14 +767,35 @@ const fetchData = async () => {
     stats.value = {
       total_balance: 0,
       total_income: 0,
+      total_cogs: 0,
+      total_operating_expenses: 0,
       total_expense: 0,
       net_profit: 0,
     };
+    todayTransactionsTotal.value = 0;
   }
 };
+
+let pollingInterval = null;
 
 onMounted(async () => {
   await financeStore.fetchSettingsMeta();
   await fetchData();
+  
+  // Auto-refresh every 15 seconds to fetch new financial data without manual reload
+  pollingInterval = setInterval(async () => {
+    if (!isLoading()) {
+      await fetchData();
+    }
+  }, 15000);
+});
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
 });
 </script>

@@ -16,6 +16,7 @@ class FawryTransactionResource extends JsonResource
 
         return [
             'id' => $this->id,
+            'client_id' => $this->client_id,
             'client_name' => $this->client_name,
             'operation_type' => $this->operation_type,
             'operation_type_label' => $operationLabels['label'],

@@ -7,16 +7,13 @@ use App\Filament\Admin\Resources\Currencies\Pages\EditCurrency;
 use App\Filament\Admin\Resources\Currencies\Pages\ListCurrencies;
 use App\Models\Setting\Currency;
 use BackedEnum;
-use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
@@ -28,15 +25,15 @@ class CurrencyResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'الحسابات والمالية';
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية';
 
-    protected static ?string $navigationLabel = 'أسعار الصرف وشراء العملة';
+    protected static ?string $navigationLabel = 'العملات وأسعار الصرف';
 
     protected static ?string $pluralLabel = 'العملات';
 
     protected static ?string $modelLabel = 'عملة';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 10;
 
     protected static ?string $recordTitleAttribute = 'code';
 

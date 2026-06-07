@@ -128,51 +128,32 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div
-                    v-for="tripType in store.tripTypes"
+                <div
+                  class="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2"
+                  role="tablist"
+                  aria-label="نوع الرحلة"
+                >
+                  <button
+                    v-for="tripType in tripTypeOptions"
                     :key="tripType.value"
-                    @click="form.trip_type = tripType.value"
+                    type="button"
+                    role="tab"
+                    :aria-selected="form.trip_type === tripType.value"
+                    @click="selectTripType(tripType.value)"
                     :class="[
-                      'group relative cursor-pointer rounded-2xl border-2 p-6 transition-all duration-300 hover:scale-[1.01]',
+                      'flex min-w-[7.5rem] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-all',
                       form.trip_type === tripType.value
-                        ? 'border-gold/50 bg-gold/10 shadow-lg shadow-gold/10 ring-1 ring-gold/20'
-                        : 'border-white/10 bg-white/5 hover:border-sky-500/35 hover:bg-white/[0.07]',
+                        ? 'bg-gold text-black shadow-lg shadow-gold/25 ring-1 ring-gold/40'
+                        : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white',
                     ]"
                   >
-                    <div class="flex flex-col items-center space-y-3 text-center">
-                      <div
-                        :class="[
-                          'rounded-xl p-4 transition-all duration-300',
-                          form.trip_type === tripType.value
-                            ? 'bg-gradient-to-br from-sky-500 to-cyan-600 text-white shadow-lg shadow-sky-500/25'
-                            : 'bg-white/10 text-text-muted group-hover:bg-sky-500/15 group-hover:text-sky-200',
-                        ]"
-                      >
-                        <component :is="getTripTypeIcon(tripType.value)" class="h-8 w-8" />
-                      </div>
-                      <div>
-                        <h3
-                          :class="[
-                            'mb-1 text-lg font-bold',
-                            form.trip_type === tripType.value ? 'text-gold' : 'text-text-main',
-                          ]"
-                        >
-                          {{ tripType.label }}
-                        </h3>
-                        <p class="text-sm text-text-muted">{{ tripType.description }}</p>
-                      </div>
-                    </div>
-
-                    <!-- Selected Badge -->
-                    <div
-                      v-if="form.trip_type === tripType.value"
-                      class="absolute left-3 top-3 rounded-full bg-gold p-1"
-                    >
-                      <Check class="w-4 h-4 text-black" />
-                    </div>
-                  </div>
+                    <component :is="getTripTypeIcon(tripType.value)" class="h-4 w-4 shrink-0" />
+                    {{ tripType.label }}
+                  </button>
                 </div>
+                <p v-if="selectedTripTypeDescription" class="mt-4 text-center text-sm text-text-muted">
+                  {{ selectedTripTypeDescription }}
+                </p>
               </div>
             </div>
           </transition>
@@ -200,50 +181,54 @@
                   </div>
                 </div>
 
-                <div
-                  v-if="form.from_airport && form.to_airport"
-                  class="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3"
-                >
-                  <div class="flex items-center gap-2 text-sm text-text-muted">
-                    <span class="font-mono font-bold text-gold">{{ form.from_airport.iata_code }}</span>
-                    <span class="text-text-muted">→</span>
-                    <span class="font-mono font-bold text-gold">{{ form.to_airport.iata_code }}</span>
-                    <span class="mr-2 text-xs text-text-muted/80">
-                      {{ form.from_airport.city_name_ar }} — {{ form.to_airport.city_name_ar }}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn-airline-ghost inline-flex items-center gap-2 px-3 py-1.5 text-xs"
-                    @click="swapRouteAirports"
-                  >
-                    <ArrowLeftRight class="h-3.5 w-3.5" />
-                    تبديل المسار
-                  </button>
-                </div>
+                <p v-if="!form.trip_type" class="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                  اختر نوع الرحلة في الخطوة السابقة أولاً.
+                </p>
 
-                <div class="space-y-6">
-                  <!-- From Airport — Global Search -->
+                <!-- ذهاب فقط / ذهاب وعودة -->
+                <div v-else-if="form.trip_type !== 'multi_city'" class="space-y-6">
+                  <div
+                    v-if="form.from_airport && form.to_airport"
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3"
+                  >
+                    <div class="flex items-center gap-2 text-sm text-text-muted">
+                      <span class="font-mono font-bold text-gold">{{ form.from_airport.iata_code }}</span>
+                      <span class="text-text-muted">→</span>
+                      <span class="font-mono font-bold text-gold">{{ form.to_airport.iata_code }}</span>
+                      <span class="mr-2 text-xs text-text-muted/80">
+                        {{ form.from_airport.city_name_ar || form.from_airport.city_name_en }} —
+                        {{ form.to_airport.city_name_ar || form.to_airport.city_name_en }}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-airline-ghost inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                      @click="swapRouteAirports"
+                    >
+                      <ArrowLeftRight class="h-3.5 w-3.5" />
+                      تبديل المسار
+                    </button>
+                  </div>
+
                   <AirportSearchInput
                     v-model="form.from_airport"
                     label="من"
-                    placeholder="مثال: قاهرة، CAI، Cairo، Dubai..."
+                    placeholder="مثال: CAI، JED، DXB..."
                     :required="true"
                     :exclude-iata="form.to_airport?.iata_code || null"
                   />
 
-                  <!-- To Airport — Global Search -->
                   <AirportSearchInput
                     v-model="form.to_airport"
                     label="إلى"
-                    placeholder="مثال: جدة، JED، Dubai، London..."
+                    placeholder="مثال: CAI، JED، DXB..."
                     :required="true"
                     :exclude-iata="form.from_airport?.iata_code || null"
                   />
 
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label class="block text-sm font-medium text-gray-300 mb-2">
+                      <label class="mb-2 block text-sm font-medium text-gray-300">
                         تاريخ المغادرة <span class="text-error">*</span>
                       </label>
                       <input
@@ -253,9 +238,8 @@
                         class="flight-input"
                       />
                     </div>
-
                     <div v-if="form.trip_type === 'round_trip'">
-                      <label class="block text-sm font-medium text-gray-300 mb-2">
+                      <label class="mb-2 block text-sm font-medium text-gray-300">
                         تاريخ العودة <span class="text-error">*</span>
                       </label>
                       <input
@@ -267,25 +251,153 @@
                     </div>
                   </div>
 
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-text-muted">وقت المغادرة</label>
-                      <input
-                        v-model="form.departure_time"
-                        type="time"
-                        class="flight-input"
-                      />
-                    </div>
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-text-muted">وقت الوصول</label>
-                      <input
-                        v-model="form.arrival_time"
-                        type="time"
-                        class="flight-input"
-                      />
+                  <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <h3 class="mb-4 text-sm font-bold text-white">رحلة الذهاب</h3>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">
+                          وقت المغادرة <span class="text-error">*</span>
+                        </label>
+                        <input
+                          v-model="form.departure_time"
+                          type="time"
+                          class="flight-input"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">
+                          وقت الوصول <span class="text-error">*</span>
+                        </label>
+                        <input
+                          v-model="form.arrival_time"
+                          type="time"
+                          class="flight-input"
+                          required
+                        />
+                      </div>
                     </div>
                   </div>
+
+                  <div
+                    v-if="form.trip_type === 'round_trip'"
+                    class="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4"
+                  >
+                    <h3 class="mb-4 text-sm font-bold text-sky-200">رحلة العودة</h3>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">
+                          وقت المغادرة <span class="text-error">*</span>
+                        </label>
+                        <input
+                          v-model="form.return_time"
+                          type="time"
+                          class="flight-input"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">
+                          وقت الوصول <span class="text-error">*</span>
+                        </label>
+                        <input
+                          v-model="form.return_arrival_time"
+                          type="time"
+                          class="flight-input"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                <!-- وجهات متعددة -->
+                <div v-else class="space-y-4">
+                  <p class="text-sm text-text-muted">
+                    أضف من 2 إلى 5 قطع رحلة. كل قطعة تحتاج مطار المغادرة والوصول والتاريخ والأوقات.
+                  </p>
+
+                  <div
+                    v-for="(leg, legIndex) in form.legs"
+                    :key="leg.uid"
+                    class="relative rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                  >
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                      <h3 class="text-sm font-bold text-gold">
+                        القطعة {{ legIndex + 1 }}
+                      </h3>
+                      <button
+                        v-if="form.legs.length > 2"
+                        type="button"
+                        class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-error hover:bg-error/10"
+                        @click="removeMultiCityLeg(legIndex)"
+                      >
+                        <Trash2 class="h-3.5 w-3.5" />
+                        حذف
+                      </button>
+                    </div>
+
+                    <div class="space-y-4">
+                      <AirportSearchInput
+                        v-model="leg.from_airport"
+                        label="من"
+                        placeholder="مثال: CAI"
+                        :required="true"
+                        :exclude-iata="leg.to_airport?.iata_code || null"
+                      />
+                      <AirportSearchInput
+                        v-model="leg.to_airport"
+                        label="إلى"
+                        placeholder="مثال: DXB"
+                        :required="true"
+                        :exclude-iata="leg.from_airport?.iata_code || null"
+                      />
+                      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">
+                            التاريخ <span class="text-error">*</span>
+                          </label>
+                          <input
+                            v-model="leg.departure_date"
+                            type="date"
+                            :min="legIndex === 0 ? minDate : (form.legs[legIndex - 1]?.departure_date || minDate)"
+                            class="flight-input"
+                          />
+                        </div>
+                        <div>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">
+                            وقت المغادرة <span class="text-error">*</span>
+                          </label>
+                          <input
+                            v-model="leg.departure_time"
+                            type="time"
+                            class="flight-input"
+                          />
+                        </div>
+                        <div>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">
+                            وقت الوصول <span class="text-error">*</span>
+                          </label>
+                          <input
+                            v-model="leg.arrival_time"
+                            type="time"
+                            class="flight-input"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    v-if="form.legs.length < 5"
+                    type="button"
+                    class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 py-4 text-sm font-bold text-text-muted transition-all hover:border-gold/40 hover:text-gold"
+                    @click="addMultiCityLeg"
+                  >
+                    <Plus class="h-4 w-4" />
+                    إضافة قطعة رحلة
+                  </button>
+                </div>
                 </div>
               </div>
           </transition>
@@ -360,32 +472,16 @@
                       <span class="text-sm text-gray-300">متاح النظام ({{ selectedFlightSystemName }}):</span>
                       <span class="text-lg font-bold text-violet-200">{{ formatMoney(selectedFlightSystemAvailable, selectedFlightSystem?.currency) }}</span>
                     </div>
-
-                    <div>
-                      <label class="block text-sm font-medium text-gray-300 mb-2">خط الطيران (الناقل)</label>
-                      <select v-model="form.flight_carrier_id" @change="onCarrierChange" class="flight-select">
-                        <option value="">— اختر الخط —</option>
-                        <option v-for="carrier in availableCarriers" :key="carrier.id" :value="carrier.id">{{ carrier.name }}</option>
-                      </select>
-                    </div>
+                    <p class="text-xs text-text-muted text-center">
+                      سيتم اختيار خط الطيران (الناقل) في خطوة بيانات المسافرين.
+                    </p>
                   </div>
 
                   <!-- Case 2: Direct Booking -->
                   <div v-if="form.booking_source === 'direct'" class="space-y-6">
-                    <div>
-                      <label class="block text-sm font-medium text-gray-300 mb-2">خط الطيران المباشر</label>
-                      <select v-model="form.flight_carrier_id" @change="onCarrierChange" class="flight-select">
-                        <option value="">— اختر الخط —</option>
-                        <option v-for="carrier in availableCarriers" :key="carrier.id" :value="carrier.id">
-                          {{ carrier.name }} ({{ carrier.currency }})
-                        </option>
-                      </select>
-                    </div>
-
-                    <div v-if="selectedCarrier" class="p-4 rounded-xl border border-info/30 bg-info/10 flex justify-between items-center">
-                      <span class="text-sm text-gray-300">الرصيد المتاح:</span>
-                      <span class="text-lg font-bold text-info">{{ formatMoney(selectedCarrierAvailable, selectedCarrier.currency) }}</span>
-                    </div>
+                    <p class="text-sm text-text-muted text-center">
+                      سيتم اختيار خط الطيران (الناقل) في خطوة بيانات المسافرين.
+                    </p>
                   </div>
 
                   <!-- Case 3: Group Booking -->
@@ -397,19 +493,6 @@
                         <option v-for="group in availableGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
                       </select>
                     </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-300 mb-2">خط الطيران (اختياري)</label>
-                      <input v-model="form.airline_name" type="text" placeholder="مثال: مصر للطيران، النيل..." class="flight-input" />
-                    </div>
-                  </div>
-
-                  <!-- Common: Group Selection (Only for direct or system, if carrier is selected) -->
-                  <div v-if="form.booking_source !== 'group' && form.flight_carrier_id">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">المجموعة (اختياري)</label>
-                    <select v-model="form.flight_group_id" :disabled="loadingGroups" class="flight-select">
-                      <option value="">— بدون مجموعة —</option>
-                      <option v-for="group in availableGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-                    </select>
                   </div>
                 </div>
               </div>
@@ -432,17 +515,26 @@
                     <p class="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-400/80">
                       Passenger repeater
                     </p>
-                    <h2 class="flight-panel__title">بيانات المسافرين</h2>
-                    <p class="flight-panel__subtitle">اختر العميل ثم أدخل بيانات جميع المسافرين بالترتيب</p>
+                    <h2 class="flight-panel__title">
+                      {{ form.customer_type === 'counter' ? 'الشركة والمسافرون' : 'بيانات المسافرين' }}
+                    </h2>
+                    <p class="flight-panel__subtitle">
+                      {{
+                        form.customer_type === 'counter'
+                          ? 'جهة التعاقد (الشركة) تُسجَّل عليها المديونية — وأسماء المسافرين على التذكرة تُدخل في قسم منفصل'
+                          : 'اختر العميل ثم أدخل بيانات جميع المسافرين بالترتيب'
+                      }}
+                    </p>
                   </div>
                 </div>
 
+                <!-- نوع العميل -->
                 <div class="mb-6">
                   <label class="mb-2 block text-sm font-medium text-text-muted">
                     نوع العميل <span class="text-error">*</span>
                   </label>
-                  <div class="grid grid-cols-2 gap-4 mb-4">
-                    <button 
+                  <div class="grid grid-cols-2 gap-4">
+                    <button
                       type="button"
                       @click="form.customer_type = 'regular'; form.customer = null;"
                       class="flex items-center justify-center gap-2 p-3 rounded-xl border transition-all"
@@ -451,7 +543,7 @@
                       <User class="h-4 w-4" />
                       <span class="text-sm font-bold">عميل كوانتر</span>
                     </button>
-                    <button 
+                    <button
                       type="button"
                       @click="form.customer_type = 'counter'; form.customer = null;"
                       class="flex items-center justify-center gap-2 p-3 rounded-xl border transition-all"
@@ -461,26 +553,120 @@
                       <span class="text-sm font-bold">عميل شركة</span>
                     </button>
                   </div>
-
-                  <label class="mb-2 block text-sm font-medium text-text-muted">
-                    {{ form.customer_type === 'counter' ? 'عميل الشركة المختار *' : 'العميل المختار *' }}
-                  </label>
-                  <CustomerSelect v-model="form.customer" :type="form.customer_type" />
-                  <p v-if="form.customer_type === 'counter'" class="mt-2 text-xs text-sky-400 text-right" dir="rtl">
-                    * سيتم قيد مديونية التذكرة على حساب هذا العميل (الشركة). يرجى إدخال اسم المسافر الفعلي أدناه.
-                  </p>
                 </div>
 
-                <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <!-- ── القسم 1: جهة التعاقد / العميل ── -->
+                <div
+                  class="mb-6 space-y-4 rounded-2xl border p-6"
+                  :class="form.customer_type === 'counter'
+                    ? 'border-sky-500/30 bg-sky-500/5'
+                    : 'border-gold/30 bg-gold/5'"
+                >
+                  <div class="flex items-start gap-3">
+                    <div
+                      class="rounded-xl p-3"
+                      :class="form.customer_type === 'counter' ? 'bg-sky-500/15 text-sky-300' : 'bg-gold/15 text-gold'"
+                    >
+                      <Building2 v-if="form.customer_type === 'counter'" class="h-5 w-5" />
+                      <User v-else class="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 class="text-base font-black text-white">
+                        {{ form.customer_type === 'counter' ? 'جهة التعاقد (الشركة)' : 'العميل (كوانتر)' }}
+                      </h3>
+                      <p class="mt-1 text-xs leading-relaxed text-text-muted">
+                        {{
+                          form.customer_type === 'counter'
+                            ? 'اسم الشركة أو المكتب المتعاقد — تُسجَّل عليه مديونية التذكرة. هذا ليس اسم المسافر.'
+                            : 'العميل الذي يدفع أو يُسجَّل عليه الحجز.'
+                        }}
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
-                    <label class="mb-2 block text-sm font-medium text-text-muted">رقم الحجز (PNR)</label>
+                    <label class="mb-2 block text-sm font-medium text-text-muted">
+                      {{ form.customer_type === 'counter' ? 'اختر الشركة *' : 'اختر العميل *' }}
+                    </label>
+                    <CustomerSelect v-model="form.customer" :type="form.customer_type" />
+                  </div>
+
+                  <div
+                    v-if="form.customer"
+                    class="rounded-xl border p-4"
+                    :class="form.customer_type === 'counter'
+                      ? 'border-sky-500/25 bg-sky-500/10'
+                      : 'border-gold/25 bg-gold/10'"
+                  >
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                          {{ form.customer_type === 'counter' ? 'اسم جهة التعاقد' : 'اسم العميل' }}
+                        </span>
+                        <span
+                          class="text-lg font-black"
+                          :class="form.customer_type === 'counter' ? 'text-sky-300' : 'text-gold'"
+                        >
+                          {{ form.customer.name || form.customer.full_name }}
+                        </span>
+                        <span
+                          v-if="form.customer.phone"
+                          class="mt-1 block text-xs font-mono text-text-muted"
+                          dir="ltr"
+                        >
+                          {{ form.customer.phone }}
+                        </span>
+                      </div>
+                      <div
+                        v-if="form.customer_type === 'counter'"
+                        class="rounded-lg border border-sky-500/20 bg-black/20 px-3 py-2 text-[11px] text-sky-200/90 max-w-xs"
+                      >
+                        المديونية تُقيد على حساب هذه الشركة — وليس على اسم المسافر أدناه
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ── القسم 2: مرجع الحجز ── -->
+                <div class="mb-6 space-y-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <div class="flex items-center gap-3">
+                    <div class="rounded-xl bg-violet-500/15 p-3 text-violet-300">
+                      <Plane class="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 class="text-base font-black text-white">مرجع الحجز</h3>
+                      <p class="mt-0.5 text-xs text-text-muted">PNR والناقل — مشترك بين الشركة والمسافرين</p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-text-muted">
+                      رقم الحجز (PNR) <span class="text-error">*</span>
+                    </label>
                     <input
                       v-model="form.pnr"
                       type="text"
                       maxlength="50"
-                      placeholder="اختياري"
+                      placeholder="مثال: S5TFR54"
                       class="flight-input"
                     />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-text-muted">
+                      خط الطيران (الناقل) <span class="text-error">*</span>
+                    </label>
+                    <select
+                      v-model="form.flight_carrier_id"
+                      :disabled="loadingCarriers"
+                      class="flight-select"
+                      @change="onCarrierChange"
+                    >
+                      <option value="">— اختر الخط —</option>
+                      <option v-for="carrier in availableCarriers" :key="carrier.id" :value="carrier.id">
+                        {{ carrier.name }}{{ form.booking_source === 'direct' ? ` (${carrier.currency})` : '' }}
+                      </option>
+                    </select>
                   </div>
                   <div>
                     <label class="mb-2 block text-sm font-medium text-text-muted">موظف مسؤول</label>
@@ -492,9 +678,46 @@
                     </select>
                   </div>
                 </div>
+                </div>
 
-                <!-- Regular Passengers Flow -->
-                <div v-if="form.customer_type !== 'counter'" class="space-y-6">
+                <div
+                  v-if="form.booking_source === 'direct' && resolvedCarrier"
+                  class="mb-6 p-4 rounded-xl border border-info/30 bg-info/10 flex justify-between items-center"
+                >
+                  <span class="text-sm text-gray-300">الرصيد المتاح ({{ resolvedCarrier.name }}):</span>
+                  <span class="text-lg font-bold text-info">{{ formatMoney(selectedCarrierAvailable, resolvedCarrier.currency) }}</span>
+                </div>
+
+                <!-- ── القسم 3: المسافرون على التذكرة ── -->
+                <div class="space-y-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6">
+                  <div class="flex items-start gap-3">
+                    <div class="rounded-xl bg-emerald-500/15 p-3 text-emerald-300">
+                      <Users class="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 class="text-base font-black text-white">المسافرون على التذكرة</h3>
+                      <p class="mt-1 text-xs leading-relaxed text-text-muted">
+                        {{
+                          form.customer_type === 'counter'
+                            ? 'أدخل اسم كل مسافر فعلي (أول + أخير) — مختلف تماماً عن اسم الشركة أعلاه'
+                            : 'بيانات كل مسافر على التذكرة'
+                        }}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="form.customer_type === 'counter' && form.customer"
+                    class="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/90"
+                  >
+                    <span class="font-bold">تذكير:</span>
+                    جهة التعاقد =
+                    <span class="font-black text-amber-200">{{ form.customer.name || form.customer.full_name }}</span>
+                    — المسافر = الاسم الذي تدخله في البطاقات أدناه
+                  </div>
+
+                <!-- Passenger repeater -->
+                <div class="space-y-6">
                   <div
                     v-if="store.passengerTypes?.length"
                     class="mb-6 flex flex-wrap gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
@@ -515,7 +738,23 @@
                   </div>
 
                   <!-- Passenger repeater -->
-                  <div class="space-y-4">
+                  <div v-if="!form.passengers.length" class="rounded-xl border border-dashed border-emerald-500/30 bg-black/20 p-8 text-center">
+                    <Users class="mx-auto mb-3 h-10 w-10 text-emerald-400/60" />
+                    <p class="text-sm font-bold text-white">أدخل اسم المسافر الذي سيسافر</p>
+                    <p class="mt-1 text-xs text-text-muted">
+                      الاسم الأول والأخير للمسافر — مختلف عن اسم الشركة أعلاه
+                    </p>
+                    <button
+                      type="button"
+                      class="btn-airline-ghost mt-4 inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+                      @click="addPassenger('adult')"
+                    >
+                      <Plus class="h-4 w-4" />
+                      إضافة مسافر (بالغ)
+                    </button>
+                  </div>
+
+                  <div v-else class="space-y-4">
                     <div
                       v-for="(passenger, index) in form.passengers"
                       :key="passenger.uid"
@@ -525,10 +764,13 @@
                         <div>
                           <h4 class="font-bold text-white">
                             مسافر {{ index + 1 }}
-                            <span class="mr-2 text-xs font-normal text-text-muted">
+                            <span class="mr-2 text-xs font-normal text-emerald-300/80">
                               ({{ getPassengerTypeLabel(passenger.type) }})
                             </span>
                           </h4>
+                          <p v-if="form.customer_type === 'counter'" class="text-[10px] text-text-muted mt-0.5">
+                            اسم على التذكرة — ليس اسم الشركة
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -543,23 +785,25 @@
                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                           <div>
                             <label class="mb-2 block text-sm font-medium text-gray-300">
-                              الاسم الأول <span class="text-error">*</span>
+                              {{ form.customer_type === 'counter' ? 'الاسم الأول للمسافر' : 'الاسم الأول' }}
+                              <span class="text-error">*</span>
                             </label>
                             <input
                               v-model="passenger.first_name"
                               type="text"
-                              placeholder="الاسم الأول"
+                              :placeholder="form.customer_type === 'counter' ? 'مثال: ياسر (اسم المسافر)' : 'الاسم الأول'"
                               class="flight-input"
                             />
                           </div>
                           <div>
                             <label class="mb-2 block text-sm font-medium text-gray-300">
-                              الاسم الأخير <span class="text-error">*</span>
+                              {{ form.customer_type === 'counter' ? 'الاسم الأخير للمسافر' : 'الاسم الأخير' }}
+                              <span class="text-error">*</span>
                             </label>
                             <input
                               v-model="passenger.last_name"
                               type="text"
-                              placeholder="الاسم الأخير"
+                              :placeholder="form.customer_type === 'counter' ? 'مثال: أحمد (اسم العائلة)' : 'الاسم الأخير'"
                               class="flight-input"
                             />
                           </div>
@@ -581,11 +825,11 @@
                         </div>
 
                         <div>
-                          <label class="mb-2 block text-sm font-medium text-gray-300">رقم البطاقة</label>
+                          <label class="mb-2 block text-sm font-medium text-gray-300">رقم البطاقة (اختياري)</label>
                           <input
                             v-model="passenger.national_id"
                             type="text"
-                            placeholder="رقم البطاقة"
+                            placeholder="اختياري"
                             class="flight-input"
                           />
                         </div>
@@ -622,25 +866,6 @@
                     </button>
                   </div>
                 </div>
-
-                <!-- B2B Informational Card (Company Booking) -->
-                <div v-else class="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-8 text-center space-y-5">
-                  <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-sky-500/10 text-sky-400">
-                    <Building2 class="h-8 w-8" />
-                  </div>
-                  <div class="space-y-2">
-                    <h3 class="text-lg font-bold text-white">تسجيل حجز باسم جهة التعاقد (الشركة)</h3>
-                    <p class="text-sm text-text-muted max-w-md mx-auto leading-relaxed">
-                      نظراً لأن هذا الحجز يخص جهة تعاقدية (شركة)، سيتم إصدار التذكرة باسم الشركة مباشرة دون الحاجة لملء بيانات مسافرين فردية.
-                    </p>
-                  </div>
-                  <div v-if="form.customer" class="inline-flex items-center gap-3 rounded-xl bg-sky-500/10 px-5 py-3 border border-sky-500/20">
-                    <span class="text-xs text-text-muted">الجهة المستفيدة:</span>
-                    <span class="text-base font-black text-sky-400">{{ form.customer.name }}</span>
-                  </div>
-                  <div v-else class="text-sm text-error font-medium">
-                    * يرجى العودة لاختيار الشركة أولاً لإتمام الحجز.
-                  </div>
                 </div>
               </div>
             </div>
@@ -1100,67 +1325,127 @@
                 </div>
 
                 <div class="space-y-6">
-                  <!-- Trip Summary -->
+                  <!-- 1) الشركة / العميل — جهة البيع -->
+                  <div
+                    class="rounded-xl border p-6 space-y-4"
+                    :class="form.customer_type === 'counter'
+                      ? 'bg-sky-500/10 border-sky-500/25'
+                      : 'bg-gold/10 border-gold/20'"
+                  >
+                    <h4 class="font-bold flex items-center gap-2" :class="form.customer_type === 'counter' ? 'text-sky-300' : 'text-gold'">
+                      <Building2 v-if="form.customer_type === 'counter'" class="w-5 h-5" />
+                      <User v-else class="w-5 h-5" />
+                      {{ form.customer_type === 'counter' ? 'الشركة التي نبيع لها التذكرة' : 'العميل (كوانتر)' }}
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div class="rounded-lg bg-black/20 p-3">
+                        <span class="text-gray-400 block text-xs mb-1">
+                          {{ form.customer_type === 'counter' ? 'اسم الشركة' : 'اسم العميل' }}
+                        </span>
+                        <span class="font-bold text-white text-base">
+                          {{ form.customer?.name || form.customer?.full_name || '—' }}
+                        </span>
+                      </div>
+                      <div v-if="form.customer?.phone" class="rounded-lg bg-black/20 p-3">
+                        <span class="text-gray-400 block text-xs mb-1">الهاتف</span>
+                        <span class="font-mono font-bold text-white" dir="ltr">{{ form.customer.phone }}</span>
+                      </div>
+                      <div v-if="form.customer_type === 'counter'" class="sm:col-span-2 text-xs text-sky-200/80">
+                        * المديونية تُسجَّل على حساب هذه الشركة — وليس على اسم المسافر أدناه
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 2) مصدر الشراء (مجموعة / سيستم / مباشر) -->
+                  <div class="p-6 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                    <h4 class="font-bold text-white flex items-center gap-2">
+                      <Settings class="w-5 h-5 text-violet-400" />
+                      مصدر الحجز والشراء
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span class="text-gray-400 block text-xs">طريقة الحجز</span>
+                        <span class="text-white font-bold">{{ bookingSourceSummaryLabel }}</span>
+                      </div>
+                      <div v-if="form.booking_source === 'group' && selectedGroupName">
+                        <span class="text-gray-400 block text-xs">مجموعة الشراء (بالأجل)</span>
+                        <span class="text-sky-300 font-bold">{{ selectedGroupName }}</span>
+                      </div>
+                      <div v-if="form.booking_source === 'system' && selectedFlightSystemName">
+                        <span class="text-gray-400 block text-xs">نظام الحجز</span>
+                        <span class="text-white font-bold">{{ selectedFlightSystemName }}</span>
+                      </div>
+                      <div v-if="resolvedCarrier">
+                        <span class="text-gray-400 block text-xs">خط الطيران (الناقل)</span>
+                        <span class="text-white font-bold">{{ resolvedCarrier.name }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 3) بيانات الرحلة -->
                   <div class="p-6 bg-white/5 border border-white/10 rounded-xl space-y-4">
                     <h4 class="font-bold text-white flex items-center gap-2">
                       <Plane class="w-5 h-5 text-gold" />
                       بيانات الرحلة
                     </h4>
                     <div class="grid grid-cols-2 gap-4 text-sm">
-                      <div class="col-span-2 p-3 bg-gold/10 rounded-lg border border-gold/20 flex items-center gap-3">
-                        <Users class="w-5 h-5 text-gold" />
-                        <div>
-                          <span class="text-gray-400 block text-xs">العميل (صاحب الحجز):</span>
-                          <span class="text-white font-bold text-base">{{ form.customer?.name || form.customer?.full_name || '-' }}</span>
-                        </div>
+                      <div>
+                        <span class="text-gray-400 block text-xs">نوع الرحلة</span>
+                        <span class="text-white font-bold">{{ getTripTypeLabel(form.trip_type) }}</span>
                       </div>
                       <div>
-                        <span class="text-gray-400">نوع الرحلة:</span>
-                        <span class="text-white font-bold mr-2">{{ getTripTypeLabel(form.trip_type) }}</span>
+                        <span class="text-gray-400 block text-xs">رقم الحجز (PNR)</span>
+                        <span class="font-mono font-bold text-white">{{ form.pnr || '—' }}</span>
                       </div>
-                      <div>
-                        <span class="text-gray-400">طريقة الحجز:</span>
-                        <span class="text-white font-bold mr-2">
-                          {{ form.booking_source === 'system' ? 'عبر نظام' : (form.booking_source === 'group' ? 'حجز مجموعة' : 'حجز مباشر') }}
+                      <div v-if="form.trip_type !== 'multi_city'">
+                        <span class="text-gray-400 block text-xs">من</span>
+                        <span class="text-white font-bold">{{ form.from_airport?.iata_code || '—' }}</span>
+                      </div>
+                      <div v-if="form.trip_type !== 'multi_city'">
+                        <span class="text-gray-400 block text-xs">إلى</span>
+                        <span class="text-white font-bold">{{ form.to_airport?.iata_code || '—' }}</span>
+                      </div>
+                      <div v-if="form.trip_type !== 'multi_city'">
+                        <span class="text-gray-400 block text-xs">تاريخ المغادرة</span>
+                        <span class="text-white font-bold">{{ form.departure_date || '—' }}</span>
+                      </div>
+                      <div v-if="form.trip_type !== 'multi_city' && form.departure_time">
+                        <span class="text-gray-400">وقت الذهاب:</span>
+                        <span class="mr-2 font-mono font-bold text-white" dir="ltr">
+                          {{ form.departure_time }} → {{ form.arrival_time || '-' }}
                         </span>
-                      </div>
-                      <div v-if="form.booking_source === 'system'">
-                        <span class="text-gray-400">نظام الحجز:</span>
-                        <span class="text-white font-bold mr-2">{{ selectedFlightSystemName || '-' }}</span>
-                      </div>
-                      <div v-if="form.booking_source === 'group'">
-                        <span class="text-gray-400">المجموعة:</span>
-                        <span class="text-white font-bold mr-2">
-                          {{ availableGroups.find(g => g.id === form.flight_group_id)?.name || '-' }}
-                        </span>
-                      </div>
-                      <div>
-                        <span class="text-gray-400">خط الطيران:</span>
-                        <span class="text-white font-bold mr-2">{{ selectedCarrier?.name || form.airline_name || '-' }}</span>
-                      </div>
-                      <div>
-                        <span class="text-gray-400">من:</span>
-                        <span class="text-white font-bold mr-2">{{ form.from_airport?.iata_code || '-' }}</span>
-                      </div>
-                      <div>
-                        <span class="text-gray-400">إلى:</span>
-                        <span class="text-white font-bold mr-2">{{ form.to_airport?.iata_code || '-' }}</span>
-                      </div>
-                      <div>
-                        <span class="text-gray-400">تاريخ المغادرة:</span>
-                        <span class="text-white font-bold mr-2">{{ form.departure_date || '-' }}</span>
                       </div>
                       <div v-if="form.trip_type === 'round_trip'">
-                        <span class="text-gray-400">تاريخ العودة:</span>
-                        <span class="text-white font-bold mr-2">{{ form.return_date || '-' }}</span>
+                        <span class="text-gray-400 block text-xs">تاريخ العودة</span>
+                        <span class="text-white font-bold">{{ form.return_date || '—' }}</span>
                       </div>
-                      <div v-if="form.pnr">
-                        <span class="text-gray-400">PNR:</span>
-                        <span class="mr-2 font-mono font-bold text-white">{{ form.pnr }}</span>
+                      <div v-if="form.trip_type === 'round_trip' && form.return_time">
+                        <span class="text-gray-400">وقت العودة:</span>
+                        <span class="mr-2 font-mono font-bold text-white" dir="ltr">
+                          {{ form.return_time }} → {{ form.return_arrival_time || '-' }}
+                        </span>
+                      </div>
+                      <div v-if="form.trip_type === 'multi_city'" class="col-span-2 space-y-2">
+                        <span class="text-gray-400 block text-xs">قطع الرحلة:</span>
+                        <div
+                          v-for="(leg, idx) in form.legs"
+                          :key="leg.uid"
+                          class="rounded-lg border border-white/10 bg-black/20 p-3 text-xs"
+                        >
+                          <div class="font-bold text-gold">القطعة {{ idx + 1 }}</div>
+                          <div class="mt-1 font-mono text-white" dir="ltr">
+                            {{ leg.from_airport?.iata_code || '?' }} → {{ leg.to_airport?.iata_code || '?' }}
+                          </div>
+                          <div class="mt-1 text-text-muted">
+                            {{ leg.departure_date || '-' }}
+                            ·
+                            {{ leg.departure_time || '-' }} → {{ leg.arrival_time || '-' }}
+                          </div>
+                        </div>
                       </div>
                       <div v-if="form.employee_id">
-                        <span class="text-gray-400">الموظف:</span>
-                        <span class="mr-2 font-bold text-white">{{ selectedEmployeeLabel }}</span>
+                        <span class="text-gray-400 block text-xs">الموظف المسؤول</span>
+                        <span class="font-bold text-white">{{ selectedEmployeeLabel }}</span>
                       </div>
                       <div v-if="form.passengers.reduce((sum, p) => sum + (Number(p.baggage_allowance_kg) || 0), 0) > 0">
                         <span class="text-gray-400">إجمالي الأمتعة:</span>
@@ -1169,30 +1454,50 @@
                     </div>
                   </div>
 
-                  <!-- Passengers Summary -->
-                  <div class="p-6 bg-white/5 border border-white/10 rounded-xl space-y-4">
-                    <h4 class="font-bold text-white flex items-center gap-2">
-                      <Users class="w-5 h-5 text-gold" />
-                      المسافرون ({{ form.passengers.length }})
+                  <!-- 4) المسافرون — أسماء على التذكرة -->
+                  <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6 space-y-4">
+                    <h4 class="font-bold text-emerald-300 flex items-center gap-2">
+                      <Users class="w-5 h-5" />
+                      {{ form.customer_type === 'counter' ? 'المسافرون على التذكرة' : 'المسافرون' }}
+                      ({{ form.passengers.length }})
                     </h4>
-                    <div class="space-y-2">
+                    <p v-if="form.customer_type === 'counter'" class="text-xs text-emerald-200/70">
+                      هؤلاء هم من سيسافرون فعلاً — مختلفون عن شركة
+                      «{{ form.customer?.name || form.customer?.full_name }}»
+                    </p>
+                    <div class="space-y-3">
                       <div
-                        v-for="passenger in form.passengers"
+                        v-for="(passenger, index) in form.passengers"
                         :key="passenger.uid"
-                        class="flex items-center justify-between text-sm py-2 border-b border-white/5 last:border-0"
+                        class="rounded-xl border border-white/10 bg-black/20 p-4 text-sm"
                       >
-                        <div class="flex flex-col">
-                          <span class="text-white font-medium">{{ passenger.first_name }} {{ passenger.last_name }}</span>
-                          <span v-if="passenger.national_id" class="text-[10px] text-text-muted">بطاقة: {{ passenger.national_id }}</span>
-                        </div>
-                        <div class="text-right flex flex-col items-end gap-1">
-                          <span class="px-3 py-1 bg-white/10 rounded-lg text-gray-400 text-xs">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                          <span class="font-bold text-white">مسافر {{ index + 1 }}</span>
+                          <span class="rounded-lg bg-white/10 px-2 py-0.5 text-xs text-gray-300">
                             {{ getPassengerTypeLabel(passenger.type) }}
                           </span>
-                          <span v-if="Number(passenger.baggage_allowance_kg) > 0" class="text-[10px] text-gold font-bold">
-                            <Plane class="w-3 h-3 inline-block ml-1" />
-                            {{ passenger.baggage_allowance_kg }} كجم
-                          </span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <span class="text-gray-400 block text-xs">الاسم الأول</span>
+                            <span class="font-bold text-white">{{ passenger.first_name?.trim() || '—' }}</span>
+                          </div>
+                          <div>
+                            <span class="text-gray-400 block text-xs">الاسم الأخير</span>
+                            <span class="font-bold text-white">{{ passenger.last_name?.trim() || '—' }}</span>
+                          </div>
+                          <div v-if="passenger.national_id">
+                            <span class="text-gray-400 block text-xs">رقم البطاقة</span>
+                            <span class="font-mono text-white">{{ passenger.national_id }}</span>
+                          </div>
+                          <div v-if="passenger.date_of_birth">
+                            <span class="text-gray-400 block text-xs">تاريخ الميلاد</span>
+                            <span class="font-mono text-white">{{ passenger.date_of_birth }}</span>
+                          </div>
+                          <div v-if="Number(passenger.baggage_allowance_kg) > 0">
+                            <span class="text-gray-400 block text-xs">الأمتعة</span>
+                            <span class="font-bold text-gold">{{ passenger.baggage_allowance_kg }} كجم</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1262,7 +1567,9 @@
                         <span class="text-success font-bold">{{ formatCurrency(form.initial_payment) }}</span>
                       </div>
                       <div class="flex items-center justify-between text-sm pt-2 border-t border-white/5">
-                        <span class="text-gray-300">المتبقي (مديونية على العميل):</span>
+                        <span class="text-gray-300">
+                          {{ form.customer_type === 'counter' ? 'المتبقي (مديونية على الشركة):' : 'المتبقي (مديونية على العميل):' }}
+                        </span>
                         <span class="text-error font-black text-lg">{{ formatCurrency(form.selling_price - (form.initial_payment || 0)) }}</span>
                       </div>
                     </div>
@@ -1291,8 +1598,11 @@
               v-if="currentStep < 7"
               type="button"
               @click="nextStep"
-              :disabled="!canProceed || loading"
-              class="btn-airline order-1 w-full px-8 py-3 sm:order-2 sm:w-auto disabled:pointer-events-none disabled:opacity-45"
+              :disabled="loading"
+              :class="[
+                'btn-airline order-1 w-full px-8 py-3 sm:order-2 sm:w-auto',
+                !canProceed && 'opacity-45',
+              ]"
             >
               <span v-if="loading" class="flex items-center gap-2">
                 <Loader2 class="h-5 w-5 animate-spin" />
@@ -1328,8 +1638,8 @@
                 <ul class="list-disc list-inside space-y-0.5 text-xs text-error/90">
                   <li v-if="!isBookingStepComplete(1)">نوع الرحلة غير محدد</li>
                   <li v-if="!isBookingStepComplete(2)">المسار أو التواريخ ناقصة</li>
-                  <li v-if="!isBookingStepComplete(3)">مصدر الحجز (النظام / خط الطيران) غير محدد</li>
-                  <li v-if="!isBookingStepComplete(4)">بيانات المسافرين أو العميل ناقصة</li>
+                  <li v-if="!isBookingStepComplete(3)">مصدر الحجز غير محدد</li>
+                  <li v-if="!isBookingStepComplete(4)">بيانات المسافرين أو خط الطيران أو العميل ناقصة</li>
                   <li v-if="!isBookingStepComplete(5)">التسعير (شراء / بيع) غير مكتمل</li>
                   <li v-if="!isBookingStepComplete(6)">بيانات الدفع غير مكتملة</li>
                 </ul>
@@ -1359,13 +1669,27 @@
                   <span class="font-bold text-sky-100">{{ getStepLabel(currentStep) }}</span>
                 </div>
                 <div class="flex items-center justify-between gap-2 text-sm border-t border-white/5 pt-2">
-                  <span class="text-text-muted">طريقة الحجز</span>
-                  <span class="font-bold text-sky-100">{{ form.booking_source === 'system' ? 'سيستم' : 'مباشر' }}</span>
+                  <span class="text-text-muted">مصدر الحجز</span>
+                  <span class="font-bold text-sky-100 text-left">{{ bookingSourceSummaryLabel }}</span>
                 </div>
               </div>
 
-              <div v-if="form.booking_source === 'system' || selectedCarrier" class="space-y-4">
-                <div v-if="form.booking_source === 'system' || (form.booking_source === 'direct' && selectedCarrier)" class="p-4 bg-gold/10 border border-gold/30 rounded-xl space-y-2 text-sm">
+              <div
+                v-if="form.booking_source === 'system' || form.booking_source === 'group' || resolvedCarrier"
+                class="space-y-4"
+              >
+                <div
+                  v-if="
+                    (form.booking_source === 'system' && form.flight_system_id) ||
+                    (form.booking_source === 'direct' && resolvedCarrier) ||
+                    (form.booking_source === 'group' && form.flight_group_id)
+                  "
+                  class="p-4 bg-gold/10 border border-gold/30 rounded-xl space-y-2 text-sm"
+                >
+                  <div v-if="form.booking_source === 'group'" class="flex justify-between gap-2">
+                    <span class="text-gray-400 shrink-0">المجموعة</span>
+                    <span class="text-left font-bold text-white">{{ selectedGroupName || '—' }}</span>
+                  </div>
                   <div v-if="form.booking_source === 'system' && store.systems?.length" class="flex justify-between gap-2">
                     <span class="text-gray-400 shrink-0">نظام الحجز</span>
                     <span class="text-left font-bold text-white">{{ selectedFlightSystemName || '—' }}</span>
@@ -1416,22 +1740,22 @@
                       </span>
                     </div>
                   </template>
-                  <div v-if="selectedCarrier" class="flex justify-between">
-                    <span class="text-gray-400">خط الطيران</span>
-                    <span class="text-white font-bold">{{ selectedCarrier.name }}</span>
+                  <div v-if="resolvedCarrier" class="flex justify-between">
+                    <span class="text-gray-400">{{ form.booking_source === 'direct' ? 'الساين' : 'خط الطيران' }}</span>
+                    <span class="text-white font-bold">{{ resolvedCarrier.name }}</span>
                   </div>
-                  <div v-if="selectedCarrier && form.booking_source === 'direct'" class="flex justify-between">
+                  <div v-if="resolvedCarrier && form.booking_source === 'direct'" class="flex justify-between">
                     <span class="text-gray-400">الرصيد / العملة</span>
-                    <span class="text-gold font-mono font-bold">{{ finiteNum(selectedCarrierAvailable).toLocaleString() }} {{ selectedCarrier.currency || 'EGP' }}</span>
+                    <span class="text-gold font-mono font-bold">{{ finiteNum(selectedCarrierAvailable).toLocaleString() }} {{ resolvedCarrier.currency || 'EGP' }}</span>
                   </div>
                   <div
-                    v-if="form.purchase_balance_source === 'carrier' && selectedCarrier && carrierPurchaseDebitPreview > 0 && carrierCurrencyMatchesBooking"
+                    v-if="form.purchase_balance_source === 'carrier' && resolvedCarrier && carrierPurchaseDebitPreview > 0 && carrierCurrencyMatchesBooking"
                     class="flex justify-between gap-2 border-t border-white/10 pt-2 text-[11px]"
                   >
                     <span class="text-gray-400 shrink-0">شراء على الساين</span>
                     <span class="font-mono text-white tabular-nums" dir="ltr">
                       −{{ Number(carrierPurchaseDebitPreview).toLocaleString('ar-EG') }}
-                      {{ selectedCarrier.currency }}
+                      {{ resolvedCarrier.currency }}
                     </span>
                   </div>
                   <div
@@ -1444,7 +1768,7 @@
                       :class="projectedCarrierAvailableAfterBooking < 0 ? 'text-error' : 'text-success'"
                     >
                       {{ Number(projectedCarrierAvailableAfterBooking).toLocaleString('ar-EG') }}
-                      {{ selectedCarrier.currency }}
+                      {{ resolvedCarrier.currency }}
                     </span>
                   </div>
                 </div>
@@ -1454,15 +1778,27 @@
                     <span class="text-gray-400">نوع الرحلة:</span>
                     <span class="text-white font-bold">{{ getTripTypeLabel(form.trip_type) }}</span>
                   </div>
-                  <div v-if="form.from_airport && form.to_airport" class="flex items-center justify-between text-sm">
+                  <div v-if="routeSummaryLabel" class="flex items-center justify-between text-sm">
                     <span class="text-gray-400">المسار:</span>
+                    <span class="font-bold font-mono text-white" dir="ltr">{{ routeSummaryLabel }}</span>
+                  </div>
+                  <div
+                    v-if="form.departure_date || (form.trip_type === 'multi_city' && form.legs[0]?.departure_date)"
+                    class="flex items-center justify-between text-sm"
+                  >
+                    <span class="text-gray-400">المغادرة:</span>
                     <span class="text-white font-bold">
-                      {{ form.from_airport.iata_code }} → {{ form.to_airport.iata_code }}
+                      {{ formatDate(form.trip_type === 'multi_city' ? form.legs[0]?.departure_date : form.departure_date) }}
                     </span>
                   </div>
-                  <div v-if="form.departure_date" class="flex items-center justify-between text-sm">
-                    <span class="text-gray-400">المغادرة:</span>
-                    <span class="text-white font-bold">{{ formatDate(form.departure_date) }}</span>
+                  <div
+                    v-if="form.trip_type !== 'multi_city' && form.departure_time"
+                    class="flex items-center justify-between text-sm"
+                  >
+                    <span class="text-gray-400">وقت الذهاب:</span>
+                    <span class="font-bold font-mono text-white" dir="ltr">
+                      {{ form.departure_time }} → {{ form.arrival_time || '—' }}
+                    </span>
                   </div>
                   <div
                     v-if="form.trip_type === 'round_trip' && form.return_date"
@@ -1471,16 +1807,65 @@
                     <span class="text-gray-400">العودة:</span>
                     <span class="text-white font-bold">{{ formatDate(form.return_date) }}</span>
                   </div>
+                  <div
+                    v-if="form.trip_type === 'round_trip' && form.return_time"
+                    class="flex items-center justify-between text-sm"
+                  >
+                    <span class="text-gray-400">وقت العودة:</span>
+                    <span class="font-bold font-mono text-white" dir="ltr">
+                      {{ form.return_time }} → {{ form.return_arrival_time || '—' }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="form.trip_type === 'multi_city' && form.legs.length"
+                    class="space-y-1 rounded-lg border border-white/10 bg-black/20 p-3 text-xs"
+                  >
+                    <div class="font-bold text-gold">قطع الرحلة ({{ form.legs.length }})</div>
+                    <div
+                      v-for="(leg, idx) in form.legs"
+                      :key="leg.uid"
+                      class="flex justify-between gap-2 text-text-muted"
+                    >
+                      <span>{{ idx + 1 }}.</span>
+                      <span class="font-mono text-white" dir="ltr">
+                        {{ leg.from_airport?.iata_code || '?' }} → {{ leg.to_airport?.iata_code || '?' }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div
                   v-if="selectedCustomerDisplay"
-                  class="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-sm"
+                  class="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm"
+                  :class="form.customer_type === 'counter'
+                    ? 'border-sky-500/25 bg-sky-500/10'
+                    : 'border-white/10 bg-white/[0.04]'"
                 >
-                  <span class="text-gray-400 shrink-0">العميل</span>
-                  <span class="truncate text-left font-bold text-white" :title="selectedCustomerDisplay">
+                  <span class="text-gray-400 shrink-0">
+                    {{ form.customer_type === 'counter' ? 'جهة التعاقد' : 'العميل' }}
+                  </span>
+                  <span
+                    class="truncate text-left font-bold"
+                    :class="form.customer_type === 'counter' ? 'text-sky-300' : 'text-white'"
+                    :title="selectedCustomerDisplay"
+                  >
                     {{ selectedCustomerDisplay }}
                   </span>
+                </div>
+
+                <div
+                  v-if="form.passengers.some((p) => (p.first_name || p.last_name))"
+                  class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs space-y-1.5"
+                >
+                  <div class="font-bold text-emerald-300">المسافرون</div>
+                  <div
+                    v-for="(p, i) in form.passengers.filter((x) => x.first_name || x.last_name)"
+                    :key="p.uid || i"
+                    class="flex justify-between gap-2 text-text-muted"
+                  >
+                    <span>{{ i + 1 }}.</span>
+                    <span class="font-bold text-white truncate">{{ p.first_name }} {{ p.last_name }}</span>
+                  </div>
                 </div>
 
                 <div
@@ -1814,6 +2199,9 @@ const form = ref({
   employee_id: '',
   departure_time: '',
   arrival_time: '',
+  return_time: '',
+  return_arrival_time: '',
+  legs: [],
   initial_payment: 0,
   payment_method: 'cash',
   notes: '',
@@ -1918,6 +2306,190 @@ const minDate = computed(() => {
   return today.toISOString().split('T')[0];
 });
 
+const DEFAULT_TRIP_TYPES = [
+  { value: 'one_way', label: 'ذهاب فقط', description: 'رحلة في اتجاه واحد مع أوقات المغادرة والوصول.' },
+  { value: 'round_trip', label: 'ذهاب وعودة', description: 'رحلة ذهاب وعودة مع تواريخ وأوقات كاملة.' },
+  { value: 'multi_city', label: 'وجهات متعددة', description: 'من 2 إلى 5 قطع رحلة بمسارات مختلفة.' },
+];
+
+const tripTypeOptions = computed(() =>
+  Array.isArray(store.tripTypes) && store.tripTypes.length ? store.tripTypes : DEFAULT_TRIP_TYPES,
+);
+
+const selectedTripTypeDescription = computed(() => {
+  const match = tripTypeOptions.value.find((t) => t.value === form.value.trip_type);
+  return match?.description || '';
+});
+
+const createMultiCityLeg = () => ({
+  uid: crypto.randomUUID(),
+  from_airport: null,
+  to_airport: null,
+  departure_date: '',
+  departure_time: '',
+  arrival_time: '',
+});
+
+const ensureMultiCityLegs = () => {
+  if (form.value.legs.length < 2) {
+    form.value.legs = [createMultiCityLeg(), createMultiCityLeg()];
+  }
+};
+
+const addMultiCityLeg = () => {
+  if (form.value.legs.length >= 5) return;
+  form.value.legs.push(createMultiCityLeg());
+};
+
+const removeMultiCityLeg = (index) => {
+  if (form.value.legs.length <= 2) return;
+  form.value.legs.splice(index, 1);
+};
+
+const selectTripType = (value) => {
+  form.value.trip_type = value;
+  if (value === 'multi_city') {
+    ensureMultiCityLegs();
+  }
+};
+
+const isMultiCityLegComplete = (leg) =>
+  !!leg?.from_airport &&
+  !!leg?.to_airport &&
+  !!String(leg.departure_date || '').trim() &&
+  !!String(leg.departure_time || '').trim() &&
+  !!String(leg.arrival_time || '').trim();
+
+const isRouteStepComplete = () => {
+  const tripType = form.value.trip_type;
+  if (!tripType) return false;
+
+  if (tripType === 'multi_city') {
+    return form.value.legs.length >= 2 && form.value.legs.every(isMultiCityLegComplete);
+  }
+
+  const hasBaseRoute =
+    !!form.value.from_airport &&
+    !!form.value.to_airport &&
+    !!String(form.value.departure_date || '').trim() &&
+    !!String(form.value.departure_time || '').trim() &&
+    !!String(form.value.arrival_time || '').trim();
+
+  if (tripType === 'round_trip') {
+    return (
+      hasBaseRoute &&
+      !!String(form.value.return_date || '').trim() &&
+      !!String(form.value.return_time || '').trim() &&
+      !!String(form.value.return_arrival_time || '').trim()
+    );
+  }
+
+  return hasBaseRoute;
+};
+
+const sliceTimeValue = (value) => {
+  if (!value) return '';
+  const raw = String(value);
+  if (raw.includes('T')) return raw.split('T')[1].slice(0, 5);
+  return raw.slice(0, 5);
+};
+
+const airportFromCode = (code, id = null) =>
+  code
+    ? {
+        id: id || 0,
+        iata_code: code,
+        city_name_ar: '',
+        city_name_en: '',
+        airport_name_ar: '',
+      }
+    : null;
+
+const buildRouteSegments = () => {
+  const tripType = form.value.trip_type;
+
+  if (tripType === 'multi_city') {
+    return form.value.legs.map((leg) => ({
+      from_airport: leg.from_airport?.iata_code || null,
+      to_airport: leg.to_airport?.iata_code || null,
+      departure_date: leg.departure_date || null,
+      departure_time: leg.departure_time || null,
+      arrival_time: leg.arrival_time || null,
+    }));
+  }
+
+  const outbound = {
+    from_airport: form.value.from_airport?.iata_code || null,
+    to_airport: form.value.to_airport?.iata_code || null,
+    departure_date: form.value.departure_date || null,
+    departure_time: form.value.departure_time || null,
+    arrival_time: form.value.arrival_time || null,
+  };
+
+  if (tripType === 'round_trip') {
+    return [
+      outbound,
+      {
+        from_airport: form.value.to_airport?.iata_code || null,
+        to_airport: form.value.from_airport?.iata_code || null,
+        departure_date: form.value.return_date || null,
+        departure_time: form.value.return_time || null,
+        arrival_time: form.value.return_arrival_time || null,
+      },
+    ];
+  }
+
+  return [outbound];
+};
+
+const resolveRouteBookingFields = () => {
+  if (form.value.trip_type === 'multi_city' && form.value.legs.length > 0) {
+    const first = form.value.legs[0];
+    const last = form.value.legs[form.value.legs.length - 1];
+    return {
+      from_airport_id: first.from_airport?.id || null,
+      to_airport_id: last.to_airport?.id || null,
+      from_airport: first.from_airport?.iata_code || null,
+      to_airport: last.to_airport?.iata_code || null,
+      departure_date: first.departure_date || null,
+      departure_time: first.departure_time || null,
+      arrival_time: first.arrival_time || null,
+      return_date: null,
+      return_time: null,
+    };
+  }
+
+  return {
+    from_airport_id: form.value.from_airport?.id || null,
+    to_airport_id: form.value.to_airport?.id || null,
+    from_airport: form.value.from_airport?.iata_code || null,
+    to_airport: form.value.to_airport?.iata_code || null,
+    departure_date: form.value.departure_date || null,
+    departure_time: form.value.departure_time || null,
+    arrival_time: form.value.arrival_time || null,
+    return_date: form.value.trip_type === 'round_trip' ? form.value.return_date || null : null,
+    return_time: form.value.trip_type === 'round_trip' ? form.value.return_time || null : null,
+  };
+};
+
+const routeSummaryLabel = computed(() => {
+  if (form.value.trip_type === 'multi_city' && form.value.legs.length > 0) {
+    const codes = form.value.legs
+      .flatMap((leg, index) => {
+        const from = leg.from_airport?.iata_code;
+        const to = leg.to_airport?.iata_code;
+        if (index === 0) return [from, to].filter(Boolean);
+        return to ? [to] : [];
+      })
+      .filter(Boolean);
+    return codes.join(' → ');
+  }
+  if (form.value.from_airport && form.value.to_airport) {
+    return `${form.value.from_airport.iata_code} → ${form.value.to_airport.iata_code}`;
+  }
+  return '';
+});
+
 const pricingCurrencyOptions = computed(() => {
   const list = store.currencies;
   return Array.isArray(list) && list.length > 0 ? list : PRICING_CURRENCY_FALLBACK;
@@ -2012,9 +2584,43 @@ const selectedFlightSystemAvailable = computed(() => {
   return n(s.balance) + n(s.credit_limit);
 });
 
+const resolvedCarrier = computed(() => {
+  if (selectedCarrier.value) return selectedCarrier.value;
+  const id = form.value.flight_carrier_id;
+  if (!id) return null;
+  return availableCarriers.value.find((c) => Number(c.id) === Number(id)) ?? null;
+});
+
+const selectedGroupName = computed(() => {
+  const id = form.value.flight_group_id;
+  if (!id) return '';
+  return availableGroups.value.find((g) => sameId(g.id, id))?.name || '';
+});
+
+const bookingSourceTypeLabel = computed(() => {
+  if (form.value.booking_source === 'system') return 'حجز سيستم';
+  if (form.value.booking_source === 'group') return 'حجز مجموعة';
+  return 'حجز مباشر';
+});
+
+/** يعرض نوع الحجز + المصدر الفعلي (نظام / ساين / مجموعة) في الملخص. */
+const bookingSourceSummaryLabel = computed(() => {
+  const type = bookingSourceTypeLabel.value;
+  if (form.value.booking_source === 'system') {
+    const name = selectedFlightSystemName.value;
+    return name ? `${type} — ${name}` : type;
+  }
+  if (form.value.booking_source === 'group') {
+    const name = selectedGroupName.value;
+    return name ? `${type} — ${name}` : type;
+  }
+  const carrier = resolvedCarrier.value;
+  return carrier?.name ? `${type} — ${carrier.name}` : type;
+});
+
 /** متاح شركة الطيران (الـ API أحياناً بدون available_balance قبل إلحاقه في الموديل). */
 const selectedCarrierAvailable = computed(() => {
-  const c = selectedCarrier.value;
+  const c = resolvedCarrier.value;
   if (!c) return 0;
   const n = (v) => {
     const x = Number(v);
@@ -2069,29 +2675,28 @@ const isBookingStepComplete = (step) => {
     case 1:
       return !!form.value.trip_type;
     case 2:
-      return (
-        !!form.value.from_airport &&
-        !!form.value.to_airport &&
-        !!form.value.departure_date &&
-        (form.value.trip_type !== 'round_trip' || !!form.value.return_date)
-      );
+      return isRouteStepComplete();
     case 3:
       if (form.value.booking_source === 'group') {
-        return !!form.value.flight_group_id;
+        return form.value.flight_group_id !== null && form.value.flight_group_id !== '';
       }
       if (form.value.booking_source === 'system') {
-        return !!form.value.flight_system_id && !!form.value.flight_carrier_id;
+        return form.value.flight_system_id !== null && form.value.flight_system_id !== '';
       }
-      return !!form.value.flight_carrier_id;
-    case 4:
-      if (form.value.customer_type === 'counter') {
-        return !!(form.value.customer?.id || form.value.customer_id);
-      }
-      return (
-        (form.value.customer?.id || !!form.value.customer_id) &&
+      return true;
+    case 4: {
+      const carrierOk = !!form.value.flight_carrier_id;
+      const customerOk = !!(form.value.customer?.id || form.value.customer_id);
+      const pnrOk = String(form.value.pnr || '').trim().length > 0;
+      const passengersOk =
         form.value.passengers.length > 0 &&
-        form.value.passengers.every((p) => String(p.first_name || '').trim().length > 0 && String(p.last_name || '').trim().length > 0)
-      );
+        form.value.passengers.every(
+          (p) =>
+            String(p.first_name || '').trim().length > 0 &&
+            String(p.last_name || '').trim().length > 0
+        );
+      return carrierOk && customerOk && pnrOk && passengersOk;
+    }
     case 5:
       return Number(form.value.purchase_price_egp) > 0 && Number(form.value.selling_price) > 0;
     case 6: {
@@ -2117,8 +2722,35 @@ const isBookingStepComplete = (step) => {
   }
 };
 
+const getStepLabel = (step) => {
+  const labels = {
+    1: 'نوع الرحلة',
+    2: 'المسار',
+    3: 'مصدر الحجز',
+    4: 'المسافرون',
+    5: 'التسعير',
+    6: 'الدفع',
+    7: 'التأكيد',
+  };
+  return labels[step];
+};
+
+/** أول خطوة ناقصة ضمن النطاق 1..maxStep (null = الكل مكتمل). */
+const findFirstIncompleteStep = (maxStep = 7) => {
+  const limit = Math.min(Math.max(maxStep, 1), 7);
+  for (let i = 1; i <= limit; i++) {
+    if (!isBookingStepComplete(i)) return i;
+  }
+  return null;
+};
+
 /** Full payload readiness (sidebar + submit). */
 const bookingFormComplete = computed(() => isBookingStepComplete(7));
+
+const canProceed = computed(() => {
+  if (currentStep.value >= 7) return false;
+  return findFirstIncompleteStep(currentStep.value) === null;
+});
 
 const liveStepHint = computed(() => {
   if (canProceed.value) {
@@ -2129,15 +2761,23 @@ const liveStepHint = computed(() => {
       ? 'جميع البيانات مكتملة — يمكن تأكيد الحجز.'
       : 'راجع الخطوات السابقة أو أكمل الحقول الناقصة في المراجعة.';
   }
+  const blocking = findFirstIncompleteStep(currentStep.value);
+  if (blocking !== null && blocking !== currentStep.value) {
+    return `يجب إكمال «${getStepLabel(blocking)}» قبل المتابعة.`;
+  }
   switch (currentStep.value) {
     case 1:
       return 'اختر نوع الرحلة.';
     case 2:
-      return 'أكمل المسار وتواريخ السفر (والعودة إن وُجدت).';
+      return 'أكمل المسار والتواريخ وأوقات المغادرة والوصول (والعودة إن وُجدت).';
     case 3:
-      return form.value.booking_source === 'system' ? 'اختر النظام وخط الطيران.' : 'اختر خط الطيران المباشر.';
+      return form.value.booking_source === 'system'
+        ? 'اختر نظام الحجز.'
+        : form.value.booking_source === 'group'
+          ? 'اختر المجموعة / الشركة بالأجل.'
+          : 'حدد طريقة الخصم المالي.';
     case 4:
-      return 'اختر العميل وأدخل أسماء المسافرين.';
+      return 'اختر العميل وخط الطيران (الناقل) وأدخل أسماء المسافرين.';
     case 5:
       return 'أدخل سعر الشراء وسعر البيع بالجنيه.';
     case 6:
@@ -2153,51 +2793,6 @@ const purchaseEgpIsAuto = computed(() => {
   const f = Number(form.value.purchase_price_foreign) || 0;
   const r = Number(form.value.exchange_rate) || 0;
   return f > 0 && r > 0;
-});
-
-const canProceed = computed(() => {
-  switch (currentStep.value) {
-    case 1:
-      return !!form.value.trip_type;
-    case 2:
-      return !!form.value.from_airport && !!form.value.to_airport && !!form.value.departure_date &&
-        (form.value.trip_type !== 'round_trip' || !!form.value.return_date);
-    case 3:
-      if (form.value.booking_source === 'group') {
-        return !!form.value.flight_group_id;
-      }
-      if (form.value.booking_source === 'system') {
-        return !!form.value.flight_system_id && !!form.value.flight_carrier_id;
-      }
-      return !!form.value.flight_carrier_id;
-    case 4:
-      if (form.value.customer_type === 'counter') {
-        return !!(form.value.customer?.id || form.value.customer_id);
-      }
-      return (
-        (form.value.customer?.id || form.value.customer_id !== '') &&
-        form.value.passengers.length > 0 &&
-        form.value.passengers.every((p) => 
-          String(p.first_name || '').trim().length > 0 && 
-          String(p.last_name || '').trim().length > 0
-        )
-      );
-    case 5:
-      return Number(form.value.purchase_price_egp) > 0 && Number(form.value.selling_price) > 0;
-    case 6: {
-      const pMethod = String(form.value.payment_method || '').trim();
-      if (Number(form.value.initial_payment) <= 0) return true;
-      if (!pMethod) return false;
-      if (settlementAccountRequired.value) {
-        return !!form.value.account_id;
-      }
-      return true;
-    }
-    case 7:
-      return true;
-    default:
-      return false;
-  }
 });
 
 const canSubmit = computed(() => bookingFormComplete.value);
@@ -2241,7 +2836,7 @@ const systemCurrencyMatchesBooking = computed(() => {
 });
 
 const carrierCurrencyMatchesBooking = computed(() => {
-  const c = selectedCarrier.value;
+  const c = resolvedCarrier.value;
   if (!c) return false;
   return String(form.value.currency || 'EGP') === String(c.currency || 'EGP');
 });
@@ -2272,7 +2867,7 @@ const projectedCarrierAvailableAfterBooking = computed(() => {
   if (form.value.purchase_balance_source !== 'carrier') {
     return null;
   }
-  if (!selectedCarrier.value || !carrierCurrencyMatchesBooking.value) {
+  if (!resolvedCarrier.value || !carrierCurrencyMatchesBooking.value) {
     return null;
   }
   const debit = carrierPurchaseDebitPreview.value;
@@ -2385,19 +2980,6 @@ const paymentMethodSettlementHint = computed(() => {
   }
   return 'اختر الخزينة النقدية أو الخزينة العامة التي يُسجَّل فيها التحصيل.';
 });
-
-const getStepLabel = (step) => {
-  const labels = {
-    1: 'نوع الرحلة',
-    2: 'المسار',
-    3: 'مصدر الحجز',
-    4: 'المسافرون',
-    5: 'التسعير',
-    6: 'الدفع',
-    7: 'التأكيد',
-  };
-  return labels[step];
-};
 
 const debounceSearchFromAirport = () => {
   clearTimeout(searchDebounceFrom);
@@ -2531,15 +3113,17 @@ const onSystemChange = async () => {
     form.value.purchase_balance_source = 'carrier';
   }
   
-  // Groups are still tied to carriers, so we clear them if carrier is not set.
-  if (!form.value.flight_carrier_id) {
+  // المجموعات مرتبطة بالناقل فقط خارج حجز المجموعة
+  if (!form.value.flight_carrier_id && form.value.booking_source !== 'group') {
     availableGroups.value = [];
     form.value.flight_group_id = null;
   }
 };
 
 const onCarrierChange = async () => {
-  form.value.flight_group_id = null;
+  if (form.value.booking_source !== 'group') {
+    form.value.flight_group_id = null;
+  }
   availableGroups.value = [];
   selectedCarrier.value = null;
   loadingGroups.value = false;
@@ -2612,6 +3196,10 @@ const addPassenger = (type) => {
 };
 
 const removePassenger = (passenger) => {
+  if (form.value.customer_type === 'counter' && form.value.passengers.length <= 1) {
+    store.addToast('يجب إدخال مسافر واحد على الأقل (الاسم الأول والأخير)', 'warning');
+    return;
+  }
   const index = form.value.passengers.indexOf(passenger);
   if (index > -1) {
     form.value.passengers.splice(index, 1);
@@ -2619,7 +3207,15 @@ const removePassenger = (passenger) => {
 };
 
 const nextStep = () => {
-  if (canProceed.value && currentStep.value < 7) {
+  const incomplete = findFirstIncompleteStep(currentStep.value);
+  if (incomplete !== null) {
+    store.addToast(`يرجى إكمال: ${getStepLabel(incomplete)}`, 'warning');
+    if (incomplete < currentStep.value) {
+      currentStep.value = incomplete;
+    }
+    return;
+  }
+  if (currentStep.value < 7) {
     currentStep.value++;
   }
 };
@@ -2631,9 +3227,23 @@ const previousStep = () => {
 };
 
 const goToStep = (step) => {
-  if (step >= 1 && step < currentStep.value) {
+  if (step < 1 || step > 7) return;
+
+  // الرجوع لأي خطوة سابقة مسموح دائماً
+  if (step <= currentStep.value) {
     currentStep.value = step;
+    return;
   }
+
+  // للأمام: لا تخطّ خطوة ناقصة (نادراً — الأزرار الأمامية معطّلة في الهيدر)
+  const blocking = findFirstIncompleteStep(step - 1);
+  if (blocking !== null) {
+    currentStep.value = blocking;
+    store.addToast(`يرجى إكمال: ${getStepLabel(blocking)}`, 'warning');
+    return;
+  }
+
+  currentStep.value = step;
 };
 
 const loadSettlementAccounts = async () => {
@@ -2683,7 +3293,8 @@ const hydrateForEdit = async (id) => {
     form.value.pnr = raw.pnr || '';
     form.value.baggage_allowance_kg = Number(raw.baggage_allowance_kg) || 0;
     form.value.customer = raw.customer || null;
-    form.value.customer_type = raw.customer?.type || 'regular';
+    const rawType = raw.customer?.type;
+    form.value.customer_type = (rawType === 'company' || rawType === 'counter') ? 'counter' : 'regular';
     form.value.customer_id = raw.customer_id != null ? String(raw.customer_id) : '';
     form.value.employee_id = raw.employee_id != null ? String(raw.employee_id) : '';
     form.value.currency = String(raw.currency || 'EGP').toUpperCase().slice(0, 3);
@@ -2728,6 +3339,29 @@ const hydrateForEdit = async (id) => {
             airport_name_ar: '',
           }
         : null);
+
+    form.value.departure_time = sliceTimeValue(raw.departure_time);
+    form.value.arrival_time = sliceTimeValue(raw.arrival_time);
+    form.value.return_time = sliceTimeValue(raw.return_time);
+    form.value.return_arrival_time = '';
+
+    const segments = raw.segments || [];
+    if (form.value.trip_type === 'multi_city' && segments.length >= 2) {
+      form.value.legs = segments.map((seg) => ({
+        uid: crypto.randomUUID(),
+        from_airport: airportFromCode(seg.from_airport || seg.from, seg.from_airport_id),
+        to_airport: airportFromCode(seg.to_airport || seg.to, seg.to_airport_id),
+        departure_date: seg.departure_date ? String(seg.departure_date).slice(0, 10) : '',
+        departure_time: sliceTimeValue(seg.departure_time),
+        arrival_time: sliceTimeValue(seg.arrival_time),
+      }));
+    } else if (form.value.trip_type === 'round_trip' && segments.length >= 2) {
+      const returnSeg = segments[1];
+      form.value.return_time = sliceTimeValue(returnSeg.departure_time) || form.value.return_time;
+      form.value.return_arrival_time = sliceTimeValue(returnSeg.arrival_time);
+    } else {
+      form.value.legs = [];
+    }
 
     form.value.passengers = (raw.passengers || []).map((p) => ({
       uid: newPassengerUid(),
@@ -2823,15 +3457,17 @@ const submitBooking = async () => {
       }
     }
 
+    const routeFields = resolveRouteBookingFields();
     const payload = {
       customer_id: parseInt(String(customerId), 10),
       trip_type: form.value.trip_type,
-      from_airport_id: form.value.from_airport?.id || null,
-      to_airport_id: form.value.to_airport?.id || null,
-      from_airport: form.value.from_airport?.iata_code || null,
-      to_airport: form.value.to_airport?.iata_code || null,
-      departure_date: form.value.departure_date,
-      return_date: form.value.trip_type === 'round_trip' ? (form.value.return_date || null) : null,
+      from_airport_id: routeFields.from_airport_id,
+      to_airport_id: routeFields.to_airport_id,
+      from_airport: routeFields.from_airport,
+      to_airport: routeFields.to_airport,
+      departure_date: routeFields.departure_date,
+      return_date: routeFields.return_date,
+      return_time: routeFields.return_time,
       flight_system_id: form.value.flight_system_id,
       flight_carrier_id: form.value.flight_carrier_id,
       flight_group_id: form.value.flight_group_id,
@@ -2847,7 +3483,7 @@ const submitBooking = async () => {
         last_name,
         name: `${first_name} ${last_name}`.trim(),
         type,
-        national_id,
+        national_id: String(national_id || '').trim() || null,
         date_of_birth,
         baggage_allowance_kg: Number(baggage_allowance_kg) || 0,
       })),
@@ -2856,8 +3492,9 @@ const submitBooking = async () => {
       pnr: String(form.value.pnr || '').trim() || null,
       employee_id,
       baggage_allowance_kg: Number(form.value.baggage_allowance_kg) || 0,
-      departure_time: form.value.departure_time || null,
-      arrival_time: form.value.arrival_time || null,
+      departure_time: routeFields.departure_time || null,
+      arrival_time: routeFields.arrival_time || null,
+      segments: buildRouteSegments(),
       initial_payment: isEditMode.value ? 0 : Number(form.value.initial_payment || 0),
     };
 
@@ -2972,8 +3609,13 @@ watch(
   (t) => {
     if (t !== 'round_trip') {
       form.value.return_date = '';
+      form.value.return_time = '';
+      form.value.return_arrival_time = '';
     }
-  }
+    if (t === 'multi_city') {
+      ensureMultiCityLegs();
+    }
+  },
 );
 
 watch(
@@ -3024,29 +3666,18 @@ watch(
 watch(
   () => form.value.customer,
   (customer) => {
-    if (customer) {
-      if (form.value.customer_type === 'regular') {
-        if (!form.value.passengers.length) {
-          addPassenger('adult');
+    if (!customer) return;
+    if (!form.value.passengers.length) {
+      addPassenger('adult');
+    }
+    if (form.value.customer_type === 'regular') {
+      const first = form.value.passengers[0];
+      if (first && !String(first.first_name || '').trim() && !String(first.last_name || '').trim()) {
+        const parts = (customer.full_name || customer.name || '').trim().split(' ');
+        if (parts.length > 0) {
+          first.first_name = parts[0];
+          first.last_name = parts.slice(1).join(' ') || '';
         }
-        const first = form.value.passengers[0];
-        if (first && !first.first_name && !first.last_name) {
-          const parts = (customer.full_name || customer.name || '').trim().split(' ');
-          if (parts.length > 0) {
-            first.first_name = parts[0];
-            first.last_name = parts.slice(1).join(' ') || ' ';
-          }
-        }
-      } else if (form.value.customer_type === 'counter') {
-        form.value.passengers = [{
-          uid: 'company-pax',
-          first_name: customer.name || customer.full_name || '',
-          last_name: '',
-          type: 'adult',
-          national_id: '',
-          date_of_birth: '',
-          baggage_allowance_kg: 0,
-        }];
       }
     }
   }
@@ -3058,32 +3689,33 @@ watch(
       form.value.initial_payment = 0;
       form.value.account_id = '';
       form.value.agent_name = '';
-      if (form.value.customer) {
-        form.value.passengers = [{
-          uid: 'company-pax',
-          first_name: form.value.customer.name || form.value.customer.full_name || '',
-          last_name: '',
-          type: 'adult',
-          national_id: '',
-          date_of_birth: '',
-          baggage_allowance_kg: 0,
-        }];
-      } else {
-        form.value.passengers = [];
-      }
-    } else {
-      form.value.passengers = [];
-      if (form.value.customer) {
-        addPassenger('adult');
-        const first = form.value.passengers[0];
-        if (first) {
-          const parts = (form.value.customer.full_name || form.value.customer.name || '').trim().split(' ');
-          if (parts.length > 0) {
-            first.first_name = parts[0];
-            first.last_name = parts.slice(1).join(' ') || ' ';
-          }
+    }
+    form.value.passengers = [];
+    if (type === 'counter') {
+      addPassenger('adult');
+    } else if (form.value.customer) {
+      addPassenger('adult');
+      const first = form.value.passengers[0];
+      if (first) {
+        const parts = (form.value.customer.full_name || form.value.customer.name || '').trim().split(' ');
+        if (parts.length > 0) {
+          first.first_name = parts[0];
+          first.last_name = parts.slice(1).join(' ') || '';
         }
       }
+    }
+  }
+);
+
+watch(
+  () => currentStep.value,
+  (step) => {
+    if (
+      step === 4 &&
+      form.value.customer_type === 'counter' &&
+      !form.value.passengers.length
+    ) {
+      addPassenger('adult');
     }
   }
 );

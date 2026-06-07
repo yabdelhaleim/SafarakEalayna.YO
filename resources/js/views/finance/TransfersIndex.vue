@@ -29,7 +29,7 @@
           <span class="text-sm text-text-muted">إجمالي التحويلات</span>
         </div>
         <p class="text-2xl font-bold font-mono text-blue-500">
-          {{ Array.isArray(store.transfers) ? store.transfers.length : 0 }}
+          {{ store.pagination?.total ?? (Array.isArray(store.transfers) ? store.transfers.length : 0) }}
         </p>
         <p class="text-xs text-text-muted mt-1">تحويل</p>
       </div>
@@ -73,13 +73,12 @@
               <th class="px-6 py-4 font-semibold">إلى حساب</th>
               <th class="px-6 py-4 font-semibold">المبلغ</th>
               <th class="px-6 py-4 font-semibold">الوصف</th>
-              <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
             <template v-if="store.loading.transfers">
               <tr v-for="i in 8" :key="i" class="border-b border-white/5">
-                <td v-for="j in 7" :key="j" class="px-6 py-4">
+                <td v-for="j in 6" :key="j" class="px-6 py-4">
                   <div class="h-4 animate-shimmer rounded w-full"></div>
                 </td>
               </tr>
@@ -97,7 +96,7 @@
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm text-text-muted">
-                    {{ formatDate(transfer.date) }}
+                    {{ formatDate(transfer.date || transfer.created_at) }}
                   </span>
                 </td>
                 <td class="px-6 py-4">
@@ -122,30 +121,12 @@
                   </span>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="text-sm text-text-muted">{{ transfer.description || '-' }}</span>
-                </td>
-                <td class="px-6 py-4 text-right">
-                  <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <router-link
-                      to="#"
-                      class="p-2 hover:bg-white/10 rounded-lg text-text-muted hover:text-white transition-all"
-                      title="عرض"
-                    >
-                      <Eye class="w-4 h-4" />
-                    </router-link>
-                    <button
-                      @click="confirmDelete(transfer)"
-                      class="p-2 hover:bg-error/10 rounded-lg text-text-muted hover:text-error transition-all"
-                      title="حذف"
-                    >
-                      <Trash2 class="w-4 h-4" />
-                    </button>
-                  </div>
+                  <span class="text-sm text-text-muted">{{ transfer.description || transfer.notes || '-' }}</span>
                 </td>
               </tr>
             </template>
             <tr v-else>
-              <td colspan="7" class="px-6 py-20 text-center">
+              <td colspan="6" class="px-6 py-20 text-center">
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center">
                     <ArrowRightLeft class="w-10 h-10 text-white/10" />
@@ -169,6 +150,41 @@
         </table>
       </div>
     </div>
+
+    <div
+      v-if="store.pagination.last_page > 1"
+      class="flex items-center justify-between bg-card-bg border border-white/10 rounded-2xl px-6 py-4"
+    >
+      <p class="text-sm text-text-muted">
+        صفحة {{ store.pagination.current_page }} من {{ store.pagination.last_page }}
+        ({{ store.pagination.total }} تحويل)
+      </p>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          :disabled="store.pagination.current_page <= 1 || store.loading.transfers"
+          class="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm font-semibold disabled:opacity-50"
+          @click="changePage(store.pagination.current_page - 1)"
+        >
+          السابق
+        </button>
+        <button
+          type="button"
+          :disabled="store.pagination.current_page >= store.pagination.last_page || store.loading.transfers"
+          class="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm font-semibold disabled:opacity-50"
+          @click="changePage(store.pagination.current_page + 1)"
+        >
+          التالي
+        </button>
+      </div>
+    </div>
+
+    <p
+      v-if="store.errors.fetch"
+      class="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3"
+    >
+      {{ store.errors.fetch }}
+    </p>
   </div>
 </template>
 
@@ -182,26 +198,13 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
-  Eye,
-  Trash2,
 } from 'lucide-vue-next';
 
 const store = useFinanceStore();
 
-// Total transferred amount
-const totalTransferred = computed(() => {
-  if (!Array.isArray(store.transfers)) return 0;
-  return store.transfers.reduce((sum, t) => sum + (t.amount || 0), 0);
-});
+const totalTransferred = computed(() => store.transferSummary?.total_amount ?? 0);
 
-// Today's transfers
-const todayTransfers = computed(() => {
-  if (!Array.isArray(store.transfers)) return 0;
-  const today = new Date().toDateString();
-  return store.transfers.filter((t) => {
-    return t.date && new Date(t.date).toDateString() === today;
-  }).length;
-});
+const todayTransfers = computed(() => store.transferSummary?.today_count ?? 0);
 
 // Format date
 const formatDate = (dateString) => {
@@ -214,21 +217,13 @@ const formatDate = (dateString) => {
   });
 };
 
-// Confirm delete
-const confirmDelete = async (transfer) => {
-  if (confirm(`هل أنت متأكد من حذف التحويل #${transfer.id}؟`)) {
-    try {
-      // await store.deleteTransfer(transfer.id);
-      store.addToast('تم حذف التحويل بنجاح');
-      await store.fetchTransfers();
-    } catch (error) {
-      store.addToast('فشل حذف التحويل', 'error');
-    }
-  }
-};
+function changePage(page) {
+  if (page < 1 || page > store.pagination.last_page) return;
+  store.fetchTransfers({ page, per_page: store.pagination.per_page || 20 });
+}
 
 onMounted(async () => {
-  await Promise.all([store.fetchTransfers(), store.fetchAccounts()]);
+  await store.fetchTransfers({ page: 1, per_page: 20 });
 });
 </script>
 

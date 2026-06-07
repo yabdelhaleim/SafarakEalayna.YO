@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'amount',
     'service_fee',
     'total_amount',
+    'amount_paid',
     'wallet_account_id',
     'cash_account_id',
     'income_transaction_id',
@@ -38,10 +39,11 @@ class WalletTransaction extends Model
     protected function casts(): array
     {
         return [
-            'type'         => WalletTransactionType::class,
-            'amount'       => 'decimal:2',
-            'service_fee'  => 'decimal:2',
+            'type' => WalletTransactionType::class,
+            'amount' => 'decimal:2',
+            'service_fee' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'amount_paid' => 'decimal:2',
         ];
     }
 

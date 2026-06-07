@@ -4,7 +4,7 @@
     <div class="hidden print:block print:mb-8">
       <div class="flex items-center justify-between border-b-2 border-black pb-4">
         <div>
-          <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+          <h2 class="text-2xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
           <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
         </div>
         <div class="text-right">
@@ -67,6 +67,8 @@
             <option value="bus">الباص فقط</option>
             <option value="fawry">فوري فقط</option>
             <option value="online">الخدمات الإلكترونية فقط</option>
+            <option value="wallet">المحافظ والتحويلات فقط</option>
+            <option value="general">الإدارة العامة فقط</option>
           </template>
         </select>
         
@@ -223,7 +225,31 @@
             <div class="w-2 h-8 bg-indigo-500 rounded-full"></div>
             <span>مجمل الربح (Gross Profit)</span>
           </div>
-          <span class="font-display font-black tracking-wide">{{ formatCurrency(reportData.totalRevenues - reportData.totalCogs) }}</span>
+          <span class="font-display font-black tracking-wide">{{ formatCurrency(grossProfit) }}</span>
+        </div>
+
+        <!-- Refunds Section -->
+        <div
+          v-if="reportData.refundsList?.length > 0"
+          class="bg-gradient-to-br from-amber-500/5 to-amber-500/10 border border-amber-500/20 rounded-2xl p-6 relative overflow-hidden"
+        >
+          <h3 class="text-amber-400 font-bold mb-5 border-b border-amber-500/20 pb-3 text-xl font-sans">
+            المردودات والإلغاءات (Refunds)
+          </h3>
+          <div class="space-y-3 pr-4">
+            <div
+              v-for="(item, index) in reportData.refundsList"
+              :key="`refund-${index}`"
+              class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5"
+            >
+              <span class="text-white/90 font-medium">{{ item.name }}</span>
+              <span class="text-amber-400 font-bold font-display">{{ formatCurrency(item.amount) }}</span>
+            </div>
+          </div>
+          <div class="flex justify-between font-black text-white mt-5 border-t border-amber-500/30 pt-4 text-lg">
+            <span>إجمالي المردودات</span>
+            <span class="text-amber-400">{{ formatCurrency(reportData.totalRefunds) }}</span>
+          </div>
         </div>
 
         <!-- Expenses Section -->
@@ -272,7 +298,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+
+const printSettingsStore = usePrintSettingsStore();
 import {
   BarChart,
   RefreshCw,
@@ -287,6 +316,7 @@ import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
 import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
 const globalError = ref('');
+let fetchController = null;
 
 const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
 
@@ -302,13 +332,27 @@ const reportData = ref({
   totalRevenues: 0,
   totalCogs: 0,
   totalExpenses: 0,
+  totalRefunds: 0,
+  grossProfit: 0,
+  netProfit: 0,
   revenuesList: [],
   cogsList: [],
-  expensesList: []
+  expensesList: [],
+  refundsList: [],
 });
 
 const netProfit = computed(() => {
+  if (typeof reportData.value.netProfit === 'number') {
+    return reportData.value.netProfit;
+  }
   return reportData.value.totalRevenues - reportData.value.totalCogs - reportData.value.totalExpenses;
+});
+
+const grossProfit = computed(() => {
+  if (typeof reportData.value.grossProfit === 'number') {
+    return reportData.value.grossProfit;
+  }
+  return reportData.value.totalRevenues - reportData.value.totalCogs;
 });
 
 const formatCurrency = (val) => {
@@ -317,25 +361,51 @@ const formatCurrency = (val) => {
 };
 
 const fetchReport = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+
   setLoading();
   globalError.value = '';
+  reportData.value = {
+    totalRevenues: 0,
+    totalCogs: 0,
+    totalExpenses: 0,
+    totalRefunds: 0,
+    grossProfit: 0,
+    netProfit: 0,
+    revenuesList: [],
+    cogsList: [],
+    expensesList: [],
+    refundsList: [],
+  };
+
   try {
     const params = {
       from_date: filters.value.from,
       to_date: filters.value.to,
       category: filters.value.category,
-      module: filters.value.module
+      module: filters.value.module,
+      _t: Date.now(),
     };
-    const res = await axios.get('/api/v1/reports/profit-loss', { params });
-    
-    if (res && res.data && res.data.data) {
-       reportData.value = res.data.data;
-       setSuccess();
+    const res = await axios.get('/api/v1/reports/profit-loss', {
+      params,
+      signal: fetchController.signal,
+    });
+
+    if (res?.data?.data) {
+      reportData.value = res.data.data;
+      setSuccess();
     } else {
-       throw new Error('Invalid response format');
+      throw new Error('Invalid response format');
     }
   } catch (error) {
-    globalError.value = 'حدث خطأ في جلب تقرير الأرباح والخسائر. تأكد من صحة التواريخ.';
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
+    globalError.value = error.response?.data?.message
+      || 'حدث خطأ في جلب تقرير الأرباح والخسائر. تأكد من صحة التواريخ.';
     setError(error);
   }
 };
@@ -346,6 +416,13 @@ const printReport = () => {
 
 onMounted(() => {
   fetchReport();
+  printSettingsStore.fetch().catch(() => {});
+});
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
 });
 </script>
 

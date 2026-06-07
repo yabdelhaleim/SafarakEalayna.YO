@@ -2,17 +2,31 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\AccountType;
+use App\Enums\FlightBookingStatus;
+use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customer\StoreCustomerRequest;
 use App\Http\Requests\Customer\UpdateCustomerRequest;
+use App\Http\Resources\Bus\BusBookingResource;
 use App\Http\Resources\CustomerResource;
+use App\Http\Resources\Fawry\FawryTransactionResource;
+use App\Http\Resources\Flight\FlightBookingResource;
+use App\Http\Resources\HajjUmra\HajjUmraBookingResource;
+use App\Http\Resources\Online\OnlineTransactionResource;
+use App\Http\Resources\Visa\VisaBookingResource;
+use App\Models\Account;
+use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\Flight\FlightBooking;
 use App\Services\CustomerService;
+use App\Services\Finance\TransactionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CustomerController extends Controller
 {
@@ -23,7 +37,7 @@ class CustomerController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $filters = $request->only(['search', 'type', 'is_active', 'per_page']);
+            $filters = $request->only(['search', 'type', 'is_active', 'per_page', 'module', 'customer_tier', 'balance_status']);
             $paginator = $this->customerService->getAllCustomers($filters);
 
             return ApiResponse::paginated(
@@ -98,7 +112,7 @@ class CustomerController extends Controller
         try {
             $query = $request->get('q') ?: $request->get('search');
 
-            if (!$query) {
+            if (! $query) {
                 return ApiResponse::success('Query is empty.', []);
             }
 
@@ -124,10 +138,10 @@ class CustomerController extends Controller
         try {
             $customerAccount = null;
             if ($customer->account_id) {
-                $customerAccount = \App\Models\Account::find($customer->account_id);
+                $customerAccount = Account::find($customer->account_id);
             }
 
-            if (!$customerAccount) {
+            if (! $customerAccount) {
                 return ApiResponse::success('تم استدعاء كشف حساب العميل التفصيلي بنجاح.', [
                     'customer' => new CustomerResource($customer),
                     'stats' => [
@@ -144,17 +158,17 @@ class CustomerController extends Controller
                         'per_page' => 20,
                         'from' => 0,
                         'to' => 0,
-                    ]
+                    ],
                 ]);
             }
 
             // Get all entries for the customer account
-            $entries = \App\Models\AccountEntry::with([
-                'transaction.createdBy'
+            $entries = AccountEntry::with([
+                'transaction.createdBy',
             ])
-            ->where('account_id', $customerAccount->id)
-            ->orderBy('created_at', 'asc')
-            ->get();
+                ->where('account_id', $customerAccount->id)
+                ->orderBy('created_at', 'asc')
+                ->get();
 
             $items = [];
             $totalDebit = 0.0;
@@ -162,7 +176,7 @@ class CustomerController extends Controller
 
             foreach ($entries as $entry) {
                 $tx = $entry->transaction;
-                if (!$tx) {
+                if (! $tx) {
                     continue;
                 }
 
@@ -172,7 +186,7 @@ class CustomerController extends Controller
                 $totalDebit += $debit;
                 $totalCredit += $credit;
 
-                $module = $tx->module instanceof \App\Enums\TransactionModule ? $tx->module->value : $tx->module;
+                $module = $tx->module instanceof TransactionModule ? $tx->module->value : $tx->module;
                 $description = $tx->notes ?: 'معاملة مالية';
 
                 // Try to resolve booking details if related is present
@@ -181,15 +195,15 @@ class CustomerController extends Controller
                     try {
                         $related = $tx->related;
                         if ($related) {
-                            if ($tx->related_type === \App\Models\Flight\FlightBooking::class) {
+                            if ($tx->related_type === FlightBooking::class) {
                                 $bookingDetails = [
                                     'booking_id' => $related->id,
                                     'booking_number' => $related->booking_number,
                                     'pnr' => $related->pnr,
                                     'provider_name' => $related->airline_name,
-                                    'route' => $related->route ?: ($related->from_airport . ' → ' . $related->to_airport),
-                                    'passengers' => $related->passengers && $related->passengers->count() ? $related->passengers->map(fn($p) => trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? '')))->filter()->implode('، ') : '—',
-                                    'status' => $related->status instanceof \App\Enums\FlightBookingStatus ? $related->status->value : $related->status,
+                                    'route' => $related->route ?: ($related->from_airport.' → '.$related->to_airport),
+                                    'passengers' => $related->passengers && $related->passengers->count() ? $related->passengers->map(fn ($p) => trim(($p->first_name ?? '').' '.($p->last_name ?? '')))->filter()->implode('، ') : '—',
+                                    'status' => $related->status instanceof FlightBookingStatus ? $related->status->value : $related->status,
                                     'selling_price' => (float) $related->selling_price,
                                     'total_paid' => (float) $related->paid_amount,
                                     'remaining' => (float) $related->remaining_amount,
@@ -220,6 +234,44 @@ class CustomerController extends Controller
                 ];
             }
 
+            $customer->load([
+                'flightBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'flightBookings.passengers',
+                'flightBookings.createdBy',
+                'flightBookings.airlineAccount',
+                'flightBookings.fromAirport',
+                'flightBookings.toAirport',
+
+                'visaBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'visaBookings.visaDetail',
+                'visaBookings.visaDetail.agent',
+                'visaBookings.visaDetail.durationRow',
+                'visaBookings.createdBy',
+
+                'hajjUmraBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'hajjUmraBookings.program',
+                'hajjUmraBookings.supplier',
+                'hajjUmraBookings.createdBy',
+                'hajjUmraBookings.companion',
+
+                'busBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'busBookings.inventory',
+                'busBookings.inventory.company',
+                'busBookings.createdBy',
+
+                'fawryTransactions' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'fawryTransactions.operationTypeRow',
+                'fawryTransactions.paymentMethodRow',
+                'fawryTransactions.machine',
+                'fawryTransactions.employee',
+
+                'onlineTransactions' => fn ($q) => $q->orderBy('created_at', 'desc'),
+                'onlineTransactions.serviceType',
+                'onlineTransactions.provider',
+                'onlineTransactions.paymentMethodRow',
+                'onlineTransactions.createdBy',
+            ]);
+
             return ApiResponse::success('تم استدعاء كشف حساب العميل التفصيلي بنجاح.', [
                 'customer' => new CustomerResource($customer),
                 'stats' => [
@@ -227,6 +279,14 @@ class CustomerController extends Controller
                     'period_credit' => $totalCredit,
                     'period_debit' => $totalDebit,
                     'closing_balance' => (float) $customerAccount->balance,
+                ],
+                'bookings' => [
+                    'flight' => FlightBookingResource::collection($customer->flightBookings),
+                    'visa' => VisaBookingResource::collection($customer->visaBookings),
+                    'hajj_umra' => HajjUmraBookingResource::collection($customer->hajjUmraBookings),
+                    'bus' => BusBookingResource::collection($customer->busBookings),
+                    'fawry' => FawryTransactionResource::collection($customer->fawryTransactions),
+                    'online' => OnlineTransactionResource::collection($customer->onlineTransactions),
                 ],
                 'items' => array_reverse($items),
                 'pagination' => [
@@ -236,7 +296,7 @@ class CustomerController extends Controller
                     'per_page' => max(count($items), 20),
                     'from' => count($items) > 0 ? 1 : 0,
                     'to' => count($items),
-                ]
+                ],
             ]);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
@@ -253,29 +313,30 @@ class CustomerController extends Controller
             'account_id' => 'required|exists:accounts,id',
             'notes' => 'nullable|string|max:500',
             'type' => 'nullable|string|in:receipt,payment',
-        ]); 
+            'module' => 'nullable|string',
+        ]);
 
         try {
-            return \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated) {
+            return DB::transaction(function () use ($customer, $validated) {
                 // Ensure customer has a ledger account
-                $customerAccount = $customer->account_id ? \App\Models\Account::find($customer->account_id) : null;
-                if (!$customerAccount) {
-                    $customerAccount = \App\Models\Account::create([
-                        'name' => 'حساب العميل: ' . $customer->full_name,
-                        'type' => \App\Enums\AccountType::Customer,
+                $customerAccount = $customer->account_id ? Account::find($customer->account_id) : null;
+                if (! $customerAccount) {
+                    $customerAccount = Account::create([
+                        'name' => 'حساب العميل: '.$customer->full_name,
+                        'type' => AccountType::Customer,
                         'balance' => 0,
                         'currency' => 'EGP',
                         'is_active' => true,
-                        'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                        'owner_type' => Account::OWNER_TYPE_OWNER,
                         'module_type' => 'tourism',
                         'is_module_vault' => false,
-                        'notes' => 'حساب تلقائي للعميل #' . $customer->id,
-                        'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                        'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                        'created_by' => Auth::id() ?? 1,
                     ]);
                     $customer->update(['account_id' => $customerAccount->id]);
                 }
 
-                $toAccount = \App\Models\Account::findOrFail($validated['account_id']); // Treasury/Bank receiving the payment
+                $toAccount = Account::findOrFail($validated['account_id']); // Treasury/Bank receiving the payment
                 $fromAccount = $customerAccount; // Customer's ledger account
 
                 $type = $validated['type'] ?? 'receipt'; // 'receipt' or 'payment'
@@ -283,17 +344,22 @@ class CustomerController extends Controller
                 $fromId = $type === 'payment' ? $toAccount->id : $fromAccount->id;
                 $toId = $type === 'payment' ? $fromAccount->id : $toAccount->id;
 
-                $transactionService = app(\App\Services\Finance\TransactionService::class);
+                $moduleStr = $validated['module'] ?? 'flight';
+                $moduleEnum = TransactionModule::tryFrom($moduleStr) ?? TransactionModule::Flight;
+
+                $moduleLabel = $moduleEnum->label();
+
+                $transactionService = app(TransactionService::class);
                 $transaction = $transactionService->recordJournalTransfer([
                     'amount' => (float) $validated['amount'],
                     'from_account_id' => $fromId,
                     'to_account_id' => $toId,
                     'allow_from_negative' => true, // Customer debt can go negative (i.e. they pay extra, becoming in credit)
-                    'module' => \App\Enums\TransactionModule::Flight->value,
-                    'notes' => $validated['notes'] ?? ($type === 'payment' 
-                        ? ('سند صرف - دفع للعميل: ' . $customer->full_name) 
-                        : ('سند قبض - تسديد مديونية عميل طيران: ' . $customer->full_name)),
-                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                    'module' => $moduleEnum->value,
+                    'notes' => $validated['notes'] ?? ($type === 'payment'
+                        ? ('سند صرف - دفع للعميل: '.$customer->full_name)
+                        : ("سند قبض - تسديد مديونية عميل {$moduleLabel}: ".$customer->full_name)),
+                    'created_by' => Auth::id() ?? 1,
                 ]);
 
                 return ApiResponse::success($type === 'payment' ? 'تم صرف المبلغ للعميل بنجاح وقيد سند الصرف.' : 'تم سداد المبلغ بنجاح وقيد سند القبض.', [

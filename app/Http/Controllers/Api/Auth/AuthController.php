@@ -56,13 +56,39 @@ class AuthController extends Controller
             return ApiResponse::error('الحساب غير نشط', null, Response::HTTP_UNAUTHORIZED);
         }
 
-        // حذف التوكن القديمة وإنشاء جديدة
-        $user->tokens()->delete();
+        // إبطال توكنات تسجيل الدخول السابقة فقط (لا تمسّح توكنات أجهزة/تطبيقات أخرى بأسماء مختلفة)
+        $user->tokens()->where('name', 'auth-token')->delete();
         $token = $user->createToken('auth-token')->plainTextToken;
+
+        $expirationMinutes = config('sanctum.expiration');
 
         return ApiResponse::success('تم تسجيل الدخول بنجاح', [
             'token' => $token,
             'token_type' => 'Bearer',
+            'expires_in_minutes' => $expirationMinutes,
+            'user' => new UserResource($user->load('employee')),
+        ]);
+    }
+
+    /**
+     * تجديد توكن API دون إعادة إدخال كلمة المرور (يُستخدم قبل انتهاء الصلاحية).
+     */
+    public function refresh(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $current = $user->currentAccessToken();
+
+        if ($current) {
+            $user->tokens()->where('id', $current->id)->delete();
+        }
+
+        $token = $user->createToken('auth-token')->plainTextToken;
+        $expirationMinutes = config('sanctum.expiration');
+
+        return ApiResponse::success('تم تجديد الجلسة بنجاح', [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'expires_in_minutes' => $expirationMinutes,
             'user' => new UserResource($user->load('employee')),
         ]);
     }

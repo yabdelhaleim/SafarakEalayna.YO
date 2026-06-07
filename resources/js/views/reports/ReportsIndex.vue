@@ -4,7 +4,7 @@
     <div class="hidden print:block print:mb-8">
       <div class="flex items-center justify-between border-b-2 border-black pb-4">
         <div>
-          <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+          <h2 class="text-2xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
           <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
         </div>
         <div class="text-right">
@@ -55,6 +55,11 @@
           class="bg-black/40 border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:border-gold transition-colors backdrop-blur-md"
         />
       </div>
+    </div>
+
+    <div v-if="loadError" class="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 print:hidden">
+      {{ loadError }}
+      <button class="mr-3 underline font-bold" @click="fetchDashboardData">إعادة المحاولة</button>
     </div>
 
     <!-- Loading State -->
@@ -109,10 +114,13 @@
             </div>
           </div>
           <div class="relative z-10">
-            <div class="text-sm text-white/50 uppercase tracking-widest mb-1 font-bold">إجمالي المصروفات (Total Expenses)</div>
+            <div class="text-sm text-white/50 uppercase tracking-widest mb-1 font-bold">تكاليف ومصروفات (COGS + OpEx)</div>
             <div class="text-3xl font-bold font-mono text-white group-hover:text-rose-400 transition-colors">
               {{ formatCurrency(finData.total_expense) }}
             </div>
+            <p v-if="finData.total_cogs" class="text-[11px] text-white/40 mt-2 font-mono">
+              تكاليف: {{ formatCurrency(finData.total_cogs) }} · تشغيل: {{ formatCurrency(finData.total_operating_expenses) }}
+            </p>
           </div>
         </div>
 
@@ -275,6 +283,24 @@
                 <div class="h-full bg-purple-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_wallet, accountsData.grand_total) + '%' }"></div>
               </div>
             </div>
+            <div v-if="accountsData.total_treasury">
+              <div class="flex justify-between text-sm mb-2 print:text-black">
+                <span class="text-white/70 print:text-black">خزائن عامة (Treasury)</span>
+                <span class="font-mono font-bold text-white print:text-black">{{ formatCurrency(accountsData.total_treasury) }}</span>
+              </div>
+              <div class="h-3 bg-white/5 rounded-full overflow-hidden print:bg-gray-200">
+                <div class="h-full bg-amber-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_treasury, accountsData.grand_total) + '%' }"></div>
+              </div>
+            </div>
+            <div v-if="accountsData.total_post">
+              <div class="flex justify-between text-sm mb-2 print:text-black">
+                <span class="text-white/70 print:text-black">حسابات بريدية (Post)</span>
+                <span class="font-mono font-bold text-white print:text-black">{{ formatCurrency(accountsData.total_post) }}</span>
+              </div>
+              <div class="h-3 bg-white/5 rounded-full overflow-hidden print:bg-gray-200">
+                <div class="h-full bg-cyan-500 rounded-full print:bg-black" :style="{ width: getPercentage(accountsData.total_post, accountsData.grand_total) + '%' }"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -294,8 +320,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+
+const printSettingsStore = usePrintSettingsStore();
 import {
   PieChart,
   TrendingUp,
@@ -322,19 +351,25 @@ const filters = ref({
 });
 
 const loading = ref(true);
+const loadError = ref('');
+let fetchController = null;
 
 // State Data
 const finData = ref({
   total_income: 0,
+  total_cogs: 0,
+  total_operating_expenses: 0,
   total_expense: 0,
-  net_profit: 0
+  net_profit: 0,
 });
 
 const accountsData = ref({
   grand_total: 0,
   total_cashbox: 0,
   total_bank: 0,
-  total_wallet: 0
+  total_wallet: 0,
+  total_treasury: 0,
+  total_post: 0,
 });
 
 // Format Currency
@@ -351,25 +386,46 @@ const getPercentage = (part, total) => {
 
 // Fetch Dashboard Data directly
 const fetchDashboardData = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const { signal } = fetchController;
+
   loading.value = true;
+  loadError.value = '';
   try {
     const params = {
       from_date: filters.value.from_date,
-      to_date: filters.value.to_date
+      to_date: filters.value.to_date,
+      _t: Date.now(),
     };
 
     const [summaryRes, balanceRes] = await Promise.all([
-      axios.get('/api/v1/reports/financial/summary', { params }),
-      axios.get('/api/v1/reports/financial/accounts-balance') // Balance doesn't need date
+      axios.get('/api/v1/reports/financial/summary', { params, signal }),
+      axios.get('/api/v1/reports/financial/accounts-balance', {
+        params: { _t: Date.now() },
+        signal,
+      }),
     ]);
 
-    finData.value = summaryRes.data?.data || finData.value;
+    const summary = summaryRes.data?.data || {};
+    finData.value = {
+      total_income: Number(summary.total_income) || 0,
+      total_cogs: Number(summary.total_cogs) || 0,
+      total_operating_expenses: Number(summary.total_operating_expenses) || 0,
+      total_expense: Number(summary.total_expense) || 0,
+      net_profit: Number(summary.net_profit) || 0,
+    };
     accountsData.value = balanceRes.data?.data || accountsData.value;
-    
   } catch (error) {
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error('Failed to load dashboard data:', error);
-    if(window.addToast) {
-      window.addToast('فشل تحميل بعض البيانات', 'error');
+    loadError.value = error.response?.data?.message || 'فشل تحميل بيانات التقارير';
+    if (window.addToast) {
+      window.addToast(loadError.value, 'error');
     }
   } finally {
     loading.value = false;
@@ -382,6 +438,13 @@ const printReport = () => {
 
 onMounted(() => {
   fetchDashboardData();
+  printSettingsStore.fetch().catch(() => {});
+});
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
 });
 </script>
 

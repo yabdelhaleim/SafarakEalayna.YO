@@ -1,0 +1,705 @@
+﻿{
+    "generated_at": "2026-06-06T23:13:40+00:00",
+    "sections": {
+        "global_totals": {
+            "total_debit": 1276386.11,
+            "total_credit": 2506949.31,
+            "delta": 1230563.2,
+            "entry_lines": 1417,
+            "ok": false
+        },
+        "missing_entries": {
+            "count": 0
+        },
+        "null_transaction_entries": {
+            "count": 0
+        },
+        "imbalanced_journals": {
+            "count": 1279,
+            "single_leg": 1279,
+            "multi_leg": 0,
+            "single_leg_by_type": {
+                "income": 787,
+                "expense": 492
+            }
+        },
+        "balance_drift": {
+            "total": 50,
+            "by_category": {
+                "customer": {
+                    "count": 48,
+                    "total_diff": 576279.58,
+                    "accounts": [
+                        {
+                            "id": 27,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Dina Youssef",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 0,
+                            "ledger": -2800,
+                            "diff": 2800,
+                            "entry_count": 4
+                        },
+                        {
+                            "id": 34,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Tarek Ibrahim",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 7327.61,
+                            "ledger": 0,
+                            "diff": 7327.61,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 46,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Youssef Helmi",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 18145.49,
+                            "ledger": 0,
+                            "diff": 18145.49,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 60,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Sherif Khaled",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 8152.85,
+                            "ledger": 0,
+                            "diff": 8152.85,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 80,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Hazem El-Banna",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 8016.21,
+                            "ledger": 0,
+                            "diff": 8016.21,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 88,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Mostafa Amin",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 9508.74,
+                            "ledger": 0,
+                            "diff": 9508.74,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 93,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Abdullah Abdelrahman",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 15462.57,
+                            "ledger": 0,
+                            "diff": 15462.57,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 147,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Sarah El-Masry",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 15746.01,
+                            "ledger": 0,
+                            "diff": 15746.01,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 157,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Khaled Magdi",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 15627.72,
+                            "ledger": 0,
+                            "diff": 15627.72,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 183,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Mahmoud El-Shamy",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 10400.35,
+                            "ledger": 0,
+                            "diff": 10400.35,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 187,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Abdullah Omar",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 10522.66,
+                            "ledger": 0,
+                            "diff": 10522.66,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 189,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Karim Abdelaziz",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 11016.31,
+                            "ledger": 0,
+                            "diff": 11016.31,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 209,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Sarah Magdi",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 14081,
+                            "ledger": 0,
+                            "diff": 14081,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 210,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ali Kamal",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 10175.22,
+                            "ledger": 0,
+                            "diff": 10175.22,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 220,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Dina Abdelrahman",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 7751.27,
+                            "ledger": 0,
+                            "diff": 7751.27,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 225,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Laila El-Sayed",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 11988.31,
+                            "ledger": 0,
+                            "diff": 11988.31,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 256,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Mona Khaled",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 7099.82,
+                            "ledger": 0,
+                            "diff": 7099.82,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 262,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Hazem El-Shamy",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 5141.9,
+                            "ledger": 0,
+                            "diff": 5141.9,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 270,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Karim Amin",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 10926.67,
+                            "ledger": 0,
+                            "diff": 10926.67,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 288,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ramy Kamal",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 12059.71,
+                            "ledger": 0,
+                            "diff": 12059.71,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 293,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Hany Youssef",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 11999.6,
+                            "ledger": 0,
+                            "diff": 11999.6,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 298,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ehab Kamal",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 6713.28,
+                            "ledger": 0,
+                            "diff": 6713.28,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 313,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ibrahim Abdelrahim",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 6922.64,
+                            "ledger": 0,
+                            "diff": 6922.64,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 341,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Khaled Karim",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 16074.77,
+                            "ledger": 0,
+                            "diff": 16074.77,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 379,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Yaser Helmi",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 8733.26,
+                            "ledger": 0,
+                            "diff": 8733.26,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 395,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Yaser Mahmoud",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 11888.17,
+                            "ledger": 0,
+                            "diff": 11888.17,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 407,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Abdullah Elsayed",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 20958.69,
+                            "ledger": 0,
+                            "diff": 20958.69,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 408,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Mohamed Mohamed",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 13877.32,
+                            "ledger": 0,
+                            "diff": 13877.32,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 417,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Aisha Omar",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 14896.32,
+                            "ledger": 0,
+                            "diff": 14896.32,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 434,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Sherif Abdelrahman",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 13138.04,
+                            "ledger": 0,
+                            "diff": 13138.04,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 448,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Abdullah Youssef",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 15932.04,
+                            "ledger": 0,
+                            "diff": 15932.04,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 453,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ibrahim Ali",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 8499.18,
+                            "ledger": 0,
+                            "diff": 8499.18,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 454,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Tarek Gamal",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 13495.36,
+                            "ledger": 0,
+                            "diff": 13495.36,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 458,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Hazem Tarek",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 15812.4,
+                            "ledger": 0,
+                            "diff": 15812.4,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 463,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Aisha Abdelrahman",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 5771.48,
+                            "ledger": 0,
+                            "diff": 5771.48,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 470,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Laila Omar",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 10573.22,
+                            "ledger": 0,
+                            "diff": 10573.22,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 472,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Aisha Samir",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 16578.91,
+                            "ledger": 0,
+                            "diff": 16578.91,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 476,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Rana El-Banna",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 12732.09,
+                            "ledger": 0,
+                            "diff": 12732.09,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 498,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Aisha Ali",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 4738.95,
+                            "ledger": 0,
+                            "diff": 4738.95,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 508,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Omar Abdelaziz",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 6612.64,
+                            "ledger": 0,
+                            "diff": 6612.64,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 516,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Ehab Fathy",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 25998.36,
+                            "ledger": 0,
+                            "diff": 25998.36,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 524,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Nour Khaled",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 14346.43,
+                            "ledger": 0,
+                            "diff": 14346.43,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 562,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 33 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 9283.17,
+                            "ledger": 0,
+                            "diff": 9283.17,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 567,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 38 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 7174.04,
+                            "ledger": 0,
+                            "diff": 7174.04,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 572,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 43 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 22219,
+                            "ledger": 0,
+                            "diff": 22219,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 586,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 57 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 6209.33,
+                            "ledger": 0,
+                            "diff": 6209.33,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 610,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 81 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 6329.81,
+                            "ledger": 0,
+                            "diff": 6329.81,
+                            "entry_count": 0
+                        },
+                        {
+                            "id": 613,
+                            "name": "Ï¡Ï│ÏºÏ¿ Ïº┘äÏ╣┘à┘è┘ä: Company 84 Trading",
+                            "type": "customer",
+                            "module_type": "tourism",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 36820.66,
+                            "ledger": 0,
+                            "diff": 36820.66,
+                            "entry_count": 0
+                        }
+                    ]
+                },
+                "treasury_liquidity": {
+                    "count": 2,
+                    "total_diff": 30000,
+                    "accounts": [
+                        {
+                            "id": 637,
+                            "name": "┘ü┘êÏ»Ïº┘ü┘ê┘å ┘âÏºÏ┤ ",
+                            "type": "wallet",
+                            "module_type": "wallet_transfer",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 20360,
+                            "ledger": 360,
+                            "diff": 20000,
+                            "entry_count": 6
+                        },
+                        {
+                            "id": 638,
+                            "name": "Ïº┘ä┘éÏº┘çÏ▒┘ç",
+                            "type": "cashbox",
+                            "module_type": "wallet_transfer",
+                            "owner_type": "owner",
+                            "is_active": true,
+                            "stored": 11110,
+                            "ledger": 1110,
+                            "diff": 10000,
+                            "entry_count": 4
+                        }
+                    ]
+                }
+            },
+            "no_entries_but_balance": 47,
+            "has_entries_mismatch": 3
+        },
+        "treasury_liquidity_drift": {
+            "total_accounts": 16,
+            "drift_count": 2,
+            "accounts": [
+                {
+                    "id": 637,
+                    "name": "┘ü┘êÏ»Ïº┘ü┘ê┘å ┘âÏºÏ┤ ",
+                    "type": "wallet",
+                    "module_type": "wallet_transfer",
+                    "owner_type": "owner",
+                    "is_active": true,
+                    "stored": 20360,
+                    "ledger": 360,
+                    "diff": 20000,
+                    "entry_count": 6
+                },
+                {
+                    "id": 638,
+                    "name": "Ïº┘ä┘éÏº┘çÏ▒┘ç",
+                    "type": "cashbox",
+                    "module_type": "wallet_transfer",
+                    "owner_type": "owner",
+                    "is_active": true,
+                    "stored": 11110,
+                    "ledger": 1110,
+                    "diff": 10000,
+                    "entry_count": 4
+                }
+            ]
+        },
+        "duplicate_entry_lines": {
+            "count": 0
+        },
+        "orphan_entries": {
+            "count": 0
+        },
+        "negative_treasury": [
+            {
+                "id": 18,
+                "name": "Main Cashbox",
+                "balance": -18740.92,
+                "module_type": "office"
+            },
+            {
+                "id": 20,
+                "name": "Bus Cashbox",
+                "balance": -8083.94,
+                "module_type": "office"
+            }
+        ],
+        "customer_drift": {
+            "total_customers": 605,
+            "drift_count": 48
+        },
+        "aggregate_balance": {
+            "sum_all_stored_balances": 1836842.78,
+            "sum_all_ledger_nets": 1230563.2,
+            "difference": 606279.58
+        }
+    }
+}

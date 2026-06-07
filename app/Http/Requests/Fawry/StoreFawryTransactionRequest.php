@@ -24,6 +24,7 @@ class StoreFawryTransactionRequest extends FormRequest
             'selling_price' => ['required', 'numeric', 'gt:0'],
             'employee_id' => ['required', 'exists:users,id'],
             'account_id' => ['required', 'exists:accounts,id'],
+            'fawry_machine_id' => ['nullable', 'exists:fawry_machines,id'],
             'payment_method' => ['required', 'string', 'max:50', Rule::exists('fawry_payment_methods', 'code')],
             'amount' => ['required', 'numeric', 'min:0'],
             'reference_number' => ['nullable', 'string', 'max:100'],

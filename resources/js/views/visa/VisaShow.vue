@@ -147,9 +147,12 @@
               <p class="mt-0.5 font-mono text-sm text-indigo-100/90">#{{ id }}</p>
             </div>
           </div>
-          <div class="text-left">
-            <div class="text-lg font-black text-indigo-300">سفرك علينا</div>
-            <div class="text-[10px] font-semibold uppercase tracking-wider text-indigo-200/80">Safarak Ealayna</div>
+          <div class="text-left" style="min-width: 170px;">
+            <PrintCompanyBranding module="visa" document-type="ticket" variant="dark" position="header" />
+            <template v-if="!printSettingsStore.shouldShow('visa', 'ticket') || !printSettingsStore.hasCompanyInfo">
+              <div class="text-lg font-black text-indigo-300">سفرك علينا</div>
+              <div class="text-[10px] font-semibold uppercase tracking-wider text-indigo-200/80">Safarak Ealayna</div>
+            </template>
           </div>
         </div>
 
@@ -227,8 +230,15 @@
             <span class="font-bold text-slate-500">ملاحظات: </span>{{ booking.notes }}
           </div>
 
+          <PrintCompanyBranding
+            module="visa"
+            document-type="ticket"
+            position="footer"
+            :balance-due="booking.finance?.remaining_amount > 0.009 ? formatMoney(booking.finance?.remaining_amount) : null"
+            balance-label="المستحق لنا"
+          />
           <div class="border-t border-slate-200 pt-4 text-center text-[10px] leading-relaxed text-slate-500">
-             وصل استلام طلب تأشيرة من سفرك علينا — يرجى الاحتفاظ بالوصل للمراجعة.
+             وصل استلام طلب تأشيرة من {{ printSettingsStore.settings.company_name_ar || 'سفرك علينا' }} — يرجى الاحتفاظ بالوصل للمراجعة.
           </div>
       </div>
     </div>
@@ -365,9 +375,13 @@ import {
   Landmark,
 } from 'lucide-vue-next';
 
+import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+
 const store = useVisaStore();
 const route = useRoute();
 const id = computed(() => route.params.id);
+const printSettingsStore = usePrintSettingsStore();
 
 const booking = computed(() => store.currentBooking);
 const showAddPaymentForm = ref(false);
@@ -521,6 +535,7 @@ onMounted(async () => {
     store.fetchBookingById(id.value),
     store.fetchAccounts({ module: 'visa' }),
     store.fetchSettings(),
+    printSettingsStore.fetch().catch(() => {}),
   ]);
 });
 </script>

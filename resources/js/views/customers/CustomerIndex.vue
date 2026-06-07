@@ -26,6 +26,16 @@
       />
     </div>
 
+    <!-- Module Tabs -->
+    <div class="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
+      <button v-for="tab in moduleTabs" :key="tab.value"
+              @click="setModuleTab(tab.value)"
+              class="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all border"
+              :class="activeModuleTab === tab.value ? 'bg-gold text-black border-gold shadow-lg shadow-gold/20' : 'bg-input text-muted border-white/10 hover:bg-white/5'">
+        {{ tab.name }}
+      </button>
+    </div>
+
     <!-- Customers List -->
     <div class="bg-card border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
       <!-- Skeleton -->
@@ -60,10 +70,23 @@
             </div>
             <div>
               <h3 class="font-bold text-white">{{ customer.name || customer.full_name }}</h3>
-              <p class="text-sm text-muted">{{ customer.phone }}{{ customer.email ? ' | ' + customer.email : '' }}</p>
+              <p class="text-sm text-muted mb-2">{{ customer.phone }}{{ customer.email ? ' | ' + customer.email : '' }}</p>
+              <div class="flex flex-wrap gap-1 mt-1">
+                <span v-for="mod in customer.active_modules" :key="mod.id" 
+                      class="px-2 py-0.5 text-[10px] font-bold rounded bg-white/5 border border-white/10"
+                      :class="mod.color">
+                  {{ mod.name }}
+                </span>
+                <span v-if="!customer.active_modules?.length" class="px-2 py-0.5 text-[10px] text-muted bg-white/5 border border-white/10 rounded">
+                  لا يوجد نشاط مسجل
+                </span>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button @click="viewCustomerDetails(customer)" class="p-2 hover:bg-gold/10 rounded-lg text-gold transition-all" title="عرض التفاصيل">
+              <Eye class="w-5 h-5" />
+            </button>
             <button @click="editCustomer(customer)" class="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-white transition-all">
               <Pen class="w-5 h-5" />
             </button>
@@ -72,6 +95,23 @@
             </button>
           </div>
         </div>
+      </div>
+      
+      <!-- Pagination -->
+      <div v-if="asyncState === 'success' && store.pagination?.lastPage > 1" class="p-6 border-t border-white/10 flex items-center justify-between">
+        <button @click="changePage(store.pagination.currentPage - 1)" 
+                :disabled="store.pagination.currentPage <= 1"
+                class="px-4 py-2 rounded-xl text-sm font-bold transition-all border"
+                :class="store.pagination.currentPage <= 1 ? 'bg-white/5 text-muted border-white/5 cursor-not-allowed' : 'bg-input text-white border-white/10 hover:bg-white/10'">
+          السابق
+        </button>
+        <span class="text-sm text-muted">صفحة {{ store.pagination.currentPage }} من {{ store.pagination.lastPage }}</span>
+        <button @click="changePage(store.pagination.currentPage + 1)" 
+                :disabled="store.pagination.currentPage >= store.pagination.lastPage"
+                class="px-4 py-2 rounded-xl text-sm font-bold transition-all border"
+                :class="store.pagination.currentPage >= store.pagination.lastPage ? 'bg-white/5 text-muted border-white/5 cursor-not-allowed' : 'bg-input text-white border-white/10 hover:bg-white/10'">
+          التالي
+        </button>
       </div>
     </div>
 
@@ -117,6 +157,8 @@
         </div>
       </div>
     </div>
+    <!-- Customer Details Modal -->
+    <CustomerDetailsModal :is-open="showDetailsModal" :customer-id="selectedCustomerId" @close="showDetailsModal = false" />
   </div>
 </template>
 
@@ -124,20 +166,36 @@
 import { ref, computed, onMounted } from 'vue';
 import { useCustomerStore } from '@/stores/customerStore';
 import { useAsyncState } from '@/composables/useAsyncState';
-import { Search, Users, Plus, Pen, Trash2 } from 'lucide-vue-next';
+import { Search, Users, Plus, Pen, Trash2, Eye } from 'lucide-vue-next';
 import { useDebounceFn } from '@vueuse/core';
+import CustomerDetailsModal from './CustomerDetailsModal.vue';
 
 const store = useCustomerStore();
 const { state: asyncState, setLoading, setSuccess, setError } = useAsyncState();
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
+const showDetailsModal = ref(false);
+const selectedCustomerId = ref(null);
 const saving = ref(false);
 const editingId = ref(null);
 
 const filters = ref({
   search: ''
 });
+
+const activeModuleTab = ref('all');
+const currentPage = ref(1);
+
+const moduleTabs = [
+  { name: 'الكل', value: 'all' },
+  { name: 'طيران', value: 'flight' },
+  { name: 'تأشيرات', value: 'visa' },
+  { name: 'حج وعمرة', value: 'hajj_umra' },
+  { name: 'باصات', value: 'bus' },
+  { name: 'فوري', value: 'fawry' },
+  { name: 'أونلاين', value: 'online' },
+];
 
 const form = ref({
   full_name: '',
@@ -150,15 +208,7 @@ const form = ref({
 });
 
 const filteredCustomers = computed(() => {
-  let filtered = [...store.customers];
-  if (filters.value.search) {
-    const query = filters.value.search.toLowerCase();
-    filtered = filtered.filter(c =>
-      (c.name || c.full_name)?.toLowerCase().includes(query) ||
-      c.phone?.toLowerCase().includes(query)
-    );
-  }
-  return filtered;
+  return store.customers;
 });
 
 const getInitials = (name) => {
@@ -166,9 +216,42 @@ const getInitials = (name) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
-const onSearch = useDebounceFn(async () => {
-  // Local filtering for now
+const loadCustomers = async () => {
+  try {
+    setLoading();
+    await store.fetchCustomers({ 
+      module: activeModuleTab.value, 
+      search: filters.value.search,
+      page: currentPage.value,
+      per_page: 50
+    });
+    setSuccess(store.customers.length === 0);
+  } catch (e) {
+    setError(e);
+  }
+};
+
+const onSearch = useDebounceFn(() => {
+  currentPage.value = 1;
+  loadCustomers();
 }, 300);
+
+const setModuleTab = (tab) => {
+  activeModuleTab.value = tab;
+  currentPage.value = 1;
+  loadCustomers();
+};
+
+const changePage = (page) => {
+  if (page < 1 || page > store.pagination?.lastPage) return;
+  currentPage.value = page;
+  loadCustomers();
+};
+
+const viewCustomerDetails = (customer) => {
+  selectedCustomerId.value = customer.id;
+  showDetailsModal.value = true;
+};
 
 const editCustomer = (customer) => {
   editingId.value = customer.id;
@@ -225,14 +308,8 @@ const saveCustomer = async () => {
   }
 };
 
-onMounted(async () => {
-  try {
-    setLoading();
-    await store.fetchCustomers();
-    setSuccess(store.customers.length === 0);
-  } catch (e) {
-    setError(e);
-  }
+onMounted(() => {
+  loadCustomers();
 });
 </script>
 

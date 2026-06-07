@@ -287,34 +287,84 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div class="space-y-2">
-                <label class="text-xs font-bold text-text-muted uppercase tracking-widest block px-1">المبلغ المراد تحويله</label>
-                <div class="relative group">
-                  <input 
-                    v-model.number="transferForm.amount"
-                    type="number" 
-                    step="0.01" 
-                    min="0.01" 
-                    required
-                    placeholder="0.00"
-                    class="flight-input w-full font-mono text-xl font-black group-hover:border-gold/30 transition-all"
-                  />
-                  <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gold">
-                    <Banknote class="w-6 h-6" />
-                  </div>
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-text-muted uppercase tracking-widest block px-1">
+                المبلغ المراد تحويله
+                <span v-if="transferFromAccount" class="text-gold normal-case">({{ transferFromAccount.currency }})</span>
+              </label>
+              <div class="relative group">
+                <input
+                  v-model.number="transferForm.amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="0.00"
+                  class="flight-input w-full font-mono text-xl font-black group-hover:border-gold/30 transition-all"
+                />
+                <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gold">
+                  <Banknote class="w-6 h-6" />
                 </div>
               </div>
-              <div class="space-y-2">
-                <label class="text-xs font-bold text-text-muted uppercase tracking-widest block px-1">التاريخ</label>
-                <input 
-                  v-model="transferForm.date"
-                  type="date" 
-                  class="flight-input w-full font-bold"
+            </div>
+
+            <div
+              v-if="transferFromAccount && transferToAccount && !currenciesMatch(transferFromAccount.currency, transferToAccount.currency)"
+              class="space-y-2"
+            >
+              <label class="text-xs font-bold text-text-muted uppercase tracking-widest block px-1">
+                سعر الصرف
+                <span class="text-rose-400">*</span>
+              </label>
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-text-muted whitespace-nowrap">1 {{ transferFromAccount.currency }} =</span>
+                <input
+                  v-model.number="transferForm.exchange_rate"
+                  type="number"
+                  step="0.000001"
+                  min="0.000001"
                   required
+                  class="flight-input flex-1 font-mono font-bold"
                 />
+                <span class="text-sm text-text-muted whitespace-nowrap">{{ transferToAccount.currency }}</span>
+              </div>
+              <p class="text-sm text-text-muted">
+                المبلغ المضاف للحساب المستلم:
+                <span class="text-gold font-bold">{{ formatCurrency(transferConvertedAmount, transferToAccount.currency) }}</span>
+              </p>
+            </div>
+
+            <div
+              v-if="transferFromAccount && transferToAccount"
+              class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-2 text-sm"
+            >
+              <div class="flex justify-between gap-4">
+                <span class="text-text-muted">من</span>
+                <span class="font-bold text-text-main">{{ transferFromAccount.name }}</span>
+              </div>
+              <div class="flex justify-between gap-4">
+                <span class="text-text-muted">إلى</span>
+                <span class="font-bold text-text-main">{{ transferToAccount.name }}</span>
+              </div>
+              <div class="flex justify-between gap-4">
+                <span class="text-text-muted">المبلغ المخصوم</span>
+                <span class="font-bold text-gold">{{ formatCurrency(transferForm.amount, transferFromAccount.currency) }}</span>
+              </div>
+              <div
+                v-if="!currenciesMatch(transferFromAccount.currency, transferToAccount.currency)"
+                class="flex justify-between gap-4"
+              >
+                <span class="text-text-muted">المبلغ المضاف</span>
+                <span class="font-bold text-emerald-400">{{ formatCurrency(transferConvertedAmount, transferToAccount.currency) }}</span>
               </div>
             </div>
+
+            <p
+              v-if="transferError"
+              class="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3"
+            >
+              {{ transferError }}
+            </p>
 
             <div class="space-y-2">
               <label class="text-xs font-bold text-text-muted uppercase tracking-widest block px-1">البيان / ملاحظات العملية</label>
@@ -327,9 +377,9 @@
             </div>
 
             <div class="flex gap-4 pt-4">
-              <button 
-                type="submit" 
-                :disabled="submitting"
+              <button
+                type="submit"
+                :disabled="submitting || !canExecuteTransfer"
                 class="btn-airline flex-1 py-4 text-base font-black shadow-2xl disabled:opacity-50 flex items-center justify-center gap-3"
               >
                 <span v-if="submitting" class="w-5 h-5 border-2 border-white/30 border-t-white animate-spin rounded-full"></span>
@@ -354,6 +404,13 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
+import {
+  buildTransferApiPayload,
+  canExecuteCrossCurrencyTransfer,
+  computeConvertedAmount,
+  currenciesMatch,
+  findTreasuryAccount,
+} from '@/composables/useCrossCurrencyTransfer';
 import { 
   RefreshCw, 
   ArrowRightLeft, 
@@ -385,6 +442,7 @@ const overview = ref({});
 const recentTransfers = ref([]);
 const stats = ref({});
 const showTransferModal = ref(false);
+const transferError = ref('');
 const selectedCategory = ref('office'); // 'office' or 'tourism'
 
 const categories = [
@@ -396,7 +454,7 @@ const transferForm = ref({
   from_account_id: '',
   to_account_id: '',
   amount: null,
-  date: new Date().toISOString().split('T')[0],
+  exchange_rate: 1,
   notes: '',
 });
 
@@ -418,6 +476,43 @@ const safeModules = computed(() => {
   }
   return res;
 });
+
+const treasuryAccountsFlat = computed(() => {
+  const list = [];
+  Object.values(safeModules.value).forEach((mod) => {
+    (mod.accounts || []).forEach((acc) => list.push(acc));
+  });
+  return list;
+});
+
+const transferFromAccount = computed(() =>
+  findTreasuryAccount(treasuryAccountsFlat.value, transferForm.value.from_account_id)
+);
+
+const transferToAccount = computed(() =>
+  findTreasuryAccount(treasuryAccountsFlat.value, transferForm.value.to_account_id)
+);
+
+const transferConvertedAmount = computed(() => {
+  if (!transferFromAccount.value || !transferToAccount.value) return 0;
+  return computeConvertedAmount(
+    transferForm.value.amount,
+    transferForm.value.exchange_rate,
+    transferFromAccount.value.currency,
+    transferToAccount.value.currency
+  );
+});
+
+const canExecuteTransfer = computed(() =>
+  canExecuteCrossCurrencyTransfer({
+    fromAccountId: transferForm.value.from_account_id,
+    toAccountId: transferForm.value.to_account_id,
+    fromAccount: transferFromAccount.value,
+    toAccount: transferToAccount.value,
+    amount: transferForm.value.amount,
+    exchangeRate: transferForm.value.exchange_rate,
+  })
+);
 
 const currentCategoryLabel = computed(() => {
   return categories.find(c => c.id === selectedCategory.value)?.label || '';
@@ -489,7 +584,9 @@ const totalPost = computed(() => {
 async function fetchOverview() {
   loading.value = true;
   try {
-    const response = await axios.get('/api/v1/finance/treasuries/get-overview');
+    const response = await axios.get('/api/v1/finance/treasuries/get-overview', {
+      params: { _t: Date.now() },
+    });
     const data = response.data?.data || {};
     overview.value = data.modules && typeof data.modules === 'object' ? data.modules : {};
     recentTransfers.value = Array.isArray(data.recent_transfers) ? data.recent_transfers : [];
@@ -516,6 +613,7 @@ function getModulePercentage(accounts) {
 
 function getModuleIcon(key) {
   const icons = {
+    flights: Send,
     flight: Send,
     bus: Ticket,
     visa: IdCard,
@@ -523,9 +621,11 @@ function getModuleIcon(key) {
     hajj_umra: Globe,
     online: Monitor,
     general: Building2,
+    office: Building2,
     other: ListTodo,
     fawry: RefreshCw,
-    wallet: Banknote
+    wallet: Banknote,
+    wallet_transfer: Banknote,
   };
   return icons[key] || Building2;
 }
@@ -547,11 +647,12 @@ function openTransferModal() {
 
 function closeTransferModal() {
   showTransferModal.value = false;
+  transferError.value = '';
   transferForm.value = {
     from_account_id: '',
     to_account_id: '',
     amount: null,
-    date: new Date().toISOString().split('T')[0],
+    exchange_rate: 1,
     notes: '',
   };
 }
@@ -568,27 +669,34 @@ function viewStatement(id) {
 }
 
 async function executeTransfer() {
-  if (transferForm.value.from_account_id === transferForm.value.to_account_id) {
-    if (window.addToast) window.addToast('لا يمكن التحويل لنفس الحساب', 'warning');
+  transferError.value = '';
+
+  if (!canExecuteTransfer.value) {
+    transferError.value = 'تحقق من الحسابات والمبلغ وسعر الصرف والرصيد المتاح';
     return;
   }
 
   submitting.value = true;
   try {
-    await axios.post('/api/v1/finance/transfers', {
+    const payload = buildTransferApiPayload({
       from_account_id: transferForm.value.from_account_id,
       to_account_id: transferForm.value.to_account_id,
       amount: transferForm.value.amount,
       notes: transferForm.value.notes,
-      date: transferForm.value.date
+      exchange_rate: transferForm.value.exchange_rate,
+      fromAccount: transferFromAccount.value,
+      toAccount: transferToAccount.value,
     });
-    
+
+    await axios.post('/api/v1/finance/transfers', payload);
+
     if (window.addToast) window.addToast('تم تنفيذ التحويل المالي بنجاح', 'success');
     closeTransferModal();
     await fetchOverview();
   } catch (err) {
     console.error('Transfer failed:', err);
     const msg = err.response?.data?.message || 'فشل في تنفيذ عملية التحويل';
+    transferError.value = msg;
     if (window.addToast) window.addToast(msg, 'error');
   } finally {
     submitting.value = false;

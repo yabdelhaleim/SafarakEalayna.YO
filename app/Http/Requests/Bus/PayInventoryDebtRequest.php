@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Bus;
 
+use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\ValidationException;
 
@@ -16,7 +17,7 @@ class PayInventoryDebtRequest extends FormRequest
     {
         return [
             'amount' => 'required|numeric|min:0.01',
-            'account_id' => 'required|integer|exists:accounts,id',
+            'account_id' => ['required', 'integer', 'exists:accounts,id', new BusLiquidityAccount],
             'notes' => 'nullable|string|max:1000',
         ];
     }

@@ -4,16 +4,18 @@ namespace App\Models;
 
 use App\Enums\AccountType;
 use App\Enums\WalletProvider;
+use App\Support\Finance\LedgerBalanceMutationGuard;
+use BackedEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Support\Finance\LedgerBalanceMutationGuard;
 
 class Account extends Model
 {
     use HasFactory;
+
     public const OWNER_TYPE_OWNER = 'owner';
 
     public const OWNER_TYPE_OFFICE = 'office';
@@ -81,6 +83,12 @@ class Account extends Model
                 $account->wallet_provider = null;
                 $account->wallet_number = null;
             }
+
+            if ($account->module_type && ! $account->module) {
+                $account->module = $account->module_type instanceof BackedEnum
+                    ? $account->module_type->value
+                    : $account->module_type;
+            }
         });
 
         static::deleting(function (Account $account): void {
@@ -123,6 +131,11 @@ class Account extends Model
     public function incomingTransactions(): HasMany
     {
         return $this->hasMany('App\Models\Transaction', 'to_account_id');
+    }
+
+    public function fawryTransactions(): HasMany
+    {
+        return $this->hasMany(\App\Models\Fawry\FawryTransaction::class, 'account_id');
     }
 
     public function scopeActive($query)

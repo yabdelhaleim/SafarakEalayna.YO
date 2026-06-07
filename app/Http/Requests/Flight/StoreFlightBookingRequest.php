@@ -56,7 +56,7 @@ class StoreFlightBookingRequest extends FormRequest
             'airline_name' => 'nullable|string|max:150',
             'airline' => 'nullable|string|max:150',
             'system_type' => 'nullable|string|max:50',
-            'pnr' => 'nullable|string|max:50',
+            'pnr' => 'required|string|max:50',
             'trip_type' => 'nullable|in:one_way,round_trip,multi_city',
             'from_airport' => 'nullable|string|max:10',
             'to_airport' => 'nullable|string|max:10',
@@ -69,6 +69,7 @@ class StoreFlightBookingRequest extends FormRequest
                 'date',
                 'after_or_equal:departure_date',
             ],
+            'return_time' => 'nullable',
             'departure_time' => 'nullable',
             'arrival_time' => 'nullable',
             'passengers_count' => 'nullable|integer|min:1',
@@ -87,10 +88,10 @@ class StoreFlightBookingRequest extends FormRequest
             'purchase_balance_source' => 'nullable|string|in:carrier,system,group',
             'cabin_class' => 'nullable|string|in:economy,premium_economy,business,first',
             'notes' => 'nullable|string|max:1000',
-            'passengers' => 'nullable|array|min:1',
+            'passengers' => 'required|array|min:1',
             'passengers.*.name' => 'nullable|string|max:200',
-            'passengers.*.first_name' => 'nullable|string|max:100',
-            'passengers.*.last_name' => 'nullable|string|max:100',
+            'passengers.*.first_name' => 'required|string|max:100',
+            'passengers.*.last_name' => 'required|string|max:100',
             'passengers.*.type' => 'nullable|string|max:20',
             'passengers.*.passenger_type' => 'nullable|string|max:20',
             'passengers.*.passport_number' => 'nullable|string|max:50',
@@ -135,6 +136,7 @@ class StoreFlightBookingRequest extends FormRequest
             'to_airport_id',
             'departure_date',
             'return_date',
+            'return_time',
             'departure_time',
             'arrival_time',
             'passengers_count',
@@ -176,6 +178,7 @@ class StoreFlightBookingRequest extends FormRequest
             'departure_date',
             'arrival_time',
             'departure_time',
+            'return_time',
             'pnr',
             'trip_type',
             'trip_details',
@@ -225,7 +228,7 @@ class StoreFlightBookingRequest extends FormRequest
                 if (! is_array($passenger)) {
                     continue;
                 }
-                foreach (['date_of_birth', 'passport_number', 'nationality'] as $pk) {
+                foreach (['date_of_birth', 'passport_number', 'nationality', 'national_id'] as $pk) {
                     if (array_key_exists($pk, $passenger) && $passenger[$pk] === '') {
                         $input['passengers'][$i][$pk] = null;
                     }

@@ -17,11 +17,5 @@ class AdminSeeder extends Seeder
             'role' => 'admin',
             'is_active' => true,
         ]);
-
-        Employee::create([
-            'user_id' => $admin->id,
-            'salary' => 0,
-            'status' => 'active',
-        ]);
     }
 }

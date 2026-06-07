@@ -143,7 +143,7 @@
                   </span>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="font-semibold text-sm">{{ transaction.description }}</span>
+                  <span class="font-semibold text-sm">{{ transaction.notes }}</span>
                 </td>
                 <td class="px-6 py-4">
                   <span
@@ -218,20 +218,46 @@
       <div class="px-6 py-4 bg-white/5 border-t border-white/10 flex items-center justify-between text-sm text-text-muted">
         <div>
           عرض {{ (store.pagination.current_page - 1) * store.pagination.per_page + 1 }} -
-          {{ Math.min(store.pagination.current_page * store.pagination.per_page, filteredTransactions.length) }}
-          من {{ filteredTransactions.length }} معاملة
+          {{ Math.min(store.pagination.current_page * store.pagination.per_page, store.pagination.total) }}
+          من {{ store.pagination.total }} معاملة
         </div>
-        <div class="flex items-center gap-2">
-          <select
-            v-model="store.filters.per_page"
-            @change="applyFilters"
-            class="px-3 py-2 bg-input-bg border border-white/5 rounded-lg focus:border-gold outline-none text-sm"
-          >
-            <option :value="10">10 per page</option>
-            <option :value="15">15 per page</option>
-            <option :value="25">25 per page</option>
-            <option :value="50">50 per page</option>
-          </select>
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <select
+              v-model="store.filters.per_page"
+              @change="applyFilters"
+              class="px-3 py-2 bg-input-bg border border-white/5 rounded-lg focus:border-gold outline-none text-sm"
+            >
+              <option :value="10">10 per page</option>
+              <option :value="15">15 per page</option>
+              <option :value="25">25 per page</option>
+              <option :value="50">50 per page</option>
+            </select>
+          </div>
+
+          <div v-if="store.pagination.last_page > 1" class="flex gap-2">
+            <button 
+              type="button"
+              @click="changePage(store.pagination.current_page - 1)"
+              :disabled="store.pagination.current_page === 1"
+              class="p-2 rounded-xl border border-white/5 bg-white/5 text-text-muted hover:text-gold disabled:opacity-30 transition-all cursor-pointer"
+            >
+              <ChevronRight class="w-5 h-5" />
+            </button>
+            <div class="flex items-center gap-1 px-4 text-sm font-bold text-white">
+              <span class="text-gold">{{ store.pagination.current_page }}</span>
+              <span class="text-text-muted">/</span>
+              <span>{{ store.pagination.last_page }}</span>
+            </div>
+            <button 
+              type="button"
+              @click="changePage(store.pagination.current_page + 1)"
+              :disabled="store.pagination.current_page === store.pagination.last_page"
+              class="p-2 rounded-xl border border-white/5 bg-white/5 text-text-muted hover:text-gold disabled:opacity-30 transition-all cursor-pointer"
+            >
+              <ChevronLeft class="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -412,6 +438,8 @@ import {
   X,
   TrendingUp,
   TrendingDown,
+  ChevronRight,
+  ChevronLeft
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -501,8 +529,15 @@ const filteredTransactions = computed(() => store.filteredTransactions);
 
 // Apply filters with debounce
 const applyFilters = useDebounceFn(async () => {
+  store.filters.page = 1;
   await loadData();
 }, 400);
+
+const changePage = async (page) => {
+  if (page < 1 || page > store.pagination.last_page) return;
+  store.filters.page = page;
+  await loadData();
+};
 
 // Clear filters
 const clearFilters = async () => {

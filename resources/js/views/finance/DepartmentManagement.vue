@@ -301,7 +301,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import {
   LayoutDashboard, Briefcase, RefreshCw, Plus,
@@ -324,6 +324,12 @@ const error = ref(null);
 const activeTab = ref('financials');
 const searchQuery = ref('');
 const entityFilter = ref('all');
+let fetchController = null;
+
+const period = ref({
+  from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+  to: new Date().toISOString().slice(0, 10),
+});
 
 // Data
 const allItems = ref([]);        // from debts report
@@ -371,10 +377,27 @@ const tabs = computed(() => [
   { id: 'payables', label: 'المستحق علينا', icon: TrendingDown, count: payableItems.value.length },
 ]);
 
+const moduleMatches = (moduleKey) => {
+  const aliases = {
+    wallet: ['wallet', 'wallet_transfer', 'wallets'],
+    wallet_transfer: ['wallet', 'wallet_transfer', 'wallets'],
+  };
+  const accepted = aliases[moduleKey] || [moduleKey];
+  return accepted;
+};
+
+const filterModulesForDepartment = (byModule) =>
+  byModule.filter((m) => props.modules.some((wanted) => moduleMatches(wanted).includes(m.module)));
+
 // API calls
-const fetchDebts = async () => {
+const fetchDebts = async (signal) => {
   const res = await axios.get('/api/v1/reports/debts', {
-    params: { department: props.type, direction: 'all' }
+    params: {
+      department: props.type,
+      direction: 'all',
+      _t: Date.now(),
+    },
+    signal,
   });
   const data = res.data?.data || {};
   allItems.value = data.items || [];
@@ -385,20 +408,37 @@ const fetchDebts = async () => {
   };
 };
 
-const fetchModuleStats = async () => {
-  const res = await axios.get('/api/v1/reports/profit-by-module');
+const fetchModuleStats = async (signal) => {
+  const res = await axios.get('/api/v1/reports/profit-by-module', {
+    params: {
+      category: props.type,
+      from_date: period.value.from,
+      to_date: period.value.to,
+      _t: Date.now(),
+    },
+    signal,
+  });
   const byModule = res.data?.data?.by_module || [];
-  moduleBreakdown.value = byModule.filter(m => props.modules.includes(m.module));
+  moduleBreakdown.value = filterModulesForDepartment(byModule);
   moduleStats.value.total_income = moduleBreakdown.value.reduce((s, m) => s + (m.income || 0), 0);
   moduleStats.value.total_expense = moduleBreakdown.value.reduce((s, m) => s + (m.expense || 0), 0);
 };
 
 const refreshAll = async () => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const { signal } = fetchController;
+
   loading.value = true;
   error.value = null;
   try {
-    await Promise.all([fetchDebts(), fetchModuleStats()]);
+    await Promise.all([fetchDebts(signal), fetchModuleStats(signal)]);
   } catch (err) {
+    if (axios.isCancel?.(err) || err?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error(err);
     error.value = err.response?.data?.message || err.message || 'حدث خطأ أثناء تحميل البيانات';
   } finally {
@@ -411,7 +451,17 @@ const formatCurrency = (val) =>
   (parseFloat(val) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' جنيه';
 
 const getModuleLabel = (mod) => {
-  const map = { flight: 'طيران', bus: 'باص', hajj_umra: 'حج وعمرة', visa: 'تأشيرات', fawry: 'فوري', online: 'خدمات إلكترونية', wallet: 'محفظة', general: 'عام' };
+  const map = {
+    flight: 'طيران',
+    bus: 'باص',
+    hajj_umra: 'حج وعمرة',
+    visa: 'تأشيرات',
+    fawry: 'فوري',
+    online: 'خدمات إلكترونية',
+    wallet: 'محفظة وتحويلات',
+    wallet_transfer: 'محفظة وتحويلات',
+    general: 'عام',
+  };
   return map[mod] || mod;
 };
 
@@ -426,6 +476,12 @@ const getMarginPct = (m) => {
 };
 
 onMounted(() => refreshAll());
+
+onBeforeUnmount(() => {
+  if (fetchController) {
+    fetchController.abort();
+  }
+});
 </script>
 
 <style scoped>

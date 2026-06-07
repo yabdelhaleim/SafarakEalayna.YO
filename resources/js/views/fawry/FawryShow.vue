@@ -79,6 +79,19 @@
               </dd>
             </div>
             <div>
+              <dt class="text-xs text-text-muted">حالة الدفع</dt>
+              <dd class="mt-1">
+                <span
+                  :class="[
+                    'inline-flex items-center rounded-full px-3 py-1 text-xs font-bold',
+                    paymentStatusClass,
+                  ]"
+                >
+                  {{ paymentStatusLabel }}
+                </span>
+              </dd>
+            </div>
+            <div>
               <dt class="text-xs text-text-muted">التاريخ</dt>
               <dd class="mt-1 font-semibold text-text-main">{{ formatDate(transaction.created_at) }}</dd>
             </div>
@@ -124,11 +137,20 @@
           <Wallet class="h-5 w-5 text-purple-300" />
           التحصيل والدفع
         </h2>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div 
+          class="grid grid-cols-1 gap-3"
+          :class="transaction.client_id ? 'sm:grid-cols-3' : 'sm:grid-cols-2'"
+        >
           <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <p class="text-xs text-text-muted">المبلغ المدفوع</p>
-            <p class="mt-1 font-mono text-lg font-bold tabular-nums text-text-main">
+            <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-400">
               {{ formatCurrency(transaction.amount) }}
+            </p>
+          </div>
+          <div v-if="transaction.client_id" class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <p class="text-xs text-text-muted">الآجل المتبقي</p>
+            <p class="mt-1 font-mono text-lg font-bold tabular-nums text-error">
+              {{ formatCurrency(Math.max(0, (transaction.selling_price || 0) - (transaction.amount || 0))) }}
             </p>
           </div>
           <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
@@ -249,11 +271,27 @@ const profitPrefix = computed(() => {
   return p > 0 ? '+' : '−';
 });
 
+const paymentStatusLabel = computed(() => {
+  if (!transaction.value) return '';
+  const amt = Number(transaction.value.amount) || 0;
+  const sp = Number(transaction.value.selling_price) || 0;
+  if (amt <= 0) return 'آجل بالكامل (غير مدفوع)';
+  if (amt < sp) return 'مدفوع جزئياً (آجل)';
+  return 'مدفوع بالكامل';
+});
+
+const paymentStatusClass = computed(() => {
+  if (!transaction.value) return '';
+  const amt = Number(transaction.value.amount) || 0;
+  const sp = Number(transaction.value.selling_price) || 0;
+  if (amt <= 0) return 'bg-error/15 text-error';
+  if (amt < sp) return 'bg-amber-500/15 text-amber-200';
+  return 'bg-success/15 text-success';
+});
+
 const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('ar-EG', {
-    style: 'currency',
-    currency: 'EGP',
-  }).format(amount || 0);
+  const n = Number(amount) || 0;
+  return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
 };
 
 const formatDate = (dateString) => {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Flight;
 
+use App\Enums\CustomerType;
 use App\Enums\FlightBookingStatus;
 use App\Enums\FlightSystemType;
 use Illuminate\Http\Request;
@@ -50,6 +51,7 @@ class FlightBookingResource extends JsonResource
             'trip_type' => $this->trip_type,
             'departure_time' => $this->departure_time?->format('H:i'),
             'arrival_time' => $this->arrival_time?->format('H:i'),
+            'return_time' => $this->return_time?->format('H:i'),
             'customer_id' => $this->customer_id,
             'employee_id' => $this->employee_id,
             'from_airport_id' => $this->from_airport_id,
@@ -125,8 +127,8 @@ class FlightBookingResource extends JsonResource
                 'name' => $this->customer->full_name,
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
-                'type' => $this->customer->type instanceof \App\Enums\CustomerType
-                    ? ($this->customer->type === \App\Enums\CustomerType::Company ? 'counter' : 'regular')
+                'type' => $this->customer->type instanceof CustomerType
+                    ? ($this->customer->type === CustomerType::Company ? 'counter' : 'regular')
                     : ($this->customer->type === 'company' || $this->customer->type === 'counter' ? 'counter' : 'regular'),
             ]),
             'employee' => $this->whenLoaded('employee', fn () => [

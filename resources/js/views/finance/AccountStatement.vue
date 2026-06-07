@@ -4,7 +4,7 @@
     <div class="hidden print:block print:mb-10">
       <div class="flex items-center justify-between border-b-2 border-black pb-6">
         <div>
-          <h2 class="text-3xl font-black text-black">سفري علينا</h2>
+          <h2 class="text-3xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
           <p class="text-sm font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
         </div>
         <div class="text-right">
@@ -19,212 +19,12 @@
             <p><span class="font-black">اسم الحساب:</span> {{ account?.name }}</p>
             <p><span class="font-black">نوع الحساب:</span> {{ account?.type_label }}</p>
             <p><span class="font-black">العملة:</span> {{ account?.currency }}</p>
-          
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+          </template>
           <template v-else>
             <p><span class="font-black">اسم العميل/الشركة:</span> {{ selectedCustomer?.full_name }}</p>
             <p><span class="font-black">رقم الهاتف:</span> {{ selectedCustomer?.phone || '—' }}</p>
             <p><span class="font-black">نوع العميل:</span> {{ selectedCustomer?.type === 'counter' ? 'شركة كاونتر' : 'عميل أفراد' }}</p>
-          
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+          </template>
         </div>
         <div class="space-y-1 text-right">
           <p v-if="filters.from_date || filters.to_date">
@@ -237,218 +37,19 @@
               <p><span class="font-bold">رصيد آخر المدة:</span> {{ formatCurrency(stats.closing_balance, account?.currency) }}</p>
               <p><span class="font-bold">إجمالي الإيداع:</span> {{ formatCurrency(stats.period_credit, account?.currency) }}</p>
               <p><span class="font-bold">إجمالي السحب:</span> {{ formatCurrency(stats.period_debit, account?.currency) }}</p>
-            
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+            </template>
             <template v-else>
               <p><span class="font-bold">إجمالي المبيعات (عليه):</span> {{ formatCurrency(stats.period_debit) }}</p>
               <p><span class="font-bold">إجمالي المسدد (له):</span> {{ formatCurrency(stats.period_credit) }}</p>
               <p class="col-span-2 text-base mt-1"><span class="font-black">صافي الرصيد المستحق:</span> <strong :class="stats.closing_balance > 0 ? 'text-red-600' : 'text-green-600'">{{ formatCurrency(Math.abs(stats.closing_balance)) }} {{ stats.closing_balance > 0 ? 'عليه (مدين)' : (stats.closing_balance < 0 ? 'له (دائن)' : '') }}</strong></p>
-            
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+            </template>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 print:px-0">
+
+    <div class="statement-page mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8 print:px-0">
       <!-- Header Section -->
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-5">
@@ -461,10 +62,13 @@
           </button>
           <div>
             <div class="flex items-center gap-3">
-              <p class="text-[11px] font-black uppercase tracking-[0.2em] text-gold/90">سجل المعاملات المالية</p>
+              <p class="text-sm font-black uppercase tracking-[0.15em] text-gold/90">سجل المعاملات المالية</p>
               <div class="h-px w-8 bg-gold/30"></div>
             </div>
-            <h1 class="font-display text-4xl font-black tracking-tight text-text-main mt-1">كشف الحساب التفصيلي</h1>
+            <h1 class="font-display mt-1 text-3xl font-black tracking-tight text-text-main sm:text-4xl">كشف الحساب التفصيلي</h1>
+            <p v-if="statementTargetType === 'account' && account" class="mt-2 text-lg font-black text-gold">
+              {{ account.name }} · {{ account.currency }}
+            </p>
           </div>
         </div>
         
@@ -487,7 +91,7 @@
           </button>
 
           <button
-            v-if="statementTargetType === 'account'"
+            v-if="statementTargetType === 'account' && account"
             @click="showTransferModal = true"
             class="btn-airline inline-flex items-center gap-2 px-6 py-3.5 text-sm font-black shadow-2xl shadow-gold/10 hover:shadow-gold/20 transition-all duration-500"
           >
@@ -502,7 +106,7 @@
         <button
           type="button"
           @click="setTargetType('account')"
-          class="px-6 py-3.5 rounded-2xl font-black text-sm transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
           :class="statementTargetType === 'account' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
         >
           <Wallet class="w-4 h-4" />
@@ -511,7 +115,7 @@
         <button
           type="button"
           @click="setTargetType('customer')"
-          class="px-6 py-3.5 rounded-2xl font-black text-sm transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
           :class="statementTargetType === 'customer' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
         >
           <User class="w-4 h-4" />
@@ -530,9 +134,9 @@
                 <div class="p-2 rounded-lg bg-sky-400/10">
                   <History class="w-5 h-5" />
                 </div>
-                <span class="text-xs font-black uppercase tracking-widest">رصيد أول المدة</span>
+                <span class="text-sm font-black">رصيد أول المدة</span>
               </div>
-              <p class="font-mono text-2xl font-black text-text-main">{{ formatCurrency(stats.opening_balance, account.currency) }}</p>
+              <p class="font-mono text-3xl font-black text-text-main">{{ formatCurrency(stats.opening_balance, account.currency) }}</p>
             </div>
 
             <!-- Period Credit -->
@@ -541,9 +145,9 @@
                 <div class="p-2 rounded-lg bg-success/10">
                   <TrendingUp class="w-5 h-5" />
                 </div>
-                <span class="text-xs font-black uppercase tracking-widest">إجمالي الإيداعات</span>
+                <span class="text-sm font-black">إجمالي الإيداعات</span>
               </div>
-              <p class="font-mono text-2xl font-black text-text-main">{{ formatCurrency(stats.period_credit, account.currency) }}</p>
+              <p class="font-mono text-3xl font-black text-success">{{ formatCurrency(stats.period_credit, account.currency) }}</p>
             </div>
 
             <!-- Period Debit -->
@@ -552,9 +156,9 @@
                 <div class="p-2 rounded-lg bg-error/10">
                   <TrendingDown class="w-5 h-5" />
                 </div>
-                <span class="text-xs font-black uppercase tracking-widest">إجمالي المسحوبات</span>
+                <span class="text-sm font-black">إجمالي المسحوبات</span>
               </div>
-              <p class="font-mono text-2xl font-black text-text-main">{{ formatCurrency(stats.period_debit, account.currency) }}</p>
+              <p class="font-mono text-3xl font-black text-error">{{ formatCurrency(stats.period_debit, account.currency) }}</p>
             </div>
 
             <!-- Period Closing/Current Balance -->
@@ -563,9 +167,9 @@
                 <div class="p-2 rounded-lg bg-gold/10">
                   <Wallet class="w-5 h-5" />
                 </div>
-                <span class="text-xs font-black uppercase tracking-widest">رصيد آخر المدة</span>
+                <span class="text-sm font-black">رصيد آخر المدة</span>
               </div>
-              <p class="font-mono text-3xl font-black" :class="stats.closing_balance >= 0 ? 'text-success' : 'text-error'">
+              <p class="font-mono text-4xl font-black" :class="stats.closing_balance >= 0 ? 'text-success' : 'text-error'">
                 {{ formatCurrency(stats.closing_balance, account?.currency) }}
               </p>
             </div>
@@ -603,21 +207,21 @@
           <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x md:divide-x-reverse divide-white/5">
             <!-- Period Debit (Sales) -->
             <div class="p-6 space-y-2 bg-white/[0.01]">
-              <span class="text-[11px] font-black uppercase tracking-widest text-text-muted block">إجمالي المبيعات (عليه)</span>
-              <p class="font-mono text-xl font-black text-error">{{ formatCurrency(stats.period_debit) }}</p>
+              <span class="text-[11px] font-black text-text-muted block">إجمالي المبيعات (عليه)</span>
+              <p class="font-mono text-2xl font-black text-error">{{ formatCurrency(stats.period_debit) }}</p>
             </div>
             <!-- Period Credit (Paid) -->
             <div class="p-6 space-y-2 bg-white/[0.01]">
-              <span class="text-[11px] font-black uppercase tracking-widest text-text-muted block">إجمالي المسدد (له)</span>
-              <p class="font-mono text-xl font-black text-success">{{ formatCurrency(stats.period_credit) }}</p>
+              <span class="text-[11px] font-black text-text-muted block">إجمالي المسدد (له)</span>
+              <p class="font-mono text-2xl font-black text-success">{{ formatCurrency(stats.period_credit) }}</p>
             </div>
             <!-- Closing Balance (Net) -->
             <div class="p-6 space-y-2 bg-gold/[0.03]">
-              <span class="text-[11px] font-black uppercase tracking-widest text-gold block">صافي الرصيد المستحق</span>
-              <p class="font-mono text-2xl font-black" :class="stats.closing_balance > 0 ? 'text-error' : (stats.closing_balance < 0 ? 'text-success' : 'text-white')">
+              <span class="text-sm font-black text-gold block">صافي الرصيد المستحق</span>
+              <p class="font-mono text-3xl font-black" :class="stats.closing_balance > 0 ? 'text-error' : (stats.closing_balance < 0 ? 'text-success' : 'text-white')">
                 {{ formatCurrency(Math.abs(stats.closing_balance)) }}
-                <span v-if="stats.closing_balance > 0" class="text-[10px] text-error font-bold inline-block mr-1">عليه (مدين)</span>
-                <span v-else-if="stats.closing_balance < 0" class="text-[10px] text-success font-bold inline-block mr-1">له (دائن)</span>
+                <span v-if="stats.closing_balance > 0" class="text-sm text-error font-bold inline-block mr-1">عليه (مدين)</span>
+                <span v-else-if="stats.closing_balance < 0" class="text-sm text-success font-bold inline-block mr-1">له (دائن)</span>
               </p>
             </div>
           </div>
@@ -737,29 +341,31 @@
       </div>
 
       <!-- Filters & Search -->
-      <div class="mt-8 grid grid-cols-1 md:grid-cols-12 gap-4 items-end print:hidden">
+      <div class="flight-panel mt-2 print:hidden">
+        <h3 class="mb-4 text-lg font-black text-text-main">تصفية كشف الحساب</h3>
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
         <div class="md:col-span-4 relative group">
           <Search class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted group-focus-within:text-gold transition-colors" />
           <input id="filtersSearch" name="filtersSearch"
             v-model="filters.search"
             type="text"
             placeholder="البحث في الوصف، الاسم، أو رقم الحجز..."
-            class="flight-input w-full pr-12 font-bold"
+            class="stmt-filter-input flight-input w-full pr-12 font-bold"
             @input="debounceFetch"
           />
         </div>
         
         <div class="md:col-span-2 space-y-1.5">
-          <label for="filtersModule" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">الموديول / القسم</label>
-          <select id="filtersModule" name="filtersModule" v-model="filters.module" class="flight-select w-full !py-2.5 text-xs font-bold" @change="fetchStatement">
+          <label for="filtersModule" class="stmt-filter-label">الموديول / القسم</label>
+          <select id="filtersModule" name="filtersModule" v-model="filters.module" class="stmt-filter-select flight-select w-full" @change="fetchStatement">
             <option value="">كل التفاصيل</option>
             <option v-for="m in financeStore.meta.transactionModules" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </div>
 
         <div class="md:col-span-2 space-y-1.5">
-          <label for="filtersType" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">نوع الحركة</label>
-          <select id="filtersType" name="filtersType" v-model="filters.type" class="flight-select w-full !py-2.5 text-xs font-bold" @change="fetchStatement">
+          <label for="filtersType" class="stmt-filter-label">نوع الحركة</label>
+          <select id="filtersType" name="filtersType" v-model="filters.type" class="stmt-filter-select flight-select w-full" @change="fetchStatement">
             <option value="">الكل (إيداع وسحب)</option>
             <option value="credit">إيداعات فقط (+)</option>
             <option value="debit">مسحوبات فقط (-)</option>
@@ -768,12 +374,12 @@
 
         <div class="md:col-span-3 grid grid-cols-2 gap-2">
           <div class="space-y-1.5">
-            <label for="filtersFromDate" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">من تاريخ</label>
-            <input id="filtersFromDate" name="filtersFromDate" v-model="filters.from_date" type="date" class="flight-input !py-2.5 text-[11px] font-bold" @change="fetchStatement" />
+            <label for="filtersFromDate" class="stmt-filter-label">من تاريخ</label>
+            <input id="filtersFromDate" name="filtersFromDate" v-model="filters.from_date" type="date" class="stmt-filter-input flight-input w-full" @change="fetchStatement" />
           </div>
           <div class="space-y-1.5">
-            <label for="filtersToDate" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">إلى تاريخ</label>
-            <input id="filtersToDate" name="filtersToDate" v-model="filters.to_date" type="date" class="flight-input !py-2.5 text-[11px] font-bold" @change="fetchStatement" />
+            <label for="filtersToDate" class="stmt-filter-label">إلى تاريخ</label>
+            <input id="filtersToDate" name="filtersToDate" v-model="filters.to_date" type="date" class="stmt-filter-input flight-input w-full" @change="fetchStatement" />
           </div>
         </div>
 
@@ -789,19 +395,19 @@
       </div>
 
       <!-- Main Statement Table -->
-      <div class="mt-8 flight-panel !p-0 overflow-hidden border border-white/5 shadow-2xl relative">
+      <div class="flight-panel !p-0 overflow-hidden border border-white/5 shadow-2xl relative">
         <!-- Loading Overlay -->
         <div v-if="loading" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
           <div class="flex flex-col items-center gap-4">
             <div class="w-12 h-12 border-4 border-gold/20 border-t-gold rounded-full animate-spin"></div>
-            <p class="text-xs font-black text-gold uppercase tracking-[0.2em]">جاري تحديث السجل...</p>
+            <p class="text-base font-black text-gold">جاري تحديث السجل...</p>
           </div>
         </div>
 
         <div class="overflow-x-auto">
-          <table class="w-full text-right border-collapse">
+          <table class="stmt-table w-full text-right border-collapse">
             <thead>
-              <tr class="bg-white/[0.03] text-[10px] font-black text-text-muted uppercase tracking-[0.2em] border-b border-white/5">
+              <tr class="bg-white/[0.03] border-b border-white/5">
                 <th class="px-6 py-5 whitespace-nowrap">التاريخ</th>
                 <th class="px-6 py-5 whitespace-nowrap">الحركة / الموظف</th>
                 <th class="px-6 py-5 whitespace-nowrap">المرجع / PNR</th>
@@ -817,7 +423,7 @@
                 <td colspan="8" class="px-6 py-20 text-center">
                   <div class="flex flex-col items-center gap-4 opacity-30">
                     <History class="w-16 h-16" />
-                    <p class="text-sm font-bold">لا توجد حركات مالية مسجلة لهذا الحساب في الفترة المحددة</p>
+                    <p class="text-lg font-black">لا توجد حركات مالية مسجلة لهذا الحساب في الفترة المحددة</p>
                   </div>
                 </td>
               </tr>
@@ -829,12 +435,12 @@
                   @click="toggleRow(entry.id || entry.transaction_id)"
                 >
                   <!-- Col 1: Date -->
-                  <td class="px-6 py-4 text-xs font-bold text-text-main whitespace-nowrap">{{ entry.date_human || formatDate(entry.created_at || entry.date) }}</td>
+                  <td class="px-6 py-5 text-base font-black text-text-main whitespace-nowrap">{{ entry.date_human || formatDate(entry.created_at || entry.date) }}</td>
                   
                   <!-- Col 2: Process / Employee -->
                   <td class="px-6 py-4 whitespace-nowrap">
                     <div class="flex flex-col gap-1">
-                      <span class="text-xs font-black text-text-main flex items-center gap-1.5">
+                      <span class="text-base font-black text-text-main flex items-center gap-2">
                         <span class="p-1 rounded bg-white/5 text-gold">
                           <Plane v-if="entry.module === 'flight'" class="w-3.5 h-3.5" />
                           <Compass v-else-if="entry.module === 'hajj_umra'" class="w-3.5 h-3.5" />
@@ -845,33 +451,33 @@
                         </span>
                         <span>{{ getModuleLabel(entry.module || account?.module || 'general') }}</span>
                       </span>
-                      <span class="text-[10px] text-text-muted font-bold">{{ entry.user_name || 'تلقائي' }}</span>
+                      <span class="text-sm font-bold text-text-muted">{{ entry.user_name || 'تلقائي' }}</span>
                     </div>
                   </td>
                   
                   <!-- Col 3: Reference / PNR -->
-                  <td class="px-6 py-4 font-mono text-xs text-sky-400 font-black whitespace-nowrap">
+                  <td class="px-6 py-5 font-mono text-base text-sky-300 font-black whitespace-nowrap">
                     {{ entry.booking_details?.pnr || entry.reference_id || '—' }}
                   </td>
                   
                   <!-- Col 4: Description & Badges -->
                   <td class="px-6 py-4">
                     <div class="space-y-1">
-                      <p class="text-xs font-bold text-text-main">{{ entry.description || entry.notes }}</p>
+                      <p class="text-base font-black text-text-main leading-snug">{{ entry.description || entry.notes }}</p>
                       <div class="flex items-center flex-wrap gap-2 mt-1">
                         <span v-if="entry.status" 
-                          class="text-[9px] px-2 py-0.5 rounded font-black uppercase"
+                          class="text-sm px-2.5 py-1 rounded-lg font-black uppercase"
                           :class="entry.status === 'completed' ? 'bg-success/10 text-success' : 'bg-gold/10 text-gold'"
                         >
                           {{ entry.status }}
                         </span>
-                        <span v-if="entry.process_type" class="text-[9px] px-2 py-0.5 rounded font-black uppercase bg-white/5 text-text-muted">
+                        <span v-if="entry.process_type" class="text-sm px-2.5 py-1 rounded-lg font-black uppercase bg-white/5 text-text-muted">
                           {{ entry.process_type }}
                         </span>
-                        <span v-if="entry.payment_method" class="text-[9px] px-2 py-0.5 rounded font-black uppercase bg-white/5 text-text-muted">
+                        <span v-if="entry.payment_method" class="text-sm px-2.5 py-1 rounded-lg font-black uppercase bg-white/5 text-text-muted">
                           {{ getPaymentMethodLabel(entry.payment_method) }}
                         </span>
-                        <span v-if="entry.entity_name" class="text-[9px] px-2 py-0.5 rounded font-black bg-gold/10 text-gold">
+                        <span v-if="entry.entity_name" class="text-sm px-2.5 py-1 rounded-lg font-black bg-gold/10 text-gold">
                           {{ entry.entity_name }}
                         </span>
                       </div>
@@ -880,7 +486,7 @@
                   
                   <!-- Col 5: Debit (-) -->
                   <td class="px-6 py-4 font-mono text-left whitespace-nowrap">
-                    <span v-if="entry.debit > 0" class="text-sm font-black text-error">
+                    <span v-if="entry.debit > 0" class="text-lg font-black text-error">
                       {{ formatCurrency(entry.debit, account?.currency) }}
                     </span>
                     <span v-else class="text-text-muted/20">—</span>
@@ -888,16 +494,16 @@
                   
                   <!-- Col 6: Credit (+) -->
                   <td class="px-6 py-4 font-mono text-left whitespace-nowrap">
-                    <span v-if="entry.credit > 0" class="text-sm font-black text-success">
+                    <span v-if="entry.credit > 0" class="text-lg font-black text-success">
                       {{ formatCurrency(entry.credit, account?.currency) }}
                     </span>
                     <span v-else class="text-text-muted/20">—</span>
                   </td>
                   
                   <!-- Col 7: Balance -->
-                  <td class="px-6 py-4 font-mono text-sm font-black text-left whitespace-nowrap" :class="entry.balance_after > 0 ? 'text-error' : (entry.balance_after < 0 ? 'text-success' : 'text-text-main')">
+                  <td class="px-6 py-5 font-mono text-lg font-black text-left whitespace-nowrap" :class="entry.balance_after > 0 ? 'text-error' : (entry.balance_after < 0 ? 'text-success' : 'text-text-main')">
                     {{ formatCurrency(Math.abs(entry.balance_after || 0), account?.currency) }}
-                    <span v-if="statementTargetType === 'customer'" class="text-[9px] block">
+                    <span v-if="statementTargetType === 'customer'" class="text-sm block font-bold">
                       <span v-if="entry.balance_after > 0" class="text-error font-bold">عليه (مدين)</span>
                       <span v-else-if="entry.balance_after < 0" class="text-success font-bold">له (دائن)</span>
                     </span>
@@ -962,106 +568,7 @@
                             <p v-if="entry.booking_details?.flight_number || entry.booking?.flight_number"><span class="font-black text-text-muted">رقم الرحلة:</span> <span class="font-mono text-white">{{ entry.booking_details?.flight_number || entry.booking?.flight_number }}</span></p>
                             <p v-if="entry.booking_details?.provider_name || entry.booking_details?.airline"><span class="font-black text-text-muted">المزود / الطيران:</span> <span class="text-gold font-bold">{{ entry.booking_details?.provider_name || entry.booking_details?.airline }}</span></p>
                           </div>
-                        
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
+                        </template>
 
                         <template v-else>
                           <p class="text-[10px] font-black text-gold uppercase tracking-wider block mb-1">بيانات الحساب بعد الحركة</p>
@@ -1070,211 +577,13 @@
                             <p v-if="entry.payment_method"><span class="font-black text-text-muted">طريقة الدفع:</span> <span class="text-white font-bold">{{ getPaymentMethodLabel(entry.payment_method) }}</span></p>
                             <p v-if="entry.process_type"><span class="font-black text-text-muted">نوع القيد:</span> <span class="text-white font-bold">{{ entry.process_type }}</span></p>
                           </div>
-                        
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
+                        </template>
 
                       </div>
                     </div>
                   </td>
                 </tr>
-              
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
+              </template>
 
             </tbody>
             <tfoot class="bg-white/[0.05] border-t-2 border-white/10 font-mono">
@@ -1304,7 +613,7 @@
 
         <!-- Pagination -->
         <div v-if="pagination.last_page > 1" class="px-6 py-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between print:hidden">
-          <p class="text-xs font-bold text-text-muted uppercase tracking-widest">
+          <p class="text-base font-bold text-text-muted">
             إظهار {{ pagination.from }} - {{ pagination.to }} من إجمالي {{ pagination.total }} حركة
           </p>
           <div class="flex gap-2">
@@ -1315,7 +624,7 @@
             >
               <ChevronRight class="w-5 h-5" />
             </button>
-            <div class="flex items-center gap-1 px-4 text-xs font-black">
+            <div class="flex items-center gap-1 px-4 text-base font-black">
               <span class="text-gold">{{ pagination.current_page }}</span>
               <span class="text-text-muted">/</span>
               <span>{{ pagination.last_page }}</span>
@@ -1347,7 +656,7 @@
         <div 
           v-if="showTransferModal" 
           class="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl animate-in fade-in duration-300"
-          @click.self="showTransferModal = false"
+          @click.self="closeTransferModal"
         >
           <div class="flight-panel w-full max-w-xl !p-0 overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-300">
             <div class="px-8 py-6 bg-white/[0.03] border-b border-white/5 flex items-center justify-between">
@@ -1360,14 +669,14 @@
                   <p class="text-xs text-text-muted font-bold uppercase tracking-widest mt-1">تحويل بين الحسابات</p>
                 </div>
               </div>
-              <button @click="showTransferModal = false" class="p-2 text-text-muted hover:text-white transition-colors">
+              <button @click="closeTransferModal" class="p-2 text-text-muted hover:text-white transition-colors">
                 <X class="w-6 h-6" />
               </button>
             </div>
 
             <form @submit.prevent="transferFunds" class="p-8 space-y-6">
               <div class="space-y-2">
-                <label for="transferToAccountId" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">الحساب المستهدف</label>
+                <label for="transferToAccountId" class="stmt-filter-label">الحساب المستهدف</label>
                 <div class="relative group">
                   <select id="transferToAccountId" name="transferToAccountId"
                     v-model="transfer.to_account_id" 
@@ -1375,13 +684,13 @@
                     class="flight-select w-full !pl-12 font-bold bg-black text-white"
                   >
                     <option value="" disabled>اختر الحساب المحول إليه</option>
-                    <option 
-                      v-for="acc in availableAccounts" 
-                      :key="acc.id" 
+                    <option
+                      v-for="acc in availableAccounts"
+                      :key="acc.id"
                       :value="acc.id"
                       :disabled="Number(acc.id) === Number(route.params.id)"
                     >
-                      {{ acc.name }} ({{ formatCurrency(acc.balance, acc.currency) }})
+                      {{ acc.name }} — {{ acc.currency }} ({{ formatCurrency(acc.balance, acc.currency) }})
                     </option>
                   </select>
                   <div class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-gold transition-colors">
@@ -1392,13 +701,16 @@
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-2">
-                  <label for="transferAmount" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">المبلغ</label>
+                  <label for="transferAmount" class="stmt-filter-label">
+                    المبلغ ({{ account?.currency || 'EGP' }})
+                  </label>
                   <div class="relative group">
-                    <input id="transferAmount" name="transferAmount" 
-                      v-model.number="transfer.amount" 
-                      type="number" 
-                      step="0.01" 
-                      required 
+                    <input id="transferAmount" name="transferAmount"
+                      v-model.number="transfer.amount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
                       class="flight-input w-full font-mono text-xl font-black"
                       placeholder="0.00"
                     />
@@ -1408,16 +720,68 @@
                   </div>
                 </div>
                 <div class="space-y-2">
-                  <label class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">العملة</label>
+                  <label class="stmt-filter-label">عملة الحساب المستلم</label>
                   <div class="flight-input w-full bg-white/5 font-black flex items-center justify-between">
-                    <span>{{ account?.currency || 'EGP' }}</span>
+                    <span>{{ transferToAccount?.currency || '—' }}</span>
                     <Globe class="w-4 h-4 text-text-muted" />
                   </div>
                 </div>
               </div>
 
+              <div
+                v-if="account && transferToAccount && !currenciesMatch(account.currency, transferToAccount.currency)"
+                class="space-y-2"
+              >
+                <label for="transferExchangeRate" class="stmt-filter-label">
+                  سعر الصرف
+                  <span class="text-rose-400">*</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-text-muted whitespace-nowrap">1 {{ account.currency }} =</span>
+                  <input
+                    id="transferExchangeRate"
+                    name="transferExchangeRate"
+                    v-model.number="transfer.exchange_rate"
+                    type="number"
+                    step="0.000001"
+                    min="0.000001"
+                    required
+                    class="flight-input flex-1 font-mono font-bold"
+                  />
+                  <span class="text-sm text-text-muted whitespace-nowrap">{{ transferToAccount.currency }}</span>
+                </div>
+                <p class="text-sm text-text-muted">
+                  المبلغ المضاف للحساب المستلم:
+                  <span class="text-gold font-bold">{{ formatCurrency(statementTransferConvertedAmount, transferToAccount.currency) }}</span>
+                </p>
+              </div>
+
+              <div
+                v-if="account && transferToAccount"
+                class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-2 text-sm"
+              >
+                <div class="flex justify-between gap-4">
+                  <span class="text-text-muted">المبلغ المخصوم</span>
+                  <span class="font-bold text-gold">{{ formatCurrency(transfer.amount, account.currency) }}</span>
+                </div>
+                <div
+                  v-if="!currenciesMatch(account.currency, transferToAccount.currency)"
+                  class="flex justify-between gap-4"
+                >
+                  <span class="text-text-muted">المبلغ المضاف</span>
+                  <span class="font-bold text-emerald-400">{{ formatCurrency(statementTransferConvertedAmount, transferToAccount.currency) }}</span>
+                </div>
+              </div>
+
+              <p
+                v-if="transferError"
+                class="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3"
+              >
+                {{ transferError }}
+              </p>
+
               <div class="space-y-2">
-                <label for="transferNotes" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">ملاحظات العملية</label>
+                <label for="transferNotes" class="stmt-filter-label">ملاحظات العملية</label>
                 <textarea id="transferNotes" name="transferNotes" 
                   v-model="transfer.notes" 
                   rows="3" 
@@ -1427,17 +791,17 @@
               </div>
 
               <div class="flex gap-4 pt-4">
-                <button 
-                  type="submit" 
-                  :disabled="submitting"
+                <button
+                  type="submit"
+                  :disabled="submitting || !canExecuteStatementTransfer"
                   class="btn-airline flex-1 py-4 text-base font-black shadow-2xl disabled:opacity-50 flex items-center justify-center gap-3"
                 >
                   <span v-if="submitting" class="w-5 h-5 border-2 border-white/30 border-t-white animate-spin rounded-full"></span>
                   {{ submitting ? 'جاري تنفيذ العملية...' : 'اعتماد التحويل المالي' }}
                 </button>
-                <button 
-                  type="button" 
-                  @click="showTransferModal = false"
+                <button
+                  type="button"
+                  @click="closeTransferModal"
                   class="btn-airline-ghost px-8 py-4 text-base font-bold rounded-2xl"
                 >
                   إلغاء
@@ -1474,7 +838,7 @@
             <form @submit.prevent="submitQuickTransaction" class="p-8 space-y-6">
               <!-- Type Choice (Income / Expense) -->
               <div class="space-y-2 text-right">
-                <label class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">نوع الحركة</label>
+                <label class="stmt-filter-label">نوع الحركة</label>
                 <div class="grid grid-cols-2 gap-4">
                   <button
                     type="button"
@@ -1500,7 +864,7 @@
               <!-- Amount & Date -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
                 <div class="space-y-2">
-                  <label for="quickTransactionAmount" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">المبلغ *</label>
+                  <label for="quickTransactionAmount" class="stmt-filter-label">المبلغ *</label>
                   <div class="relative group">
                     <input id="quickTransactionAmount" name="quickTransactionAmount"
                       v-model.number="quickTransaction.amount" 
@@ -1517,7 +881,7 @@
                 </div>
 
                 <div class="space-y-2">
-                  <label for="quickTransactionDate" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">تاريخ المعاملة</label>
+                  <label for="quickTransactionDate" class="stmt-filter-label">تاريخ المعاملة</label>
                   <input id="quickTransactionDate" name="quickTransactionDate"
                     v-model="quickTransaction.date" 
                     type="date"
@@ -1530,7 +894,7 @@
               <!-- Description & Reference -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
                 <div class="space-y-2">
-                  <label for="quickTransactionDescription" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">الوصف والبيان *</label>
+                  <label for="quickTransactionDescription" class="stmt-filter-label">الوصف والبيان *</label>
                   <input id="quickTransactionDescription" name="quickTransactionDescription"
                     v-model="quickTransaction.description" 
                     type="text"
@@ -1540,7 +904,7 @@
                   />
                 </div>
                 <div class="space-y-2">
-                  <label for="quickTransactionReference" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">رقم المرجع</label>
+                  <label for="quickTransactionReference" class="stmt-filter-label">رقم المرجع</label>
                   <input id="quickTransactionReference" name="quickTransactionReference"
                     v-model="quickTransaction.reference" 
                     type="text"
@@ -1552,7 +916,7 @@
 
               <!-- Notes -->
               <div class="space-y-2 text-right">
-                <label for="quickTransactionNotes" class="text-[10px] font-black text-text-muted uppercase tracking-widest px-1">ملاحظات إضافية</label>
+                <label for="quickTransactionNotes" class="stmt-filter-label">ملاحظات إضافية</label>
                 <textarea id="quickTransactionNotes" name="quickTransactionNotes"
                   v-model="quickTransaction.notes" 
                   rows="2" 
@@ -1617,7 +981,7 @@
             <div id="printable-receipt" class="p-6 sm:p-8 space-y-5 text-text-main text-right print:w-full overflow-y-auto print:overflow-visible print:p-2 print:space-y-3 print:text-black">
               <!-- Official Document Header -->
               <div class="border-b border-white/10 pb-4 print:pb-2 text-center">
-                <h2 class="text-2xl print:text-xl font-black text-gold print:text-black">سفري علينا للسياحة</h2>
+                <h2 class="text-2xl print:text-xl font-black text-gold print:text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا للسياحة' }}</h2>
                 <p class="text-sm print:text-xs font-bold text-text-muted mt-1 print:text-gray-600">سند معاملة مالية / كشف تفاصيل قيد شامل</p>
               </div>
 
@@ -1663,313 +1027,13 @@
                     <span class="font-bold block text-sm mt-1" :class="stats.closing_balance > 0 ? 'text-error' : (stats.closing_balance < 0 ? 'text-success' : 'text-success')">
                       <template v-if="stats.closing_balance > 0">
                         ⚠️ عليه مستحقات (مدين) بقيمة {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}
-                      
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+                      </template>
                       <template v-else-if="stats.closing_balance < 0">
                         ✅ له مستحقات (دائن) بقيمة {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}
-                      
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+                      </template>
                       <template v-else>
                         ✨ حسابه خالص تماماً (الرصيد الختامي صفر)
-                      
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+                      </template>
                     </span>
                   </div>
                 </div>
@@ -2038,108 +1102,8 @@
                       <span class="text-[10px] text-text-muted print:text-gray-700 capitalize">{{ String(key).replace(/_/g, ' ') }}</span>
                       <span class="font-bold text-text-main print:text-black truncate" :title="String(val)">{{ val || '—' }}</span>
                     </div>
-                  
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
+                  </template>
 
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
-                  
                   <!-- Fallback mapping loop for ANY extra unlisted key inside booking -->
                   <template v-if="selectedEntryDetails.booking && typeof selectedEntryDetails.booking === 'object'">
                     <div 
@@ -2151,107 +1115,7 @@
                       <span class="text-[10px] text-text-muted capitalize">{{ String(key).replace(/_/g, ' ') }}</span>
                       <span class="font-bold text-text-main truncate" :title="String(val)">{{ typeof val === 'object' ? JSON.stringify(val) : val }}</span>
                     </div>
-                  
-      <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
-        <div class="max-w-4xl mx-auto py-8 px-6">
-          <!-- Logo & Header -->
-          <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
-            <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
-            <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
-              <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
-              <span>رقم السند: {{ selectedEntryDetails.reference_id || selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.id || selectedEntryDetails.transaction_id }}</span>
-            </div>
-          </div>
-
-          <!-- Transaction Basic Info Table -->
-          <div class="mb-10">
-            <table class="w-full text-right border-collapse border-2 border-gray-800">
-              <tbody>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">القسم / النظام</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ getModuleLabel(selectedEntryDetails.module || account?.module || 'general') }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 w-1/4 font-black">نوع الإجراء</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold w-1/4">{{ selectedEntryDetails.process_type || selectedEntryDetails.payment_method || 'حركة مالية وتسوية' }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الحساب المالي</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ account?.name || selectedEntryDetails.account_name || selectedEntryDetails.treasury_name || 'الحساب الحالي المفتوح' }}</td>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">العميل / المستفيد</th>
-                  <td class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ statementTargetType === 'customer' ? (selectedCustomer?.name || selectedEntryDetails.entity_name) : (selectedEntryDetails.entity_name || selectedEntryDetails.customer_name || selectedEntryDetails.user_name || '—') }}</td>
-                </tr>
-                <tr>
-                  <th class="border-2 border-gray-800 bg-gray-100 px-4 py-3 text-sm text-gray-900 font-black">الموظف المسؤول</th>
-                  <td colspan="3" class="border-2 border-gray-800 px-4 py-3 text-sm text-black font-bold">{{ selectedEntryDetails.user_name || 'النظام (تلقائي)' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Value Box -->
-          <div class="mb-10 border-4 border-gray-800 rounded-2xl p-8 text-center bg-gray-50 flex flex-col items-center justify-center">
-            <h3 class="text-xl text-gray-900 font-black mb-4 underline underline-offset-8">قيمة المعاملة</h3>
-            <div class="text-5xl font-black font-mono tracking-wider text-black">
-              {{ formatCurrency(selectedEntryDetails.credit > 0 ? selectedEntryDetails.credit : selectedEntryDetails.debit, account?.currency) }}
-            </div>
-            <div class="mt-4 text-lg font-bold text-gray-800">
-              ({{ selectedEntryDetails.credit > 0 ? 'إيداع / دائن' : 'سحب / مدين' }})
-            </div>
-          </div>
-          
-          <div class="mb-10 p-4 border-2 border-gray-800 bg-gray-50 flex items-center justify-between text-md font-bold text-black">
-             <span>الرصيد التراكمي بعد هذه الحركة: {{ formatCurrency(Math.abs(selectedEntryDetails.balance_after || 0), account?.currency) }} ({{ selectedEntryDetails.balance_after > 0 ? 'عليه / مدين' : (selectedEntryDetails.balance_after < 0 ? 'له / دائن' : 'رصيد مصفر') }})</span>
-             <span v-if="stats.closing_balance > 0">الموقف الختامي: عليه مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else-if="stats.closing_balance < 0">الموقف الختامي: له مستحقات {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}</span>
-             <span v-else>الموقف الختامي: رصيد خالص</span>
-          </div>
-
-          <!-- Details & Description -->
-          <div class="mb-10">
-            <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">البيان والتفاصيل</h3>
-            <p class="text-black text-lg font-bold leading-relaxed">{{ selectedEntryDetails.description }}</p>
-            <p v-if="selectedEntryDetails.notes" class="text-gray-700 font-semibold mt-3 italic text-md">{{ selectedEntryDetails.notes }}</p>
-          </div>
-
-          <!-- Booking Details Box (If exists) -->
-          <div v-if="(selectedEntryDetails.booking_details && Object.keys(selectedEntryDetails.booking_details).length) || selectedEntryDetails.booking" class="mb-10">
-             <h3 class="text-lg font-black text-gray-900 border-b-2 border-gray-800 pb-2 mb-4">بيانات الرحلة / الحجز الإضافية</h3>
-             <div class="grid grid-cols-2 gap-y-4 gap-x-8 text-md font-bold text-black">
-                <div v-if="selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr">
-                  <span class="text-gray-700">PNR:</span> {{ selectedEntryDetails.booking_details?.pnr || selectedEntryDetails.booking?.pnr }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number">
-                  <span class="text-gray-700">التذكرة:</span> {{ selectedEntryDetails.booking_details?.ticket_number || selectedEntryDetails.booking?.ticket_number }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route" class="col-span-2">
-                  <span class="text-gray-700">خط السير:</span> {{ selectedEntryDetails.booking_details?.route || selectedEntryDetails.booking?.route }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers" class="col-span-2">
-                  <span class="text-gray-700">المسافرين:</span> {{ selectedEntryDetails.booking_details?.passengers || selectedEntryDetails.booking?.passengers }}
-                </div>
-                <div v-if="selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name">
-                  <span class="text-gray-700">الطيران/المزود:</span> {{ selectedEntryDetails.booking_details?.airline || selectedEntryDetails.booking?.provider_name }}
-                </div>
-             </div>
-          </div>
-
-          <!-- Footer/Signatures -->
-          <div class="mt-20 flex justify-between text-center pt-8">
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع المستلم / العميل</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">توقيع الموظف المسؤول</div>
-            </div>
-            <div class="w-1/3 px-4">
-              <div class="border-t-2 border-gray-800 pt-3 font-black text-lg text-black">ختم الشركة المعتمد</div>
-            </div>
-          </div>
-        </div>
-      </div>
-</template>
-
+                  </template>
 
                 </div>
               </div>
@@ -2283,7 +1147,7 @@
         <div class="max-w-4xl mx-auto py-8 px-6">
           <!-- Logo & Header -->
           <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
-            <h1 class="text-3xl font-black text-black mb-3">سفري علينا للسياحة</h1>
+            <h1 class="text-3xl font-black text-black mb-3">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا للسياحة' }}</h1>
             <h2 class="text-xl text-gray-800 font-bold">سند معاملة مالية / إيصال استلام</h2>
             <div class="mt-6 flex justify-between text-sm text-gray-700 font-bold px-4">
               <span>التاريخ: {{ selectedEntryDetails.date_human }}</span>
@@ -2376,8 +1240,8 @@
           </div>
         </div>
       </div>
+  </div>
 </template>
-
 
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
@@ -2385,8 +1249,18 @@ import { useRouter, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAccountStore } from '@/stores/accountStore';
 import { useFinanceStore } from '@/stores/financeStore';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+
+const printSettingsStore = usePrintSettingsStore();
 import axios from 'axios';
-import { 
+import {
+  buildTransferApiPayload,
+  canExecuteCrossCurrencyTransfer,
+  computeConvertedAmount,
+  currenciesMatch,
+  findTreasuryAccount,
+} from '@/composables/useCrossCurrencyTransfer';
+import {
   ArrowLeft, 
   Printer, 
   ArrowRightLeft, 
@@ -2516,6 +1390,7 @@ const stats = ref({
 const loading = ref(true);
 const submitting = ref(false);
 const showTransferModal = ref(false);
+const transferError = ref('');
 const accountModuleTypeFilter = ref('');
 const accountModuleFilter = ref('');
 
@@ -2541,6 +1416,7 @@ const filters = ref({
 const transfer = ref({
   to_account_id: '',
   amount: null,
+  exchange_rate: 1,
   notes: '',
 });
 
@@ -2641,14 +1517,82 @@ const availableAccountModules = computed(() => {
 
 const availableAccounts = computed(() => {
   if (!Array.isArray(accounts.value)) return [];
+  
+  const TOURISM_MODULES = ['tourism', 'flights', 'hajj_umra', 'visas', 'flight', 'visa', 'hajj'];
+  const OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general', 'wallet', 'service'];
+
   return accounts.value.filter(acc => {
     const matchActive = acc.is_active;
-    const matchModuleType = !accountModuleTypeFilter.value || acc.module_type === accountModuleTypeFilter.value;
-    const matchModule = !accountModuleFilter.value || 
-                       (accountModuleFilter.value === 'general' ? !acc.module : acc.module === accountModuleFilter.value);
+    
+    let matchModuleType = true;
+    if (accountModuleTypeFilter.value === 'tourism') {
+      matchModuleType = TOURISM_MODULES.includes(acc.module_type) || TOURISM_MODULES.includes(acc.module);
+    } else if (accountModuleTypeFilter.value === 'office') {
+      matchModuleType = OFFICE_MODULES.includes(acc.module_type) || OFFICE_MODULES.includes(acc.module);
+    }
+    
+    let matchModule = true;
+    if (accountModuleFilter.value) {
+      if (accountModuleFilter.value === 'general') {
+        matchModule = !acc.module || acc.module === 'general' || acc.module_type === 'general' || acc.module_type === 'office';
+      } else {
+        const val = accountModuleFilter.value;
+        const normalizedVal = val.endsWith('s') ? val.slice(0, -1) : val; // normalize singular
+        const accModule = acc.module || '';
+        const accModuleType = acc.module_type || '';
+        const normAccModule = accModule.endsWith('s') ? accModule.slice(0, -1) : accModule;
+        const normAccModuleType = accModuleType.endsWith('s') ? accModuleType.slice(0, -1) : accModuleType;
+        
+        matchModule = normAccModule === normalizedVal || normAccModuleType === normalizedVal;
+        
+        // Specially handle wallet modules
+        if (normalizedVal === 'wallet') {
+          matchModule = matchModule || 
+                       accModule.includes('wallet') || 
+                       accModuleType.includes('wallet');
+        }
+      }
+    }
+    
     return matchActive && matchModuleType && matchModule;
   });
 });
+
+const transferToAccount = computed(() =>
+  findTreasuryAccount(availableAccounts.value, transfer.value.to_account_id)
+);
+
+const statementTransferConvertedAmount = computed(() => {
+  if (!account.value || !transferToAccount.value) return 0;
+  return computeConvertedAmount(
+    transfer.value.amount,
+    transfer.value.exchange_rate,
+    account.value.currency,
+    transferToAccount.value.currency
+  );
+});
+
+const canExecuteStatementTransfer = computed(() =>
+  canExecuteCrossCurrencyTransfer({
+    fromAccountId: route.params.id,
+    toAccountId: transfer.value.to_account_id,
+    fromAccount: account.value,
+    toAccount: transferToAccount.value,
+    amount: transfer.value.amount,
+    exchangeRate: transfer.value.exchange_rate,
+  })
+);
+
+function closeTransferModal() {
+  showTransferModal.value = false;
+  transferError.value = '';
+  transfer.value = {
+    to_account_id: '',
+    amount: null,
+    exchange_rate: 1,
+    notes: '',
+  };
+}
 
 async function fetchAccountData() {
   try {
@@ -2759,22 +1703,34 @@ function changePage(page) {
 
 async function transferFunds() {
   if (submitting.value) return;
+  transferError.value = '';
+
+  if (!canExecuteStatementTransfer.value) {
+    transferError.value = 'تحقق من الحساب المستهدف والمبلغ وسعر الصرف والرصيد المتاح';
+    return;
+  }
+
   submitting.value = true;
   try {
-    await axios.post('/api/v1/finance/transfers', {
+    const payload = buildTransferApiPayload({
       from_account_id: route.params.id,
       to_account_id: transfer.value.to_account_id,
       amount: transfer.value.amount,
-      notes: transfer.value.notes
+      notes: transfer.value.notes,
+      exchange_rate: transfer.value.exchange_rate,
+      fromAccount: account.value,
+      toAccount: transferToAccount.value,
     });
-    
+
+    await axios.post('/api/v1/finance/transfers', payload);
+
     if (window.addToast) window.addToast('تم تنفيذ التحويل بنجاح', 'success');
-    showTransferModal.value = false;
-    transfer.value = { to_account_id: '', amount: null, notes: '' };
+    closeTransferModal();
     await fetchAccountData();
     await fetchStatement();
   } catch (err) {
     const msg = err.response?.data?.message || 'فشل تنفيذ التحويل';
+    transferError.value = msg;
     if (window.addToast) window.addToast(msg, 'error');
   } finally {
     submitting.value = false;
@@ -2831,27 +1787,90 @@ function formatCurrency(amount, currency = 'EGP') {
   }).format(Number(amount) || 0);
 }
 
-onMounted(async () => {
-  await accountStore.fetchAccounts({ per_page: 100 });
-  
-  if (!financeStore.meta.transactionModules.length) {
-    await financeStore.fetchSettingsMeta();
+watch(
+  () => route.params.id,
+  async (newId) => {
+    loading.value = true;
+    try {
+      if (newId) {
+        statementTargetType.value = 'account';
+        selectedAccountId.value = newId;
+        await Promise.all([
+          fetchAccountData(),
+          fetchStatement()
+        ]);
+      } else {
+        account.value = null;
+        selectedAccountId.value = '';
+        statement.value = [];
+      }
+    } catch (err) {
+      console.error('Error in route params watcher:', err);
+    } finally {
+      loading.value = false;
+    }
   }
-  
-  if (route.params.id) {
-    statementTargetType.value = 'account';
-    selectedAccountId.value = route.params.id;
-    await fetchAccountData();
-    await fetchStatement();
-  } else {
-    // Default to loading customers if launched without account ID
-    await loadCustomers();
+);
+
+onMounted(async () => {
+  printSettingsStore.fetch().catch(() => {});
+  loading.value = true;
+  try {
+    const promises = [
+      accountStore.fetchAccounts({ per_page: 100 })
+    ];
+    if (!financeStore.meta.transactionModules.length) {
+      promises.push(financeStore.fetchSettingsMeta());
+    }
+    await Promise.all(promises);
+    
+    if (route.params.id) {
+      statementTargetType.value = 'account';
+      selectedAccountId.value = route.params.id;
+      await Promise.all([
+        fetchAccountData(),
+        fetchStatement()
+      ]);
+    }
+  } catch (err) {
+    console.error('Error in onMounted:', err);
+  } finally {
     loading.value = false;
   }
 });
 </script>
 
 <style scoped>
+.statement-page :deep(.stmt-filter-label) {
+  display: block;
+  margin-bottom: 0.35rem;
+  padding-inline: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: rgba(156, 163, 175, 1);
+}
+
+.statement-page :deep(.stmt-filter-select),
+.statement-page :deep(.stmt-filter-input) {
+  width: 100%;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.statement-page :deep(.stmt-table th) {
+  padding: 1rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: rgba(156, 163, 175, 1);
+  white-space: nowrap;
+}
+
+.statement-page :deep(.stmt-table td) {
+  vertical-align: middle;
+}
+
 .flight-panel {
   background-color: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(24px);

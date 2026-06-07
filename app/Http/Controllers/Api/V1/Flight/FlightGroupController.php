@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1\Flight;
 
+use App\Enums\TransactionModule;
+use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Flight\FlightGroup;
 use App\Models\Flight\FlightGroupTransaction;
-use App\Helpers\ApiResponse;
+use App\Services\Finance\TransactionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class FlightGroupController extends Controller
 {
@@ -31,16 +34,17 @@ class FlightGroupController extends Controller
     {
         $groups = FlightGroup::active()
             ->with('carrier:id,name,code')
-            ->withSum(['groupTransactions as total_debt' => function($q) {
+            ->withSum(['groupTransactions as total_debt' => function ($q) {
                 $q->where('type', 'debt');
             }], 'amount')
-            ->withSum(['groupTransactions as total_payment' => function($q) {
+            ->withSum(['groupTransactions as total_payment' => function ($q) {
                 $q->where('type', 'payment');
             }], 'amount')
             ->orderBy('name')
             ->get()
             ->map(function ($group) {
                 $group->balance = ($group->total_debt ?? 0) - ($group->total_payment ?? 0);
+
                 return $group;
             });
 
@@ -53,7 +57,7 @@ class FlightGroupController extends Controller
     public function show(FlightGroup $group)
     {
         $group->load('carrier');
-        
+
         $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
         $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
         $group->balance = $totalDebt - $totalPayment;
@@ -81,8 +85,8 @@ class FlightGroupController extends Controller
             'summary' => [
                 'total_debt' => $totalDebt,
                 'total_payment' => $totalPayment,
-                'balance' => $balance
-            ]
+                'balance' => $balance,
+            ],
         ]);
     }
 
@@ -101,7 +105,7 @@ class FlightGroupController extends Controller
         $userId = Auth::id() ?: 1;
 
         try {
-            return \Illuminate\Support\Facades\DB::transaction(function () use ($group, $request, $userId) {
+            return DB::transaction(function () use ($group, $request, $userId) {
                 // Calculate current B2B balance
                 $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
                 $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
@@ -109,11 +113,21 @@ class FlightGroupController extends Controller
 
                 $reqType = $request->type;
                 if ($reqType === 'payment') {
+                    if ($currentBalance < 0) {
+                        return ApiResponse::error('رصيد المجموعة سالب — استخدم سند قبض وليس سند صرف.', null, 422);
+                    }
                     $isReceiving = false;
                 } elseif ($reqType === 'debt') {
+                    if ($currentBalance > 0) {
+                        return ApiResponse::error('رصيد المجموعة مستحق لهم — استخدم سند صرف وليس سند قبض.', null, 422);
+                    }
                     $isReceiving = true;
                 } else {
-                    $isReceiving = $currentBalance < 0; // If negative, they owe us, so we collect/receive money
+                    $isReceiving = $currentBalance < 0;
+                }
+
+                if (abs($currentBalance) < 0.00001) {
+                    return ApiResponse::error('لا يوجد رصيد مستحق على هذه المجموعة.', null, 422);
                 }
 
                 // 1. Create B2B group transaction record
@@ -127,16 +141,16 @@ class FlightGroupController extends Controller
                 ]);
 
                 // 2. Create actual financial transaction
-                $transactionService = app(\App\Services\Finance\TransactionService::class);
+                $transactionService = app(TransactionService::class);
                 if ($isReceiving) {
                     // Record a deposit/income to increase the selected account's balance
                     $transactionService->recordIncome([
                         'amount' => (float) $request->amount,
                         'to_account_id' => (int) $request->account_id,
-                        'module' => \App\Enums\TransactionModule::Flight->value,
+                        'module' => TransactionModule::Flight->value,
                         'related_type' => FlightGroupTransaction::class,
                         'related_id' => $transaction->id,
-                        'notes' => $request->notes ?? ('سند قبض - تحصيل من مجموعة طيران: ' . $group->name),
+                        'notes' => $request->notes ?? ('سند قبض - تحصيل من مجموعة طيران: '.$group->name),
                         'created_by' => $userId,
                     ]);
                 } else {
@@ -144,10 +158,10 @@ class FlightGroupController extends Controller
                     $transactionService->recordExpense([
                         'amount' => (float) $request->amount,
                         'from_account_id' => (int) $request->account_id,
-                        'module' => \App\Enums\TransactionModule::Flight->value,
+                        'module' => TransactionModule::Flight->value,
                         'related_type' => FlightGroupTransaction::class,
                         'related_id' => $transaction->id,
-                        'notes' => $request->notes ?? ('سند صرف - دفع لمجموعة طيران: ' . $group->name),
+                        'notes' => $request->notes ?? ('سند صرف - دفع لمجموعة طيران: '.$group->name),
                         'created_by' => $userId,
                     ]);
                 }
@@ -166,7 +180,7 @@ class FlightGroupController extends Controller
                 );
             });
         } catch (\Exception $e) {
-            return ApiResponse::error('فشل تسجيل السداد: ' . $e->getMessage(), null, 422);
+            return ApiResponse::error('فشل تسجيل السداد: '.$e->getMessage(), null, 422);
         }
     }
 }

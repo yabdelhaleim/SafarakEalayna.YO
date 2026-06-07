@@ -2,10 +2,16 @@
 
 namespace App\Services\Fawry;
 
+use App\Enums\AccountType;
 use App\Enums\TransactionModule;
+use App\Exceptions\InsufficientBalanceException;
+use App\Models\Account;
+use App\Models\Customer;
+use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryTransaction;
 use App\Services\Finance\TransactionService;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +37,7 @@ class FawryTransactionService
             'incomeTransaction',
             'operationTypeRow',
             'paymentMethodRow',
+            'machine',
         ]);
 
         if (isset($filters['operation_type']) && $filters['operation_type']) {
@@ -65,18 +72,41 @@ class FawryTransactionService
 
     public function createTransaction(array $data): FawryTransaction
     {
+        // 4. SETTLEMENT ACCOUNT VALIDATION
+        if (empty($data['account_id']) || ! ($accountToCheck = Account::find($data['account_id'])) || ! $accountToCheck->is_active) {
+            throw new \InvalidArgumentException('يجب اختيار حساب تحصيل صالح ونشط');
+        }
+
         try {
             return DB::transaction(function () use ($data) {
+                // 3. BALANCE GUARD with pessimistic locking
+                $account = Account::lockForUpdate()->findOrFail($data['account_id']);
+
+                $machine = null;
+                if (! empty($data['fawry_machine_id'])) {
+                    $machine = FawryMachine::lockForUpdate()->findOrFail($data['fawry_machine_id']);
+                    if (! $machine->is_active) {
+                        throw new \InvalidArgumentException('ماكينة الشحن المختارة غير نشطة');
+                    }
+                    $fawryCost = (float) $data['fawry_price'];
+                    if ((float) $machine->balance < $fawryCost) {
+                        throw new InsufficientBalanceException('رصيد الماكينة غير كافٍ');
+                    }
+                }
+
                 $profit = ($data['selling_price'] - $data['fawry_price']);
 
                 // Get client name if client_id is provided
                 $clientName = $data['client_name'] ?? '';
                 if (isset($data['client_id']) && $data['client_id']) {
-                    $client = \App\Models\Customer::find($data['client_id']);
+                    $client = Customer::find($data['client_id']);
                     if ($client) {
                         $clientName = $client->full_name;
                     }
                 }
+
+                $createdBy = Auth::id() ?: ($data['created_by'] ?? $data['employee_id'] ?? 1);
+                $clientIp = request()->ip() ?? $data['client_ip'] ?? null;
 
                 $fawryTransaction = FawryTransaction::create([
                     'client_id' => $data['client_id'] ?? null,
@@ -88,44 +118,99 @@ class FawryTransactionService
                     'profit' => $profit,
                     'employee_id' => $data['employee_id'],
                     'account_id' => $data['account_id'],
+                    'fawry_machine_id' => $data['fawry_machine_id'] ?? null,
                     'payment_method' => $data['payment_method'],
                     'amount' => $data['amount'],
                     'reference_number' => $data['reference_number'] ?? null,
                     'notes' => $data['notes'] ?? null,
                     'currency_id' => $data['currency_id'] ?? null,
                     'payment_details' => $data['payment_details'] ?? null,
+                    'created_by_user_id' => $createdBy,
+                    'client_ip' => $clientIp,
                 ]);
 
                 // Get operation type label from database
                 $operationType = FawryOperationType::where('code', $data['operation_type'])->first();
                 $operationLabel = $operationType ? $operationType->name_ar : $data['operation_type'];
 
-                $createdBy = Auth::id() ?: ($data['created_by'] ?? $data['employee_id'] ?? 1);
+                if ($machine) {
+                    $machine->debit(
+                        (float) $data['fawry_price'],
+                        "عملية فوري - {$operationLabel}: {$clientName}",
+                        $createdBy,
+                        $fawryTransaction->id
+                    );
+                }
 
-                $expenseTransaction = $this->transactionService->recordExpense([
-                    'amount' => $data['fawry_price'],
-                    'from_account_id' => $data['account_id'],
-                    'module' => TransactionModule::Fawry->value,
-                    'related_type' => FawryTransaction::class,
-                    'related_id' => $fawryTransaction->id,
-                    'notes' => "عملية فوري - {$operationLabel}: {$clientName}",
-                    'created_by' => $createdBy,
-                ]);
+                $expenseTransactionId = null;
+                if (! $machine && (float) $data['fawry_price'] > 0) {
+                    $expenseTransaction = $this->transactionService->recordExpense([
+                        'amount' => $data['fawry_price'],
+                        'from_account_id' => $data['account_id'],
+                        'module' => TransactionModule::Fawry->value,
+                        'related_type' => FawryTransaction::class,
+                        'related_id' => $fawryTransaction->id,
+                        'notes' => "تكلفة عملية فوري - {$operationLabel}: {$clientName}",
+                        'created_by' => $createdBy,
+                    ]);
+                    $expenseTransactionId = $expenseTransaction->id;
+                }
 
-                $incomeTransaction = $this->transactionService->recordIncome([
-                    'amount' => $data['selling_price'],
-                    'to_account_id' => $data['account_id'],
-                    'module' => TransactionModule::Fawry->value,
-                    'related_type' => FawryTransaction::class,
-                    'related_id' => $fawryTransaction->id,
-                    'notes' => "تحصيل فوري - {$operationLabel}: {$clientName}",
-                    'created_by' => $createdBy,
-                ]);
+                $incomeTransactionId = null;
 
-                $fawryTransaction->update([
-                    'expense_transaction_id' => $expenseTransaction->id,
-                    'income_transaction_id' => $incomeTransaction->id,
-                ]);
+                if (! empty($data['client_id'])) {
+                    // Record sale to customer (Receivables / Debt)
+                    $customerAccount = $this->ensureCustomerAccount((int) $data['client_id']);
+
+                    // The sale income goes into customer account
+                    $saleIncomeTransaction = $this->transactionService->recordIncome([
+                        'amount' => $data['selling_price'],
+                        'to_account_id' => $customerAccount->id,
+                        'module' => TransactionModule::Fawry->value,
+                        'related_type' => FawryTransaction::class,
+                        'related_id' => $fawryTransaction->id,
+                        'notes' => "تحصيل فوري (مديونية) - {$operationLabel}: {$clientName}",
+                        'created_by' => $createdBy,
+                    ]);
+                    $incomeTransactionId = $saleIncomeTransaction->id;
+
+                    // If they paid anything now:
+                    if ((float) $data['amount'] > 0) {
+                        $this->transactionService->recordIncome([
+                            'amount' => $data['amount'],
+                            'to_account_id' => $data['account_id'],
+                            'contra_account_id' => $customerAccount->id,
+                            'module' => TransactionModule::Fawry->value,
+                            'related_type' => FawryTransaction::class,
+                            'related_id' => $fawryTransaction->id,
+                            'notes' => "سداد جزء من عملية فوري - {$operationLabel}: {$clientName}",
+                            'created_by' => $createdBy,
+                        ]);
+                    }
+                } else {
+                    // Walk-in client: directly pays treasury account
+                    $incomeTransaction = $this->transactionService->recordIncome([
+                        'amount' => $data['selling_price'],
+                        'to_account_id' => $data['account_id'],
+                        'module' => TransactionModule::Fawry->value,
+                        'related_type' => FawryTransaction::class,
+                        'related_id' => $fawryTransaction->id,
+                        'notes' => "تحصيل فوري - {$operationLabel}: {$clientName}",
+                        'created_by' => $createdBy,
+                    ]);
+                    $incomeTransactionId = $incomeTransaction->id;
+                }
+
+                $updates = [];
+                if ($incomeTransactionId) {
+                    $updates['income_transaction_id'] = $incomeTransactionId;
+                }
+                if ($expenseTransactionId) {
+                    $updates['expense_transaction_id'] = $expenseTransactionId;
+                }
+                if (! empty($updates)) {
+                    $fawryTransaction->update($updates);
+                }
 
                 Log::info('Fawry transaction created', [
                     'fawry_transaction_id' => $fawryTransaction->id,
@@ -133,7 +218,7 @@ class FawryTransactionService
                     'client_name' => $clientName,
                     'amount' => $data['selling_price'],
                     'profit' => $profit,
-                    'created_by' => Auth::id(),
+                    'created_by' => $createdBy,
                 ]);
 
                 return $fawryTransaction->fresh([
@@ -145,6 +230,7 @@ class FawryTransactionService
                     'incomeTransaction',
                     'operationTypeRow',
                     'paymentMethodRow',
+                    'machine',
                 ]);
             });
         } catch (\Throwable $e) {
@@ -178,6 +264,7 @@ class FawryTransactionService
                     'incomeTransaction',
                     'operationTypeRow',
                     'paymentMethodRow',
+                    'machine',
                 ]);
             });
         } catch (\Throwable $e) {
@@ -233,6 +320,7 @@ class FawryTransactionService
             'incomeTransaction',
             'operationTypeRow',
             'paymentMethodRow',
+            'machine',
         ])->findOrFail($id);
     }
 
@@ -258,5 +346,39 @@ class FawryTransactionService
             'total_selling_price' => (float) ($results->total_selling_price ?? 0.00),
             'total_profit' => (float) ($results->total_profit ?? 0.00),
         ];
+    }
+
+    /**
+     * Ensures the customer has a ledger account. Creates one if missing.
+     */
+    protected function ensureCustomerAccount(int $customerId): Account
+    {
+        $customer = Customer::findOrFail($customerId);
+
+        if ($customer->account_id) {
+            $account = Account::find($customer->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+            $account = Account::create([
+                'name' => 'حساب العميل: '.$customer->full_name,
+                'type' => AccountType::Customer,
+                'balance' => 0,
+                'currency' => 'EGP',
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'tourism',
+                'is_module_vault' => false,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            $customer->update(['account_id' => $account->id]);
+
+            return $account;
+        }));
     }
 }

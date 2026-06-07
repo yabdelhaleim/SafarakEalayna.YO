@@ -1,0 +1,76 @@
+      <!-- Main Accounts Ledger -->
+      <div class="flight-panel !p-0 overflow-hidden">
+        <div class="border-b border-white/5 px-5 py-5 sm:px-6">
+          <h3 class="mb-1 flex items-center gap-2 text-lg font-black text-text-main">
+            <LayoutGrid class="h-5 w-5 text-gold" />
+            بيان أرصدة الخزائن والبنوك
+          </h3>
+          <p class="text-sm font-bold text-text-muted">فلترة وعرض كل حسابات السيولة حسب القسم والنوع</p>
+
+          <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div class="relative sm:col-span-2 xl:col-span-2">
+              <Search class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" />
+              <input
+                v-model="filters.search"
+                type="text"
+                placeholder="البحث باسم الحساب أو رقم المحفظة..."
+                class="acc-filter-select w-full !py-3 !pl-11"
+                @input="debouncedSearch"
+              />
+            </div>
+
+            <select v-model="filters.type" class="acc-filter-select" @change="onFilterChange">
+              <option value="">كل أنواع الحسابات</option>
+              <option v-for="t in financeStore.meta.accountTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+            </select>
+
+            <select v-model="filters.currency" class="acc-filter-select" @change="onFilterChange">
+              <option value="">كل العملات</option>
+              <option v-for="c in financeStore.meta.currencies" :key="c.code" :value="c.code">{{ c.name }} ({{ c.code }})</option>
+            </select>
+
+            <select v-model="filters.module_type" class="acc-filter-select" @change="onModuleTypeFilterChange">
+              <option value="">كل الأقسام</option>
+              <option v-for="opt in moduleTypeFilterOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+
+            <select v-model="filters.module" class="acc-filter-select" @change="onFilterChange">
+              <option value="">كل الموديولات</option>
+              <option v-for="m in availableModules" :key="m.value" :value="m.value">{{ m.label }}</option>
+            </select>
+
+            <select v-model="filters.payment_status" class="acc-filter-select" @change="onFilterChange">
+              <option value="">حالة السداد</option>
+              <option value="paid">مدفوع بالكامل</option>
+              <option value="partial">دفع جزئي</option>
+              <option value="unpaid">لم يتم الدفع</option>
+            </select>
+
+            <select v-model="filters.is_active" class="acc-filter-select" @change="onFilterChange">
+              <option value="">الحالة (الكل)</option>
+              <option value="1">نشط</option>
+              <option value="0">غير نشط</option>
+            </select>
+
+            <button type="button" class="acc-filter-clear" @click="clearFilters">
+              <RefreshCw class="h-4 w-4" />
+              مسح الفلاتر
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="acc-table w-full border-collapse">
+            <thead>
+              <tr class="border-b border-white/10 bg-white/5">
+                <th class="px-5 py-4 text-right sm:px-6">اسم الحساب</th>
+                <th class="px-5 py-4 text-right sm:px-6">النوع</th>
+                <th class="px-5 py-4 text-right sm:px-6">العملة</th>
+                <th class="px-5 py-4 text-right sm:px-6">الموديول</th>
+                <th class="px-5 py-4 text-right sm:px-6">حالة السداد</th>
+                <th class="px-5 py-4 text-right sm:px-6">الرصيد</th>
+                <th class="px-5 py-4 text-right sm:px-6">القسم</th>
+                <th class="px-5 py-4 text-right sm:px-6">الحالة</th>
+                <th class="px-5 py-4 text-right sm:px-6">الإجراءات</th>
+              </tr>
+            </thead>

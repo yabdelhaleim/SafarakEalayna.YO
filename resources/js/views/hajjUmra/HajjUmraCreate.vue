@@ -46,21 +46,37 @@
                 <div class="relative">
                   <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
                   <input v-model="customerSearch" type="text" placeholder="بحث بالاسم أو الهاتف..."
-                    class="w-full pl-10 pr-4 py-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none"
-                    @input="onCustomerSearch" />
+                    class="w-full pl-10 pr-4 py-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white"
+                    @input="onCustomerSearchDebounced"
+                    @focus="showDropdown = true" />
+                  
+                  <!-- Absolute Dropdown for Search Results -->
+                  <div v-if="showDropdown && (loadingCustomers || searchResults.length)" 
+                    class="absolute z-50 left-0 right-0 mt-2 p-2 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl max-h-64 overflow-y-auto space-y-1">
+                    <div v-if="loadingCustomers" class="flex items-center justify-center py-4">
+                      <div class="animate-spin w-6 h-6 border-2 border-gold border-t-transparent rounded-full"></div>
+                    </div>
+                    <template v-else>
+                      <button v-for="c in searchResults" :key="c.id" type="button" @click="selectCustomer(c)"
+                        class="w-full p-3 rounded-lg text-right transition-all hover:bg-white/5 flex items-center justify-between">
+                        <div>
+                          <div class="font-bold text-white">{{ c.full_name || c.name }}</div>
+                          <div class="text-xs text-muted font-mono">{{ c.phone }}</div>
+                        </div>
+                        <div v-if="form.customer?.id === c.id" class="text-gold font-bold text-xs">محدد</div>
+                      </button>
+                    </template>
+                  </div>
                 </div>
 
-                <div v-if="store.loading.customers" class="text-center py-8">
-                  <div class="animate-spin w-8 h-8 border-2 border-gold border-t-transparent rounded-full mx-auto"></div>
-                </div>
-
-                <div v-else-if="filteredCustomers.length" class="space-y-2 max-h-64 overflow-y-auto">
-                  <button v-for="c in filteredCustomers" :key="c.id" type="button" @click="selectCustomer(c)"
-                    :class="['w-full p-4 rounded-xl text-right transition-all',
-                      form.customer?.id === c.id ? 'bg-gold/20 border-2 border-gold' : 'bg-input border border-white/10 hover:border-gold/50']">
-                    <div class="font-bold">{{ c.full_name || c.name }}</div>
-                    <div class="text-sm text-muted">{{ c.phone }}</div>
-                  </button>
+                <!-- Selected Customer Card -->
+                <div v-if="form.customer" class="p-4 bg-gold/10 border border-gold/30 rounded-xl flex items-center justify-between animate-in fade-in duration-300">
+                  <div>
+                    <div class="text-xs text-muted mb-1">العميل المحدد للحجز:</div>
+                    <div class="font-bold text-gold text-lg">{{ form.customer.full_name || form.customer.name }}</div>
+                    <div class="text-sm text-muted font-mono">{{ form.customer.phone }}</div>
+                  </div>
+                  <button type="button" @click="form.customer = null" class="text-xs text-error hover:underline">إلغاء التحديد</button>
                 </div>
 
                 <button type="button" @click="showNewCustomerForm = !showNewCustomerForm"
@@ -69,12 +85,12 @@
                 </button>
 
                 <div v-if="showNewCustomerForm" class="p-4 bg-card border border-white/10 rounded-xl space-y-4">
-                  <h3 class="font-bold">عميل جديد</h3>
+                  <h3 class="font-bold text-white">عميل جديد</h3>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input v-model="newCustomer.full_name" placeholder="الاسم الكامل" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
-                    <input v-model="newCustomer.phone" placeholder="رقم الهاتف" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
-                    <input v-model="newCustomer.passport_number" placeholder="رقم الجواز" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
-                    <input v-model="newCustomer.date_of_birth" type="date" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                    <input v-model="newCustomer.full_name" placeholder="الاسم الكامل" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.phone" placeholder="رقم الهاتف" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.passport_number" placeholder="رقم الجواز" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.date_of_birth" type="date" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
                   <button type="button" @click="createNewCustomer" class="w-full py-2 bg-gold text-black rounded-xl font-bold hover:bg-gold/90">
                     حفظ العميل
@@ -91,7 +107,7 @@
               <p class="text-muted text-sm mb-8">البرامج تُدار عبر لوحة Filament وتُجلب آلياً.</p>
 
               <select v-model="form.program_id" @change="onProgramSelect"
-                class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none cursor-pointer">
+                class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none cursor-pointer text-white">
                 <option :value="null">اختر برنامج...</option>
                 <option v-for="p in store.programs" :key="p.id" :value="p.id">
                   {{ p.program_name }} — {{ p.program_type === 'hajj' ? 'حج' : 'عمرة' }} ({{ p.total_nights }} ليلة)
@@ -125,29 +141,67 @@
           <!-- Step 3: المرافق -->
           <section v-if="currentStep === 3" class="space-y-6">
             <div class="max-w-2xl mx-auto">
-              <h2 class="text-xl font-bold mb-2">مرافق</h2>
-              <p class="text-muted text-sm mb-8">اختياري — أضف مرافق للحاج.</p>
+              <h2 class="text-xl font-bold mb-2">مرافق الحجز</h2>
+              <p class="text-muted text-sm mb-8">اختياري — أضف مرافقاً لهذا الحجز مع تسعير منفصل له.</p>
 
               <label class="flex items-center gap-3 p-4 bg-input border border-white/10 rounded-xl cursor-pointer hover:border-gold/50">
                 <input v-model="needsCompanion" type="checkbox" class="w-5 h-5" />
                 <div>
-                  <div class="font-bold">يحتاج مرافق</div>
-                  <div class="text-sm text-muted">أضف مرافق لهذا الحجز</div>
+                  <div class="font-bold text-white">يحتاج مرافق</div>
+                  <div class="text-sm text-muted">تفعيل إضافة مرافق وتحديد تكاليفه المستقلة</div>
                 </div>
               </label>
 
               <div v-if="needsCompanion" class="space-y-4 mt-4">
-                <input v-model="companionSearch" type="text" placeholder="بحث عن المرافق..."
-                  class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none"
-                  @input="onCompanionSearch" />
+                <div class="relative">
+                  <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+                  <input v-model="companionSearch" type="text" placeholder="بحث عن المرافق بالاسم أو الهاتف..."
+                    class="w-full pl-10 pr-4 py-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white"
+                    @input="onCompanionSearchDebounced"
+                    @focus="showCompanionDropdown = true" />
+                  
+                  <!-- Absolute Dropdown for Companion Search Results -->
+                  <div v-if="showCompanionDropdown && (loadingCompanion || companionSearchResults.length)" 
+                    class="absolute z-50 left-0 right-0 mt-2 p-2 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl max-h-64 overflow-y-auto space-y-1">
+                    <div v-if="loadingCompanion" class="flex items-center justify-center py-4">
+                      <div class="animate-spin w-6 h-6 border-2 border-gold border-t-transparent rounded-full"></div>
+                    </div>
+                    <template v-else>
+                      <button v-for="c in companionSearchResults" :key="c.id" type="button" @click="selectCompanion(c)"
+                        class="w-full p-3 rounded-lg text-right transition-all hover:bg-white/5 flex items-center justify-between">
+                        <div>
+                          <div class="font-bold text-white">{{ c.full_name || c.name }}</div>
+                          <div class="text-xs text-muted font-mono">{{ c.phone }}</div>
+                        </div>
+                        <div v-if="form.companion_customer_id === c.id" class="text-gold font-bold text-xs">محدد</div>
+                      </button>
+                    </template>
+                  </div>
+                </div>
 
-                <div v-if="filteredCompanions.length" class="space-y-2 max-h-64 overflow-y-auto">
-                  <button v-for="c in filteredCompanions" :key="c.id" type="button" @click="form.companion_customer_id = c.id; companionSearch = ''"
-                    :class="['w-full p-4 rounded-xl text-right',
-                      form.companion_customer_id === c.id ? 'bg-gold/20 border-2 border-gold' : 'bg-input border border-white/10 hover:border-gold/50']">
-                    <div class="font-bold">{{ c.full_name || c.name }}</div>
-                    <div class="text-sm text-muted">{{ c.phone }}</div>
-                  </button>
+                <!-- Card for Selected Companion and Price Inputs -->
+                <div v-if="form.companion_customer_id" class="space-y-4 animate-in fade-in duration-300">
+                  <div class="p-4 bg-gold/10 border border-gold/30 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div class="text-xs text-muted mb-1">المرافق المحدد:</div>
+                      <div class="font-bold text-gold text-lg">{{ companionName }}</div>
+                    </div>
+                    <button type="button" @click="clearCompanion" class="text-xs text-error hover:underline">إلغاء المرافق</button>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 bg-card border border-white/10 rounded-2xl">
+                    <h3 class="col-span-full font-bold text-sm text-gold">تسعير المرافق الخاص</h3>
+                    <div>
+                      <label class="block text-xs text-muted mb-2 uppercase tracking-widest">سعر شراء المرافق (التكلفة)</label>
+                      <input v-model.number="form.companion_purchase_price" type="number" min="0" step="0.01"
+                        class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-muted mb-2 uppercase tracking-widest">سعر بيع المرافق</label>
+                      <input v-model.number="form.companion_selling_price" type="number" min="0" step="0.01"
+                        class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -156,42 +210,135 @@
           <!-- Step 4: التسعير -->
           <section v-if="currentStep === 4" class="space-y-6">
             <div class="max-w-2xl mx-auto space-y-6">
-              <h2 class="text-xl font-bold text-center">التسعير والربح</h2>
+              <h2 class="text-xl font-bold text-center">التسعير وتفاصيل السكن والأسرة</h2>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label class="block text-xs text-muted mb-2 uppercase tracking-widest">سعر الشراء (التكلفة)</label>
-                  <input v-model.number="form.purchase_price" type="number" min="0" step="0.01"
-                    class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono" />
-                </div>
-                <div>
-                  <label class="block text-xs text-muted mb-2 uppercase tracking-widest">سعر البيع</label>
-                  <input v-model.number="form.selling_price" type="number" min="0" step="0.01"
-                    class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono" />
+              <!-- Supplier and purchase cost -->
+              <div class="p-5 bg-card border border-white/10 rounded-2xl space-y-4">
+                <h3 class="font-bold text-sm text-gold">بيانات المورِّد وتكلفة البرنامج الأساسي</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-muted mb-2">المورِّد (وكيل / شركة)</label>
+                    <select v-model="form.supplier_id" @change="onSupplierSelect"
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none cursor-pointer text-white">
+                      <option :value="null">بدون مورد محدد</option>
+                      <option v-for="s in store.suppliers" :key="s.id" :value="s.id">
+                        {{ s.name }}
+                      </option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-muted mb-2">سعر شراء البرنامج (التكلفة)</label>
+                    <input v-model.number="form.purchase_price" type="number" min="0" step="0.01"
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
+                  </div>
                 </div>
               </div>
 
-              <!-- تسعير سريع: هامش على التكلفة -->
-              <div class="p-4 bg-card border border-white/10 rounded-2xl space-y-3">
-                <div class="text-xs text-muted">تسعير سريع — هامش ربح على التكلفة</div>
-                <div class="flex flex-wrap gap-2">
-                  <button v-for="p in [20, 30, 50, 100]" :key="p" type="button" @click="applyMarkup(p)"
-                    class="px-4 py-2 rounded-xl bg-white/5 hover:bg-gold/20 border border-white/10 text-sm transition-all">
-                    +{{ p }}%
-                  </button>
+              <!-- Family pricing grid -->
+              <div class="p-5 bg-card border border-white/10 rounded-2xl space-y-4">
+                <h3 class="font-bold text-sm text-gold">شبكة تسعير الأسرة (حسب الفئة)</h3>
+                <p class="text-xs text-muted">يمكنك إدخال الأعداد والأسعار الفرعية لتحديث سعر البيع الأساسي تلقائياً.</p>
+                
+                <div class="overflow-x-auto">
+                  <table class="w-full text-right border-collapse text-xs">
+                    <thead>
+                      <tr class="border-b border-white/10 text-muted">
+                        <th class="pb-2 font-bold">الفئة</th>
+                        <th class="pb-2 font-bold w-20 text-center">العدد</th>
+                        <th class="pb-2 font-bold w-28 text-center">سعر الفرد للبيع</th>
+                        <th class="pb-2 font-bold w-28 text-left">الإجمالي الفرعي</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                      <tr v-for="p in passengers" :key="p.category">
+                        <td class="py-2.5 font-medium text-white">{{ p.label }}</td>
+                        <td class="py-2.5 text-center">
+                          <input v-model.number="p.count" type="number" min="0"
+                            class="w-14 p-1.5 bg-input border border-white/10 rounded-lg text-center focus:border-gold outline-none text-white font-mono"
+                            @input="updatePassengerSubtotal(p)" />
+                        </td>
+                        <td class="py-2.5 text-center">
+                          <input v-model.number="p.unit_price" type="number" min="0" step="0.01"
+                            class="w-24 p-1.5 bg-input border border-white/10 rounded-lg text-center focus:border-gold outline-none text-white font-mono"
+                            @input="updatePassengerSubtotal(p)" />
+                        </td>
+                        <td class="py-2.5 text-left font-mono font-bold text-gold">
+                          {{ formatMoney(p.subtotal) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <div class="text-xs text-muted">سعر البيع = التكلفة × (1 + النسبة).</div>
+
+                <div class="flex justify-between items-center pt-2 border-t border-white/10 font-bold">
+                  <span class="text-xs text-muted font-bold">إجمالي شبكة الأسرة:</span>
+                  <span class="text-sm text-gold font-mono">{{ formatMoney(passengersTotal) }}</span>
+                </div>
               </div>
 
-              <!-- بطاقة الربح -->
+              <!-- Room options -->
+              <div class="p-5 bg-card border border-white/10 rounded-2xl space-y-4">
+                <h3 class="font-bold text-sm text-gold">خيارات السكن والتسكين</h3>
+                
+                <div class="grid grid-cols-2 gap-4">
+                  <label class="flex items-center gap-3 p-3 bg-input border border-white/10 rounded-xl cursor-pointer hover:border-gold/50"
+                    :class="{ 'border-gold bg-gold/5': form.accommodation_choice === 'standard' }">
+                    <input type="radio" v-model="form.accommodation_choice" value="standard" class="w-4 h-4 text-gold" @change="onAccommodationChange" />
+                    <div>
+                      <div class="font-bold text-xs text-white">تسكين عادي (مشترك)</div>
+                      <div class="text-[10px] text-muted">تسكين قياسي مدرج بالبرنامج</div>
+                    </div>
+                  </label>
+
+                  <label class="flex items-center gap-3 p-3 bg-input border border-white/10 rounded-xl cursor-pointer hover:border-gold/50"
+                    :class="{ 'border-gold bg-gold/5': form.accommodation_choice === 'private' }">
+                    <input type="radio" v-model="form.accommodation_choice" value="private" class="w-4 h-4 text-gold" @change="onAccommodationChange" />
+                    <div>
+                      <div class="font-bold text-xs text-white">غرفة خاصة</div>
+                      <div class="text-[10px] text-muted">إضافة كلفة سكن خاص (+3,000 EGP)</div>
+                    </div>
+                  </label>
+                </div>
+
+                <div v-if="form.accommodation_choice === 'private'" class="animate-in fade-in duration-300">
+                  <label class="block text-xs text-muted mb-2 uppercase tracking-widest">رسوم السكن الخاص الإضافية</label>
+                  <input v-model.number="form.accommodation_extra_charge" type="number" min="0" step="0.01"
+                    class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
+                </div>
+              </div>
+
+              <!-- Final selling price input -->
+              <div class="p-5 bg-card border border-white/10 rounded-2xl space-y-4">
+                <h3 class="font-bold text-sm text-gold">تحديد سعر البيع النهائي</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-muted mb-2">سعر البيع للبرنامج الأساسي</label>
+                    <input v-model.number="form.selling_price" type="number" min="0" step="0.01"
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
+                  </div>
+                  <div class="flex flex-col justify-end">
+                    <!-- Quick markup -->
+                    <label class="block text-xs text-muted mb-2">هامش سريع على التكلفة الأساسية</label>
+                    <div class="flex gap-2">
+                      <button v-for="percent in [20, 30, 50, 100]" :key="percent" type="button" @click="applyMarkup(percent)"
+                        class="flex-1 py-2 rounded-xl bg-white/5 hover:bg-gold/20 border border-white/10 text-xs transition-all text-white font-bold">
+                        +{{ percent }}%
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Total profit/loss widget -->
               <div class="p-6 bg-card border border-white/10 rounded-2xl flex items-center justify-between">
                 <div>
-                  <div class="text-sm text-muted uppercase tracking-widest">الربح</div>
-                  <div class="text-2xl font-bold font-mono" :class="profitClass">
+                  <div class="text-xs text-muted uppercase tracking-widest font-bold">الربح الإجمالي المتوقع للحجز</div>
+                  <div class="text-2xl font-bold font-mono mt-1" :class="profitClass">
                     {{ formatMoney(profit) }}
                   </div>
-                  <div v-if="marginPct !== null" class="text-xs text-muted mt-1">
-                    نسبة الربح على التكلفة: {{ marginPct }}%
+                  <div class="text-[10px] text-muted mt-1 space-y-0.5">
+                    <div>إجمالي البيع: {{ formatMoney(totalSellingPrice) }} | إجمالي الشراء: {{ formatMoney(totalPurchasePrice) }}</div>
+                    <div v-if="marginPct !== null">نسبة الربحية الإجمالية: {{ marginPct }}%</div>
                   </div>
                 </div>
                 <div :class="['w-12 h-12 rounded-full flex items-center justify-center',
@@ -204,7 +351,7 @@
               <label class="flex items-center gap-3 p-4 bg-input border border-white/10 rounded-xl">
                 <input v-model="form.per_person" type="checkbox" class="w-5 h-5" />
                 <div>
-                  <div class="font-bold">السعر للفرد</div>
+                  <div class="font-bold text-white">السعر للفرد</div>
                   <div class="text-sm text-muted">السعر يُحسب لكل شخص على حدة</div>
                 </div>
               </label>
@@ -239,7 +386,7 @@
 
                 <label class="block text-xs text-muted mb-2 uppercase tracking-widest">حساب التسوية</label>
                 <select v-model="form.account_id"
-                  class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
+                  class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white">
                   <option :value="null">اختر الحساب...</option>
                   <option v-for="a in filteredAccounts" :key="a.id" :value="a.id">
                     {{ a.name }} ({{ accountTypeLabel(a) }}) — {{ formatMoney(a.balance, a.currency || 'EGP') }}
@@ -254,7 +401,7 @@
               <label class="flex items-center gap-3 p-4 bg-input border border-white/10 rounded-xl">
                 <input v-model="addPayment" type="checkbox" class="w-5 h-5" />
                 <div>
-                  <div class="font-bold">تسجيل دفعة أولية الآن؟</div>
+                  <div class="font-bold text-white">تسجيل دفعة أولية الآن؟</div>
                   <div class="text-sm text-muted">يمكنك تأجيلها وإضافتها لاحقاً من صفحة الحجز.</div>
                 </div>
               </label>
@@ -263,11 +410,11 @@
                 <div>
                   <label class="block text-xs text-muted mb-2 uppercase tracking-widest">المبلغ المدفوع الآن</label>
                   <input v-model.number="form.initial_payment.amount" type="number" min="0" step="0.01"
-                    class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono" />
+                    class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none font-mono text-white" />
                   <div class="flex flex-wrap gap-2 mt-3">
-                    <button v-for="p in [20, 25, 50, 75, 100]" :key="p" type="button" @click="setPaidPercent(p)"
-                      class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-gold/20 border border-white/10 text-xs">
-                      {{ p }}% من سعر البيع
+                    <button v-for="percent in [20, 25, 50, 75, 100]" :key="percent" type="button" @click="setPaidPercent(percent)"
+                      class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-gold/20 border border-white/10 text-xs text-white">
+                      {{ percent }}% من سعر البيع
                     </button>
                     <button type="button" @click="form.initial_payment.amount = 0"
                       class="px-3 py-1.5 rounded-lg bg-error/10 hover:bg-error/20 border border-error/30 text-xs text-error">
@@ -280,7 +427,7 @@
                   <div>
                     <label class="block text-xs text-muted mb-2">طريقة الدفع</label>
                     <select v-model="form.initial_payment.payment_method"
-                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white">
                       <option value="cash">نقدي</option>
                       <option value="bank_transfer">تحويل بنكي</option>
                       <option value="wallet">محفظة إلكترونية</option>
@@ -291,17 +438,17 @@
                   <div>
                     <label class="block text-xs text-muted mb-2">تاريخ الدفع</label>
                     <input v-model="form.initial_payment.payment_date" type="date"
-                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
                   <div>
                     <label class="block text-xs text-muted mb-2">رقم المرجع (اختياري)</label>
                     <input v-model="form.initial_payment.reference" type="text"
-                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
                   <div>
                     <label class="block text-xs text-muted mb-2">المدفوع بواسطة</label>
                     <input v-model="form.initial_payment.paid_by" type="text"
-                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                      class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
                 </div>
               </div>
@@ -309,31 +456,74 @@
               <div>
                 <label class="block text-xs text-muted mb-2 uppercase tracking-widest">اسم الموظف القائم بالحجز</label>
                 <input v-model="form.agent_name" type="text"
-                  class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none"
+                  class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white"
                   placeholder="اسم الموظف" />
               </div>
 
               <div>
                 <label class="block text-xs text-muted mb-2 uppercase tracking-widest">ملاحظات</label>
                 <textarea v-model="form.notes" rows="2"
-                  class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none"></textarea>
+                  class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white"></textarea>
               </div>
             </div>
           </section>
 
           <!-- Step 6: مراجعة -->
           <section v-if="currentStep === 6" class="space-y-6">
-            <div class="max-w-2xl mx-auto space-y-4 p-6 bg-card border border-white/10 rounded-2xl">
-              <h2 class="text-xl font-bold">مراجعة الحجز</h2>
-              <Row label="العميل" :value="form.customer?.full_name || form.customer?.name" />
-              <Row label="البرنامج" :value="selectedProgram?.program_name" />
-              <Row v-if="form.companion_customer_id" label="المرافق" :value="companionName" />
-              <Row label="سعر الشراء" :value="formatMoney(form.purchase_price)" />
-              <Row label="سعر البيع" :value="formatMoney(form.selling_price)" />
-              <Row label="الربح" :value="formatMoney(profit)" :valueClass="profitClass" />
-              <Row label="حساب التسوية" :value="selectedAccount?.name" />
-              <Row v-if="addPayment && form.initial_payment.amount > 0" label="الدفعة الأولية"
-                :value="formatMoney(form.initial_payment.amount)" valueClass="text-gold" />
+            <div class="max-w-2xl mx-auto space-y-6 p-6 bg-card border border-white/10 rounded-2xl">
+              <h2 class="text-xl font-bold text-center text-gold">مراجعة بيانات وتفاصيل الحجز</h2>
+              
+              <div class="space-y-3">
+                <h3 class="font-bold text-sm text-gold border-b border-white/10 pb-1">البيانات العامة</h3>
+                <Row label="العميل الأساسي" :value="form.customer?.full_name || form.customer?.name" />
+                <Row label="البرنامج المختار" :value="selectedProgram?.program_name" />
+                <Row v-if="form.supplier_id" label="المورِّد (الشركة الموردة)" :value="supplierName" />
+                <Row v-if="form.companion_customer_id" label="المرافق" :value="companionName" />
+                <Row label="خيار السكن" :value="form.accommodation_choice === 'private' ? 'غرفة خاصة' : 'تسكين عادي'" />
+              </div>
+
+              <!-- Pricing breakdown -->
+              <div class="space-y-3 pt-4 border-t border-white/10">
+                <h3 class="font-bold text-sm text-gold border-b border-white/10 pb-1">تفاصيل الحسابات والتسعير</h3>
+                <Row label="سعر بيع البرنامج للعميل" :value="formatMoney(form.selling_price)" />
+                <Row v-if="needsCompanion && form.companion_customer_id" label="سعر بيع البرنامج للمرافق" :value="formatMoney(form.companion_selling_price)" />
+                <Row v-if="form.accommodation_extra_charge > 0" label="رسوم السكن الخاص الإضافية" :value="formatMoney(form.accommodation_extra_charge)" />
+                <div class="flex justify-between items-center py-2 bg-white/5 px-3 rounded-lg">
+                  <span class="font-bold text-white text-sm">إجمالي سعر البيع الكلي:</span>
+                  <span class="font-bold font-mono text-gold">{{ formatMoney(totalSellingPrice) }}</span>
+                </div>
+
+                <div class="space-y-2 mt-4 pt-4 border-t border-white/10">
+                  <Row label="سعر شراء البرنامج (التكلفة)" :value="formatMoney(form.purchase_price)" />
+                  <Row v-if="needsCompanion && form.companion_customer_id" label="سعر شراء برنامج المرافق" :value="formatMoney(form.companion_purchase_price)" />
+                  <div class="flex justify-between items-center py-2 bg-white/5 px-3 rounded-lg">
+                    <span class="text-muted text-sm">إجمالي التكلفة الكلية:</span>
+                    <span class="font-mono text-white">{{ formatMoney(totalPurchasePrice) }}</span>
+                  </div>
+                </div>
+
+                <Row label="صافي الربح المتوقع" :value="formatMoney(profit)" :valueClass="profitClass" />
+              </div>
+
+              <!-- Passenger breakdowns -->
+              <div v-if="hasPassengersBreakdown" class="space-y-3 pt-4 border-t border-white/10">
+                <h3 class="font-bold text-sm text-gold border-b border-white/10 pb-1">الفئات الفرعية لشبكة الأسرة</h3>
+                <div class="bg-[#121212] rounded-xl p-3 space-y-2 text-xs">
+                  <div v-for="p in activePassengers" :key="p.category" class="flex justify-between text-white/90">
+                    <span>{{ p.label }} (العدد: {{ p.count }})</span>
+                    <span class="font-mono">{{ formatMoney(p.subtotal) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Payment details -->
+              <div class="space-y-3 pt-4 border-t border-white/10">
+                <h3 class="font-bold text-sm text-gold border-b border-white/10 pb-1">الدفع والتسوية</h3>
+                <Row label="حساب التحصيل والتسوية" :value="selectedAccount?.name" />
+                <Row v-if="addPayment && form.initial_payment.amount > 0" label="الدفعة الأولية المسجلة"
+                  :value="formatMoney(form.initial_payment.amount)" valueClass="text-success" />
+                <Row label="المتبقي على العميل" :value="formatMoney(remainingBalance)" valueClass="text-warning font-bold" />
+              </div>
             </div>
           </section>
         </div>
@@ -343,16 +533,16 @@
     <!-- Navigation Buttons -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
       <button v-if="currentStep > 1" type="button" @click="prevStep"
-        class="px-8 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold">السابق</button>
+        class="px-8 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold text-white transition-colors">السابق</button>
       <div v-else></div>
 
       <button v-if="currentStep < 6" type="button" @click="nextStep" :disabled="!isStepValid"
-        class="px-10 py-3 rounded-xl bg-gold text-black font-bold hover:bg-gold/90 disabled:opacity-30 disabled:grayscale">
+        class="px-10 py-3 rounded-xl bg-gold text-black font-bold hover:bg-gold/90 disabled:opacity-30 disabled:grayscale transition-all">
         التالي
       </button>
 
       <button v-else type="button" @click="saveBooking" :disabled="isSaving"
-        class="px-10 py-3 rounded-xl bg-success text-white font-bold hover:bg-success/90 shadow-lg shadow-success/20 flex items-center gap-3">
+        class="px-10 py-3 rounded-xl bg-success text-white font-bold hover:bg-success/90 shadow-lg shadow-success/20 flex items-center gap-3 transition-colors">
         <Loader2 v-if="isSaving" class="w-5 h-5 animate-spin" />
         {{ isSaving ? 'جارٍ الحفظ...' : 'حفظ الحجز' }}
       </button>
@@ -363,6 +553,7 @@
 <script setup>
 import { ref, computed, onMounted, h } from 'vue';
 import { useRouter } from 'vue-router';
+import axios from 'axios';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
 import { 
   ArrowLeft, Check, Loader2, Search, Plus, TrendingUp, TrendingDown,
@@ -380,6 +571,15 @@ const showNewCustomerForm = ref(false);
 const needsCompanion = ref(false);
 const addPayment = ref(false);
 
+const searchResults = ref([]);
+const loadingCustomers = ref(false);
+const showDropdown = ref(false);
+
+const companionSearchResults = ref([]);
+const loadingCompanion = ref(false);
+const showCompanionDropdown = ref(false);
+const selectedCompanionObject = ref(null);
+
 const settlementCategoryUi = ref('cash');
 const settlementCategoryChips = [
   { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
@@ -387,30 +587,26 @@ const settlementCategoryChips = [
   { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
 ];
 
-const filteredAccounts = computed(() => {
-  const accounts = store.accounts || [];
-  if (settlementCategoryUi.value === 'cash') {
-    return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
-  }
-  if (settlementCategoryUi.value === 'wallet') {
-    return accounts.filter(a => a.type === 'wallet');
-  }
-  if (settlementCategoryUi.value === 'bank') {
-    return accounts.filter(a => a.type === 'bank');
-  }
-  return accounts;
-});
-
-const newCustomer = ref({ full_name: '', phone: '', passport_number: '', date_of_birth: '' });
+const passengers = ref([
+  { category: 'adult', label: 'بالغ', count: 0, unit_price: 0, subtotal: 0 },
+  { category: 'child_with_bed', label: 'طفل بسرير', count: 0, unit_price: 0, subtotal: 0 },
+  { category: 'child_no_bed', label: 'طفل بدون سرير', count: 0, unit_price: 0, subtotal: 0 },
+  { category: 'infant', label: 'رضيع', count: 0, unit_price: 0, subtotal: 0 }
+]);
 
 const form = ref({
   customer: null,
   program_id: null,
   companion_customer_id: null,
+  supplier_id: null,
   purchase_price: 0,
+  companion_purchase_price: 0,
   selling_price: 0,
+  companion_selling_price: 0,
   currency: 'EGP',
   per_person: true,
+  accommodation_choice: 'standard',
+  accommodation_extra_charge: 0,
   status: 'confirmed',
   account_id: null,
   agent_name: '',
@@ -433,37 +629,70 @@ const steps = [
   { id: 6, title: 'الملخص', label: 'مراجعة نهائية' },
 ];
 
-const filteredCustomers = computed(() => {
-  if (!customerSearch.value) return [];
-  const q = customerSearch.value.toLowerCase();
-  return store.customers.filter((c) =>
-    (c.full_name || c.name)?.toLowerCase().includes(q) || c.phone?.includes(q),
-  );
-});
-
-const filteredCompanions = computed(() => {
-  if (!companionSearch.value) return [];
-  const q = companionSearch.value.toLowerCase();
-  return store.customers.filter((c) =>
-    (c.full_name || c.name)?.toLowerCase().includes(q) || c.phone?.includes(q),
-  );
+const filteredAccounts = computed(() => {
+  const accounts = store.accounts || [];
+  if (settlementCategoryUi.value === 'cash') {
+    return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return accounts.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return accounts.filter(a => a.type === 'bank');
+  }
+  return accounts;
 });
 
 const selectedProgram = computed(() => store.programs.find((p) => p.id === form.value.program_id));
 const selectedAccount = computed(() => store.accounts.find((a) => a.id === form.value.account_id));
+
 const companionName = computed(() => {
-  const c = store.customers.find((x) => x.id === form.value.companion_customer_id);
-  return c?.full_name || c?.name || '';
+  return selectedCompanionObject.value?.full_name || selectedCompanionObject.value?.name || '';
 });
 
-const profit = computed(() =>
-  Math.round(((form.value.selling_price || 0) - (form.value.purchase_price || 0)) * 100) / 100,
-);
+const supplierName = computed(() => {
+  const s = store.suppliers.find((x) => x.id === form.value.supplier_id);
+  return s ? s.name : '';
+});
+
+const passengersTotal = computed(() => {
+  return round(passengers.value.reduce((s, p) => s + (p.subtotal || 0), 0));
+});
+
+const totalSellingPrice = computed(() => {
+  return round((form.value.selling_price || 0) + 
+               (needsCompanion.value ? (form.value.companion_selling_price || 0) : 0) + 
+               (form.value.accommodation_extra_charge || 0));
+});
+
+const totalPurchasePrice = computed(() => {
+  return round((form.value.purchase_price || 0) + 
+               (needsCompanion.value ? (form.value.companion_purchase_price || 0) : 0));
+});
+
+const profit = computed(() => {
+  return round(totalSellingPrice.value - totalPurchasePrice.value);
+});
+
 const profitClass = computed(() => (profit.value >= 0 ? 'text-success' : 'text-error'));
+
 const marginPct = computed(() => {
-  const c = Number(form.value.purchase_price) || 0;
+  const c = totalPurchasePrice.value;
   if (c <= 0) return null;
   return Math.round((profit.value / c) * 10000) / 100;
+});
+
+const hasPassengersBreakdown = computed(() => {
+  return passengers.value.some(p => p.count > 0);
+});
+
+const activePassengers = computed(() => {
+  return passengers.value.filter(p => p.count > 0);
+});
+
+const remainingBalance = computed(() => {
+  const paid = addPayment.value ? (Number(form.value.initial_payment.amount) || 0) : 0;
+  return round(totalSellingPrice.value - paid);
 });
 
 const isStepValid = computed(() => {
@@ -471,11 +700,17 @@ const isStepValid = computed(() => {
     case 1: return !!form.value.customer;
     case 2: return !!form.value.program_id;
     case 3: return !needsCompanion.value || !!form.value.companion_customer_id;
-    case 4: return form.value.purchase_price >= 0 && form.value.selling_price >= 0 && form.value.selling_price > 0;
+    case 4: return form.value.purchase_price >= 0 && form.value.selling_price >= 0 && totalSellingPrice.value > 0;
     case 5: return !!form.value.account_id;
     default: return true;
   }
 });
+
+const newCustomer = ref({ full_name: '', phone: '', passport_number: '', date_of_birth: '' });
+
+function round(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
 
 function formatMoney(n, curr = 'EGP') {
   const num = Number(n) || 0;
@@ -497,7 +732,7 @@ function applyMarkup(pct) {
 }
 
 function setPaidPercent(pct) {
-  const sp = Number(form.value.selling_price) || 0;
+  const sp = totalSellingPrice.value;
   if (sp <= 0) {
     store.addToast('أدخل سعر البيع أولاً', 'error');
     return;
@@ -505,19 +740,82 @@ function setPaidPercent(pct) {
   form.value.initial_payment.amount = Math.round((sp * pct) / 100 * 100) / 100;
 }
 
-function onCustomerSearch() {
-  if (customerSearch.value.length >= 2) store.fetchCustomers(customerSearch.value);
-}
+let debounceTimeout = null;
+const onCustomerSearchDebounced = () => {
+  if (debounceTimeout) clearTimeout(debounceTimeout);
+  
+  const query = customerSearch.value.trim();
+  if (query.length < 2) {
+    searchResults.value = [];
+    showDropdown.value = false;
+    return;
+  }
+  
+  showDropdown.value = true;
+  loadingCustomers.value = true;
+  
+  debounceTimeout = setTimeout(async () => {
+    try {
+      const response = await axios.get('/api/v1/clients', { params: { search: query } });
+      searchResults.value = response.data?.data ?? [];
+    } catch (error) {
+      console.error('Failed to search customers', error);
+      searchResults.value = [];
+    } finally {
+      loadingCustomers.value = false;
+    }
+  }, 300);
+};
 
-function onCompanionSearch() {
-  if (companionSearch.value.length >= 2) store.fetchCustomers(companionSearch.value);
-}
+let companionDebounceTimeout = null;
+const onCompanionSearchDebounced = () => {
+  if (companionDebounceTimeout) clearTimeout(companionDebounceTimeout);
+  
+  const query = companionSearch.value.trim();
+  if (query.length < 2) {
+    companionSearchResults.value = [];
+    showCompanionDropdown.value = false;
+    return;
+  }
+  
+  showCompanionDropdown.value = true;
+  loadingCompanion.value = true;
+  
+  companionDebounceTimeout = setTimeout(async () => {
+    try {
+      const response = await axios.get('/api/v1/clients', { params: { search: query } });
+      companionSearchResults.value = response.data?.data ?? [];
+    } catch (error) {
+      console.error('Failed to search companion', error);
+      companionSearchResults.value = [];
+    } finally {
+      loadingCompanion.value = false;
+    }
+  }, 300);
+};
 
 function selectCustomer(c) {
   form.value.customer = c;
-  form.value.agent_name ||= c.full_name || c.name || '';
+  form.value.agent_name = form.value.agent_name || c.full_name || c.name || '';
   form.value.initial_payment.paid_by = c.full_name || c.name || '';
   customerSearch.value = '';
+  searchResults.value = [];
+  showDropdown.value = false;
+}
+
+function selectCompanion(c) {
+  form.value.companion_customer_id = c.id;
+  selectedCompanionObject.value = c;
+  companionSearch.value = '';
+  companionSearchResults.value = [];
+  showCompanionDropdown.value = false;
+}
+
+function clearCompanion() {
+  form.value.companion_customer_id = null;
+  selectedCompanionObject.value = null;
+  form.value.companion_purchase_price = 0;
+  form.value.companion_selling_price = 0;
 }
 
 async function createNewCustomer() {
@@ -530,7 +828,7 @@ async function createNewCustomer() {
     selectCustomer(c);
     showNewCustomerForm.value = false;
     newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '' };
-    store.addToast('تم إضافة العميل');
+    store.addToast('تم إضافة العميل بنجاح');
   } catch (e) {
     store.addToast('فشل إضافة العميل', 'error');
   }
@@ -544,6 +842,33 @@ function onProgramSelect() {
   }
   if ((!form.value.selling_price || form.value.selling_price <= 0) && p.default_selling_price > 0) {
     form.value.selling_price = p.default_selling_price;
+  }
+}
+
+function onSupplierSelect() {
+  const supplier = store.suppliers.find(s => s.id === form.value.supplier_id);
+  if (supplier && supplier.supplier_cost_price > 0) {
+    form.value.purchase_price = supplier.supplier_cost_price;
+  }
+}
+
+function updatePassengerSubtotal(p) {
+  p.subtotal = round((p.count || 0) * (p.unit_price || 0));
+  updatePricesFromPassengers();
+}
+
+function updatePricesFromPassengers() {
+  const total = passengersTotal.value;
+  if (total > 0) {
+    form.value.selling_price = total;
+  }
+}
+
+function onAccommodationChange() {
+  if (form.value.accommodation_choice === 'private') {
+    form.value.accommodation_extra_charge = 3000;
+  } else {
+    form.value.accommodation_extra_charge = 0;
   }
 }
 
@@ -566,16 +891,27 @@ async function saveBooking() {
   try {
     const payload = {
       customer_id: form.value.customer.id,
-      companion_customer_id: form.value.companion_customer_id || null,
+      companion_customer_id: needsCompanion.value ? (form.value.companion_customer_id || null) : null,
       program_id: form.value.program_id,
+      supplier_id: form.value.supplier_id || null,
       purchase_price: Number(form.value.purchase_price) || 0,
+      companion_purchase_price: needsCompanion.value ? (Number(form.value.companion_purchase_price) || 0) : 0,
       selling_price: Number(form.value.selling_price) || 0,
+      companion_selling_price: needsCompanion.value ? (Number(form.value.companion_selling_price) || 0) : 0,
       currency: form.value.currency,
       per_person: !!form.value.per_person,
+      accommodation_choice: form.value.accommodation_choice || 'standard',
+      accommodation_extra_charge: Number(form.value.accommodation_extra_charge) || 0,
       status: form.value.status,
       account_id: form.value.account_id,
       agent_name: form.value.agent_name?.trim() || form.value.customer?.full_name || '',
       notes: form.value.notes?.trim() || null,
+      passengers: passengers.value.filter(p => p.count > 0).map(p => ({
+        category: p.category,
+        count: p.count,
+        unit_price: p.unit_price,
+        subtotal: p.subtotal,
+      })),
     };
 
     if (addPayment.value && Number(form.value.initial_payment.amount) > 0) {
@@ -603,7 +939,8 @@ async function saveBooking() {
 onMounted(async () => {
   await Promise.all([
     store.fetchSettings(), 
-    store.fetchAccounts({ module: 'hajj' })
+    store.fetchAccounts({ type: 'collection' }),
+    store.fetchSuppliers(),
   ]);
 });
 

@@ -35,6 +35,10 @@ class FawryTransaction extends Model
         'payment_details',
         'expense_transaction_id',
         'income_transaction_id',
+        'created_by_user_id',
+        'updated_by_user_id',
+        'client_ip',
+        'fawry_machine_id',
     ];
 
     protected $casts = [
@@ -68,6 +72,11 @@ class FawryTransaction extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'account_id');
+    }
+
+    public function machine(): BelongsTo
+    {
+        return $this->belongsTo(FawryMachine::class, 'fawry_machine_id');
     }
 
     public function currency(): BelongsTo

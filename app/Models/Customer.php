@@ -2,7 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\CustomerTier;
+use App\Enums\CustomerType;
+use App\Models\Bus\BusBooking;
+use App\Models\Fawry\FawryTransaction;
 use App\Models\Flight\FlightBooking;
+use App\Models\Online\OnlineTransaction;
+use App\Models\Wallet\WalletTransaction;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -40,8 +46,8 @@ class Customer extends Model
     ];
 
     protected $casts = [
-        'customer_tier' => \App\Enums\CustomerTier::class,
-        'type' => \App\Enums\CustomerType::class,
+        'customer_tier' => CustomerTier::class,
+        'type' => CustomerType::class,
         'passport_expiry' => 'date',
         'date_of_birth' => 'date',
         'total_spent' => 'decimal:2',
@@ -64,7 +70,7 @@ class Customer extends Model
 
     public function busBookings(): HasMany
     {
-        return $this->hasMany(\App\Models\Bus\BusBooking::class);
+        return $this->hasMany(BusBooking::class);
     }
 
     public function hajjUmraBookings(): HasMany
@@ -79,12 +85,17 @@ class Customer extends Model
 
     public function fawryTransactions(): HasMany
     {
-        return $this->hasMany(\App\Models\Fawry\FawryTransaction::class, 'client_id');
+        return $this->hasMany(FawryTransaction::class, 'client_id');
     }
 
     public function onlineTransactions(): HasMany
     {
-        return $this->hasMany(\App\Models\Online\OnlineTransaction::class, 'customer_id');
+        return $this->hasMany(OnlineTransaction::class, 'customer_id');
+    }
+
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(WalletTransaction::class, 'customer_id');
     }
 
     public function scopeSearch($query, $search)

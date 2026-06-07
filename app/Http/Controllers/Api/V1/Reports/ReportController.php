@@ -48,9 +48,19 @@ class ReportController extends Controller
     {
         try {
             $filters = $this->validateDateFilters($request);
+            if ($request->filled('module')) {
+                $filters['module'] = $request->input('module');
+            }
+            if ($request->filled('category')) {
+                $filters['category'] = $request->input('category');
+            }
+            if ($request->filled('expense_scope')) {
+                $filters['expense_scope'] = $request->input('expense_scope');
+            }
             $data = $this->financeService->getFinancialSummary($filters);
 
-            return ApiResponse::success('Financial summary retrieved successfully.', $data);
+            return ApiResponse::success('Financial summary retrieved successfully.', $data)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -61,7 +71,8 @@ class ReportController extends Controller
         try {
             $data = $this->financeService->getAccountsBalance();
 
-            return ApiResponse::success('Accounts balance retrieved successfully.', $data);
+            return ApiResponse::success('Accounts balance retrieved successfully.', $data)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -73,9 +84,23 @@ class ReportController extends Controller
             $filters = $this->validateDateFilters($request);
             $filters['category'] = $request->input('category'); // e.g. 'tourism', 'office', or null
             $filters['module'] = $request->input('module'); // e.g. 'flight', 'bus', or 'all'
+
+            if (! empty($filters['from_date']) && ! empty($filters['to_date'])) {
+                $from = Carbon::parse($filters['from_date']);
+                $to = Carbon::parse($filters['to_date']);
+                if ($to->lt($from)) {
+                    return ApiResponse::error('to_date must be on or after from_date.', null, 422);
+                }
+                if ($from->diffInDays($to) > 730) {
+                    return ApiResponse::error('الفترة الزمنية طويلة جداً. الحد الأقصى سنتان (730 يوماً).', null, 422);
+                }
+            }
+
             $data = $this->financeService->getProfitLossReport($filters);
 
-            return ApiResponse::success('Profit & Loss retrieved successfully.', $data);
+            return ApiResponse::success('Profit & Loss retrieved successfully.', $data)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -128,10 +153,20 @@ class ReportController extends Controller
     {
         try {
             $filters = $this->validateDateFilters($request);
-            $filters = array_merge($filters, $request->only(['type', 'module', 'account_id', 'per_page', 'account_type']));
+            $filters = array_merge($filters, $request->only([
+                'type',
+                'module',
+                'account_id',
+                'per_page',
+                'page',
+                'account_type',
+                'search',
+                'expenses_only',
+            ]));
             $paginator = $this->financeService->getTransactionReport($filters);
 
-            return ApiResponse::paginated('Transactions report retrieved successfully.', $paginator->items(), $paginator);
+            return ApiResponse::paginated('Transactions report retrieved successfully.', $paginator->items(), $paginator)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

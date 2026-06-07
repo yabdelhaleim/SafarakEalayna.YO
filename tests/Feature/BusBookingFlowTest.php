@@ -48,6 +48,8 @@ class BusBookingFlowTest extends TestCase
             'balance' => 0,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
 
@@ -231,6 +233,8 @@ class BusBookingFlowTest extends TestCase
             'balance' => 500.00,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
 
@@ -315,6 +319,8 @@ class BusBookingFlowTest extends TestCase
             'balance'    => 500.0,
             'is_active'  => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
 
@@ -380,6 +386,8 @@ class BusBookingFlowTest extends TestCase
             'balance'    => 500.0,
             'is_active'  => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
 
@@ -430,6 +438,8 @@ class BusBookingFlowTest extends TestCase
             'balance'    => 500.0,
             'is_active'  => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
 

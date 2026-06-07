@@ -2,14 +2,18 @@
 
 namespace App\Services\Flight;
 
+use App\Enums\AccountType;
 use App\Enums\FlightBookingStatus;
 use App\Enums\FlightPaymentMethod;
 use App\Enums\FlightSystemType;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Airport;
+use App\Models\Customer;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightPassenger;
 use App\Models\Flight\FlightPayment;
 use App\Models\Flight\FlightRefund;
@@ -242,6 +246,7 @@ class FlightBookingService
                     'to_airport_id' => $data['to_airport_id'] ?? null,
                     'departure_date' => $data['departure_date'] ?? now()->toDateString(),
                     'return_date' => $data['return_date'] ?? null,
+                    'return_time' => $data['return_time'] ?? null,
                     'departure_time' => $data['departure_time'] ?? '00:00',
                     'arrival_time' => $data['arrival_time'] ?? null,
                     'trip_type' => $data['trip_type'] ?? 'one_way',
@@ -322,7 +327,8 @@ class FlightBookingService
                     $booking,
                     (int) $data['customer_id'],
                     $sellingPrice,
-                    $userId
+                    $userId,
+                    $data['passengers'] ?? []
                 );
 
                 // Step 6: Create passengers
@@ -632,6 +638,7 @@ class FlightBookingService
             if (empty($data['flight_group_id'])) {
                 throw new \Exception('لا يمكن إتمام الحجز عبر مجموعة دون تحديد المجموعة.');
             }
+
             return 'group';
         }
 
@@ -1105,9 +1112,6 @@ class FlightBookingService
         ]);
     }
 
-    /**
-     * @param  mixed  $value
-     */
     private function normalizeSegmentTimeValue(mixed $value): string
     {
         if ($value instanceof \DateTimeInterface) {
@@ -1131,9 +1135,6 @@ class FlightBookingService
         }
     }
 
-    /**
-     * @param  mixed  $value
-     */
     private function normalizeSegmentDateValue(mixed $value): ?string
     {
         if ($value instanceof \DateTimeInterface) {
@@ -1182,7 +1183,7 @@ class FlightBookingService
                     $updates['system_type'] = $try ?? $booking->system_type;
                 }
 
-                foreach (['from_airport', 'to_airport', 'departure_date', 'return_date', 'departure_time', 'arrival_time', 'baggage_allowance_kg'] as $key) {
+                foreach (['from_airport', 'to_airport', 'departure_date', 'return_date', 'return_time', 'departure_time', 'arrival_time', 'baggage_allowance_kg'] as $key) {
                     if (! array_key_exists($key, $data)) {
                         continue;
                     }
@@ -1855,7 +1856,7 @@ class FlightBookingService
      */
     protected function ensureCustomerAccount(int $customerId): Account
     {
-        $customer = \App\Models\Customer::findOrFail($customerId);
+        $customer = Customer::findOrFail($customerId);
 
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
@@ -1867,15 +1868,15 @@ class FlightBookingService
         // Create new account for customer
         return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
             $account = Account::create([
-                'name' => 'حساب العميل: ' . $customer->full_name,
-                'type' => \App\Enums\AccountType::Customer,
+                'name' => 'حساب العميل: '.$customer->full_name,
+                'type' => AccountType::Customer,
                 'balance' => 0,
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
                 'module_type' => 'tourism',
                 'is_module_vault' => false,
-                'notes' => 'حساب تلقائي للعميل #' . $customer->id,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,
             ]);
 
@@ -1883,7 +1884,7 @@ class FlightBookingService
 
             Log::info('Customer ledger account created automatically', [
                 'customer_id' => $customer->id,
-                'account_id' => $account->id
+                'account_id' => $account->id,
             ]);
 
             return $account;
@@ -1893,18 +1894,39 @@ class FlightBookingService
     /**
      * Record the sale as a debt on the customer ledger.
      */
-    protected function recordSaleToCustomer(FlightBooking $booking, int $customerId, float $sellingPrice, int $userId): void
+    protected function recordSaleToCustomer(FlightBooking $booking, int $customerId, float $sellingPrice, int $userId, array $passengers = []): void
     {
         $customerAccount = $this->ensureCustomerAccount($customerId);
         $clearingAccountId = $this->flightLedgerContraAccountId();
 
         if ($clearingAccountId === null) {
             Log::warning('No flight clearing account configured. Skipping sale journal.');
+
             return;
         }
 
         if ($clearingAccountId === $customerAccount->id) {
             return;
+        }
+
+        $passengerNames = collect($passengers)
+            ->map(function ($p) {
+                $first = trim((string) ($p['first_name'] ?? ''));
+                $last = trim((string) ($p['last_name'] ?? ''));
+                $full = trim($first.' '.$last);
+
+                return $full !== '' ? $full : trim((string) ($p['name'] ?? ''));
+            })
+            ->filter()
+            ->unique()
+            ->implode('، ');
+
+        $notes = 'بيع تذكرة طيران (مديونية) — حجز #'.$booking->booking_number;
+        if ($booking->pnr) {
+            $notes .= ' — PNR: '.$booking->pnr;
+        }
+        if ($passengerNames !== '') {
+            $notes .= ' — مسافر: '.$passengerNames;
         }
 
         $tx = $this->transactionService->recordJournalTransfer([
@@ -1915,7 +1937,7 @@ class FlightBookingService
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightBooking::class,
             'related_id' => $booking->id,
-            'notes' => 'بيع تذكرة طيران (مديونية) — حجز #' . $booking->booking_number,
+            'notes' => $notes,
             'created_by' => $userId,
         ]);
 
@@ -1925,7 +1947,7 @@ class FlightBookingService
             'booking_id' => $booking->id,
             'customer_id' => $customerId,
             'account_id' => $customerAccount->id,
-            'amount' => $sellingPrice
+            'amount' => $sellingPrice,
         ]);
     }
 
@@ -1938,14 +1960,14 @@ class FlightBookingService
         float $purchasePriceEGP,
         int $userId
     ): void {
-        $group = \App\Models\Flight\FlightGroup::findOrFail($groupId);
+        $group = FlightGroup::findOrFail($groupId);
 
-        \App\Models\Flight\FlightGroupTransaction::create([
+        FlightGroupTransaction::create([
             'flight_group_id' => $group->id,
             'flight_booking_id' => $booking->id,
             'type' => 'debt',
             'amount' => $purchasePriceEGP,
-            'notes' => 'شراء تذكرة طيران بالأجل — حجز #' . $booking->booking_number,
+            'notes' => 'شراء تذكرة طيران بالأجل — حجز #'.$booking->booking_number,
             'created_by' => $userId,
         ]);
 
@@ -1961,7 +1983,7 @@ class FlightBookingService
      */
     protected function reverseGroupPurchase(FlightBooking $booking, float $airlinePenalty, int $userId): void
     {
-        $group = \App\Models\Flight\FlightGroup::find($booking->flight_group_id);
+        $group = FlightGroup::find($booking->flight_group_id);
         if (! $group) {
             return;
         }
@@ -1975,15 +1997,16 @@ class FlightBookingService
                 'purchase_price' => $booking->purchase_price,
                 'penalty' => $airlinePenalty,
             ]);
+
             return;
         }
 
-        \App\Models\Flight\FlightGroupTransaction::create([
+        FlightGroupTransaction::create([
             'flight_group_id' => $group->id,
             'flight_booking_id' => $booking->id,
             'type' => 'payment',
             'amount' => $netReversal,
-            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #' . $booking->booking_number . ' (غرامة: ' . $airlinePenalty . ')',
+            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #'.$booking->booking_number.' (غرامة: '.$airlinePenalty.')',
             'created_by' => $userId,
         ]);
 

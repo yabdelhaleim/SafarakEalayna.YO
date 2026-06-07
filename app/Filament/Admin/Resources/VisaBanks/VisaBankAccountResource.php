@@ -105,7 +105,7 @@ class VisaBankAccountResource extends Resource
                     ->label('كشف الحساب')
                     ->icon('heroicon-o-document-text')
                     ->color('info')
-                    ->url(fn (Model $record): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
+                    ->url(fn (Model $record): string => \App\Filament\Admin\Pages\AccountStatement::getUrl(['accountId' => $record->id])),
             ])
             ->emptyStateHeading('لا توجد حسابات بنكية')
             ->emptyStateDescription('ابدأ بإضافة حساب بنكي أو بريد إلكتروني جديد لموديول التأشيرات')

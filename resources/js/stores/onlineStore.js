@@ -98,6 +98,7 @@ export const useOnlineStore = defineStore('online', {
       const controller = new AbortController();
       try {
         const response = await axios.get('/api/v1/online/settings/all', {
+          params: { _t: Date.now() },
           signal: controller.signal,
         });
         const data = ENVELOPE(response) ?? {};
@@ -379,7 +380,7 @@ export const useOnlineStore = defineStore('online', {
       try {
         const today = date ?? new Date().toISOString().slice(0, 10);
         const response = await axios.get('/api/v1/online/transactions/daily-summary', {
-          params: { date: today },
+          params: { date: today, _t: Date.now() },
         });
         const data = ENVELOPE(response) ?? {};
         this.stats = {

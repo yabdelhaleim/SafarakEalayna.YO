@@ -3,23 +3,15 @@
 namespace App\Filament\Admin\Resources\HajjUmraBookings;
 
 use App\Enums\HajjUmraStatus;
-use App\Enums\TransactionModule;
+use App\Filament\Admin\Resources\HajjUmraBookings\HajjUmraBookingResource\Widgets\HajjUmraStats;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\CreateHajjUmraBooking;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\EditHajjUmraBooking;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\ListHajjUmraBookings;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\ViewHajjUmraBooking;
-use App\Models\Account;
-use App\Models\Customer;
 use App\Models\HajjUmraBooking;
 use App\Models\Program;
 use App\Services\HajjUmra\HajjUmraBookingService;
 use BackedEnum;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -27,30 +19,35 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Admin\Resources\HajjUmraBookings\HajjUmraBookingResource\Widgets\HajjUmraStats;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class HajjUmraBookingResource extends Resource
 {
     protected static ?string $model = HajjUmraBooking::class;
+
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 
     protected static string|\UnitEnum|null $navigationGroup = 'الحج والعمرة';
 
     protected static ?string $navigationLabel = 'حجوزات الحج والعمرة';
+
     protected static ?string $pluralLabel = 'حجوزات الحج والعمرة';
+
     protected static ?string $modelLabel = 'حجز حج/عمرة';
+
     protected static ?int $navigationSort = 0;
 
     public static function form(Schema $schema): Schema
@@ -80,7 +77,9 @@ class HajjUmraBookingResource extends Resource
                             ->required()
                             ->reactive()
                             ->afterStateUpdated(function ($state, callable $set) {
-                                if (!$state) return;
+                                if (! $state) {
+                                    return;
+                                }
                                 $p = Program::find($state);
                                 if ($p && (float) $p->default_purchase_price > 0) {
                                     $set('purchase_price', (float) $p->default_purchase_price);

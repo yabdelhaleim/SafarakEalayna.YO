@@ -49,7 +49,7 @@
             :class="transaction.type === 'income' ? 'text-success' : transaction.type === 'expense' ? 'text-error' : 'text-blue-500'"
           >
             {{ transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '' }}
-            {{ formatCurrency(transaction.amount) }}
+            {{ formatCurrency(transaction.amount, transaction.currency) }}
           </p>
         </div>
 
@@ -287,7 +287,12 @@ const getProgressBarClass = (meta) => {
 
 const formatCurrency = (value, currency = 'EGP') => {
   if (value === null || value === undefined) return '—';
-  return Number(value).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return new Intl.NumberFormat('ar-EG', {
+    style: 'currency',
+    currency: currency || 'EGP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value));
 };
 
 const formatDate = (dateString) => {

@@ -17,15 +17,9 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UserSeeder::class,
+            AdminSeeder::class,
             SettingSeeder::class,
-            AccountSeeder::class,
-            CustomerSeeder::class,
-            FlightSeeder::class,
-            BusSeeder::class,
-            // ServiceSeeder::class, // tables were dropped in 2026_05_06 migration
-            OnlineSeeder::class,
-            BonusSeeder::class,
-            ProgramSeeder::class,
+            AirportSeeder::class,
         ]);
 
         $this->command->info('═══════════════════════════════════════');

@@ -193,6 +193,59 @@
           </div>
         </div>
 
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-text-muted">المبلغ المدفوع حالياً <span class="text-error">*</span></label>
+            <div class="relative">
+              <input
+                v-model.number="form.amount_paid"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm font-mono focus:border-violet-500/50 outline-none text-text-main"
+              />
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-text-muted">ج.م</span>
+            </div>
+            <!-- Quick amounts -->
+            <div class="mt-2 flex gap-2">
+              <button
+                v-for="pct in [25, 50, 75, 100]"
+                :key="pct"
+                type="button"
+                @click="setPaidPercent(pct)"
+                class="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:border-violet-500/40 hover:text-violet-400 transition"
+              >
+                {{ pct }}٪
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-2 flex flex-col justify-end">
+            <!-- Debt Breakdown Live Preview -->
+            <div
+              v-if="form.selling_price"
+              class="rounded-xl p-4 border border-violet-500/20 bg-violet-500/5 text-xs text-text-muted space-y-1"
+            >
+              <p>
+                إجمالي المطلوب من العميل:
+                <strong class="text-text-main font-mono">{{ formatMoney(form.selling_price) }}</strong>
+              </p>
+              <p>
+                المدفوع نقداً:
+                <strong class="text-emerald-400 font-mono">{{ formatMoney(form.amount_paid || 0) }}</strong>
+              </p>
+              <p>
+                المتبقي (آجل):
+                <strong class="text-red-400 font-mono">{{ formatMoney(form.selling_price - (form.amount_paid || 0)) }}</strong>
+              </p>
+              <p v-if="!form.customer_id" class="text-amber-400 text-[10px] font-bold mt-1">
+                ⚠️ تنبيه: لم يتم اختيار عميل مسجل. سيتم اعتبار المعاملة نقدية بالكامل ولن تُسجل مديونية.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div class="mt-6 space-y-2">
           <label class="text-xs font-bold text-text-muted">رقم مرجع / ملاحظات</label>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -258,6 +311,7 @@ const initialForm = () => ({
   employee_id: null,
   purchase_price: 0,
   selling_price: 0,
+  amount_paid: 0,
   payment_method: '',
   account_id: null,
   reference_number: '',
@@ -277,6 +331,24 @@ const formatMoney = (value) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
     value ?? 0,
   ) + ' ج.م';
+
+const setPaidPercent = (pct) => {
+  const tot = Number(form.value.selling_price) || 0;
+  if (tot <= 0) {
+    store.addToast('يرجى تحديد سعر البيع أولاً', 'error');
+    return;
+  }
+  form.value.amount_paid = Math.round((tot * pct) / 100 * 100) / 100;
+};
+
+watch(
+  () => form.value.selling_price,
+  (newVal) => {
+    if (!form.value.amount_paid || form.value.amount_paid === 0) {
+      form.value.amount_paid = newVal;
+    }
+  }
+);
 
 const onCustomerSelected = () => {
   if (!form.value.customer_id) {
@@ -314,6 +386,7 @@ const submit = async () => {
       account_id: Number(form.value.account_id),
       purchase_price: Number(form.value.purchase_price),
       selling_price: Number(form.value.selling_price),
+      amount_paid: Number(form.value.amount_paid),
       customer_name: String(form.value.customer_name ?? '').trim(),
       payment_method: String(form.value.payment_method ?? '').trim(),
     };

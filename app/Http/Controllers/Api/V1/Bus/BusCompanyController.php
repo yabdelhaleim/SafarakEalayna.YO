@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1\Bus;
 
+use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Bus\StoreBusCompanyRequest;
 use App\Http\Requests\Bus\UpdateBusCompanyRequest;
+use App\Rules\BusLiquidityAccount;
 use App\Http\Resources\Bus\BusCompanyResource;
 use App\Models\Bus\BusCompany;
 use App\Services\Bus\BusCompanyService;
@@ -136,6 +138,7 @@ public function statement(Request $request, BusCompany $company): JsonResponse
     $perPage = min((int) $request->query('per_page', 30), 100);
 
     $paginator = \App\Models\Transaction::query()
+        ->where('module', TransactionModule::Bus)
         ->where(function ($q) use ($company) {
             $q->where('from_account_id', $company->account_id)
                 ->orWhere('to_account_id', $company->account_id);
@@ -167,7 +170,7 @@ public function statement(Request $request, BusCompany $company): JsonResponse
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
-            'from_account_id' => 'required|exists:accounts,id',
+            'from_account_id' => ['required', 'exists:accounts,id', new BusLiquidityAccount],
             'notes' => 'nullable|string|max:500',
             'booking_id' => 'nullable|integer',
         ]);

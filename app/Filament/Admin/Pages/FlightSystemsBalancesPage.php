@@ -127,7 +127,7 @@ class FlightSystemsBalancesPage extends Page
 
                             return Account::query()
                                 ->where('is_active', true)
-                                ->where('module_type', 'tourism')
+                                ->where('module_type', 'flights')
                                 ->whereIn('type', $types)
                                 ->where('currency', $system->currency)
                                 ->orderBy('type')

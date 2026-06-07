@@ -73,7 +73,7 @@ class VisaAgentResource extends Resource
                 ->icon('heroicon-o-document-text')
                 ->color('info')
                 ->visible(fn ($record) => $record->account_id !== null)
-                ->url(fn ($record): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl(['accountId' => $record->account_id])),
+                ->url(fn ($record): string => \App\Filament\Admin\Pages\AccountStatement::getUrl(['accountId' => $record->account_id])),
             Action::make('debts')
                 ->label('مديونيات (الآجل)')
                 ->icon('heroicon-o-exclamation-circle')

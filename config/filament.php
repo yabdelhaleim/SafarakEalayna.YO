@@ -1,5 +1,26 @@
 <?php
 
+use App\Filament\Admin\Pages\Dashboard;
+use App\Filament\Admin\Pages\FlightDashboard;
+use App\Filament\Admin\Resources\Accounts\AccountResource;
+use App\Filament\Admin\Resources\BusBookings\BusBookingResource;
+use App\Filament\Admin\Resources\BusCompanies\BusCompanyResource;
+use App\Filament\Admin\Resources\BusCompanyPayments\BusCompanyPaymentResource;
+use App\Filament\Admin\Resources\BusInventories\BusInventoryResource;
+use App\Filament\Admin\Resources\EmployeeBonuses\EmployeeBonusResource;
+use App\Filament\Admin\Resources\ExchangeRates\ExchangeRateResource;
+use App\Filament\Admin\Resources\FawryTransactions\FawryTransactionResource;
+use App\Filament\Admin\Resources\FlightBookings\FlightBookingResource;
+use App\Filament\Admin\Resources\HajjUmraBookings\HajjUmraBookingResource;
+use App\Filament\Admin\Resources\Invoices\InvoiceResource;
+use App\Filament\Admin\Resources\OnlineServiceTypes\OnlineServiceTypeResource;
+use App\Filament\Admin\Resources\Programs\ProgramResource;
+use App\Filament\Admin\Resources\Suppliers\SupplierResource;
+use App\Filament\Admin\Resources\Transactions\TransactionResource;
+use App\Filament\Admin\Resources\TreasuryTransactions\TreasuryTransactionResource;
+use App\Filament\Admin\Resources\VisaBookings\VisaBookingResource;
+use App\Filament\Resources\EmployeeResource;
+
 return [
     'default' => 'admin',
 
@@ -45,53 +66,43 @@ return [
             'auth' => [
                 'guard' => 'web',
                 'pages' => [
-                    \App\Filament\Resources\EmployeeResource::class,
+                    EmployeeResource::class,
                 ],
             ],
             'resources' => [
-                // Customers
-                \App\Filament\Admin\Resources\Customers\CustomerResource::class,
-
                 // Employees
-                \App\Filament\Admin\Resources\Employees\EmployeeResource::class,
-                \App\Filament\Admin\Resources\EmployeeAttendances\EmployeeAttendanceResource::class,
-                \App\Filament\Admin\Resources\EmployeeBonuses\EmployeeBonusResource::class,
+                EmployeeBonusResource::class,
 
                 // Flight Bookings
-                \App\Filament\Admin\Resources\FlightBookings\FlightBookingResource::class,
-                \App\Filament\Admin\Resources\Passengers\PassengerResource::class,
-                \App\Filament\Admin\Resources\FlightPayments\FlightPaymentResource::class,
-
+                FlightBookingResource::class,
                 // Bus - NEW System
-                \App\Filament\Admin\Resources\BusCompanies\BusCompanyResource::class,
-                \App\Filament\Admin\Resources\BusInventories\BusInventoryResource::class,
-                \App\Filament\Admin\Resources\BusBookings\BusBookingResource::class,
-                \App\Filament\Admin\Resources\BusCompanyPayments\BusCompanyPaymentResource::class,
+                BusCompanyResource::class,
+                BusInventoryResource::class,
+                BusBookingResource::class,
+                BusCompanyPaymentResource::class,
 
                 // Hajj & Umra
-                \App\Filament\Admin\Resources\Programs\ProgramResource::class,
-                \App\Filament\Admin\Resources\HajjUmraBookings\HajjUmraBookingResource::class,
-                \App\Filament\Admin\Resources\VisaBookings\VisaBookingResource::class,
+                ProgramResource::class,
+                HajjUmraBookingResource::class,
+                VisaBookingResource::class,
 
                 // Finance
-                \App\Filament\Admin\Resources\Invoices\InvoiceResource::class,
-                \App\Filament\Admin\Resources\Suppliers\SupplierResource::class,
-                \App\Filament\Admin\Resources\Accounts\AccountResource::class,
-                \App\Filament\Admin\Resources\Transactions\TransactionResource::class,
-                \App\Filament\Admin\Resources\ExchangeRates\ExchangeRateResource::class,
-                \App\Filament\Admin\Resources\TreasuryTransactions\TreasuryTransactionResource::class,
+                InvoiceResource::class,
+                SupplierResource::class,
+                AccountResource::class,
+                TransactionResource::class,
+                ExchangeRateResource::class,
+                TreasuryTransactionResource::class,
 
                 // Online Services
-                \App\Filament\Admin\Resources\OnlineServiceTypes\OnlineServiceTypeResource::class,
-                \App\Filament\Admin\Resources\FawryTransactions\FawryTransactionResource::class,
+                OnlineServiceTypeResource::class,
+                FawryTransactionResource::class,
 
                 // Administration
-                \App\Filament\Admin\Resources\ApprovalWorkflows\ApprovalWorkflowResource::class,
-                \App\Filament\Admin\Resources\AuditLogs\AuditLogResource::class,
             ],
             'pages' => [
-                \App\Filament\Admin\Pages\Dashboard::class,
-                \App\Filament\Admin\Pages\FlightDashboard::class,
+                Dashboard::class,
+                FlightDashboard::class,
             ],
             'widgets' => [
                 // Widgets will be registered here

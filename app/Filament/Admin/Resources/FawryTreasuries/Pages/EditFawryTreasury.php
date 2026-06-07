@@ -13,7 +13,6 @@ class EditFawryTreasury extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\ViewAction::make(),
             Actions\DeleteAction::make(),
         ];
     }
@@ -21,6 +20,8 @@ class EditFawryTreasury extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $data['module_type'] = 'fawry';
+        $data['module'] = 'fawry';
+
         return $data;
     }
 }

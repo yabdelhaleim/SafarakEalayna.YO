@@ -2,8 +2,11 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AuditLog;
+use App\Models\Transaction;
+use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -29,56 +32,47 @@ class TreasuryService
      */
     public function getTreasuryOverview(): array
     {
-        // جلب كل الحسابات النقدية والبنكية والمحافظ والبريد للمكتب
-        $accounts = Account::whereIn('owner_type', ['office', 'owner'])
-            ->whereIn('type', [\App\Enums\AccountType::Cashbox, \App\Enums\AccountType::Bank, \App\Enums\AccountType::Wallet, \App\Enums\AccountType::Post, \App\Enums\AccountType::Treasury])
+        $accounts = Account::query()
+            ->tap(fn ($q) => AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->active()
+            ->orderBy('module_type')
+            ->orderBy('name')
             ->get();
 
-        $modules = [
-            'flight' => ['label' => 'الطيران', 'accounts' => []],
-            'bus' => ['label' => 'الباصات', 'accounts' => []],
-            'visa' => ['label' => 'التأشيرات', 'accounts' => []],
-            'hajj_umra' => ['label' => 'الحج والعمرة', 'accounts' => []],
-            'online' => ['label' => 'الخدمات الإلكترونية', 'accounts' => []],
-            'general' => ['label' => 'الخزينة العامة', 'accounts' => []],
-        ];
+        $modules = [];
 
         foreach ($accounts as $account) {
-            $m = $account->module ?: ($account->module_type ?: 'general');
-            $category = $this->getModuleCategory($m, $account->module_type);
-            
-            if (!isset($modules[$m])) {
-                $modules[$m] = [
-                    'label' => $this->getModuleLabel($m),
+            $moduleKey = AccountModuleDivision::resolveModuleTypeKey($account->module_type, $account->module);
+            $category = AccountModuleDivision::divisionForModuleType($moduleKey);
+
+            if (! isset($modules[$moduleKey])) {
+                $modules[$moduleKey] = [
+                    'label' => AccountModuleDivision::moduleLabel($moduleKey),
                     'category' => $category,
-                    'accounts' => []
+                    'accounts' => [],
                 ];
-            } else {
-                $modules[$m]['category'] = $category;
             }
-            
-            $modules[$m]['accounts'][] = [
+
+            $modules[$moduleKey]['accounts'][] = [
                 'id' => $account->id,
                 'name' => $account->name,
                 'type' => $account->type->value,
                 'type_label' => $account->type->label(),
                 'balance' => (float) $account->balance,
                 'currency' => $account->currency,
+                'module_type' => $account->module_type,
                 'is_vault' => $account->is_module_vault,
             ];
         }
 
-        // تصفية الموديولات الفارغة
-        $filtered = array_filter($modules, fn($mod) => count($mod['accounts']) > 0);
+        $filtered = array_filter($modules, fn ($mod) => count($mod['accounts']) > 0);
 
-        // إضافة آخر 10 عمليات تحويل مالي لزيادة الاحترافية
-        $recentTransfers = \App\Models\Transaction::where('type', \App\Enums\TransactionType::Transfer->value)
+        $recentTransfers = Transaction::where('type', TransactionType::Transfer->value)
             ->with(['fromAccount', 'toAccount', 'createdBy'])
             ->latest()
             ->limit(10)
             ->get()
-            ->map(fn($t) => [
+            ->map(fn ($t) => [
                 'id' => $t->id,
                 'amount' => (float) $t->amount,
                 'currency' => $t->fromAccount?->currency ?? 'EGP',
@@ -93,10 +87,10 @@ class TreasuryService
             'modules' => $filtered,
             'recent_transfers' => $recentTransfers,
             'stats' => [
-                'total_liquidity' => $accounts->sum('balance'),
+                'total_liquidity' => (float) $accounts->sum('balance'),
                 'accounts_count' => $accounts->count(),
                 'modules_count' => count($filtered),
-            ]
+            ],
         ];
     }
 
@@ -105,17 +99,23 @@ class TreasuryService
      */
     public function getModuleAccounts(string $module): array
     {
-        return Account::where('module', $module)
-            ->whereIn('type', [\App\Enums\AccountType::Cashbox, \App\Enums\AccountType::Bank, \App\Enums\AccountType::Wallet, \App\Enums\AccountType::Post, \App\Enums\AccountType::Treasury])
-            ->active()
+        $query = Account::query()
+            ->tap(fn ($q) => AccountModuleDivision::applyLiquidityTreasuryScope($q))
+            ->active();
+
+        AccountModuleDivision::applyModuleFilter($query, $module);
+
+        return $query
+            ->orderBy('name')
             ->get()
-            ->map(fn($acc) => [
+            ->map(fn ($acc) => [
                 'id' => $acc->id,
                 'name' => $acc->name,
                 'type' => $acc->type->value,
                 'type_label' => $acc->type->label(),
                 'balance' => (float) $acc->balance,
                 'currency' => $acc->currency,
+                'module_type' => $acc->module_type,
             ])
             ->toArray();
     }
@@ -172,7 +172,6 @@ class TreasuryService
             $systemTotal = $account->balance;
             $discrepancy = $countedCash - $systemTotal;
 
-            // تسجيل العملية في Audit
             AuditLog::create([
                 'user_id' => Auth::id(),
                 'action' => 'close_drawer',
@@ -194,45 +193,5 @@ class TreasuryService
                 'status' => $discrepancy === 0 ? 'balanced' : 'discrepancy',
             ];
         });
-    }
-
-    /**
-     * الحصول على اسم الموديول بشكل مقروء
-     */
-    private function getModuleLabel(string $module): string
-    {
-        $labels = [
-            'flight' => 'الطيران',
-            'bus' => 'الباصات',
-            'visa' => 'التأشيرات',
-            'visas' => 'التأشيرات',
-            'hajj_umra' => 'الحج والعمرة',
-            'online' => 'الخدمات الإلكترونية',
-            'general' => 'الخزينة العامة',
-            'tourism' => 'السياحة',
-            'office' => 'المكتب العام',
-            'fawry' => 'فوري',
-            'wallet' => 'محافظ إلكترونية',
-        ];
-
-        return $labels[$module] ?? ucfirst(str_replace('_', ' ', $module));
-    }
-
-    /**
-     * تحديد القسم (سياحة أم مكتب) بناءً على الموديول
-     */
-    private function getModuleCategory(string $module, ?string $moduleType): string
-    {
-        $tourismModules = ['flight', 'visa', 'visas', 'hajj_umra', 'tourism', 'flights'];
-        
-        if (in_array($module, $tourismModules)) {
-            return 'tourism';
-        }
-
-        if (in_array($moduleType, ['tourism', 'flights'])) {
-            return 'tourism';
-        }
-
-        return 'office';
     }
 }

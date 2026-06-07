@@ -262,7 +262,7 @@
           <!-- Content -->
           <div class="p-8 overflow-y-auto custom-scrollbar flex-1 print:w-full print:text-black">
             <div class="text-center pb-4">
-              <h2 class="text-2xl font-black text-gold print:text-black mb-1">سفري علينا للسياحة</h2>
+              <h2 class="text-2xl font-black text-gold print:text-black mb-1">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا للسياحة' }}</h2>
               <p class="text-xs font-bold text-text-muted print:text-black/60">سند معاملة (خزينة الطيران)</p>
             </div>
 
@@ -636,9 +636,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 import { ArrowRight, Loader2, RefreshCw, Wallet, X, FileX, Monitor, Eye, Printer } from 'lucide-vue-next';
 
 const store = useFlightStore();
+const printSettingsStore = usePrintSettingsStore();
 
 const ov = computed(() => store.treasuryOverview);
 
@@ -687,6 +689,7 @@ const reload = () => store.fetchFlightTreasuryOverview();
 
 onMounted(() => {
   reload();
+  printSettingsStore.fetch().catch(() => {});
 });
 
 /** @type {{ type: 'idle' | 'system' | 'account' | 'recharge', system?: object, account?: object }} */

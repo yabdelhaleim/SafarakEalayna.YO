@@ -1,23 +1,35 @@
 <?php
-// Force SQLite database connection
-putenv('DB_CONNECTION=sqlite');
-putenv('DB_DATABASE=' . __DIR__ . '/../database/database.sqlite');
 
-require 'vendor/autoload.php';
-$app = require 'bootstrap/app.php';
-$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
 
-$accounts = \App\Models\Account::all();
-echo sprintf("%-5s | %-30s | %-12s | %-12s | %-10s | %-8s\n", "ID", "Name", "Type", "Module Type", "Balance", "Vault");
-echo str_repeat("-", 90) . "\n";
-foreach ($accounts as $a) {
-    $typeStr = $a->type instanceof \BackedEnum ? $a->type->value : (string) $a->type;
-    echo sprintf("%-5d | %-30s | %-12s | %-12s | %-10.2f | %-8s\n", 
-        $a->id, 
-        mb_substr($a->name, 0, 30), 
-        $typeStr, 
-        $a->module_type ?? 'N/A', 
-        $a->balance, 
-        $a->is_module_vault ? 'Yes' : 'No'
-    );
+use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Models\HajjUmra\Hotel;
+use App\Models\HajjUmra\UmrahSupplier;
+use App\Models\HajjUmra\VisaAgent;
+use Illuminate\Contracts\Console\Kernel;
+
+echo "--- Hotels ---\n";
+foreach (Hotel::with('account')->get() as $h) {
+    $bal = $h->account ? $h->account->balance : 'no account';
+    echo "Hotel: {$h->name}, Balance: {$bal}\n";
+}
+
+echo "\n--- Umrah Suppliers ---\n";
+foreach (UmrahSupplier::with('account')->get() as $us) {
+    $bal = $us->account ? $us->account->balance : 'no account';
+    echo "UmrahSupplier: {$us->name}, Balance: {$bal}\n";
+}
+
+echo "\n--- Executing Companies ---\n";
+foreach (HajjUmraExecutingCompany::with('account')->get() as $ec) {
+    $bal = $ec->account ? $ec->account->balance : 'no account';
+    echo "ExecutingCompany: {$ec->name}, Balance: {$bal}\n";
+}
+
+echo "\n--- Visa Agents ---\n";
+foreach (VisaAgent::with('account')->get() as $va) {
+    $bal = $va->account ? $va->account->balance : 'no account';
+    echo "VisaAgent: {$va->company_name}, Balance: {$bal}\n";
 }

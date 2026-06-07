@@ -20,6 +20,7 @@ class EmployeeResource extends JsonResource
             ]),
             'salary' => $this->salary,
             'status' => $this->status,
+            'is_active' => $this->status === 'active',
             'personal_info' => [
                 'first_name' => $this->first_name,
                 'last_name' => $this->last_name,
@@ -30,7 +31,7 @@ class EmployeeResource extends JsonResource
             ],
             'contact_info' => [
                 'phone' => $this->phone,
-                'email' => $this->email,
+                'email' => $this->email ?? ($this->relationLoaded('user') ? $this->user?->email : null),
                 'address' => $this->address,
                 'city' => $this->city,
                 'country' => $this->country,

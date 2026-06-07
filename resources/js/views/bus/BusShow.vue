@@ -189,9 +189,12 @@
               <p class="mt-0.5 font-mono text-sm text-amber-100/90">#{{ bookingRef }}</p>
             </div>
           </div>
-          <div class="text-left">
-            <div class="text-lg font-black text-amber-300">سفرك علينا</div>
-            <div class="text-[10px] font-semibold uppercase tracking-wider text-amber-200/80">Safarak Ealayna</div>
+          <div class="text-left" style="min-width: 170px;">
+            <PrintCompanyBranding module="bus" document-type="ticket" variant="dark" position="header" />
+            <template v-if="!printSettingsStore.shouldShow('bus', 'ticket') || !printSettingsStore.hasCompanyInfo">
+              <div class="text-lg font-black text-amber-300">سفرك علينا</div>
+              <div class="text-[10px] font-semibold uppercase tracking-wider text-amber-200/80">Safarak Ealayna</div>
+            </template>
           </div>
           <div
             class="bus-print-barcode mt-2 h-10 w-full max-w-[280px] rounded border border-white/20 bg-white/95 sm:mt-0 sm:w-auto sm:max-w-[200px] print:max-w-full"
@@ -313,8 +316,15 @@
             <span class="font-bold text-slate-500">ملاحظات: </span>{{ booking.notes }}
           </div>
 
+          <PrintCompanyBranding
+            module="bus"
+            document-type="ticket"
+            position="footer"
+            :balance-due="booking.remaining_amount > 0.009 ? formatMoney(booking.remaining_amount) : null"
+            balance-label="المستحق لنا"
+          />
           <div class="border-t border-slate-200 pt-4 text-center text-[10px] leading-relaxed text-slate-500">
-            وثيقة إعلامية — يُرجى التحقق من موعد المغادرة مع شركة النقل. للاستفسار: تواصل مع مكتب سفرك علينا.
+            وثيقة إعلامية — يُرجى التحقق من موعد المغادرة مع شركة النقل. للاستفسار: تواصل مع مكتب {{ printSettingsStore.settings.company_name_ar || 'سفرك علينا' }}.
           </div>
         </div>
       </div>
@@ -524,9 +534,12 @@ import {
   Landmark,
 } from 'lucide-vue-next';
 import BusRefundWizard from '@/components/bus/BusRefundWizard.vue';
+import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
 const route = useRoute();
 const store = useBusStore();
+const printSettingsStore = usePrintSettingsStore();
 
 const id = computed(() => route.params.id);
 const booking = ref(null);
@@ -772,7 +785,10 @@ const onRefundCompleted = async () => {
   await load();
 };
 
-onMounted(load);
+onMounted(() => {
+  load();
+  printSettingsStore.fetch().catch(() => {});
+});
 </script>
 
 <style scoped>

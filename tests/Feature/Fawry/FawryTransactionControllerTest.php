@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryTransaction;
 use App\Models\User;
+use App\Services\Finance\TransactionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -15,8 +16,11 @@ class FawryTransactionControllerTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Account $account;
+
     protected Customer $client;
+
     protected FawryOperationType $operationType;
 
     protected function setUp(): void
@@ -24,7 +28,7 @@ class FawryTransactionControllerTest extends TestCase
         parent::setUp();
 
         $this->user = User::factory()->create();
-        $this->account = Account::factory()->create();
+        $this->account = Account::factory()->active()->create();
         $this->client = Customer::factory()->create();
         $this->operationType = FawryOperationType::factory()->create([
             'code' => 'bill_payment',
@@ -318,7 +322,7 @@ class FawryTransactionControllerTest extends TestCase
         $transaction = FawryTransaction::factory()->create();
 
         // Mock the transaction service to reverse transactions
-        $this->mock(\App\Services\Finance\TransactionService::class, function ($mock) {
+        $this->mock(TransactionService::class, function ($mock) {
             $mock->shouldReceive('reverseTransaction')->twice();
         });
 

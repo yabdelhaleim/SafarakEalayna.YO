@@ -123,6 +123,7 @@ class DashboardService
                 'description' => "حجز طيران #{$b->booking_number} - {$b->from_airport} → {$b->to_airport}",
                 'amount' => (float) $b->selling_price,
                 'status' => $b->status,
+                'time' => $b->created_at?->diffForHumans(),
                 'created_at' => $b->created_at->format('Y-m-d H:i:s'),
             ]);
 
@@ -141,6 +142,7 @@ class DashboardService
                     'description' => "حجز باص #{$b->id}",
                     'amount' => (float) ($b->total_price ?? 0),
                     'status' => $b->status ?? 'pending',
+                    'time' => $b->created_at?->diffForHumans(),
                     'created_at' => $b->created_at->format('Y-m-d H:i:s'),
                 ]);
             $activities = $activities->concat($buses);
@@ -174,6 +176,7 @@ class DashboardService
                     'description' => "طلب خدمة #{$b->id}",
                     'amount' => (float) ($b->selling_price ?? 0),
                     'status' => $b->status ?? 'pending',
+                    'time' => Carbon::parse($b->created_at)->diffForHumans(),
                     'created_at' => Carbon::parse($b->created_at)->format('Y-m-d H:i:s'),
                 ]);
                 $activities = $activities->concat($services);

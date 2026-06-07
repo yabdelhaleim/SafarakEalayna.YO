@@ -59,6 +59,7 @@ export const useAccountStore = defineStore('account', () => {
     try {
       const query = {
         per_page: 100,
+        _t: Date.now(),
         ...params,
       }
       const response = await axios.get('/api/v1/finance/accounts', {
@@ -68,18 +69,22 @@ export const useAccountStore = defineStore('account', () => {
       const body = response.data
       accounts.value = unwrapAccountsList(body?.data)
       
-      const stats = body?.stats || body?.data?.stats
+      const stats = body?.data?.stats ?? body?.stats
       if (stats) {
+        const liquidity = stats.liquidity || {}
         dbStats.value = {
           ...dbStats.value,
           ...stats,
           liquidity: {
-            ...dbStats.value.liquidity,
-            ...(stats.liquidity || {})
+            cashbox: liquidity.cashbox ?? liquidity.cash ?? 0,
+            bank: liquidity.bank ?? 0,
+            wallet: liquidity.wallet ?? 0,
+            treasury: liquidity.treasury ?? 0,
+            post: liquidity.post ?? 0,
           },
           performance: stats.performance || {},
           recent_transactions: stats.recent_transactions || [],
-          deficit_accounts: stats.deficit_accounts || []
+          deficit_accounts: stats.deficit_accounts || [],
         }
       }
       const inner = body?.data
@@ -250,7 +255,19 @@ export const useAccountStore = defineStore('account', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.post('/api/v1/finance/transfers', data)
+      const payload = {
+        ...data,
+        from_account_id: Number(data.from_account_id),
+        to_account_id: Number(data.to_account_id),
+        amount: Number(data.amount),
+      };
+      if (data.converted_amount != null) {
+        payload.converted_amount = Number(data.converted_amount);
+      }
+      if (data.exchange_rate != null) {
+        payload.exchange_rate = Number(data.exchange_rate);
+      }
+      const response = await axios.post('/api/v1/finance/transfers', payload)
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to transfer funds'
@@ -279,6 +296,18 @@ export const useAccountStore = defineStore('account', () => {
     reset()
   }
 
+  function abortPendingRequests() {
+    if (fetchAccountsController) {
+      fetchAccountsController.abort()
+    }
+    if (fetchAccountController) {
+      fetchAccountController.abort()
+    }
+    if (fetchStatementController) {
+      fetchStatementController.abort()
+    }
+  }
+
   return {
     accounts,
     account,
@@ -298,6 +327,7 @@ export const useAccountStore = defineStore('account', () => {
     updateAccount,
     deactivateAccount,
     transferFunds,
+    abortPendingRequests,
     reset,
     $reset,
   }

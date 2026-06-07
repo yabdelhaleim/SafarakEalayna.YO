@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Bus;
 
 use App\Models\Bus\BusBooking;
+use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\ValidationException;
 
@@ -18,7 +19,7 @@ class PayBusBookingRequest extends FormRequest
         return [
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'required|in:cash,bank_transfer,cash_wallet,postal_transfer,office_safe,office_drawer',
-            'account_id' => 'required|integer|exists:accounts,id',
+            'account_id' => ['required', 'integer', 'exists:accounts,id', new BusLiquidityAccount],
             'notes' => 'nullable|string|max:1000',
         ];
     }

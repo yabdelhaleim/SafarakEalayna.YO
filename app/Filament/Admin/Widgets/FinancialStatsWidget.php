@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Schema;
 
 class FinancialStatsWidget extends BaseWidget
 {
+    protected static bool $isDiscovered = false;
+
     protected ?string $pollingInterval = '30s';
 
     protected static ?int $sort = 2;
@@ -20,7 +22,7 @@ class FinancialStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        if (!Schema::hasTable('transactions')) {
+        if (! Schema::hasTable('transactions')) {
             return [];
         }
 
@@ -58,25 +60,25 @@ class FinancialStatsWidget extends BaseWidget
             : 0;
 
         return [
-            Stat::make('إجمالي الدخل', number_format($income, 2) . ' ج.م')
-                ->description($incomeGrowth >= 0 ? '+ ' . number_format($incomeGrowth, 1) . '%' : number_format($incomeGrowth, 1) . '% من الشهر الماضي')
+            Stat::make('إجمالي الدخل', number_format($income, 2).' ج.م')
+                ->description($incomeGrowth >= 0 ? '+ '.number_format($incomeGrowth, 1).'%' : number_format($incomeGrowth, 1).'% من الشهر الماضي')
                 ->descriptionIcon($incomeGrowth >= 0 ? 'heroicon-o-arrow-trending-up' : 'heroicon-o-arrow-trending-down')
                 ->color('success')
                 ->chart([7, 12, 10, 14, 12, 16, 18, 15, 20, 18, 22, 20])
                 ->extraAttributes([
-                    'class' => 'hover:scale-105 transition-transform duration-300'
+                    'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
 
-            Stat::make('إجمالي المصروفات', number_format($expense, 2) . ' ج.م')
+            Stat::make('إجمالي المصروفات', number_format($expense, 2).' ج.م')
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-arrow-trending-down')
                 ->color('danger')
                 ->chart([5, 4, 6, 3, 5, 4, 3, 4, 5, 3, 4, 3])
                 ->extraAttributes([
-                    'class' => 'hover:scale-105 transition-transform duration-300'
+                    'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
 
-            Stat::make('صافي الربح', number_format($profit, 2) . ' ج.م')
+            Stat::make('صافي الربح', number_format($profit, 2).' ج.م')
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-chart-pie')
                 ->color($profit >= 0 ? 'success' : 'danger')
@@ -86,7 +88,7 @@ class FinancialStatsWidget extends BaseWidget
                     $profit >= 0 ? abs($profit / 1200) : abs($profit / 1200),
                 ])
                 ->extraAttributes([
-                    'class' => 'hover:scale-105 transition-transform duration-300'
+                    'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
         ];
     }

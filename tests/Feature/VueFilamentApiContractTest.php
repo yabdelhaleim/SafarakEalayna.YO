@@ -97,7 +97,8 @@ class VueFilamentApiContractTest extends TestCase
         $response = $this->getJson('/api/v1/finance/accounts');
 
         $response->assertOk();
-        $this->assertIsArray($response->json('data'));
+        $this->assertIsArray($response->json('data.items'));
+        $this->assertArrayHasKey('pagination', $response->json('data'));
     }
 
     public function test_online_settings_bundle_matches_vue_online_store(): void

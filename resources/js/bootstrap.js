@@ -14,7 +14,7 @@ if (csrfToken) {
 // ✅ Request deduplication and caching layer
 const pendingPromises = new Map();
 const apiCache = new Map();
-const CACHE_TTL = 15000; // 15 seconds
+const CACHE_TTL = 1500; // 1.5 seconds (prevents stale database reads while keeping request deduplication)
 
 // Request cancellation tracking on route change
 let activeRequests = [];
@@ -22,19 +22,25 @@ window.cancelPendingRequests = () => {
     activeRequests.forEach(item => {
         try {
             // Do not abort login/logout/register requests on page changes
-            if (item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register'))) {
+            if (item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register') || item.url.includes('/auth/refresh'))) {
                 return;
             }
             item.cancel();
         } catch (e) {}
     });
     activeRequests = activeRequests.filter(item => {
-        return item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register'));
+        return item.url && (item.url.includes('/auth/login') || item.url.includes('/auth/logout') || item.url.includes('/auth/register') || item.url.includes('/auth/refresh'));
     });
 };
 
 // ✅ Fix 3: بيقرأ التوكن من localStorage في كل request مش مرة واحدة بس
 axios.interceptors.request.use((config) => {
+    // Clear API cache on any state-changing request (POST, PUT, PATCH, DELETE) to prevent stale data
+    if (config.method && config.method.toLowerCase() !== 'get') {
+        apiCache.clear();
+        pendingPromises.clear();
+    }
+
     // Generate abort signal if not already present
     const controller = new AbortController();
     if (!config.signal) {
@@ -145,7 +151,35 @@ axios.interceptors.response.use(
 
         const status = error.response?.status;
         if (status === 401) {
+            const requestUrl = error.config?.url || '';
+            const isPublicAuthRequest =
+                requestUrl.includes('/auth/login') ||
+                requestUrl.includes('/auth/register');
+
+            if (
+                !isPublicAuthRequest &&
+                !error.config?._authRetried &&
+                localStorage.getItem('auth_token') &&
+                !requestUrl.includes('/auth/refresh')
+            ) {
+                error.config._authRetried = true;
+                try {
+                    const refreshResponse = await axios.post('/api/v1/auth/refresh');
+                    const newToken = refreshResponse.data?.data?.token;
+                    if (newToken) {
+                        localStorage.setItem('auth_token', newToken);
+                        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+                        error.config.headers = error.config.headers || {};
+                        error.config.headers['Authorization'] = `Bearer ${newToken}`;
+                        return axios(error.config);
+                    }
+                } catch {
+                    // سيتم تسجيل الخروج أدناه
+                }
+            }
+
             localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_token_expires_minutes');
             delete axios.defaults.headers.common['Authorization'];
 
             if (!isRedirectingToLogin) {

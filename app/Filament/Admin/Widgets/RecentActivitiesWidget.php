@@ -2,15 +2,17 @@
 
 namespace App\Filament\Admin\Widgets;
 
-use Filament\Tables\Table;
+use App\Filament\Admin\Resources\FlightBookings\FlightBookingResource;
+use App\Models\Flight\FlightBooking;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Schema;
 
 class RecentActivitiesWidget extends BaseWidget
 {
-    protected int | string | array $columnSpan = 'full';
+    protected static bool $isDiscovered = false;
+
+    protected int|string|array $columnSpan = 'full';
 
     protected static ?string $heading = 'آخر النشاطات';
 
@@ -27,7 +29,7 @@ class RecentActivitiesWidget extends BaseWidget
     {
         return $table
             ->query(
-                \App\Models\Flight\FlightBooking::query()
+                FlightBooking::query()
                     ->with(['customer'])
                     ->orderBy('created_at', 'desc')
                     ->limit(10)
@@ -78,7 +80,7 @@ class RecentActivitiesWidget extends BaseWidget
             ->striped()
             ->paginated([5, 10, 25])
             ->defaultPaginationPageOption(5)
-            ->recordUrl(fn ($record) => \App\Filament\Admin\Resources\FlightBookings\FlightBookingResource::getUrl('edit', ['record' => $record]))
+            ->recordUrl(fn ($record) => FlightBookingResource::getUrl('edit', ['record' => $record]))
             ->emptyStateHeading('لا توجد نشاطات حديثة')
             ->emptyStateDescription('ابدأ بإضافة حجز جديد لرؤيته هنا')
             ->emptyStateIcon('heroicon-o-inbox');

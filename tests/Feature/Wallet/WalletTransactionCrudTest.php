@@ -3,7 +3,6 @@
 namespace Tests\Feature\Wallet;
 
 use App\Enums\AccountType;
-use App\Enums\WalletTransactionType;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\User;
@@ -17,9 +16,13 @@ class WalletTransactionCrudTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Account $walletAccount;
+
     protected Account $cashAccount;
+
     protected Customer $customer;
+
     protected WalletType $walletType;
 
     protected function setUp(): void
@@ -29,15 +32,15 @@ class WalletTransactionCrudTest extends TestCase
         $this->user = User::factory()->create();
 
         $this->walletAccount = Account::factory()->create([
-            'type'    => AccountType::Wallet->value,
+            'type' => AccountType::Wallet->value,
             'balance' => 10000,
-            'name'    => 'فودافون كاش - الوكالة',
+            'name' => 'فودافون كاش - الوكالة',
         ]);
 
         $this->cashAccount = Account::factory()->create([
-            'type'    => AccountType::Cashbox->value,
+            'type' => AccountType::Cashbox->value,
             'balance' => 5000,
-            'name'    => 'خزينة رئيسية',
+            'name' => 'خزينة رئيسية',
         ]);
 
         $this->customer = Customer::factory()->create([
@@ -45,9 +48,9 @@ class WalletTransactionCrudTest extends TestCase
         ]);
 
         $this->walletType = WalletType::create([
-            'name'       => 'فودافون كاش',
-            'code'       => 'vodafone_cash',
-            'is_active'  => true,
+            'name' => 'فودافون كاش',
+            'code' => 'vodafone_cash',
+            'is_active' => true,
             'sort_order' => 1,
         ]);
     }
@@ -98,9 +101,9 @@ class WalletTransactionCrudTest extends TestCase
 
         $data = $response->json('data');
         $this->assertEquals('send', $data['type']);
-        $this->assertEquals(500.00,  (float) $data['amount']);
-        $this->assertEquals(10.00,   (float) $data['service_fee']);
-        $this->assertEquals(510.00,  (float) $data['total_amount']);
+        $this->assertEquals(500.00, (float) $data['amount']);
+        $this->assertEquals(10.00, (float) $data['service_fee']);
+        $this->assertEquals(510.00, (float) $data['total_amount']);
         $this->assertEquals('أحمد محمود', $data['customer_name']);
     }
 
@@ -113,13 +116,13 @@ class WalletTransactionCrudTest extends TestCase
 
         // wallet balance decreases by amount (500)
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->walletAccount->id,
+            'id' => $this->walletAccount->id,
             'balance' => 10000 - 500,
         ]);
 
         // cash balance increases by amount+fee (510)
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->cashAccount->id,
+            'id' => $this->cashAccount->id,
             'balance' => 5000 + 510,
         ]);
     }
@@ -136,10 +139,10 @@ class WalletTransactionCrudTest extends TestCase
         $response->assertStatus(201);
 
         $data = $response->json('data');
-        $this->assertEquals('receive',  $data['type']);
-        $this->assertEquals(300.00,    (float) $data['amount']);
-        $this->assertEquals(8.00,      (float) $data['service_fee']);
-        $this->assertEquals(292.00,    (float) $data['total_amount']);
+        $this->assertEquals('receive', $data['type']);
+        $this->assertEquals(300.00, (float) $data['amount']);
+        $this->assertEquals(8.00, (float) $data['service_fee']);
+        $this->assertEquals(292.00, (float) $data['total_amount']);
     }
 
     public function test_receive_updates_accounts_correctly(): void
@@ -151,13 +154,13 @@ class WalletTransactionCrudTest extends TestCase
 
         // wallet balance increases by amount (300)
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->walletAccount->id,
+            'id' => $this->walletAccount->id,
             'balance' => 10000 + 300,
         ]);
 
         // cash balance decreases by (amount - fee) = 292
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->cashAccount->id,
+            'id' => $this->cashAccount->id,
             'balance' => 5000 - 292,
         ]);
     }
@@ -229,7 +232,7 @@ class WalletTransactionCrudTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('wallet_transactions', [
-            'id'    => $id,
+            'id' => $id,
             'notes' => 'ملاحظة محدثة',
         ]);
     }
@@ -242,7 +245,7 @@ class WalletTransactionCrudTest extends TestCase
             ->postJson('/api/v1/wallet/transactions', $this->sendPayload(amount: 200, fee: 5));
 
         $walletAfterCreate = Account::find($this->walletAccount->id)->balance;
-        $cashAfterCreate   = Account::find($this->cashAccount->id)->balance;
+        $cashAfterCreate = Account::find($this->cashAccount->id)->balance;
 
         $id = WalletTransaction::first()->id;
 
@@ -253,14 +256,14 @@ class WalletTransactionCrudTest extends TestCase
 
         $this->assertSoftDeleted('wallet_transactions', ['id' => $id]);
 
-        // Balances should be reversed back
+        // Balances should be reversed back to initial values (10000 and 5000)
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->walletAccount->id,
-            'balance' => $walletAfterCreate, // unchanged (Transfer reversal isn't implemented)
+            'id' => $this->walletAccount->id,
+            'balance' => 10000,
         ]);
         $this->assertDatabaseHas('accounts', [
-            'id'      => $this->cashAccount->id,
-            'balance' => $cashAfterCreate,   // unchanged (Transfer reversal isn't implemented)
+            'id' => $this->cashAccount->id,
+            'balance' => 5000,
         ]);
     }
 
@@ -271,7 +274,7 @@ class WalletTransactionCrudTest extends TestCase
         $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/wallet/transactions', $this->sendPayload(amount: 500, fee: 10));
         $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/wallet/transactions', $this->receivePayload(amount: 300, fee: 8));
 
-        $today    = now()->toDateString();
+        $today = now()->toDateString();
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/wallet/transactions/daily-summary?date={$today}");
 
@@ -311,32 +314,32 @@ class WalletTransactionCrudTest extends TestCase
     private function sendPayload(float $amount = 500, float $fee = 10): array
     {
         return [
-            'wallet_type_id'    => $this->walletType->id,
-            'customer_id'       => $this->customer->id,
-            'customer_name'     => $this->customer->full_name,
-            'wallet_number'     => '01012345678',
-            'type'              => 'send',
-            'amount'            => $amount,
-            'service_fee'       => $fee,
+            'wallet_type_id' => $this->walletType->id,
+            'customer_id' => $this->customer->id,
+            'customer_name' => $this->customer->full_name,
+            'wallet_number' => '01012345678',
+            'type' => 'send',
+            'amount' => $amount,
+            'service_fee' => $fee,
             'wallet_account_id' => $this->walletAccount->id,
-            'cash_account_id'   => $this->cashAccount->id,
-            'notes'             => 'تيست إرسال رصيد',
+            'cash_account_id' => $this->cashAccount->id,
+            'notes' => 'تيست إرسال رصيد',
         ];
     }
 
     private function receivePayload(float $amount = 300, float $fee = 8): array
     {
         return [
-            'wallet_type_id'    => $this->walletType->id,
-            'customer_id'       => $this->customer->id,
-            'customer_name'     => $this->customer->full_name,
-            'wallet_number'     => '01098765432',
-            'type'              => 'receive',
-            'amount'            => $amount,
-            'service_fee'       => $fee,
+            'wallet_type_id' => $this->walletType->id,
+            'customer_id' => $this->customer->id,
+            'customer_name' => $this->customer->full_name,
+            'wallet_number' => '01098765432',
+            'type' => 'receive',
+            'amount' => $amount,
+            'service_fee' => $fee,
             'wallet_account_id' => $this->walletAccount->id,
-            'cash_account_id'   => $this->cashAccount->id,
-            'notes'             => 'تيست استقبال رصيد',
+            'cash_account_id' => $this->cashAccount->id,
+            'notes' => 'تيست استقبال رصيد',
         ];
     }
 }

@@ -3,18 +3,17 @@
 namespace App\Filament\Admin\Resources\HajjUmraExecutingCompanies;
 
 use App\Filament\Admin\Resources\HajjUmraExecutingCompanies\Pages\ManageHajjUmraExecutingCompanies;
+use App\Filament\Admin\Pages\AccountStatement;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use BackedEnum;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\EditAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -28,8 +27,11 @@ class HajjUmraExecutingCompanyResource extends Resource
     protected static string|\UnitEnum|null $navigationGroup = 'الحج والعمرة';
 
     protected static ?string $navigationLabel = 'الشركات المنفذة';
+
     protected static ?string $pluralLabel = 'الشركات المنفذة';
+
     protected static ?string $modelLabel = 'شركة منفذة';
+
     protected static ?int $navigationSort = 10;
 
     public static function form(Schema $schema): Schema
@@ -38,7 +40,7 @@ class HajjUmraExecutingCompanyResource extends Resource
             TextInput::make('name')->label('اسم الشركة')->required()->maxLength(150),
             TextInput::make('license_number')->label('رقم الترخيص')->maxLength(100),
             TextInput::make('phone')->label('الهاتف')->tel()->maxLength(30),
-            \Filament\Forms\Components\Select::make('account_id')
+            Select::make('account_id')
                 ->label('الحساب المالي المرتبط')
                 ->relationship('account', 'name')
                 ->searchable()
@@ -60,22 +62,16 @@ class HajjUmraExecutingCompanyResource extends Resource
             TextColumn::make('phone')->label('الهاتف')->toggleable(),
             IconColumn::make('is_active')->label('مفعّلة')->boolean(),
         ])
-        ->recordActions([
-            Action::make('statement')
-                ->label('كشف الحساب')
-                ->icon('heroicon-o-document-text')
-                ->color('info')
-                ->visible(fn ($record) => $record->account_id !== null)
-                ->url(fn ($record): string => \App\Filament\Admin\Resources\Transactions\Pages\AccountStatement::getUrl(['accountId' => $record->account_id])),
-            Action::make('advances')
-                ->label('سحب/سداد')
-                ->icon('heroicon-o-arrows-right-left')
-                ->color('warning')
-                ->visible(fn ($record) => $record->account_id !== null)
-                ->url(fn ($record): string => \App\Filament\Admin\Pages\HajjUmraExecutingCompanyAdvances::getUrl(['companyId' => $record->id])),
-            EditAction::make()
-        ])
-        ->toolbarActions([]);
+            ->recordActions([
+                Action::make('statement')
+                    ->label('كشف الحساب')
+                    ->icon('heroicon-o-document-text')
+                    ->color('info')
+                    ->visible(fn ($record) => $record->account_id !== null)
+                    ->url(fn ($record): string => AccountStatement::getUrl(['accountId' => $record->account_id])),
+                EditAction::make(),
+            ])
+            ->toolbarActions([]);
     }
 
     public static function getPages(): array

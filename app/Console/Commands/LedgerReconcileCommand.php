@@ -32,6 +32,9 @@ class LedgerReconcileCommand extends Command
                 'delta' => $extra['global_totals_delta'],
             ],
             'accounts_balance_drift_count' => $extra['accounts_with_balance_drift'],
+            'treasury_liquidity_drift_count' => $extra['treasury_liquidity_drift_count'] ?? 0,
+            'customer_drift_count' => $extra['customer_drift_count'] ?? 0,
+            'legacy_single_leg_transactions' => $extra['legacy_single_leg_transactions'] ?? 0,
         ];
 
         if ($this->option('json')) {
@@ -58,11 +61,22 @@ class LedgerReconcileCommand extends Command
         ));
 
         $this->line(sprintf(
-            'Balance vs ledger drift accounts: %d (see logs for details)',
-            $extra['accounts_with_balance_drift']
+            'Balance vs ledger drift: total=%d treasury=%d customers=%d',
+            $extra['accounts_with_balance_drift'],
+            $extra['treasury_liquidity_drift_count'] ?? 0,
+            $extra['customer_drift_count'] ?? 0
         ));
 
-        if ($run->imbalanced_count === 0 && $run->missing_entries_count === 0 && $extra['global_totals_ok'] && $extra['accounts_with_balance_drift'] === 0) {
+        if (isset($extra['legacy_single_leg_transactions'])) {
+            $this->line(sprintf(
+                'Legacy single-leg transactions (historical): %d',
+                $extra['legacy_single_leg_transactions']
+            ));
+        }
+
+        $treasuryDrift = $extra['treasury_liquidity_drift_count'] ?? $extra['accounts_with_balance_drift'];
+
+        if ($run->imbalanced_count === 0 && $run->missing_entries_count === 0 && $extra['global_totals_ok'] && $treasuryDrift === 0) {
             $this->info('جميع فحوص الدفتر ضمن الحدود.');
 
             return self::SUCCESS;
