@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryTransaction;
+use App\Support\Finance\LiquidityAccountGroups;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,20 +32,15 @@ class FawryDashboardController extends Controller
         // 2. Account Balances (Fawry module only)
         $accounts = Account::where('module_type', 'fawry')->where('is_active', true)->get();
 
-        $stats['cashboxes'] = [
-            'count' => $accounts->whereIn('type', [AccountType::Cashbox->value, AccountType::Treasury->value])->count(),
-            'balance' => (float) $accounts->whereIn('type', [AccountType::Cashbox->value, AccountType::Treasury->value])->sum('balance'),
-        ];
+        $stats['cashboxes'] = LiquidityAccountGroups::countAndBalance(
+            $accounts,
+            AccountType::Cashbox,
+            AccountType::Treasury
+        );
 
-        $stats['banks'] = [
-            'count' => $accounts->where('type', AccountType::Bank->value)->count(),
-            'balance' => (float) $accounts->where('type', AccountType::Bank->value)->sum('balance'),
-        ];
+        $stats['banks'] = LiquidityAccountGroups::countAndBalance($accounts, AccountType::Bank);
 
-        $stats['wallets'] = [
-            'count' => $accounts->where('type', AccountType::Wallet->value)->count(),
-            'balance' => (float) $accounts->where('type', AccountType::Wallet->value)->sum('balance'),
-        ];
+        $stats['wallets'] = LiquidityAccountGroups::countAndBalance($accounts, AccountType::Wallet);
 
         $stats['total_liquidity'] = $stats['cashboxes']['balance'] + $stats['banks']['balance'] + $stats['wallets']['balance'];
 

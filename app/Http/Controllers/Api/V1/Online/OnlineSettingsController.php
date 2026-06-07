@@ -77,7 +77,7 @@ class OnlineSettingsController extends Controller
             ->map(fn (Account $a) => [
                 'id' => $a->id,
                 'name' => $a->name,
-                'type' => $a->type,
+                'type' => $a->type instanceof \BackedEnum ? $a->type->value : $a->type,
                 'balance' => (float) $a->balance,
                 'currency' => $a->currency,
                 'wallet_provider' => $a->wallet_provider,

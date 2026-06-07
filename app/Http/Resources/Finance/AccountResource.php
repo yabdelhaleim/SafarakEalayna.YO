@@ -12,7 +12,7 @@ class AccountResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'type' => $this->type,
+            'type' => $this->type instanceof \BackedEnum ? $this->type->value : $this->type,
             'balance' => $this->when(
                 $request->user()?->isAdmin() || $request->user()?->role === 'owner',
                 (float) $this->balance

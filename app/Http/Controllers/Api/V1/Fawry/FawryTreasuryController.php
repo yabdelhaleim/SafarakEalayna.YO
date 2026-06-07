@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1\Fawry;
 
-use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Transaction;
+use App\Support\Finance\LiquidityAccountGroups;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,14 +40,15 @@ class FawryTreasuryController extends Controller
             ->limit(30)
             ->get();
 
+        $groups = LiquidityAccountGroups::group($accounts);
+
         return ApiResponse::success('Fawry treasury overview', [
             'accounts' => $accounts,
             'recent_transactions' => $recentTransactions,
-            // Grouped by type for easy UI handling
-            'wallets' => $accounts->where('type', AccountType::Wallet->value)->values(),
-            'banks' => $accounts->where('type', AccountType::Bank->value)->values(),
-            'cashboxes' => $accounts->where('type', AccountType::Cashbox->value)->values(),
-            'treasuries' => $accounts->where('type', AccountType::Treasury->value)->values(),
+            'wallets' => $groups['wallets'],
+            'banks' => $groups['banks'],
+            'cashboxes' => $groups['cashboxes'],
+            'treasuries' => $groups['treasuries'],
         ]);
     }
 
