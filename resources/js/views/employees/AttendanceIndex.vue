@@ -513,6 +513,17 @@ const getAttendanceStatusIcon = (employeeRecord) => {
   return CheckCircle;
 };
 
+const getAttendanceStatusLabel = (employeeRecord) => {
+  const employee = employeeRecord?.employee;
+  if (!employee) return '—';
+  if (employee.status === 'on_leave') return 'في إجازة';
+  if (!employeeRecord.record) return 'غير مسجل';
+  if (employeeRecord.record.status_label) return employeeRecord.record.status_label;
+  if (employeeRecord.record.status === 'late') return 'متأخر';
+  if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return 'غائب';
+  return 'حاضر';
+};
+
 const getWorkHours = (employeeRecord) => {
   const checkIn = employeeRecord?.record?.check_in;
   const checkOut = employeeRecord?.record?.check_out;
