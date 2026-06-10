@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -96,106 +95,6 @@ return new class extends Migration
             $table->index('account_id');
             $table->index('status');
         });
-
-        // Seed defaults so the module is usable out of the box
-        $now = now();
-
-        DB::table('online_service_types')->insert([
-            [
-                'code' => 'travel_permit',
-                'name_ar' => 'تصريح سفر',
-                'name_en' => 'Travel Permit',
-                'description_ar' => 'إصدار / تجديد تصاريح السفر',
-                'description_en' => 'Issue / renew travel permits',
-                'color' => '#F59E0B',
-                'icon' => 'heroicon-o-identification',
-                'is_active' => true,
-                'order' => 1,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'code' => 'license_renewal',
-                'name_ar' => 'تجديد رخصة',
-                'name_en' => 'License Renewal',
-                'description_ar' => 'تجديد الرخص المرورية والمدنية',
-                'description_en' => 'Traffic / civil license renewals',
-                'color' => '#3B82F6',
-                'icon' => 'heroicon-o-document-check',
-                'is_active' => true,
-                'order' => 2,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'code' => 'civil_records',
-                'name_ar' => 'وثائق أحوال مدنية',
-                'name_en' => 'Civil Records',
-                'description_ar' => 'استخراج بطاقات / شهادات ميلاد / سجلات مدنية',
-                'description_en' => 'Civil status records (IDs, birth certificates...)',
-                'color' => '#A855F7',
-                'icon' => 'heroicon-o-identification',
-                'is_active' => true,
-                'order' => 3,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'code' => 'utility_bill',
-                'name_ar' => 'سداد فواتير',
-                'name_en' => 'Utility Bills',
-                'description_ar' => 'سداد فواتير الكهرباء / الغاز / المياه / التليفون',
-                'description_en' => 'Utility bills payments',
-                'color' => '#F97316',
-                'icon' => 'heroicon-o-bolt',
-                'is_active' => true,
-                'order' => 4,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-        ]);
-
-        DB::table('online_service_providers')->insert([
-            [
-                'code' => 'fawry',
-                'name_ar' => 'فوري',
-                'name_en' => 'Fawry',
-                'description_ar' => 'مزود خدمات فوري للدفع الإلكتروني',
-                'description_en' => 'Fawry electronic payments provider',
-                'color' => '#F59E0B',
-                'icon' => 'heroicon-o-bolt',
-                'is_active' => true,
-                'order' => 1,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'code' => 'cash',
-                'name_ar' => 'كاش',
-                'name_en' => 'Cash',
-                'description_ar' => 'خدمات يتم تنفيذها نقدًا (كاش ياسر / مزودين آخرين)',
-                'description_en' => 'Cash-handled services',
-                'color' => '#10B981',
-                'icon' => 'heroicon-o-banknotes',
-                'is_active' => true,
-                'order' => 2,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'code' => 'gov_portal',
-                'name_ar' => 'بوابات حكومية',
-                'name_en' => 'Government Portal',
-                'description_ar' => 'البوابات الحكومية للخدمات الإلكترونية',
-                'description_en' => 'Government e-services portals',
-                'color' => '#3B82F6',
-                'icon' => 'heroicon-o-building-library',
-                'is_active' => true,
-                'order' => 3,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-        ]);
     }
 
     public function down(): void

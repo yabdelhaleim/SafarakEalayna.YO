@@ -12,27 +12,19 @@ class UserSeeder extends Seeder
     {
         $now = now();
 
-        // Admin user
-        $adminId = 1;
-        $adminUser = [
-            'id' => $adminId,
-            'name' => 'System Admin',
-            'email' => 'admin@admin.com',
-            'password' => Hash::make('11223311'),   
-            'role' => 'admin',
-            'is_active' => true,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ];
+        DB::table('users')->updateOrInsert(
+            ['email' => 'admin@admin.com'],
+            [
+                'name' => 'System Admin',
+                'email' => 'admin@admin.com',
+                'password' => Hash::make('11223311'),
+                'role' => 'admin',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
 
-        DB::table('users')->updateOrInsert(['id' => $adminId], $adminUser);
-
-        // Cache admin ID for other seeders
-        cache(['seed_admin_id' => $adminId], now()->addHour());
-
-        // Cache employee IDs (empty since no employees are seeded)
-        cache(['seed_employee_ids' => []], now()->addHour());
-
-        $this->command->info('✅ UserSeeder: Admin user created');
+        $this->command->info('✅ UserSeeder: حساب الدخول الافتراضي — admin@admin.com / 11223311');
     }
 }

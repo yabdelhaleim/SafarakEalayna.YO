@@ -17,9 +17,6 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UserSeeder::class,
-            AdminSeeder::class,
-            SettingSeeder::class,
-            AirportSeeder::class,
         ]);
 
         $this->command->info('═══════════════════════════════════════');
