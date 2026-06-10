@@ -2,6 +2,8 @@
 
 namespace App\Models\Bus;
 
+use App\Models\Account;
+use App\Models\Transaction;
 use App\Models\Treasury;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -16,12 +18,17 @@ class BusRefundRequest extends Model
         'original_currency',
         'original_amount',
         'cancellation_fee',
+        'company_penalty',
+        'office_penalty',
+        'total_paid',
         'refund_amount',
         'refund_currency',
         'refund_exchange_rate',
         'base_currency_refund',
         'destination',
         'treasury_id',
+        'account_id',
+        'transaction_id',
         'status',
         'notes',
         'processed_at',
@@ -33,6 +40,9 @@ class BusRefundRequest extends Model
         return [
             'original_amount' => 'decimal:2',
             'cancellation_fee' => 'decimal:2',
+            'company_penalty' => 'decimal:2',
+            'office_penalty' => 'decimal:2',
+            'total_paid' => 'decimal:2',
             'refund_amount' => 'decimal:2',
             'refund_exchange_rate' => 'decimal:6',
             'base_currency_refund' => 'decimal:2',
@@ -53,6 +63,16 @@ class BusRefundRequest extends Model
     public function treasury(): BelongsTo
     {
         return $this->belongsTo(Treasury::class, 'treasury_id');
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'account_id');
+    }
+
+    public function transaction(): BelongsTo
+    {
+        return $this->belongsTo(Transaction::class, 'transaction_id');
     }
 
     public function createdBy(): BelongsTo

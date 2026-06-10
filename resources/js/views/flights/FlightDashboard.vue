@@ -195,7 +195,7 @@
                     <td class="px-5 py-3.5">
                       <span class="font-mono font-bold text-sky-400 text-xs">{{ booking.booking_number }}</span>
                     </td>
-                    <td class="px-5 py-3.5 font-medium text-white/90 text-sm">{{ booking.customer?.name || '—' }}</td>
+                    <td class="px-5 py-3.5 font-medium text-white/90 text-sm">{{ booking.customer?.name || booking.customer?.full_name || '—' }}</td>
                     <td class="px-5 py-3.5">
                       <span v-if="booking.from_airport && booking.to_airport" class="font-mono text-xs text-white/60 flex items-center gap-1">
                         {{ booking.from_airport }}

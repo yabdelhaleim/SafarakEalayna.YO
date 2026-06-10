@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\WalletProvider;
 use App\Models\Account;
 use App\Services\Finance\AccountRechargeService;
+use App\Support\Finance\AccountModuleDivision;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteAction;
@@ -73,27 +74,44 @@ final class AccountFormSchema
             ->required()
             ->native(false);
 
-        if ($lockModuleType) {
+        $shouldLockModule = $lockModuleType || $defaultModule !== 'general';
+
+        if ($shouldLockModule) {
+            $definitionFields[] = TextInput::make('module_type_display')
+                ->label('وحدة العمل (القسم)')
+                ->helperText('يُحدَّد تلقائياً من القسم الذي أنشأت الحساب منه — يظهر في خزينة نفس الوحدة في البرنامج.')
+                ->afterStateHydrated(function (TextInput $component, $state, ?Model $record) use ($defaultModule): void {
+                    $moduleType = (string) ($record?->module_type ?? $defaultModule);
+                    $component->state(AccountModuleDivision::moduleLabel($moduleType));
+                })
+                ->disabled()
+                ->dehydrated(false);
+
             $definitionFields[] = Hidden::make('module_type')
                 ->default($defaultModule)
                 ->required()
                 ->dehydrated();
+
+            $definitionFields[] = Hidden::make('module')
+                ->default(AccountModuleDivision::legacyModuleColumn($defaultModule))
+                ->dehydrated();
         } else {
             $definitionFields[] = Select::make('module_type')
                 ->label('وحدة العمل (القسم)')
-                ->options([
-                    'general' => 'عام / إدارة عليا',
-                    'flights' => 'قسم الطيران',
-                    'bus' => 'قسم الباصات والنقل',
-                    'hajj_umra' => 'قسم الحج والعمرة',
-                    'visas' => 'قسم التأشيرات',
-                    'fawry' => 'قسم فوري',
-                    'tourism' => 'سياحة (أخرى)',
-                    'office' => 'مكتب / إداري',
-                ])
+                ->options(AccountModuleDivision::moduleTypeOptions())
                 ->default($defaultModule)
                 ->required()
+                ->live()
+                ->afterStateUpdated(function ($state, callable $set): void {
+                    if (is_string($state) && $state !== '') {
+                        $set('module', AccountModuleDivision::legacyModuleColumn($state));
+                    }
+                })
                 ->native(false);
+
+            $definitionFields[] = Hidden::make('module')
+                ->default(AccountModuleDivision::legacyModuleColumn($defaultModule))
+                ->dehydrated();
         }
 
         $definitionFields[] = Toggle::make('is_module_vault')
@@ -210,6 +228,86 @@ final class AccountFormSchema
                     ->default(fn () => auth()->id())
                     ->dehydrated(),
             ]);
+    }
+
+    public static function makeDeactivateAction(): Action
+    {
+        return Action::make('deactivate')
+            ->label('إيقاف التنشيط')
+            ->icon('heroicon-o-no-symbol')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading('إيقاف تنشيط الحساب')
+            ->modalDescription('سيختفي الحساب من قوائم الاختيار في البرنامج مع الإبقاء على سجل الحركات والرصيد.')
+            ->visible(fn (Account $record): bool => (bool) $record->is_active)
+            ->action(function (Account $record): void {
+                $record->update(['is_active' => false]);
+                Notification::make()
+                    ->title('تم إيقاف الحساب')
+                    ->body('الحساب لن يظهر في قوائم الاختيار الجديدة.')
+                    ->success()
+                    ->send();
+            });
+    }
+
+    public static function makeSafeDeleteAction(): DeleteAction
+    {
+        return DeleteAction::make()
+            ->visible(fn (Account $record): bool => $record->canBeDeleted())
+            ->action(function (Account $record, DeleteAction $action): void {
+                try {
+                    $record->delete();
+                    Notification::make()->title('تم حذف الحساب')->success()->send();
+                } catch (\RuntimeException $e) {
+                    Notification::make()
+                        ->title('تعذّر الحذف')
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->persistent()
+                        ->send();
+                    $action->halt();
+                }
+            });
+    }
+
+    public static function makeSafeDeleteBulkAction(): DeleteBulkAction
+    {
+        return DeleteBulkAction::make()
+            ->action(function (\Illuminate\Support\Collection $records): void {
+                $deleted = 0;
+                $blocked = 0;
+
+                foreach ($records as $record) {
+                    if (! $record instanceof Account || ! $record->canBeDeleted()) {
+                        $blocked++;
+
+                        continue;
+                    }
+
+                    try {
+                        $record->delete();
+                        $deleted++;
+                    } catch (\RuntimeException) {
+                        $blocked++;
+                    }
+                }
+
+                if ($deleted > 0) {
+                    Notification::make()
+                        ->title("تم حذف {$deleted} حساب")
+                        ->success()
+                        ->send();
+                }
+
+                if ($blocked > 0) {
+                    Notification::make()
+                        ->title('تعذّر حذف بعض الحسابات')
+                        ->body('الحسابات التي لها رصيد أو حركات — استخدم «إيقاف التنشيط» بدلاً من الحذف.')
+                        ->warning()
+                        ->persistent()
+                        ->send();
+                }
+            });
     }
 
     public static function makeRechargeAccountAction(): Action
@@ -475,11 +573,12 @@ final class AccountFormSchema
                 self::makeRechargeAccountAction(),
                 $includeViewAction ? ViewAction::make()->modal(false) : null,
                 EditAction::make()->modal(false),
-                DeleteAction::make(),
+                self::makeDeactivateAction(),
+                self::makeSafeDeleteAction(),
             ])))
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    self::makeSafeDeleteBulkAction(),
                 ]),
             ]);
     }

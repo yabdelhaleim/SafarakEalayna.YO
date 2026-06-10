@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
-import axios from 'axios';
+import axios from 'axios'
+import { unwrapAccountsApiResponse } from '@/composables/useTreasuryAccountGroups';
 
 export const useCustomerStore = defineStore('customer', {
   state: () => ({
@@ -189,11 +190,15 @@ export const useCustomerStore = defineStore('customer', {
     async fetchAccounts(params = {}) {
       this.loading.accounts = true;
       try {
-        const { data } = await axios.get('/api/v1/finance/accounts', {
-          params: { per_page: 200, is_active: 1, ...params },
+        const response = await axios.get('/api/v1/finance/accounts', {
+          params: {
+            per_page: 200,
+            types: 'cashbox,wallet,bank,treasury,post',
+            is_active: 1,
+            ...params,
+          },
         });
-        const items = data?.data?.items ?? data?.data ?? [];
-        this.accounts = Array.isArray(items) ? items : [];
+        this.accounts = unwrapAccountsApiResponse(response);
       } catch (e) {
         console.error('fetchAccounts failed', e);
         this.accounts = [];

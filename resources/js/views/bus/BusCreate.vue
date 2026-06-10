@@ -659,7 +659,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
@@ -688,21 +688,37 @@ const fromSuggestions  = ref([]);
 const toSuggestions    = ref([]);
 let phoneTimeout, suggTimeout;
 
-const form = ref({
-  company_id:     null,
-  route_from:     '',
-  route_to:       '',
-  cost_price:     null,   // سعر الشراء — مديونية الشركة
-  selling_price:  null,   // سعر البيع — ما يدفعه العميل
-  travel_date:    '',
-  customer_name:  '',
-  customer_phone: '',
-  seats_count:    1,
-  paid_amount:    0,
-  notes:          '',
-  account_id:     null,
-  payment_method: 'cash',
-});
+function createDefaultForm() {
+  return {
+    company_id:     null,
+    route_from:     '',
+    route_to:       '',
+    cost_price:     null,   // سعر الشراء — مديونية الشركة
+    selling_price:  null,   // سعر البيع — ما يدفعه العميل
+    travel_date:    '',
+    customer_name:  '',
+    customer_phone: '',
+    seats_count:    1,
+    paid_amount:    0,
+    notes:          '',
+    account_id:     null,
+    payment_method: 'cash',
+  };
+}
+
+const form = ref(createDefaultForm());
+
+function resetBookingForm() {
+  currentStep.value = 1;
+  submitting.value = false;
+  searchingCustomer.value = false;
+  customerFound.value = false;
+  companyStats.value = null;
+  fromSuggestions.value = [];
+  toSuggestions.value = [];
+  settlementCategoryUi.value = 'cash';
+  form.value = createDefaultForm();
+}
 
 const settlementAccounts   = ref([]);
 const settlementCategoryUi = ref('cash');
@@ -1076,7 +1092,12 @@ watch(sellingTotal, (t) => {
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(async () => {
+  resetBookingForm();
   await store.fetchCompanies();
   await loadSettlementAccounts();
+});
+
+onActivated(() => {
+  resetBookingForm();
 });
 </script>

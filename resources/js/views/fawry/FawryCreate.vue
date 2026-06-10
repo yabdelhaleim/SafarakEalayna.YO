@@ -474,13 +474,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useFawryStore } from '@/stores/fawryStore';
 import FawryApiResponsePanel from '@/views/fawry/FawryApiResponsePanel.vue';
 import { useCustomerStore } from '@/stores/customerStore';
 import { useAuthStore } from '@/stores/authStore';
+import { fetchSettlementAccounts as fetchModuleSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -499,23 +500,36 @@ const store = useFawryStore();
 const customerStore = useCustomerStore();
 const authStore = useAuthStore();
 
+function createDefaultForm() {
+  return {
+    client_id: '',
+    client_name: '',
+    employee_id: '',
+    operation_type: '',
+    currency_id: '',
+    fawry_price: 0,
+    selling_price: 0,
+    payment_method: '',
+    amount: 0,
+    account_id: '',
+    fawry_machine_id: '',
+    reference_number: '',
+    notes: '',
+    payment_detail_note: '',
+  };
+}
+
 // Form data
-const form = ref({
-  client_id: '',
-  client_name: '',
-  employee_id: '',
-  operation_type: '',
-  currency_id: '',
-  fawry_price: 0,
-  selling_price: 0,
-  payment_method: '',
-  amount: 0,
-  account_id: '',
-  fawry_machine_id: '',
-  reference_number: '',
-  notes: '',
-  payment_detail_note: '',
-});
+const form = ref(createDefaultForm());
+
+function resetForm() {
+  form.value = createDefaultForm();
+  settlementCategoryUi.value = 'cash';
+  store.clearLastApiEnvelope();
+  if (authStore.user?.id) {
+    form.value.employee_id = authStore.user.id;
+  }
+}
 
 /** هامش على التكلفة لضبط سعر البيع سريعاً (20٪ = البيع = التكلفة × 1.20) */
 const sellMarkupPercents = [20, 50, 100];
@@ -678,48 +692,12 @@ const onPaymentMethodChange = () => {
   }
 };
 
-const extractAccountsFromResponse = (res) => {
-  let raw = res.data?.data;
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    if (Array.isArray(raw.items)) {
-      raw = raw.items;
-    } else if (raw.items && Array.isArray(raw.items.data)) {
-      raw = raw.items.data;
-    } else if (Array.isArray(raw.data)) {
-      raw = raw.data;
-    }
-  }
-  return Array.isArray(raw) ? raw : [];
-};
-
 const loadSettlementAccounts = async () => {
   try {
-    const accountsRes = await axios.get('/api/v1/finance/accounts', {
-      params: {
-        per_page: 100,
-        types: 'cashbox,wallet,bank,treasury,post',
-        is_active: 1,
-        module: 'fawry',
-        _t: Date.now(),
-      },
-    });
-    settlementAccounts.value = extractAccountsFromResponse(accountsRes);
-    if (settlementAccounts.value.length === 0) {
-      const fallbackRes = await axios.get('/api/v1/finance/accounts', {
-        params: {
-          per_page: 100,
-          types: 'cashbox,wallet,bank,treasury,post',
-          is_active: 1,
-          _t: Date.now(),
-        },
-      });
-      const fallback = extractAccountsFromResponse(fallbackRes);
-      if (fallback.length > 0) {
-        settlementAccounts.value = fallback;
-      }
-    }
+    settlementAccounts.value = await fetchModuleSettlementAccounts(axios, { module: 'fawry' });
   } catch (error) {
     console.error('Failed to load settlement accounts:', error);
+    settlementAccounts.value = [];
   }
 };
 
@@ -777,19 +755,20 @@ const handleSubmit = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  store.clearLastApiEnvelope();
   if (!authStore.user) {
     await authStore.initAuth();
   }
-  if (authStore.user?.id) {
-    form.value.employee_id = authStore.user.id;
-  }
+  resetForm();
 
   await Promise.all([
     store.fetchSettings(),
     fetchCustomers(),
     loadSettlementAccounts(),
-    store.fetchMachines({ is_active: 1 })
+    store.fetchMachines({ is_active: 1 }),
   ]);
+});
+
+onActivated(() => {
+  resetForm();
 });
 </script>

@@ -221,7 +221,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onActivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { useEmployeeStore } from '@/stores/employeeStore';
 import {
@@ -234,18 +234,26 @@ import {
 const router = useRouter();
 const store = useEmployeeStore();
 
-const form = ref({
-  name: '',
-  email: '',
-  phone: '',
-  address: '',
-  department: '',
-  position: '',
-  salary: null,
-  hire_date: new Date().toISOString().split('T')[0],
-  notes: '',
-  is_active: true,
-});
+function createDefaultForm() {
+  return {
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    department: '',
+    position: '',
+    salary: null,
+    hire_date: new Date().toISOString().split('T')[0],
+    notes: '',
+    is_active: true,
+  };
+}
+
+const form = ref(createDefaultForm());
+
+function resetForm() {
+  form.value = createDefaultForm();
+}
 
 const handleSubmit = async () => {
   try {
@@ -258,7 +266,12 @@ const handleSubmit = async () => {
 };
 
 onMounted(async () => {
+  resetForm();
   await store.fetchEmployeeReferenceData();
+});
+
+onActivated(() => {
+  resetForm();
 });
 </script>
 

@@ -141,6 +141,37 @@ class FilamentLiquidityVueApiTest extends TestCase
         $response->assertOk();
         $walletIds = collect($response->json('data.wallets'))->pluck('id')->all();
         $this->assertContains($wallet->id, $walletIds);
+
+        $row = collect($response->json('data.wallets'))->firstWhere('id', $wallet->id);
+        $this->assertSame('instapay', $row['wallet_provider']);
+        $this->assertSame('01077776666', $row['wallet_number']);
+    }
+
+    public function test_finance_accounts_module_wallet_alias_returns_transfer_wallets_for_vue_create(): void
+    {
+        $wallet = $this->createLiquidityAccount([
+            'name' => 'فودافون — تحويلات',
+            'type' => AccountType::Wallet,
+            'module_type' => 'wallet_transfer',
+            'module' => 'wallet_transfer',
+            'wallet_provider' => WalletProvider::VodafoneCash,
+            'wallet_number' => '01011112222',
+        ]);
+
+        $cashbox = $this->createLiquidityAccount([
+            'name' => 'خزينة تحويلات',
+            'type' => AccountType::Cashbox,
+            'module_type' => 'wallet_transfer',
+            'module' => 'wallet_transfer',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?module=wallet&per_page=100&is_active=1');
+
+        $response->assertOk();
+        $items = collect($response->json('data.items'));
+        $this->assertContains($wallet->id, $items->pluck('id')->all());
+        $this->assertContains($cashbox->id, $items->pluck('id')->all());
+        $this->assertSame('vodafone_cash', $items->firstWhere('id', $wallet->id)['wallet_provider']);
     }
 
     public function test_online_settings_bundle_includes_module_accounts(): void

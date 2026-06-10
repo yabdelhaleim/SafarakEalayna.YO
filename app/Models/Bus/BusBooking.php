@@ -94,6 +94,11 @@ class BusBooking extends Model
         return $this->hasMany(BusRefundRequest::class, 'bus_booking_id');
     }
 
+    public function refund(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(BusRefundRequest::class, 'bus_booking_id')->latestOfMany();
+    }
+
     public function scopeByStatus(Builder $query, BusBookingStatus $status): Builder
     {
         return $query->where('status', $status->value);

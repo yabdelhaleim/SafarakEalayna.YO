@@ -88,16 +88,20 @@
         <h2 class="text-xl font-bold mb-6 text-gold">{{ props.type === 'counter' ? 'إضافة شركة جديدة' : 'إضافة عميل جديد (كوانتر)' }}</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm text-muted mb-1">{{ props.type === 'counter' ? 'اسم الشركة*' : 'الاسم بالكامل*' }}</label>
-            <input v-model="newCustomer.full_name" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" :placeholder="props.type === 'counter' ? 'أدخل اسم الشركة' : 'أدخل الاسم بالكامل'" />
+            <label class="block text-sm text-muted mb-1">{{ props.type === 'counter' ? 'اسم الشركة*' : 'الاسم الرباعي بالعربي*' }}</label>
+            <input v-model="newCustomer.full_name" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" :placeholder="props.type === 'counter' ? 'أدخل اسم الشركة' : 'مثال: ياسر محمود أحمد نوح'" />
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">رقم الهاتف*</label>
             <input v-model="newCustomer.phone" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="01xxxxxxxxx" />
           </div>
           <div v-if="props.type !== 'counter'">
-            <label class="block text-sm text-muted mb-1">الرقم القومي</label>
+            <label class="block text-sm text-muted mb-1">الرقم القومي*</label>
             <input v-model="newCustomer.national_id" type="text" maxlength="14" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="14 رقم" />
+          </div>
+          <div v-if="props.type !== 'counter'">
+            <label class="block text-sm text-muted mb-1">البلد*</label>
+            <input v-model="newCustomer.travel_country" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="مثال: مصر" />
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">رقم الواتساب</label>
@@ -106,10 +110,6 @@
           <div>
             <label class="block text-sm text-muted mb-1">المدينة</label>
             <input v-model="newCustomer.city" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أدخل المدينة" />
-          </div>
-          <div v-if="props.type !== 'counter'">
-            <label class="block text-sm text-muted mb-1">دولة السفر</label>
-            <input v-model="newCustomer.travel_country" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أدخل دولة السفر" />
           </div>
           <div v-if="props.type !== 'counter'" class="md:col-span-2">
             <label class="block text-sm text-muted mb-1">الجهة التابع لها</label>
@@ -210,6 +210,16 @@ const saveCustomer = async () => {
   if (!newCustomer.value.full_name || !newCustomer.value.phone) {
     store.addToast('يرجى ملء الاسم ورقم الهاتف على الأقل', 'error');
     return;
+  }
+  if (props.type !== 'counter') {
+    if (!newCustomer.value.national_id?.trim()) {
+      store.addToast('الرقم القومي مطلوب', 'error');
+      return;
+    }
+    if (!newCustomer.value.travel_country?.trim()) {
+      store.addToast('البلد مطلوب', 'error');
+      return;
+    }
   }
 
   savingCustomer.value = true;

@@ -178,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onActivated } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useFinanceStore } from '@/stores/financeStore';
 import {
@@ -195,16 +195,45 @@ const router = useRouter();
 const route = useRoute();
 const store = useFinanceStore();
 
-const form = ref({
-  type: 'income',
-  amount: null,
-  date: new Date().toISOString().split('T')[0],
-  module: 'general',
-  description: '',
-  account_id: null,
-  reference: '',
-  notes: '',
-});
+function createDefaultForm() {
+  return {
+    type: 'income',
+    amount: null,
+    date: new Date().toISOString().split('T')[0],
+    module: 'general',
+    description: '',
+    account_id: null,
+    reference: '',
+    notes: '',
+  };
+}
+
+const form = ref(createDefaultForm());
+
+function resetForm() {
+  form.value = createDefaultForm();
+}
+
+function applyRouteDefaults() {
+  const types = store.transactionTypes;
+  const allowedTypes = types.filter((t) => creatableTypeValues.includes(t.value));
+  if (route.query.type && creatableTypeValues.includes(route.query.type)) {
+    form.value.type = route.query.type;
+  } else if (allowedTypes.length) {
+    const has = allowedTypes.some((t) => t.value === form.value.type);
+    if (!has) form.value.type = allowedTypes[0].value;
+  }
+
+  const mods = store.transactionModules;
+  if (mods.length) {
+    const hasM = mods.some((m) => m.value === form.value.module);
+    if (!hasM) form.value.module = mods[0].value;
+  }
+
+  if (route.query.account_id) {
+    form.value.account_id = Number(route.query.account_id);
+  }
+}
 
 const creatableTypeValues = ['income', 'expense'];
 
@@ -260,27 +289,15 @@ const typeButtonClass = (value) => {
 };
 
 onMounted(async () => {
+  resetForm();
   await store.fetchSettingsMeta();
   await store.fetchAccounts();
-  const types = store.transactionTypes;
-  
-  const allowedTypes = types.filter((t) => creatableTypeValues.includes(t.value));
-  if (route.query.type && creatableTypeValues.includes(route.query.type)) {
-    form.value.type = route.query.type;
-  } else if (allowedTypes.length) {
-    const has = allowedTypes.some((t) => t.value === form.value.type);
-    if (!has) form.value.type = allowedTypes[0].value;
-  }
+  applyRouteDefaults();
+});
 
-  const mods = store.transactionModules;
-  if (mods.length) {
-    const hasM = mods.some((m) => m.value === form.value.module);
-    if (!hasM) form.value.module = mods[0].value;
-  }
-
-  if (route.query.account_id) {
-    form.value.account_id = Number(route.query.account_id);
-  }
+onActivated(() => {
+  resetForm();
+  applyRouteDefaults();
 });
 </script>
 

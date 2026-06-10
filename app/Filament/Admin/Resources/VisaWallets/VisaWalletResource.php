@@ -40,7 +40,7 @@ class VisaWalletResource extends Resource
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
     {
-        return AccountFormSchema::configure($schema, AccountType::Wallet);
+        return AccountFormSchema::configure($schema, AccountType::Wallet, 'visas');
     }
 
     public static function table(Table $table): Table

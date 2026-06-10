@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Transaction;
 use App\Support\Finance\AccountModuleDivision;
+use App\Support\Finance\UnifiedLiquidityGrouper;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -83,15 +84,93 @@ class TreasuryService
                 'user' => $t->createdBy?->name,
             ]);
 
+        $statsByCategory = $this->buildStatsByCategory($accounts);
+        $accountsByCategory = $this->splitAccountsByCategory($accounts);
+        $unifiedByCategory = [
+            'office' => UnifiedLiquidityGrouper::group($accountsByCategory['office']),
+            'tourism' => UnifiedLiquidityGrouper::group($accountsByCategory['tourism']),
+        ];
+
         return [
             'modules' => $filtered,
+            'unified_by_category' => $unifiedByCategory,
             'recent_transfers' => $recentTransfers,
             'stats' => [
-                'total_liquidity' => (float) $accounts->sum('balance'),
-                'accounts_count' => $accounts->count(),
-                'modules_count' => count($filtered),
+                'by_category' => $statsByCategory,
             ],
         ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Account>  $accounts
+     * @return array{office: \Illuminate\Support\Collection<int, Account>, tourism: \Illuminate\Support\Collection<int, Account>}
+     */
+    protected function splitAccountsByCategory($accounts): array
+    {
+        $split = [
+            'office' => collect(),
+            'tourism' => collect(),
+        ];
+
+        foreach ($accounts as $account) {
+            $moduleKey = AccountModuleDivision::resolveModuleTypeKey($account->module_type, $account->module);
+            $category = AccountModuleDivision::divisionForModuleType($moduleKey);
+            if (! isset($split[$category])) {
+                $category = 'office';
+            }
+            $split[$category]->push($account);
+        }
+
+        return $split;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Account>  $accounts
+     * @return array<string, array<string, float|int>>
+     */
+    protected function buildStatsByCategory($accounts): array
+    {
+        $empty = fn (): array => [
+            'total_liquidity' => 0.0,
+            'accounts_count' => 0,
+            'total_banks' => 0.0,
+            'total_cashbox' => 0.0,
+            'total_wallets' => 0.0,
+            'total_post' => 0.0,
+            'total_treasury' => 0.0,
+        ];
+
+        $categories = [
+            'office' => $empty(),
+            'tourism' => $empty(),
+        ];
+
+        foreach ($accounts as $account) {
+            $moduleKey = AccountModuleDivision::resolveModuleTypeKey($account->module_type, $account->module);
+            $category = AccountModuleDivision::divisionForModuleType($moduleKey);
+            if (! isset($categories[$category])) {
+                $category = 'office';
+            }
+
+            $type = $account->type instanceof \App\Enums\AccountType
+                ? $account->type->value
+                : (string) $account->type;
+            $balance = (float) $account->balance;
+
+            $categories[$category]['total_liquidity'] += $balance;
+            $categories[$category]['accounts_count']++;
+
+            match ($type) {
+                'bank' => $categories[$category]['total_banks'] += $balance,
+                'cashbox' => $categories[$category]['total_cashbox'] += $balance,
+                'wallet' => $categories[$category]['total_wallets'] += $balance,
+                'post' => $categories[$category]['total_post'] += $balance,
+                'treasury' => $categories[$category]['total_treasury'] += $balance,
+                default => null,
+            };
+        }
+
+        return $categories;
     }
 
     /**

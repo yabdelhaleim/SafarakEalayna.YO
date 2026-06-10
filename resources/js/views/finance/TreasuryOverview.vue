@@ -25,42 +25,205 @@
         </div>
       </div>
 
-      <!-- Quick Stats -->
-      <div class="grid grid-cols-1 gap-6 mt-10 md:grid-cols-4">
-        <div class="flight-panel p-6 relative overflow-hidden group border-l-4 border-l-gold">
-          <div class="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700">
-            <Banknote class="w-24 h-24" />
-          </div>
-          <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي السيولة</p>
-          <p class="mt-2 font-mono text-3xl font-black text-gold">{{ formatCurrency(stats.total_liquidity || totalLiquidity) }}</p>
-        </div>
-        <div class="flight-panel p-6 border-l-4 border-l-sky-500">
-          <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي البنوك</p>
-          <p class="mt-2 font-mono text-3xl font-black text-text-main">{{ formatCurrency(totalBanks) }}</p>
-        </div>
-        <div class="flight-panel p-6 border-l-4 border-l-purple-500">
-          <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي المحافظ</p>
-          <p class="mt-2 font-mono text-3xl font-black text-text-main">{{ formatCurrency(totalWallets) }}</p>
-        </div>
-        <div class="flight-panel p-6 border-l-4 border-l-emerald-500">
-          <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي البريد</p>
-          <p class="mt-2 font-mono text-3xl font-black text-text-main">{{ formatCurrency(totalPost) }}</p>
-        </div>
-      </div>
-
-      <!-- Category Selection Tabs -->
-      <div class="mt-12 flex justify-center">
+      <!-- اختيار القسم -->
+      <div class="mt-10 flex justify-center">
         <div class="bg-white/5 border border-white/10 p-1.5 rounded-2xl flex items-center gap-1">
-          <button 
-            v-for="cat in categories" 
+          <button
+            v-for="cat in categories"
             :key="cat.id"
+            type="button"
             @click="selectedCategory = cat.id"
             class="px-8 py-3 rounded-xl text-sm font-black transition-all duration-500 flex items-center gap-3"
             :class="selectedCategory === cat.id ? 'bg-gold text-black shadow-xl' : 'text-text-muted hover:text-white'"
           >
             <component :is="cat.icon" class="w-5 h-5" />
             {{ cat.label }}
+            <span class="font-mono text-[10px] opacity-80">({{ statsByCategory[cat.id]?.accounts_count || 0 }})</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="mt-8 space-y-3">
+        <p class="text-xs text-text-muted text-center">
+          {{ statsScopeLabel }}
+        </p>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <span
+            v-for="chip in categoryModuleChips"
+            :key="chip.key"
+            class="rounded-lg border px-3 py-1 text-[11px] font-bold"
+            :class="chip.active
+              ? 'border-gold/30 bg-gold/10 text-gold'
+              : 'border-white/5 bg-white/[0.02] text-text-muted/50'"
+            :title="chip.active ? formatCurrency(chip.balance) : 'لا توجد حسابات مسجلة'"
+          >
+            {{ chip.label }}
+            <span v-if="chip.active" class="mr-1 font-mono text-[10px]">{{ formatCurrency(chip.balance) }}</span>
+          </span>
+        </div>
+        <div
+          class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+          :class="displayStats.total_treasury > 0 ? 'xl:grid-cols-6' : 'xl:grid-cols-5'"
+        >
+          <div class="flight-panel p-5 relative overflow-hidden group border-l-4 border-l-gold">
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي السيولة</p>
+            <p class="mt-2 font-mono text-2xl font-black text-gold">{{ formatCurrency(displayStats.total_liquidity) }}</p>
+            <p class="mt-1 text-[10px] text-text-muted">{{ displayStats.accounts_count }} حساب</p>
+          </div>
+          <div class="flight-panel p-5 border-l-4 border-l-sky-500">
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">إجمالي البنوك</p>
+            <p class="mt-2 font-mono text-2xl font-black text-text-main">{{ formatCurrency(displayStats.total_banks) }}</p>
+          </div>
+          <div class="flight-panel p-5 border-l-4 border-l-amber-500">
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">النقدي الإجمالي</p>
+            <p class="mt-2 font-mono text-2xl font-black text-text-main">{{ formatCurrency(displayStats.total_cashbox) }}</p>
+          </div>
+          <div class="flight-panel p-5 border-l-4 border-l-purple-500">
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">الكاش الإجمالي</p>
+            <p class="mt-2 font-mono text-2xl font-black text-text-main">{{ formatCurrency(displayStats.total_wallets) }}</p>
+          </div>
+          <div class="flight-panel p-5 border-l-4 border-l-emerald-500">
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">البريد الإجمالي</p>
+            <p class="mt-2 font-mono text-2xl font-black text-text-main">{{ formatCurrency(displayStats.total_post) }}</p>
+          </div>
+          <div
+            v-if="displayStats.total_treasury > 0"
+            class="flight-panel p-5 border-l-4 border-l-rose-500"
+          >
+            <p class="text-xs font-bold text-text-muted uppercase tracking-widest">خزائن عامة</p>
+            <p class="mt-2 font-mono text-2xl font-black text-text-main">{{ formatCurrency(displayStats.total_treasury) }}</p>
+          </div>
+        </div>
+        <p
+          v-if="!displayStats.accounts_count"
+          class="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-center text-xs text-amber-100/90"
+        >
+          لا توجد حسابات سيولة مسجلة في «{{ currentCategoryLabel }}».
+          <button
+            v-if="otherCategoryHasAccounts"
+            type="button"
+            class="mr-1 font-bold text-gold underline"
+            @click="selectedCategory = otherCategoryId"
+          >
+            انتقل إلى {{ otherCategoryLabel }}
+          </button>
+          <span v-else>لا توجد حسابات في أي قسم حالياً.</span>
+        </p>
+      </div>
+
+      <p class="mt-6 text-xs text-text-muted text-center max-w-3xl mx-auto leading-relaxed">
+        {{ unifiedHintText }}
+      </p>
+
+      <!-- Unified accounts (per section) -->
+      <div class="mt-8 space-y-6">
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="tab in typeTabs"
+            :key="tab.id"
+            type="button"
+            @click="selectedTypeTab = tab.id"
+            class="px-4 py-2 rounded-xl text-xs font-black border transition-all"
+            :class="selectedTypeTab === tab.id
+              ? 'border-gold/40 bg-gold/15 text-gold'
+              : 'border-white/10 bg-white/5 text-text-muted hover:text-white'"
+          >
+            {{ tab.label }}
+            <span class="mr-1 font-mono text-[10px] opacity-80">({{ unifiedTypeCount(tab.id) }})</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4">
+          <div
+            v-for="group in filteredUnifiedAccounts"
+            :key="group.key"
+            class="flight-panel !p-0 overflow-hidden border border-white/5"
+          >
+            <button
+              type="button"
+              class="w-full px-6 py-5 flex items-center justify-between gap-4 text-right hover:bg-white/[0.02] transition-colors"
+              @click="toggleUnifiedGroup(group.key)"
+            >
+              <div class="flex items-center gap-4 min-w-0">
+                <div class="w-2.5 h-2.5 rounded-full shrink-0" :class="getTypeColor(group.type)"></div>
+                <div class="min-w-0 text-right">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="font-black text-text-main truncate">{{ group.display_name }}</h3>
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-white/10 text-text-muted font-bold">{{ group.type_label }}</span>
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-white/5 text-text-muted font-mono">{{ group.currency }}</span>
+                  </div>
+                  <p class="text-[11px] text-text-muted mt-1">
+                    {{ group.accounts_count }} حساب · {{ group.modules?.length || 0 }} موديول
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-4 shrink-0">
+                <p class="font-mono text-xl font-black text-gold">{{ formatCurrency(group.total_balance, group.currency) }}</p>
+                <ChevronDown
+                  class="w-5 h-5 text-text-muted transition-transform"
+                  :class="{ 'rotate-180': expandedUnifiedKeys.has(group.key) }"
+                />
+              </div>
+            </button>
+
+            <div
+              v-if="expandedUnifiedKeys.has(group.key)"
+              class="border-t border-white/5 bg-black/20 divide-y divide-white/5"
+            >
+              <div
+                v-for="mod in group.modules"
+                :key="group.key + '-' + mod.key"
+                class="px-6 py-4"
+              >
+                <div class="flex items-center justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-2">
+                    <component :is="getModuleIcon(mod.key)" class="w-4 h-4 text-gold/70" />
+                    <span class="font-bold text-sm text-text-main">{{ mod.label }}</span>
+                  </div>
+                  <span class="font-mono text-sm font-black text-emerald-300">{{ formatCurrency(mod.balance, group.currency) }}</span>
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="acc in mod.accounts"
+                    :key="acc.id"
+                    class="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3"
+                  >
+                    <div class="min-w-0">
+                      <p class="font-bold text-sm text-white truncate">{{ acc.name }}</p>
+                      <p class="text-[10px] text-text-muted">{{ acc.type_label }}</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span class="font-mono text-sm font-bold text-success">{{ formatCurrency(acc.balance, acc.currency) }}</span>
+                      <button
+                        type="button"
+                        class="p-1.5 rounded-lg bg-white/5 text-text-muted hover:text-sky-400"
+                        title="كشف الحساب"
+                        @click.stop="viewStatement(acc.id)"
+                      >
+                        <FileText class="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        class="p-1.5 rounded-lg bg-white/5 text-text-muted hover:text-gold"
+                        title="تحويل"
+                        @click.stop="quickTransfer(acc)"
+                      >
+                        <ArrowRightLeft class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="!filteredUnifiedAccounts.length"
+            class="flight-panel py-16 text-center text-text-muted italic"
+          >
+            لا توجد حسابات في هذا التصنيف حالياً
+          </div>
         </div>
       </div>
 
@@ -69,7 +232,7 @@
         <div class="flex items-center justify-between mb-8">
           <div>
             <h2 class="text-xl font-black text-text-main">توزيع السيولة ({{ currentCategoryLabel }})</h2>
-            <p class="text-xs text-text-muted mt-1">عرض مرئي لنسبة مساهمة موديولات القسم في إجمالي السيولة</p>
+            <p class="text-xs text-text-muted mt-1">مساهمة كل موديول ضمن {{ categoryModulesListText }}</p>
           </div>
           <PieChart class="w-6 h-6 text-gold" />
         </div>
@@ -94,76 +257,6 @@
           </div>
           <div v-if="!Object.keys(filteredModules).length" class="text-center py-4 text-text-muted italic text-sm">
             لا توجد حسابات مسجلة لهذا القسم حالياً
-          </div>
-        </div>
-      </div>
-
-      <!-- Modules Grid -->
-      <div class="grid grid-cols-1 gap-8 mt-12 lg:grid-cols-2">
-        <div 
-          v-for="(module, key) in filteredModules" 
-          :key="key"
-          class="flight-panel !p-0 overflow-hidden border border-white/5 hover:border-gold/20 transition-all duration-500 group shadow-2xl shadow-black/20"
-        >
-          <!-- Module Header -->
-          <div class="px-6 py-5 bg-white/[0.03] border-b border-white/5 flex items-center justify-between group-hover:bg-gold/[0.02] transition-colors">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center border border-gold/20 text-gold shadow-lg shadow-gold/5">
-                <component :is="getModuleIcon(key)" class="w-6 h-6" />
-              </div>
-              <div>
-                <h3 class="font-display text-lg font-black text-text-main group-hover:text-gold transition-colors">{{ module.label }}</h3>
-                <p class="text-[10px] text-text-muted font-bold uppercase tracking-wider">قسم العمليات والتحصيل</p>
-              </div>
-            </div>
-            <div class="text-left">
-              <p class="text-[10px] text-text-muted font-bold uppercase tracking-wider mb-0.5">صافي الرصيد</p>
-              <p class="font-mono text-lg font-black text-text-main">{{ formatCurrency(getModuleTotal(module.accounts)) }}</p>
-            </div>
-          </div>
-
-          <!-- Module Accounts -->
-          <div class="divide-y divide-white/5">
-            <div 
-              v-for="acc in module.accounts" 
-              :key="acc.id"
-              class="px-6 py-4 flex items-center justify-between hover:bg-white/[0.02] transition-all duration-300"
-            >
-              <div class="flex items-center gap-4">
-                <div 
-                  class="w-2 h-2 rounded-full"
-                  :class="getTypeColor(acc.type)"
-                ></div>
-                <div>
-                  <div class="flex items-center gap-2">
-                    <span class="font-bold text-sm text-text-main">{{ acc.name }}</span>
-                    <span v-if="acc.is_vault" class="text-[9px] px-1.5 py-0.5 rounded bg-gold/20 text-gold font-black uppercase">الرئيسية</span>
-                  </div>
-                  <span class="text-[10px] text-text-muted font-medium">{{ acc.type_label }}</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-6 text-left">
-                <p class="font-mono text-base font-bold" :class="acc.balance >= 0 ? 'text-success' : 'text-error'">
-                  {{ formatCurrency(acc.balance, acc.currency) }}
-                </p>
-                <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                  <button 
-                    @click="viewStatement(acc.id)"
-                    class="p-1.5 rounded-lg bg-white/5 text-text-muted hover:text-sky-400 hover:bg-white/10 transition-all"
-                    title="كشف الحساب"
-                  >
-                    <FileText class="w-4 h-4" />
-                  </button>
-                  <button 
-                    @click="quickTransfer(acc)"
-                    class="p-1.5 rounded-lg bg-white/5 text-text-muted hover:text-gold hover:bg-white/10 transition-all"
-                    title="تحويل سريع"
-                  >
-                    <ArrowRightLeft class="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -401,7 +494,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import {
@@ -411,6 +504,9 @@ import {
   currenciesMatch,
   findTreasuryAccount,
 } from '@/composables/useCrossCurrencyTransfer';
+import {
+  MODULE_GROUP_LABELS,
+} from '@/composables/useTreasuryAccountGroups';
 import { 
   RefreshCw, 
   ArrowRightLeft, 
@@ -429,6 +525,7 @@ import {
   History,
   ArrowRight,
   ChevronLeft,
+  ChevronDown,
   PieChart,
   Briefcase
 } from 'lucide-vue-next';
@@ -440,15 +537,52 @@ const submitting = ref(false);
 // State
 const overview = ref({});
 const recentTransfers = ref([]);
-const stats = ref({});
+const statsByCategory = ref({
+  office: {
+    total_liquidity: 0,
+    total_banks: 0,
+    total_cashbox: 0,
+    total_wallets: 0,
+    total_post: 0,
+    total_treasury: 0,
+    accounts_count: 0,
+  },
+  tourism: {
+    total_liquidity: 0,
+    total_banks: 0,
+    total_cashbox: 0,
+    total_wallets: 0,
+    total_post: 0,
+    total_treasury: 0,
+    accounts_count: 0,
+  },
+});
+const unifiedByCategory = ref({ office: [], tourism: [] });
 const showTransferModal = ref(false);
 const transferError = ref('');
-const selectedCategory = ref('office'); // 'office' or 'tourism'
+const selectedCategory = ref('office');
+const selectedTypeTab = ref('all');
+const expandedUnifiedKeys = reactive(new Set());
+
+const typeTabs = [
+  { id: 'all', label: 'الكل' },
+  { id: 'bank', label: 'البنوك' },
+  { id: 'cashbox', label: 'النقدي' },
+  { id: 'wallet', label: 'الكاش' },
+  { id: 'post', label: 'البريد' },
+  { id: 'treasury', label: 'خزائن عامة' },
+];
 
 const categories = [
   { id: 'office', label: 'المكتب العام', icon: Building2 },
   { id: 'tourism', label: 'السياحة والطيران', icon: Briefcase },
 ];
+
+/** موديولات كل قسم — تُعرض في الشرح والكروت */
+const CATEGORY_MODULE_KEYS = {
+  tourism: ['flights', 'hajj_umra', 'visas', 'tourism'],
+  office: ['bus', 'fawry', 'online', 'wallet_transfer', 'general'],
+};
 
 const transferForm = ref({
   from_account_id: '',
@@ -482,7 +616,81 @@ const treasuryAccountsFlat = computed(() => {
   Object.values(safeModules.value).forEach((mod) => {
     (mod.accounts || []).forEach((acc) => list.push(acc));
   });
-  return list;
+  categoryUnifiedAccounts.value.forEach((group) => {
+    (group.modules || []).forEach((mod) => {
+      (mod.accounts || []).forEach((acc) => list.push(acc));
+    });
+  });
+  const byId = new Map();
+  list.forEach((acc) => {
+    if (acc?.id) byId.set(acc.id, acc);
+  });
+  return [...byId.values()];
+});
+
+const displayStats = computed(() => {
+  const cat = statsByCategory.value[selectedCategory.value];
+  return cat || statsByCategory.value.office;
+});
+
+const categoryModuleChips = computed(() => {
+  const keys = CATEGORY_MODULE_KEYS[selectedCategory.value] || [];
+  const modules = safeModules.value;
+
+  return keys.map((key) => {
+    const mod = modules[key];
+    const accounts = mod?.category === selectedCategory.value ? (mod.accounts || []) : [];
+    const balance = accounts.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0);
+
+    return {
+      key,
+      label: MODULE_GROUP_LABELS[key] || mod?.label || key,
+      active: accounts.length > 0,
+      balance,
+      count: accounts.length,
+    };
+  });
+});
+
+const categoryModulesListText = computed(() => {
+  const active = categoryModuleChips.value.filter((c) => c.active).map((c) => c.label);
+  if (active.length) return active.join(' + ');
+  return categoryModuleChips.value.map((c) => c.label).join(' + ');
+});
+
+const otherCategoryId = computed(() => (selectedCategory.value === 'office' ? 'tourism' : 'office'));
+
+const otherCategoryLabel = computed(() =>
+  categories.find((c) => c.id === otherCategoryId.value)?.label || ''
+);
+
+const otherCategoryHasAccounts = computed(() =>
+  Number(statsByCategory.value[otherCategoryId.value]?.accounts_count || 0) > 0
+);
+
+const statsScopeLabel = computed(() => {
+  const label = categories.find((c) => c.id === selectedCategory.value)?.label || '';
+  return `الأرقام أعلاه لقسم «${label}» فقط — وتشمل موديولات: ${categoryModulesListText.value}`;
+});
+
+const unifiedHintText = computed(() => {
+  const section = currentCategoryLabel.value;
+  const modules = categoryModulesListText.value;
+  if (selectedCategory.value === 'tourism') {
+    return `الإجمالي الموحّد داخل «${section}» يجمع نفس البنك/الخزنة/المحفظة عبر: ${modules}. مثال: بنك مصر (طيران) + بنك مصر (حج) + بنك مصر (تأشيرات) = رصيد واحد`;
+  }
+  return `الإجمالي الموحّد داخل «${section}» يجمع نفس البنك/الخزنة/المحفظة عبر: ${modules}. مثال: بنك مصر (باص) + بنك مصر (فوري) + بنك مصر (أونلاين) = رصيد واحد`;
+});
+
+const categoryUnifiedAccounts = computed(() => {
+  const bucket = unifiedByCategory.value[selectedCategory.value];
+  return Array.isArray(bucket) ? bucket : [];
+});
+
+const filteredUnifiedAccounts = computed(() => {
+  const list = categoryUnifiedAccounts.value;
+  if (selectedTypeTab.value === 'all') return list;
+  return list.filter((g) => g.type === selectedTypeTab.value);
 });
 
 const transferFromAccount = computed(() =>
@@ -521,10 +729,11 @@ const currentCategoryLabel = computed(() => {
 const filteredModules = computed(() => {
   const res = {};
   const modules = safeModules.value;
-  Object.keys(modules).forEach(key => {
+  Object.keys(modules).forEach((key) => {
     const mod = modules[key];
-    // Map 'flights' to 'tourism' for consistency
-    const cat = mod.category === 'flights' ? 'tourism' : mod.category;
+    const cat = mod.category === 'tourism' || mod.category === 'office'
+      ? mod.category
+      : (mod.category === 'flights' ? 'tourism' : 'office');
     if (cat === selectedCategory.value) {
       res[key] = mod;
     }
@@ -532,54 +741,54 @@ const filteredModules = computed(() => {
   return res;
 });
 
-// Stats Computed
-const totalLiquidity = computed(() => {
-  let total = 0;
-  Object.values(safeModules.value).forEach(module => {
-    module.accounts.forEach(acc => {
-      if (acc && typeof acc.balance === 'number') {
-        total += acc.balance;
-      }
-    });
-  });
-  return total;
+function categoryHasAccounts(categoryId) {
+  return Number(statsByCategory.value[categoryId]?.accounts_count || 0) > 0
+    || Object.values(safeModules.value).some(
+      (mod) => mod.category === categoryId && (mod.accounts?.length || 0) > 0
+    );
+}
+
+function autoSelectCategoryWithData() {
+  if (categoryHasAccounts(selectedCategory.value)) return;
+  if (categoryHasAccounts('tourism')) {
+    selectedCategory.value = 'tourism';
+    return;
+  }
+  if (categoryHasAccounts('office')) {
+    selectedCategory.value = 'office';
+  }
+}
+
+const categoryLiquidityTotal = computed(() => {
+  return Number(displayStats.value.total_liquidity) || 1;
 });
 
-const totalBanks = computed(() => {
-  let total = 0;
-  Object.values(safeModules.value).forEach(module => {
-    module.accounts.forEach(acc => {
-      if (acc && acc.type === 'bank' && typeof acc.balance === 'number') {
-        total += acc.balance;
-      }
-    });
-  });
-  return total;
-});
+function normalizeCategoryStats(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    total_liquidity: Number(src.total_liquidity) || 0,
+    total_banks: Number(src.total_banks) || 0,
+    total_cashbox: Number(src.total_cashbox) || 0,
+    total_wallets: Number(src.total_wallets) || 0,
+    total_post: Number(src.total_post) || 0,
+    total_treasury: Number(src.total_treasury) || 0,
+    accounts_count: Number(src.accounts_count) || 0,
+  };
+}
 
-const totalWallets = computed(() => {
-  let total = 0;
-  Object.values(safeModules.value).forEach(module => {
-    module.accounts.forEach(acc => {
-      if (acc && acc.type === 'wallet' && typeof acc.balance === 'number') {
-        total += acc.balance;
-      }
-    });
-  });
-  return total;
-});
+function unifiedTypeCount(typeId) {
+  const list = categoryUnifiedAccounts.value;
+  if (typeId === 'all') return list.length;
+  return list.filter((g) => g.type === typeId).length;
+}
 
-const totalPost = computed(() => {
-  let total = 0;
-  Object.values(safeModules.value).forEach(module => {
-    module.accounts.forEach(acc => {
-      if (acc && acc.type === 'post' && typeof acc.balance === 'number') {
-        total += acc.balance;
-      }
-    });
-  });
-  return total;
-});
+function toggleUnifiedGroup(key) {
+  if (expandedUnifiedKeys.has(key)) {
+    expandedUnifiedKeys.delete(key);
+  } else {
+    expandedUnifiedKeys.add(key);
+  }
+}
 
 async function fetchOverview() {
   loading.value = true;
@@ -589,8 +798,22 @@ async function fetchOverview() {
     });
     const data = response.data?.data || {};
     overview.value = data.modules && typeof data.modules === 'object' ? data.modules : {};
+    const unified = data.unified_by_category && typeof data.unified_by_category === 'object'
+      ? data.unified_by_category
+      : {};
+    unifiedByCategory.value = {
+      office: Array.isArray(unified.office) ? unified.office : [],
+      tourism: Array.isArray(unified.tourism) ? unified.tourism : [],
+    };
     recentTransfers.value = Array.isArray(data.recent_transfers) ? data.recent_transfers : [];
-    stats.value = data.stats && typeof data.stats === 'object' ? data.stats : {};
+    const s = data.stats && typeof data.stats === 'object' ? data.stats : {};
+    const byCat = s.by_category && typeof s.by_category === 'object' ? s.by_category : {};
+    statsByCategory.value = {
+      office: normalizeCategoryStats(byCat.office),
+      tourism: normalizeCategoryStats(byCat.tourism),
+    };
+
+    autoSelectCategoryWithData();
   } catch (err) {
     console.error('Failed to fetch treasury overview:', err);
     if (window.addToast) window.addToast('فشل في تحميل بيانات الخزينة', 'error');
@@ -605,8 +828,7 @@ function getModuleTotal(accounts) {
 }
 
 function getModulePercentage(accounts) {
-  // Use category-specific total if we want, but global total is fine for overview
-  const total = totalLiquidity.value || 1;
+  const total = categoryLiquidityTotal.value || 1;
   const moduleTotal = getModuleTotal(accounts);
   return Math.round((moduleTotal / total) * 100);
 }
@@ -711,6 +933,11 @@ function formatCurrency(amount, currency = 'EGP') {
     maximumFractionDigits: 2
   }).format(Number(amount) || 0);
 }
+
+watch(selectedCategory, () => {
+  expandedUnifiedKeys.clear();
+  selectedTypeTab.value = 'all';
+});
 
 onMounted(() => {
   fetchOverview();

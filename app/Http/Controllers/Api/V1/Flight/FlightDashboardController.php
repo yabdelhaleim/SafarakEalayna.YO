@@ -62,7 +62,9 @@ class FlightDashboardController extends Controller
                 return [
                     'id' => $booking->id,
                     'booking_number' => $booking->booking_number,
-                    'customer' => ['name' => $booking->customer?->name ?? 'غير محدد'],
+                    'customer' => [
+                        'name' => trim((string) ($booking->customer?->full_name ?: $booking->customer?->name ?: '')) ?: 'غير محدد',
+                    ],
                     'pnr' => $booking->pnr,
                     'status' => $booking->status,
                     'pricing' => [

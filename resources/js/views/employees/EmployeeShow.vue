@@ -367,6 +367,7 @@ import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { useRoute, useRouter } from 'vue-router';
 import { useEmployeeStore } from '@/stores/employeeStore';
+import { unwrapAccountsApiResponse } from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
   Loader2,
@@ -553,8 +554,10 @@ const fetchEmployeeData = async () => {
     loadingTransactions.value = true;
     
     // Fetch treasuries for the dropdown
-    const accountsRes = await axios.get('/api/v1/finance/accounts', { params: { type: 'cashbox,bank,treasury' } });
-    treasuryAccounts.value = accountsRes.data?.data || [];
+    const accountsRes = await axios.get('/api/v1/finance/accounts', {
+      params: { per_page: 100, types: 'cashbox,bank,treasury,wallet,post', is_active: 1 },
+    });
+    treasuryAccounts.value = unwrapAccountsApiResponse(accountsRes);
     
     // Fetch transactions made by this employee
     const txRes = await axios.get(`/api/v1/employee/employees/${id}/transactions`);

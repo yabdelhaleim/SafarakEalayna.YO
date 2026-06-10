@@ -216,6 +216,7 @@ class WalletTransactionController extends Controller
                     'transaction.createdBy',
                     'transaction.fromAccount',
                     'transaction.toAccount',
+                    'transaction.related',
                 ])
                     ->where('account_id', $customerAccount->id)
                     ->whereHas('transaction', function ($q) {
@@ -238,7 +239,7 @@ class WalletTransactionController extends Controller
 
                     $running += ($credit - $debit);
 
-                    $description = $tx->notes ?: 'معاملة مالية محفظة';
+                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)
                         ? $tx->toAccount

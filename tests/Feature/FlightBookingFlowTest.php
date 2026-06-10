@@ -502,6 +502,109 @@ class FlightBookingFlowTest extends TestCase
         });
     }
 
+    public function test_kwd_booking_cancel_restores_carrier_sign_and_refunds_customer_in_egp(): void
+    {
+        $kwdCarrier = FlightCarrier::create([
+            'name' => 'Kuwait Airways Sign',
+            'code' => 'KUW',
+            'flight_system_id' => $this->flightSystem->id,
+            'currency' => 'KWD',
+            'balance' => 1000,
+            'credit_limit' => 0,
+            'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $rate = 157.5;
+        $purchaseForeign = 50.0;
+        $purchaseEgp = $purchaseForeign * $rate;
+        $sellingEgp = 9000.0;
+
+        $booking = $this->bookingService->createBooking([
+            'customer_id' => $this->customer->id,
+            'from_airport' => 'CAI',
+            'to_airport' => 'KWI',
+            'departure_date' => now()->addDays(7)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'KWD',
+            'purchase_price_foreign' => $purchaseForeign,
+            'exchange_rate' => $rate,
+            'selling_price' => $sellingEgp,
+            'flight_carrier_id' => $kwdCarrier->id,
+            'purchase_balance_source' => 'carrier',
+            'account_id' => $this->treasuryAccount->id,
+            'passengers' => [
+                ['first_name' => 'KWD', 'last_name' => 'Pax', 'type' => 'adult'],
+            ],
+        ]);
+
+        $kwdCarrier->refresh();
+        $this->assertEquals(950.0, (float) $kwdCarrier->balance);
+        $this->assertEquals('KWD', $booking->currency);
+        $this->assertEquals($rate, (float) $booking->exchange_rate_used);
+
+        $this->bookingService->addPayment($booking, [
+            'amount' => $sellingEgp,
+            'payment_method' => 'cash',
+            'account_id' => $this->treasuryAccount->id,
+        ]);
+
+        $treasuryAfterPayment = (float) $this->treasuryAccount->fresh()->balance;
+
+        $airlinePenaltyEgp = 1575.0; // 10 KWD عند نفس سعر الحجز
+        $officePenaltyEgp = 200.0;
+        $expectedRefundEgp = $sellingEgp - $airlinePenaltyEgp - $officePenaltyEgp;
+
+        $this->bookingService->cancelBooking($booking, [
+            'airline_penalty' => $airlinePenaltyEgp,
+            'office_penalty' => $officePenaltyEgp,
+            'account_id' => $this->treasuryAccount->id,
+        ]);
+
+        $kwdCarrier->refresh();
+        $this->treasuryAccount->refresh();
+
+        $expectedCarrierBalance = 1000.0 - 10.0; // 50 KWD خصم ثم 40 KWD إرجاع
+        $this->assertEquals($expectedCarrierBalance, (float) $kwdCarrier->balance);
+        $this->assertEquals($treasuryAfterPayment - $expectedRefundEgp, (float) $this->treasuryAccount->balance);
+    }
+
+    public function test_system_booking_debits_system_not_carrier_when_carrier_is_informational(): void
+    {
+        $this->flightSystem->update(['balance' => 50000]);
+
+        $carrierBefore = (float) $this->carrier->balance;
+        $systemBefore = (float) $this->flightSystem->fresh()->balance;
+
+        $booking = $this->bookingService->createBooking([
+            'customer_id' => $this->customer->id,
+            'from_airport' => 'CAI',
+            'to_airport' => 'JED',
+            'departure_date' => now()->addDays(7)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'EGP',
+            'purchase_price' => 12000,
+            'selling_price' => 15000,
+            'purchase_balance_source' => 'system',
+            'flight_system_id' => $this->flightSystem->id,
+            'flight_carrier_id' => $this->carrier->id,
+            'account_id' => $this->treasuryAccount->id,
+            'passengers' => [
+                ['first_name' => 'System', 'last_name' => 'Pax', 'type' => 'adult'],
+            ],
+        ]);
+
+        $this->assertEquals('system', $booking->purchase_balance_source);
+        $this->assertEquals($this->flightSystem->id, $booking->flight_system_id);
+        $this->assertEquals($this->carrier->id, $booking->flight_carrier_id);
+
+        $this->carrier->refresh();
+        $this->flightSystem->refresh();
+
+        $this->assertEquals($carrierBefore, (float) $this->carrier->balance, 'Carrier balance must not change on system booking');
+        $this->assertEquals($systemBefore - 12000, (float) $this->flightSystem->balance);
+    }
+
     public function test_creates_booking_via_group_and_records_debt_correctly(): void
     {
         // 1. Create a flight group
@@ -553,6 +656,9 @@ class FlightBookingFlowTest extends TestCase
         $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
         $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
         $this->assertEquals(15000.0, $totalDebt - $totalPayment);
+
+        $this->carrier->refresh();
+        $this->assertEquals(100000.0, (float) $this->carrier->balance, 'Carrier balance must not change on group booking');
     }
 
     public function test_cancels_group_booking_and_reverses_debt_correctly(): void

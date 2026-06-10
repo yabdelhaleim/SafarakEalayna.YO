@@ -44,7 +44,7 @@ class BankAccountResource extends Resource
 
     public static function form(Schema $schema): Schema
     {
-        return AccountFormSchema::configure($schema, AccountType::Bank);
+        return AccountFormSchema::configure($schema, AccountType::Bank, 'flights');
     }
 
     public static function table(Table $table): Table

@@ -262,6 +262,7 @@ class FawryTransactionController extends Controller
                     'transaction.createdBy',
                     'transaction.fromAccount',
                     'transaction.toAccount',
+                    'transaction.related',
                 ])
                     ->where('account_id', $customerAccount->id)
                     ->whereHas('transaction', function ($q) {
@@ -287,7 +288,7 @@ class FawryTransactionController extends Controller
                     $running += ($credit - $debit);
 
                     // Resolve the description/statement text
-                    $description = $tx->notes ?: 'معاملة مالية فوري';
+                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     // Determine machine/account involved
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)

@@ -70,10 +70,28 @@ class FlightGroupController extends Controller
      */
     public function statement(Request $request, FlightGroup $group)
     {
+        $resolver = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class);
+
         $transactions = $group->groupTransactions()
-            ->with(['booking:id,booking_number,pnr,airline_name', 'createdBy:id,name'])
+            ->with([
+                'booking.customer',
+                'booking.passengers',
+                'booking.fromAirport',
+                'booking.toAirport',
+                'createdBy:id,name',
+            ])
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($tx) use ($resolver) {
+                if ($tx->booking) {
+                    $prefix = $tx->type === 'debt' ? 'تكلفة شراء' : 'سداد دفعة';
+                    $tx->setAttribute('description', $prefix.' — '.$resolver->forFlightBooking($tx->booking));
+                } else {
+                    $tx->setAttribute('description', $tx->notes ?: 'حركة مجموعة طيران');
+                }
+
+                return $tx;
+            });
 
         $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
         $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');

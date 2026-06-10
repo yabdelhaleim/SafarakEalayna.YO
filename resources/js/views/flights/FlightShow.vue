@@ -307,61 +307,26 @@
                   أسماء المسافرين أدناه — مختلفة عن الشركة
                   «{{ booking.customer?.name }}»
                 </p>
-                <template v-for="type in ['adult', 'child', 'infant']" :key="type">
-                  <div v-if="getPassengersByType(type).length > 0" style="margin-bottom:12px; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
-                    <div style="background:#f1f5f9; padding:8px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid #e2e8f0;">
-                      <Users style="width:14px; height:14px; color:#1d4ed8;" />
-                      <span style="font-weight:700; color:#0f172a; font-size:12px;">{{ getPassengerTypeLabel(type) }}</span>
-                      <span style="background:#1d4ed8; color:#fff; border-radius:999px; padding:1px 8px; font-size:10px; font-weight:900;">{{ getPassengersByType(type).length }}</span>
-                    </div>
-                    <div
-                      v-for="(passenger, idx) in getPassengersByType(type)"
-                      :key="passenger.id || idx"
-                      style="padding:12px 14px; border-bottom:1px solid #f1f5f9;"
-                    >
-                      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                          <div style="width:34px; height:34px; border-radius:50%; background:#fef3c7; display:flex; align-items:center; justify-content:center;">
-                            <User style="width:16px; height:16px; color:#d4a843;" />
-                          </div>
-                          <div>
-                            <div style="font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#64748b;">مسافر {{ idx + 1 }}</div>
-                            <div style="font-family:monospace; font-size:10px; color:#64748b;">{{ generateTicketNumber(type, idx) }}</div>
-                          </div>
-                        </div>
-                        <span style="background:#ecfdf5; color:#047857; border:1px solid #bbf7d0; border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800;">
-                          {{ getPassengerTypeLabel(type) }}
-                        </span>
-                      </div>
-                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
-                        <div style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">الاسم الأول</div>
-                          <div style="font-weight:800; color:#0f172a;">{{ formatPassengerFirstName(passenger) }}</div>
-                        </div>
-                        <div style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">الاسم الأخير</div>
-                          <div style="font-weight:800; color:#0f172a;">{{ formatPassengerLastName(passenger) }}</div>
-                        </div>
-                        <div v-if="passenger.nationalId" style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">رقم البطاقة</div>
-                          <div style="font-family:monospace; font-weight:700; color:#0f172a;">{{ passenger.nationalId }}</div>
-                        </div>
-                        <div v-if="passenger.passportNumber" style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">جواز السفر</div>
-                          <div style="font-family:monospace; font-weight:700; color:#0f172a;">{{ passenger.passportNumber }}</div>
-                        </div>
-                        <div v-if="passenger.dateOfBirth" style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">تاريخ الميلاد</div>
-                          <div style="font-family:monospace; font-weight:700; color:#0f172a;">{{ passenger.dateOfBirth }}</div>
-                        </div>
-                        <div v-if="Number(passenger.baggageAllowanceKg) > 0" style="background:#f8fafc; border-radius:8px; padding:8px 10px; border:1px solid #e2e8f0;">
-                          <div style="font-size:9px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; margin-bottom:3px;">الأمتعة</div>
-                          <div style="font-weight:800; color:#0f172a;">{{ passenger.baggageAllowanceKg }} كجم</div>
-                        </div>
-                      </div>
-                    </div>
+                <div style="border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#fff;">
+                  <div style="display:grid; grid-template-columns:1.5rem 1fr 3.5rem 3rem; gap:12px; padding:8px 14px; background:#f1f5f9; border-bottom:1px solid #e2e8f0; font-size:9px; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#64748b; direction:ltr;">
+                    <span>#</span>
+                    <span>الاسم</span>
+                    <span style="text-align:center;">النوع</span>
+                    <span style="text-align:right;">الأمتعة</span>
                   </div>
-                </template>
+                  <ol style="list-style:none; margin:0; padding:10px 14px; direction:ltr;">
+                    <li
+                      v-for="(passenger, idx) in booking.passengers"
+                      :key="passenger.id || idx"
+                      style="display:grid; grid-template-columns:1.5rem 1fr 3.5rem 3rem; gap:12px; align-items:baseline; padding:4px 0; font-family:monospace; font-size:12px; line-height:1.4;"
+                    >
+                      <span style="color:#64748b; text-align:right;">{{ idx + 1 }}.</span>
+                      <span style="font-weight:800; color:#0f172a; text-transform:uppercase; letter-spacing:0.04em;">{{ compactPassengerName(passenger) }}</span>
+                      <span style="text-align:center; font-weight:700; color:#047857; font-size:11px;">{{ compactPassengerTypeLabel(passenger.type) }}</span>
+                      <span style="text-align:right; font-weight:800; color:#b45309; font-size:11px;">{{ compactBaggageLabel(passenger) }}</span>
+                    </li>
+                  </ol>
+                </div>
               </div>
 
               <!-- PRICE -->
@@ -719,38 +684,7 @@
             <p v-if="booking.customer?.type === 'counter'" class="mb-3 text-[11px] leading-relaxed text-emerald-200/70">
               أسماء المسافرين — مختلفة عن الشركة «{{ booking.customer?.name }}»
             </p>
-            <div class="space-y-3">
-              <div
-                v-for="(passenger, index) in booking.passengers"
-                :key="passenger.id || index"
-                class="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm"
-              >
-                <div class="mb-2 flex items-center justify-between gap-2">
-                  <span class="font-bold text-white">مسافر {{ index + 1 }}</span>
-                  <span class="rounded-lg bg-white/10 px-2 py-0.5 text-[10px] text-gray-300">
-                    {{ getPassengerTypeLabel(passenger.type) }}
-                  </span>
-                </div>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span class="text-text-muted block">الاسم الأول</span>
-                    <span class="font-bold text-white">{{ formatPassengerFirstName(passenger) }}</span>
-                  </div>
-                  <div>
-                    <span class="text-text-muted block">الاسم الأخير</span>
-                    <span class="font-bold text-white">{{ formatPassengerLastName(passenger) }}</span>
-                  </div>
-                  <div v-if="passenger.nationalId">
-                    <span class="text-text-muted block">رقم البطاقة</span>
-                    <span class="font-mono text-white">{{ passenger.nationalId }}</span>
-                  </div>
-                  <div v-if="passenger.dateOfBirth">
-                    <span class="text-text-muted block">تاريخ الميلاد</span>
-                    <span class="font-mono text-white">{{ passenger.dateOfBirth }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <CompactPassengerList :passengers="booking.passengers" />
           </div>
 
           <!-- Individual Customer Panel (بيانات العميل) -->
@@ -1017,6 +951,12 @@ import { useFlightStore } from '@/stores/flightStore';
 import { useRoute, useRouter } from 'vue-router';
 import RefundWizard from '@/components/flights/RefundWizard.vue';
 import ModificationWizard from '@/components/flights/ModificationWizard.vue';
+import CompactPassengerList from '@/components/flights/CompactPassengerList.vue';
+import {
+  compactBaggageLabel,
+  compactPassengerName,
+  compactPassengerTypeLabel,
+} from '@/utils/flightPassengerDisplay';
 import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 import {
@@ -1415,39 +1355,6 @@ const getStatusLabel = (status) => {
   return labels[status] || status;
 };
 
-const getPassengerTypeLabel = (type) => {
-  const labels = {
-    adult: 'بالغ',
-    child: 'طفل',
-    infant: 'رضيع',
-  };
-  return labels[type] || type;
-};
-
-const getPassengersByType = (type) => {
-  return booking.value?.passengers?.filter(p => p.type === type) || [];
-};
-
-const formatPassengerFirstName = (passenger) => {
-  const first = String(passenger?.firstName || passenger?.first_name || '').trim();
-  if (first) return first;
-  const parts = String(passenger?.name || '').trim().split(/\s+/).filter(Boolean);
-  return parts[0] || '—';
-};
-
-const formatPassengerLastName = (passenger) => {
-  const last = String(passenger?.lastName || passenger?.last_name || '').trim();
-  if (last) return last;
-  const parts = String(passenger?.name || '').trim().split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? parts.slice(1).join(' ') : '—';
-};
-
-const generateTicketNumber = (type, indexInType) => {
-  const bookingNum = booking.value?.bookingNumber || 'BK-000000';
-  const prefix = String(type).charAt(0).toUpperCase();
-  return `${bookingNum}-${prefix}${String(indexInType + 1).padStart(2, '0')}`;
-};
-
 const calculateDuration = (segment) => {
   // Simple estimation - in real app, calculate from departure/arrival times
   return '2.5';
@@ -1638,7 +1545,7 @@ const runPrintJob = async () => {
 
 const onRefundCompleted = async (result) => {
   showRefundModal.value = false;
-  store.addToast('تمت معالجة الاسترجاع وعزل الحسابات بنجاح.', 'success');
+  store.addToast('تم تسجيل الاسترداد وتحديث حالة الحجز بنجاح.', 'success');
   if (booking.value?.id) {
     await store.fetchBookingById(booking.value.id);
   }

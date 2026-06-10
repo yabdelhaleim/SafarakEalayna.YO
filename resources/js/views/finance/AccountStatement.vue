@@ -461,9 +461,9 @@
                   </td>
                   
                   <!-- Col 4: Description & Badges -->
-                  <td class="px-6 py-4">
+                  <td class="px-6 py-4 min-w-[280px] max-w-xl">
                     <div class="space-y-1">
-                      <p class="text-base font-black text-text-main leading-snug">{{ entry.description || entry.notes }}</p>
+                      <p class="text-base font-black text-text-main leading-relaxed whitespace-normal break-words">{{ entry.description || entry.notes }}</p>
                       <div class="flex items-center flex-wrap gap-2 mt-1">
                         <span v-if="entry.status" 
                           class="text-sm px-2.5 py-1 rounded-lg font-black uppercase"
@@ -564,6 +564,7 @@
                             <p v-if="entry.booking_details?.pnr || entry.booking?.pnr"><span class="font-black text-text-muted">PNR:</span> <span class="font-mono text-sky-400 font-bold">{{ entry.booking_details?.pnr || entry.booking?.pnr }}</span></p>
                             <p v-if="entry.booking_details?.ticket_number || entry.booking?.ticket_number"><span class="font-black text-text-muted">رقم التذكرة:</span> <span class="font-mono text-white">{{ entry.booking_details?.ticket_number || entry.booking?.ticket_number }}</span></p>
                             <p v-if="entry.booking_details?.route || entry.booking?.route"><span class="font-black text-text-muted">خط السير:</span> <span class="text-white font-bold">{{ entry.booking_details?.route || entry.booking?.route }}</span></p>
+                            <p v-if="entry.booking_details?.travel_date"><span class="font-black text-text-muted">تاريخ الرحلة:</span> <span class="text-white font-bold">{{ entry.booking_details.travel_date }}</span></p>
                             <p v-if="entry.booking_details?.passengers || entry.booking?.passengers"><span class="font-black text-text-muted block mb-0.5">المسافرين:</span> <span class="text-white font-medium block">{{ entry.booking_details?.passengers || entry.booking?.passengers }}</span></p>
                             <p v-if="entry.booking_details?.flight_number || entry.booking?.flight_number"><span class="font-black text-text-muted">رقم الرحلة:</span> <span class="font-mono text-white">{{ entry.booking_details?.flight_number || entry.booking?.flight_number }}</span></p>
                             <p v-if="entry.booking_details?.provider_name || entry.booking_details?.airline"><span class="font-black text-text-muted">المزود / الطيران:</span> <span class="text-gold font-bold">{{ entry.booking_details?.provider_name || entry.booking_details?.airline }}</span></p>

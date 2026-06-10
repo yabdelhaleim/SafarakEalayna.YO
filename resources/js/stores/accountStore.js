@@ -59,6 +59,8 @@ export const useAccountStore = defineStore('account', () => {
     try {
       const query = {
         per_page: 100,
+        types: 'cashbox,wallet,bank,treasury,post',
+        is_active: 1,
         _t: Date.now(),
         ...params,
       }

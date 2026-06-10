@@ -45,7 +45,7 @@ class BusBookingFlowTest extends TestCase
             'name' => 'Test cashbox',
             'type' => 'cashbox',
             'currency' => 'EGP',
-            'balance' => 0,
+            'balance' => 5000,
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'bus',
@@ -78,7 +78,7 @@ class BusBookingFlowTest extends TestCase
         Sanctum::actingAs($this->user, ['*']);
     }
 
-    public function test_can_create_booking_cancel_without_payment_and_cannot_cancel_after_payment(): void
+    public function test_can_cancel_credit_booking_without_payment(): void
     {
         $create = $this->postJson('/api/v1/bus/bookings', [
             'inventory_id' => $this->inventory->id,
@@ -91,29 +91,87 @@ class BusBookingFlowTest extends TestCase
         $bookingId = $create->json('data.id');
         $this->assertNotNull($bookingId);
 
-        $cancel = $this->postJson("/api/v1/bus/bookings/{$bookingId}/cancel");
+        $cancel = $this->postJson("/api/v1/bus/bookings/{$bookingId}/cancel", [
+            'company_penalty' => 0,
+            'office_penalty' => 0,
+        ]);
         $cancel->assertOk();
         $cancel->assertJsonPath('data.status', 'cancelled');
+    }
 
-        $booking2 = $this->postJson('/api/v1/bus/bookings', [
+    public function test_cancel_credit_booking_with_penalties_adjusts_company_and_customer_debt(): void
+    {
+        $company = $this->inventory->company()->with('account')->first();
+        app(\App\Services\Bus\BusCompanyService::class)->ensureCompanyAccount($company);
+        $company->refresh();
+
+        $create = $this->postJson('/api/v1/bus/bookings', [
             'inventory_id' => $this->inventory->id,
-            'customer_name' => 'عميل ثانٍ',
-            'customer_phone' => '01002223344',
+            'customer_name' => 'عميل آجل',
+            'customer_phone' => '01005556677',
+            'quantity' => 2,
+        ]);
+        $create->assertCreated();
+        $bookingId = $create->json('data.id');
+
+        $companyBalanceBefore = (float) $company->fresh()->account->balance;
+        $this->assertEquals(-100.0, $companyBalanceBefore);
+
+        $cancel = $this->postJson("/api/v1/bus/bookings/{$bookingId}/cancel", [
+            'company_penalty' => 20,
+            'office_penalty' => 30,
+        ]);
+        $cancel->assertOk();
+        $cancel->assertJsonPath('data.status', 'partially_refunded');
+        $cancel->assertJsonPath('data.refund.company_penalty', 20);
+        $cancel->assertJsonPath('data.refund.office_penalty', 30);
+        $cancel->assertJsonPath('data.refund.refund_amount', 0);
+
+        $company->refresh();
+        // كان -100، يُخفَّض بـ (100 - 20) = 80 → يصبح -20
+        $this->assertEquals(-20.0, (float) $company->account->balance);
+
+        $this->assertDatabaseHas('bus_refund_requests', [
+            'bus_booking_id' => $bookingId,
+            'company_penalty' => 20,
+            'office_penalty' => 30,
+            'refund_amount' => 0,
+            'status' => 'processed',
+        ]);
+    }
+
+    public function test_cancel_paid_booking_refunds_customer_cash_minus_penalties(): void
+    {
+        $create = $this->postJson('/api/v1/bus/bookings', [
+            'inventory_id' => $this->inventory->id,
+            'customer_name' => 'عميل دافع',
+            'customer_phone' => '01006667788',
             'quantity' => 1,
         ]);
-        $booking2->assertCreated();
-        $id2 = $booking2->json('data.id');
+        $create->assertCreated();
+        $bookingId = $create->json('data.id');
 
-        $pay = $this->postJson("/api/v1/bus/bookings/{$id2}/pay", [
+        $pay = $this->postJson("/api/v1/bus/bookings/{$bookingId}/pay", [
             'amount' => 100,
             'payment_method' => 'cash',
             'account_id' => $this->account->id,
         ]);
         $pay->assertOk();
 
-        $cancelPaid = $this->postJson("/api/v1/bus/bookings/{$id2}/cancel");
-        $cancelPaid->assertStatus(422);
-        $this->assertStringContainsString('payments', strtolower($cancelPaid->json('message')));
+        $treasuryBefore = (float) $this->account->fresh()->balance;
+
+        $cancel = $this->postJson("/api/v1/bus/bookings/{$bookingId}/cancel", [
+            'company_penalty' => 10,
+            'office_penalty' => 15,
+            'account_id' => $this->account->id,
+        ]);
+        $cancel->assertOk();
+        $cancel->assertJsonPath('data.status', 'refunded');
+        $cancel->assertJsonPath('data.refund.refund_amount', 75);
+
+        $this->account->refresh();
+        // دفع 100 ثم استرداد 75
+        $this->assertEquals($treasuryBefore - 75.0, (float) $this->account->balance);
     }
 
     public function test_payment_amount_cannot_exceed_remaining(): void

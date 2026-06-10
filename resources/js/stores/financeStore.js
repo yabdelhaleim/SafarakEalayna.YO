@@ -183,7 +183,13 @@ export const useFinanceStore = defineStore('finance', {
 
       try {
         const response = await axios.get('/api/v1/finance/accounts', {
-          params: { per_page: 100, ...params },
+          params: {
+            per_page: 100,
+            types: 'cashbox,wallet,bank,treasury,post',
+            is_active: 1,
+            _t: Date.now(),
+            ...params,
+          },
           signal: controller.signal,
         });
         const responseData = response.data?.data || response.data;

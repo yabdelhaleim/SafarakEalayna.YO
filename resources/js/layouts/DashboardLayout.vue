@@ -350,13 +350,18 @@
         </div>
         <router-view v-else v-slot="{ Component }">
           <transition name="t-page">
-            <keep-alive :max="20" exclude="EmployeesAttendance">
+            <keep-alive v-if="!route.meta.noKeepAlive" :max="20" exclude="EmployeesAttendance">
               <component
                 v-if="Component"
                 :is="Component"
                 :key="route.fullPath"
               />
             </keep-alive>
+            <component
+              v-else-if="Component"
+              :is="Component"
+              :key="route.fullPath"
+            />
           </transition>
         </router-view>
       </main>

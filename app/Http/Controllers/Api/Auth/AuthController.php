@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -56,9 +57,9 @@ class AuthController extends Controller
             return ApiResponse::error('الحساب غير نشط', null, Response::HTTP_UNAUTHORIZED);
         }
 
-        // إبطال توكنات تسجيل الدخول السابقة فقط (لا تمسّح توكنات أجهزة/تطبيقات أخرى بأسماء مختلفة)
-        $user->tokens()->where('name', 'auth-token')->delete();
-        $token = $user->createToken('auth-token')->plainTextToken;
+        // توكن مستقل لكل جهاز/جلسة — لا نحذف جلسات أخرى (نفس المستخدم أو مستخدمين مختلفين)
+        $tokenName = 'auth-token-' . Str::uuid();
+        $token = $user->createToken($tokenName)->plainTextToken;
 
         $expirationMinutes = config('sanctum.expiration');
 
@@ -78,11 +79,13 @@ class AuthController extends Controller
         $user = $request->user();
         $current = $user->currentAccessToken();
 
+        $tokenName = $current?->name ?? ('auth-token-' . Str::uuid());
+
         if ($current) {
             $user->tokens()->where('id', $current->id)->delete();
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $user->createToken($tokenName)->plainTextToken;
         $expirationMinutes = config('sanctum.expiration');
 
         return ApiResponse::success('تم تجديد الجلسة بنجاح', [

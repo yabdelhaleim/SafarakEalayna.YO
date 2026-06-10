@@ -168,6 +168,7 @@ class HajjUmraController extends Controller
             }
 
             $customer = Customer::findOrFail($clientId);
+            $resolver = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class);
 
             $items = [];
 
@@ -186,7 +187,7 @@ class HajjUmraController extends Controller
                     'type_label' => 'حجز برنامج',
                     'debit' => $totalSelling,
                     'credit' => 0.0,
-                    'description' => 'حجز برنامج: '.($b->program?->program_name ?? '—')." (حجز #{$b->id})",
+                    'description' => $resolver->forHajjUmraBooking($b),
                     'employee' => $b->createdBy?->name ?? '—',
                 ];
 
@@ -198,7 +199,7 @@ class HajjUmraController extends Controller
                         'type_label' => 'سداد دفعة',
                         'debit' => 0.0,
                         'credit' => (float) $p->amount,
-                        'description' => "دفعة نقدية لحجز #{$b->id} (طريقة: ".($p->payment_method_label ?? $p->payment_method).')',
+                        'description' => 'سداد دفعة — '.$resolver->forHajjUmraBooking($b).' (طريقة: '.($p->payment_method_label ?? $p->payment_method).')',
                         'employee' => $p->createdBy?->name ?? '—',
                     ];
                 }
@@ -213,7 +214,14 @@ class HajjUmraController extends Controller
                     ->toArray();
                 $excludedTxIds = array_merge($paymentTxIds, $bookingTxIds);
 
-                $entries = AccountEntry::with(['transaction.createdBy'])
+                $entries = AccountEntry::with([
+                    'transaction.createdBy',
+                    'transaction.related' => function ($morph) {
+                        $morph->morphWith([
+                            HajjUmraBooking::class => ['customer', 'program'],
+                        ]);
+                    },
+                ])
                     ->where('account_id', $customer->account_id)
                     ->whereHas('transaction', function ($q) use ($excludedTxIds) {
                         $q->where('module', 'hajj_umra');
@@ -242,7 +250,7 @@ class HajjUmraController extends Controller
                         'type_label' => $isReceipt ? 'سند قبض' : 'سند صرف',
                         'debit' => $statementDebit,
                         'credit' => $statementCredit,
-                        'description' => $tx->notes ?: ($isReceipt ? 'سداد مديونية عام' : 'صرف للعميل'),
+                        'description' => $resolver->resolve($entry),
                         'employee' => $tx->createdBy?->name ?? '—',
                     ];
                 }

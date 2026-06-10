@@ -15,8 +15,8 @@ class ConcurrentSessionTest extends TestCase
         $user1 = User::factory()->create();
         $user2 = User::factory()->create();
 
-        $response1 = $this->actingAs($user1)->get('/api/user');
-        $response2 = $this->actingAs($user2)->get('/api/user');
+        $response1 = $this->actingAs($user1, 'sanctum')->get('/api/user');
+        $response2 = $this->actingAs($user2, 'sanctum')->get('/api/user');
 
         $response1->assertStatus(200);
         $response2->assertStatus(200);
@@ -37,13 +37,13 @@ class ConcurrentSessionTest extends TestCase
         $user2 = User::factory()->create();
 
         // user1 بيعمل requests متعددة
-        $this->actingAs($user1)->getJson('/api/user')->assertStatus(200);
-        $this->actingAs($user1)->getJson('/api/user')->assertStatus(200);
+        $this->actingAs($user1, 'sanctum')->getJson('/api/user')->assertStatus(200);
+        $this->actingAs($user1, 'sanctum')->getJson('/api/user')->assertStatus(200);
 
         // user2 يشتغل في نفس الوقت
-        $this->actingAs($user2)->getJson('/api/user')->assertStatus(200);
+        $this->actingAs($user2, 'sanctum')->getJson('/api/user')->assertStatus(200);
 
         // user1 لسه شغال
-        $this->actingAs($user1)->getJson('/api/user')->assertStatus(200);
+        $this->actingAs($user1, 'sanctum')->getJson('/api/user')->assertStatus(200);
     }
 }

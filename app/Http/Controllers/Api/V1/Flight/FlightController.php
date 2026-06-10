@@ -297,7 +297,7 @@ class FlightController extends Controller
             ]);
 
             return ApiResponse::success(
-                'Booking cancelled and refund processed successfully.',
+                'تم إلغاء الحجز وتسجيل الاسترداد بنجاح.',
                 new FlightBookingResource($flightBooking)
             );
         } catch (\Exception $e) {

@@ -1139,6 +1139,7 @@ import {
 } from 'lucide-vue-next';
 import { useDebounceFn } from '@vueuse/core';
 import axios from 'axios';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 
 const store = useCustomerStore();
 
@@ -1624,18 +1625,10 @@ const printStatement = () => {
 // ——————————————————
 const fetchActiveAccounts = async () => {
   try {
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: { per_page: 100, types: 'cashbox,wallet,bank,treasury,post', is_active: 1, module: 'flight' }
-    });
-    let raw = res.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) raw = raw.items;
-      else if (Array.isArray(raw.items?.data)) raw = raw.items.data;
-      else if (Array.isArray(raw.data)) raw = raw.data;
-    }
-    activeAccounts.value = Array.isArray(raw) ? raw : [];
+    activeAccounts.value = await fetchSettlementAccounts(axios, { module: 'flight' });
   } catch (error) {
     console.error('Failed to load accounts', error);
+    activeAccounts.value = [];
   }
 };
 

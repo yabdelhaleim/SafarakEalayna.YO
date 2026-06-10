@@ -13,13 +13,13 @@ class StoreCustomerRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        $rules = [
             'full_name' => 'required|string|max:100',
             'phone' => 'required|string|max:20|unique:customers,phone',
             'national_id' => 'nullable|string|max:20|unique:customers,national_id',
             'passport_number' => 'nullable|string|max:20',
             'passport_expiry' => 'nullable|date',
-            'date_of_birth' => 'nullable|date',
+            'date_of_birth' => 'nullable|date|before:today',
             'city' => 'nullable|string|max:100',
             'affiliation' => 'nullable|string|max:100',
             'customer_tier' => 'nullable|in:STANDARD,PREMIUM',
@@ -28,6 +28,18 @@ class StoreCustomerRequest extends FormRequest
             'whatsapp_number' => 'nullable|string|max:50',
             'travel_country' => 'nullable|string|max:100',
         ];
+
+        if (! $this->isCompanyCustomer()) {
+            $rules['national_id'] = 'required|string|max:20|unique:customers,national_id';
+            $rules['travel_country'] = 'required|string|max:100';
+        }
+
+        return $rules;
+    }
+
+    protected function isCompanyCustomer(): bool
+    {
+        return in_array($this->input('type'), ['counter', 'company'], true);
     }
 
     public function messages(): array

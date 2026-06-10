@@ -68,11 +68,68 @@ export const ACCOUNT_TYPE_LABELS = {
 
 const TREASURY_TYPES = new Set(['cashbox', 'wallet', 'bank', 'treasury', 'post']);
 
+export const SETTLEMENT_ACCOUNT_TYPES = 'cashbox,wallet,bank,treasury,post';
+
 export function unwrapAccountItems(payload) {
   if (Array.isArray(payload)) return payload;
   if (payload?.items && Array.isArray(payload.items)) return payload.items;
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
+}
+
+export function unwrapAccountsApiResponse(response) {
+  return unwrapAccountItems(response?.data?.data ?? response?.data);
+}
+
+/** Normalize wallet_provider / wallet type codes for matching (Filament ↔ wallet_types). */
+export function normalizeWalletProviderCode(raw) {
+  if (raw == null || raw === '') return '';
+  return String(raw?.value ?? raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+export function accountMatchesWalletType(account, walletType) {
+  if (!walletType?.code) return true;
+  const provider = normalizeWalletProviderCode(account?.wallet_provider);
+  const code = normalizeWalletProviderCode(walletType.code);
+  if (!provider) return false;
+  return provider === code;
+}
+
+/** Liquidity accounts for settlements; retries without module when module filter returns none. */
+export async function fetchSettlementAccounts(httpClient, options = {}) {
+  const {
+    module = null,
+    includePost = true,
+    isActive = 1,
+  } = options;
+
+  const types = includePost
+    ? SETTLEMENT_ACCOUNT_TYPES
+    : 'cashbox,wallet,bank,treasury';
+
+  const baseParams = {
+    per_page: 100,
+    types,
+    is_active: isActive,
+    _t: Date.now(),
+  };
+
+  const fetchList = async (params) => {
+    const res = await httpClient.get('/api/v1/finance/accounts', { params });
+    return unwrapAccountsApiResponse(res);
+  };
+
+  if (module) {
+    const scoped = await fetchList({ ...baseParams, module });
+    if (scoped.length > 0) {
+      return scoped;
+    }
+  }
+
+  return fetchList(baseParams);
 }
 
 export function formatAccountType(type) {

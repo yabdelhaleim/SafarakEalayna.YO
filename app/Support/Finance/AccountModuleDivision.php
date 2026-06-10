@@ -69,6 +69,33 @@ final class AccountModuleDivision
         };
     }
 
+    /** @return array<string, string> */
+    public static function moduleTypeOptions(): array
+    {
+        return [
+            'general' => self::moduleLabel('general'),
+            'office' => self::moduleLabel('office'),
+            'flights' => self::moduleLabel('flights'),
+            'bus' => self::moduleLabel('bus'),
+            'hajj_umra' => self::moduleLabel('hajj_umra'),
+            'visas' => self::moduleLabel('visas'),
+            'fawry' => self::moduleLabel('fawry'),
+            'online' => self::moduleLabel('online'),
+            'wallet_transfer' => self::moduleLabel('wallet_transfer'),
+            'tourism' => self::moduleLabel('tourism'),
+        ];
+    }
+
+    /** Legacy `accounts.module` column value for API/Vue compatibility. */
+    public static function legacyModuleColumn(string $moduleType): string
+    {
+        return match ($moduleType) {
+            'flights' => 'flight',
+            'visas' => 'visa',
+            default => $moduleType,
+        };
+    }
+
     public static function applyModuleFilter(Builder $query, string $module): void
     {
         if ($module === 'general') {

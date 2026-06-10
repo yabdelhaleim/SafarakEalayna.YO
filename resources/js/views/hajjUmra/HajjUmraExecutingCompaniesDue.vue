@@ -244,6 +244,7 @@ import {
   Wallet,
 } from 'lucide-vue-next';
 import axios from 'axios';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 
 const store = useHajjUmraStore();
 
@@ -263,14 +264,7 @@ const totalNetDue = computed(() => {
 const loadData = async () => {
   try {
     await store.fetchExecutingCompaniesDues();
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: {
-        per_page: 100,
-        is_active: 1,
-        module: 'hajj_umra'
-      }
-    });
-    accounts.value = res.data?.data?.items ?? res.data?.data ?? [];
+    accounts.value = await fetchSettlementAccounts(axios, { module: 'hajj_umra' });
   } catch (e) {
     console.error('Failed to load executing companies dues', e);
   }

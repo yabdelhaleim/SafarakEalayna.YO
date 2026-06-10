@@ -41,7 +41,7 @@ class VisaBankAccountResource extends Resource
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
     {
-        return AccountFormSchema::configure($schema, AccountType::Bank);
+        return AccountFormSchema::configure($schema, AccountType::Bank, 'visas');
     }
 
     public static function table(Table $table): Table

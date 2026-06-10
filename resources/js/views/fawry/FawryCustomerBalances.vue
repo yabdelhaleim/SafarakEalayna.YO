@@ -527,6 +527,7 @@ import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
 const printSettingsStore = usePrintSettingsStore();
 import { useFawryStore } from '@/stores/fawryStore';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   Download,
   Search,
@@ -699,28 +700,10 @@ const roundMoney = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const loadAccounts = async () => {
   try {
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: {
-        per_page: 100,
-        types: 'cashbox,wallet,bank,treasury,post',
-        is_active: 1,
-        module: 'fawry',
-        _t: Date.now(),
-      },
-    });
-    let raw = res.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (raw.data) {
-        raw = raw.data;
-      }
-    }
-    fawryAccounts.value = Array.isArray(raw) ? raw : [];
+    fawryAccounts.value = await fetchSettlementAccounts(axios, { module: 'fawry' });
   } catch (e) {
     console.error('Failed to load fawry accounts:', e);
+    fawryAccounts.value = [];
   }
 };
 

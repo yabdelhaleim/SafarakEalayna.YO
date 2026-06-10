@@ -77,8 +77,54 @@ class TreasuryOverviewTest extends TestCase
         $this->assertContains($visaWallet->id, $visaIds);
         $this->assertSame('tourism', $modules['visas']['category']);
 
-        $this->assertSame(2, (int) $response->json('data.stats.accounts_count'));
-        $this->assertSame(560.0, (float) $response->json('data.stats.total_liquidity'));
+        $this->assertSame(360.0, (float) $response->json('data.stats.by_category.tourism.total_wallets'));
+        $this->assertSame(200.0, (float) $response->json('data.stats.by_category.office.total_cashbox'));
+        $this->assertIsArray($response->json('data.unified_by_category.tourism'));
+        $this->assertIsArray($response->json('data.unified_by_category.office'));
+    }
+
+    public function test_treasury_overview_unifies_same_bank_across_modules(): void
+    {
+        Account::query()->create([
+            'name' => 'بنك مصر — طيران',
+            'type' => AccountType::Bank,
+            'balance' => 1000,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+        ]);
+
+        Account::query()->create([
+            'name' => 'بنك مصر — حج',
+            'type' => AccountType::Bank,
+            'balance' => 500,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'hajj_umra',
+        ]);
+
+        Account::query()->create([
+            'name' => 'بنك مصر — تأشيرات',
+            'type' => AccountType::Bank,
+            'balance' => 300,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'visas',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/treasuries/get-overview');
+
+        $response->assertOk();
+        $this->assertSame(1800.0, (float) $response->json('data.stats.by_category.tourism.total_banks'));
+
+        $unified = collect($response->json('data.unified_by_category.tourism'));
+        $misr = $unified->first(fn (array $g) => $g['type'] === 'bank' && $g['total_balance'] == 1800.0);
+        $this->assertNotNull($misr);
+        $this->assertCount(3, $misr['modules']);
+        $this->assertSame(0, count($response->json('data.unified_by_category.office')));
     }
 
     public function test_get_module_accounts_resolves_visa_aliases(): void

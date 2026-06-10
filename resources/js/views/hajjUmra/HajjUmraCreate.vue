@@ -551,7 +551,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue';
+import { ref, computed, onMounted, onActivated, h } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
@@ -587,38 +587,67 @@ const settlementCategoryChips = [
   { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
 ];
 
-const passengers = ref([
-  { category: 'adult', label: 'بالغ', count: 0, unit_price: 0, subtotal: 0 },
-  { category: 'child_with_bed', label: 'طفل بسرير', count: 0, unit_price: 0, subtotal: 0 },
-  { category: 'child_no_bed', label: 'طفل بدون سرير', count: 0, unit_price: 0, subtotal: 0 },
-  { category: 'infant', label: 'رضيع', count: 0, unit_price: 0, subtotal: 0 }
-]);
+function defaultPassengers() {
+  return [
+    { category: 'adult', label: 'بالغ', count: 0, unit_price: 0, subtotal: 0 },
+    { category: 'child_with_bed', label: 'طفل بسرير', count: 0, unit_price: 0, subtotal: 0 },
+    { category: 'child_no_bed', label: 'طفل بدون سرير', count: 0, unit_price: 0, subtotal: 0 },
+    { category: 'infant', label: 'رضيع', count: 0, unit_price: 0, subtotal: 0 },
+  ];
+}
 
-const form = ref({
-  customer: null,
-  program_id: null,
-  companion_customer_id: null,
-  supplier_id: null,
-  purchase_price: 0,
-  companion_purchase_price: 0,
-  selling_price: 0,
-  companion_selling_price: 0,
-  currency: 'EGP',
-  per_person: true,
-  accommodation_choice: 'standard',
-  accommodation_extra_charge: 0,
-  status: 'confirmed',
-  account_id: null,
-  agent_name: '',
-  notes: '',
-  initial_payment: {
-    amount: 0,
-    payment_method: 'cash',
-    payment_date: new Date().toISOString().split('T')[0],
-    reference: '',
-    paid_by: '',
-  },
-});
+function createDefaultForm() {
+  return {
+    customer: null,
+    program_id: null,
+    companion_customer_id: null,
+    supplier_id: null,
+    purchase_price: 0,
+    companion_purchase_price: 0,
+    selling_price: 0,
+    companion_selling_price: 0,
+    currency: 'EGP',
+    per_person: true,
+    accommodation_choice: 'standard',
+    accommodation_extra_charge: 0,
+    status: 'confirmed',
+    account_id: null,
+    agent_name: '',
+    notes: '',
+    initial_payment: {
+      amount: 0,
+      payment_method: 'cash',
+      payment_date: new Date().toISOString().split('T')[0],
+      reference: '',
+      paid_by: '',
+    },
+  };
+}
+
+const passengers = ref(defaultPassengers());
+
+const form = ref(createDefaultForm());
+
+function resetBookingForm() {
+  currentStep.value = 1;
+  isSaving.value = false;
+  customerSearch.value = '';
+  companionSearch.value = '';
+  showNewCustomerForm.value = false;
+  needsCompanion.value = false;
+  addPayment.value = false;
+  searchResults.value = [];
+  loadingCustomers.value = false;
+  showDropdown.value = false;
+  companionSearchResults.value = [];
+  loadingCompanion.value = false;
+  showCompanionDropdown.value = false;
+  selectedCompanionObject.value = null;
+  settlementCategoryUi.value = 'cash';
+  passengers.value = defaultPassengers();
+  form.value = createDefaultForm();
+  newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '' };
+}
 
 const steps = [
   { id: 1, title: 'العميل', label: 'اختيار العميل' },
@@ -937,11 +966,16 @@ async function saveBooking() {
 }
 
 onMounted(async () => {
+  resetBookingForm();
   await Promise.all([
     store.fetchSettings(), 
     store.fetchAccounts({ types: 'cashbox,wallet,bank,treasury,post' }),
     store.fetchSuppliers(),
   ]);
+});
+
+onActivated(() => {
+  resetBookingForm();
 });
 
 const Field = (props) =>

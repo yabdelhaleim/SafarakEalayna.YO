@@ -284,7 +284,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onActivated, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ArrowRight,
@@ -320,6 +320,10 @@ const initialForm = () => ({
 });
 
 const form = ref(initialForm());
+
+function resetForm() {
+  form.value = initialForm();
+}
 
 const profit = computed(() => {
   const purchase = Number(form.value.purchase_price) || 0;
@@ -430,11 +434,17 @@ watch(
 );
 
 onMounted(async () => {
+  resetForm();
   await Promise.all([
     store.fetchAllSettings(),
     store.fetchCustomers(),
     store.fetchEmployees(),
   ]);
+  applyDefaultsFromApi();
+});
+
+onActivated(() => {
+  resetForm();
   applyDefaultsFromApi();
 });
 </script>

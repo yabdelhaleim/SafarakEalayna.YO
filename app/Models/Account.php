@@ -92,10 +92,15 @@ class Account extends Model
         });
 
         static::deleting(function (Account $account): void {
-            if ($account->balance != 0 || $account->entries()->exists()) {
+            if (! $account->canBeDeleted()) {
                 throw new \RuntimeException('لا يمكن حذف حساب مالي يحتوي على حركات أو رصيد. يرجى إيقاف تنشيطه بدلاً من ذلك.');
             }
         });
+    }
+
+    public function canBeDeleted(): bool
+    {
+        return (float) $this->balance === 0.0 && ! $this->entries()->exists();
     }
 
     public function walletProviderLabel(): string

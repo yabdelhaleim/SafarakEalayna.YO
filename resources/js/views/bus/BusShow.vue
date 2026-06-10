@@ -344,27 +344,15 @@
             طباعة
           </button>
           <button
-            v-if="booking.status !== 'cancelled' && !booking.payments?.length"
-            type="button"
-            class="flex-1 rounded-xl border border-error/40 bg-error/10 px-4 py-3 font-bold text-error transition hover:bg-error/20 sm:flex-none"
-            @click="confirmCancel"
-          >
-            <XCircle class="mb-0.5 ml-2 inline h-4 w-4" />
-            إلغاء الحجز
-          </button>
-          <button
-            v-if="booking.status !== 'cancelled' && booking.status !== 'refunded'"
+            v-if="booking.status !== 'cancelled' && booking.status !== 'refunded' && booking.status !== 'partially_refunded'"
             type="button"
             class="flex-1 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 font-bold text-gold transition hover:bg-gold/20 sm:flex-none"
             @click="showRefundModal = true"
           >
             <RotateCcw class="mb-0.5 ml-2 inline h-4 w-4" />
-            استرجاع مالي
+            إلغاء / استرداد
           </button>
         </div>
-        <p v-if="booking.payments?.length && booking.status !== 'cancelled' && booking.status !== 'refunded'" class="mt-3 text-xs text-text-muted">
-          لا يمكن إلغاء الحجز بعد تسجيل دفعات؛ تعديل مالي يتم من الإدارة.
-        </p>
       </div>
     </template>
 
@@ -520,13 +508,13 @@ import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
   Loader2,
   MapPin,
   CreditCard,
   Printer,
-  XCircle,
   RotateCcw,
   BusFront,
   Banknote,
@@ -663,25 +651,10 @@ const filteredAccounts = computed(() => {
 
 const loadAccounts = async () => {
   try {
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: { 
-        per_page: 100, 
-        types: 'cashbox,wallet,bank,treasury', 
-        is_active: 1,
-        module: 'bus'
-      },
+    settlementAccounts.value = await fetchSettlementAccounts(axios, {
+      module: 'bus',
+      includePost: false,
     });
-    let raw = res.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (Array.isArray(raw.data)) {
-        raw = raw.data;
-      }
-    }
-    settlementAccounts.value = Array.isArray(raw) ? raw : [];
   } catch (e) {
     console.error(e);
     settlementAccounts.value = [];
@@ -766,17 +739,6 @@ const runPrintJob = async () => {
   }, 120_000);
 
   window.print();
-};
-
-const confirmCancel = async () => {
-  if (!confirm(`إلغاء حجز #${booking.value?.booking_number}؟`)) return;
-  try {
-    await store.cancelBooking(booking.value.id);
-    store.addToast('تم إلغاء الحجز');
-    await load();
-  } catch {
-    store.addToast(store.errors?.message || 'فشل الإلغاء', 'error');
-  }
 };
 
 const onRefundCompleted = async () => {

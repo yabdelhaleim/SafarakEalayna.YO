@@ -23,6 +23,7 @@ use App\Models\Flight\FlightTicket;
 use App\Models\Setting\Currency;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryLedgerMirror;
 use App\Services\Treasury\TreasuryService;
@@ -320,9 +321,12 @@ class FlightBookingService
                     );
                 }
 
-                // Step 5: Always record sale on customer ledger (Debt)
-                // This ensures the customer is debited for the full amount.
-                // Any subsequent payment will reduce this balance.
+                // Step 5: Create passengers (before ledger sale so statement descriptions include them)
+                if (isset($data['passengers']) && is_array($data['passengers'])) {
+                    $this->createPassengers($booking, $data['passengers']);
+                }
+
+                // Step 6: Always record sale on customer ledger (Debt)
                 $this->recordSaleToCustomer(
                     $booking,
                     (int) $data['customer_id'],
@@ -330,11 +334,6 @@ class FlightBookingService
                     $userId,
                     $data['passengers'] ?? []
                 );
-
-                // Step 6: Create passengers
-                if (isset($data['passengers']) && is_array($data['passengers'])) {
-                    $this->createPassengers($booking, $data['passengers']);
-                }
 
                 // Step 7: Tickets (after passengers so lines can link to passenger_id)
                 $this->createFlightTickets($booking);
@@ -1539,6 +1538,10 @@ class FlightBookingService
                 $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
+                if ($totalPaid > 0.001 && $airlinePenalty + $officePenalty > $totalPaid + 0.001) {
+                    throw new \InvalidArgumentException('مجموع خصم الطيران وعمولة الإلغاء لا يمكن أن يتجاوز المبلغ المدفوع من العميل.');
+                }
+
                 $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
                 if ($refundAmount < 0) {
                     $refundAmount = 0;
@@ -1600,6 +1603,10 @@ class FlightBookingService
                     } else {
                         $this->reverseFlightBookingSaleLedger($booking, $userId);
                     }
+                }
+
+                if ($refundAmount > 0 && empty($data['account_id'])) {
+                    throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
                 }
 
                 // Step 4: Cash refund from treasury (recorded payments)
@@ -1909,25 +1916,8 @@ class FlightBookingService
             return;
         }
 
-        $passengerNames = collect($passengers)
-            ->map(function ($p) {
-                $first = trim((string) ($p['first_name'] ?? ''));
-                $last = trim((string) ($p['last_name'] ?? ''));
-                $full = trim($first.' '.$last);
-
-                return $full !== '' ? $full : trim((string) ($p['name'] ?? ''));
-            })
-            ->filter()
-            ->unique()
-            ->implode('، ');
-
-        $notes = 'بيع تذكرة طيران (مديونية) — حجز #'.$booking->booking_number;
-        if ($booking->pnr) {
-            $notes .= ' — PNR: '.$booking->pnr;
-        }
-        if ($passengerNames !== '') {
-            $notes .= ' — مسافر: '.$passengerNames;
-        }
+        $booking->loadMissing(['customer', 'passengers', 'fromAirport', 'toAirport']);
+        $notes = app(LedgerEntryDescriptionResolver::class)->forFlightBooking($booking);
 
         $tx = $this->transactionService->recordJournalTransfer([
             'amount' => $sellingPrice,

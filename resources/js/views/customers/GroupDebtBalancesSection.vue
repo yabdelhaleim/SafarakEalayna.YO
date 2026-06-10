@@ -231,7 +231,7 @@
                       {{ item.debit > 0 ? 'شراء بالأجل' : 'سداد' }}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-white max-w-[180px] truncate" :title="item.description">{{ item.description }}</td>
+                  <td class="px-4 py-3 text-white max-w-md whitespace-normal break-words leading-relaxed">{{ item.description }}</td>
                   <td class="px-4 py-3 font-mono text-error">{{ item.debit > 0 ? formatMoney(item.debit) : '—' }}</td>
                   <td class="px-4 py-3 font-mono text-success">{{ item.credit > 0 ? formatMoney(item.credit) : '—' }}</td>
                   <td class="px-4 py-3 font-mono font-bold text-gold">{{ formatMoney(item.balance_after) }}</td>
@@ -541,7 +541,7 @@ async function openStatement(row) {
         const isDebt = tx.type === 'debt';
         return {
           created_at: tx.created_at,
-          description: tx.notes || (isDebt ? `شراء — ${tx.booking?.booking_number || ''}` : 'سداد للمجموعة'),
+          description: tx.description || tx.notes || (isDebt ? `شراء — ${tx.booking?.booking_number || ''}` : 'سداد للمجموعة'),
           debit: isDebt ? parseFloat(tx.amount) : 0,
           credit: isDebt ? 0 : parseFloat(tx.amount),
         };

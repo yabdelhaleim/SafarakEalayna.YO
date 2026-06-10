@@ -236,6 +236,11 @@ class OnlineTransactionController extends Controller
                     'transaction.createdBy',
                     'transaction.fromAccount',
                     'transaction.toAccount',
+                    'transaction.related' => function ($morph) {
+                        $morph->morphWith([
+                            \App\Models\Online\OnlineTransaction::class => ['serviceType', 'provider'],
+                        ]);
+                    },
                 ])
                     ->where('account_id', $customerAccount->id)
                     ->whereHas('transaction', function ($q) {
@@ -258,7 +263,7 @@ class OnlineTransactionController extends Controller
 
                     $running += ($credit - $debit);
 
-                    $description = $tx->notes ?: 'معاملة مالية خدمات أونلاين';
+                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)
                         ? $tx->toAccount

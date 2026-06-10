@@ -427,6 +427,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   Plus,
   Route,
@@ -561,20 +562,10 @@ const travelDateInput = (raw) => {
 const fetchFinanceAccounts = async () => {
   loadingAccounts.value = true;
   try {
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: { per_page: 100, types: 'cashbox,wallet,bank,treasury', is_active: 1 },
+    financeAccounts.value = await fetchSettlementAccounts(axios, {
+      module: 'bus',
+      includePost: false,
     });
-    let raw = res.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (Array.isArray(raw.data)) {
-        raw = raw.data;
-      }
-    }
-    financeAccounts.value = Array.isArray(raw) ? raw : [];
   } catch {
     financeAccounts.value = [];
   } finally {

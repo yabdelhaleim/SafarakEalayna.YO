@@ -466,6 +466,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useBusStore } from '@/stores/busStore';
 import { useDebounceFn } from '@vueuse/core';
 import axios from 'axios';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   Plus, Search, Bus, CheckCircle, Clock, DollarSign,
   MapPin, ArrowRight, Users, Eye, CreditCard, XCircle,
@@ -500,20 +501,7 @@ const filteredAccounts = computed(() => {
 const fetchAccounts = async () => {
   loadingAccounts.value = true;
   try {
-    const response = await axios.get('/api/v1/finance/accounts', {
-      params: { per_page: 100, types: 'cashbox,wallet,bank,treasury', is_active: 1, module: 'bus' },
-    });
-    let raw = response.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (Array.isArray(raw.data)) {
-        raw = raw.data;
-      }
-    }
-    accounts.value = Array.isArray(raw) ? raw : [];
+    accounts.value = await fetchSettlementAccounts(axios, { module: 'bus', includePost: false });
   } catch (error) {
     console.error('Failed to fetch accounts:', error);
     accounts.value = [];

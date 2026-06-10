@@ -101,8 +101,18 @@
           <label class="block text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
             المحافظ المتاحة (رقم المحفظة والرصيد) <span class="text-error">*</span>
           </label>
-          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400">
-            ⚠️ لا توجد محافظ مسجلة في لوحة التحكم لهذا النوع حالياً.
+          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400 space-y-1">
+            <p>⚠️ لا توجد محافظ مسجلة في Filament (المحافظ والتحويلات) لهذا النوع.</p>
+            <p v-if="walletAccounts.length > 0">
+              يوجد {{ walletAccounts.length }} محفظة في القسم لكن «نوع المحفظة» في Filament لا يطابق
+              <strong class="text-gold">{{ selectedWalletType?.name }}</strong>
+              (المطلوب: <code class="font-mono">{{ selectedWalletType?.code }}</code>).
+            </p>
+            <p v-else>
+              أنشئ محفظة من
+              <span class="text-gold">/admin/transfer-accounts/transfer-wallets</span>
+              واختر نوع المحفظة (مثل فودافون كاش) مع رقم المحفظة.
+            </p>
           </div>
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <button
@@ -315,6 +325,9 @@
               </option>
             </select>
             <p v-if="errors.wallet_account_id" class="text-error text-xs mt-1">{{ errors.wallet_account_id }}</p>
+            <p v-if="filteredWalletAccounts.length === 0 && walletAccounts.length > 0" class="text-amber-400 text-xs mt-1">
+              أنواع مسجلة في Filament: {{ unmatchedWalletProviders.join('، ') }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-text-muted mb-2">
@@ -328,6 +341,9 @@
               <option value="">— اختر الحساب —</option>
               <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
             </select>
+            <p v-if="cashAccounts.length === 0" class="text-amber-400 text-xs mt-1">
+              أنشئ خزينة أو بنك من Filament: المحافظ والتحويلات → الخزائن أو البنوك.
+            </p>
             <p v-if="errors.cash_account_id" class="text-error text-xs mt-1">{{ errors.cash_account_id }}</p>
           </div>
         </div>
@@ -379,12 +395,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import axios from 'axios';
 import { useWalletStore } from '@/stores/walletStore';
 import { useCustomerStore } from '@/stores/customerStore';
+import {
+  fetchSettlementAccounts,
+  accountMatchesWalletType,
+  normalizeWalletProviderCode,
+} from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
   ArrowUpCircle,
@@ -403,19 +424,29 @@ const store = useWalletStore();
 const customerStore = useCustomerStore();
 const { activeWalletTypes, loading } = storeToRefs(store);
 
-const form = ref({
-  type: 'send',
-  wallet_type_id: '',
-  customer_id: '',
-  customer_name: '',
-  wallet_number: '',
-  amount: '',
-  service_fee: '',
-  amount_paid: 0,
-  wallet_account_id: '',
-  cash_account_id: '',
-  notes: '',
-});
+function createDefaultForm() {
+  return {
+    type: 'send',
+    wallet_type_id: '',
+    customer_id: '',
+    customer_name: '',
+    wallet_number: '',
+    amount: '',
+    service_fee: '',
+    amount_paid: 0,
+    wallet_account_id: '',
+    cash_account_id: '',
+    notes: '',
+  };
+}
+
+const form = ref(createDefaultForm());
+
+function resetForm() {
+  form.value = createDefaultForm();
+  errors.value = {};
+  globalError.value = '';
+}
 
 const errors = ref({});
 const globalError = ref('');
@@ -461,7 +492,9 @@ watch(
 );
 
 const selectedWalletType = computed(() => {
-  return activeWalletTypes.value.find((w) => w.id === form.value.wallet_type_id) ?? null;
+  const id = form.value.wallet_type_id;
+  if (!id) return null;
+  return activeWalletTypes.value.find((w) => String(w.id) === String(id)) ?? null;
 });
 
 const filteredWalletAccounts = computed(() => {
@@ -469,7 +502,16 @@ const filteredWalletAccounts = computed(() => {
   if (!type) {
     return walletAccounts.value;
   }
-  return walletAccounts.value.filter((a) => a.wallet_provider === type.code);
+  return walletAccounts.value.filter((a) => accountMatchesWalletType(a, type));
+});
+
+const unmatchedWalletProviders = computed(() => {
+  const type = selectedWalletType.value;
+  if (!type || walletAccounts.value.length === 0) return [];
+  return walletAccounts.value
+    .filter((a) => !accountMatchesWalletType(a, type))
+    .map((a) => normalizeWalletProviderCode(a.wallet_provider) || '(غير محدد)')
+    .filter((v, i, arr) => arr.indexOf(v) === i);
 });
 
 watch(filteredWalletAccounts, (newAccounts) => {
@@ -481,11 +523,16 @@ watch(filteredWalletAccounts, (newAccounts) => {
 });
 
 onMounted(async () => {
+  resetForm();
   await store.fetchWalletTypes();
   await Promise.all([
     fetchAccounts(),
-    fetchCustomers()
+    fetchCustomers(),
   ]);
+});
+
+onActivated(() => {
+  resetForm();
 });
 
 async function fetchCustomers() {
@@ -498,27 +545,35 @@ async function fetchCustomers() {
 }
 
 async function fetchAccounts() {
+  const typeOf = (a) => String(a?.type?.value ?? a?.type ?? '').toLowerCase();
+  const splitLiquidity = (all) => {
+    walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
+    cashAccounts.value = all.filter((a) => ['cashbox', 'treasury', 'bank'].includes(typeOf(a)));
+  };
+
   try {
-    const res = await axios.get('/api/v1/finance/accounts', {
-      params: {
-        module: 'wallet',
-        is_active: 1,
-        per_page: 200,
-        _t: Date.now()
-      }
-    });
-    const all = res.data?.data?.items || res.data?.data || [];
-    walletAccounts.value = all.filter(
-      (a) => a.type === 'wallet' && a.is_active !== false && Number(a.is_active) !== 0,
-    );
-    cashAccounts.value = all.filter(
-      (a) =>
-        ['cashbox', 'treasury', 'bank'].includes(a.type) &&
-        a.is_active !== false &&
-        Number(a.is_active) !== 0,
-    );
+    const overview = await store.fetchTransferTreasury();
+    const treasuryWallets = Array.isArray(overview?.wallets) ? overview.wallets : [];
+    const treasuryCash = [
+      ...(Array.isArray(overview?.cashboxes) ? overview.cashboxes : []),
+      ...(Array.isArray(overview?.treasury) ? overview.treasury : []),
+      ...(Array.isArray(overview?.banks) ? overview.banks : []),
+    ];
+    if (treasuryWallets.length > 0 || treasuryCash.length > 0) {
+      walletAccounts.value = treasuryWallets;
+      cashAccounts.value = treasuryCash;
+      return;
+    }
+  } catch (e) {
+    console.warn('Wallet treasury overview unavailable, falling back to finance accounts', e);
+  }
+
+  try {
+    splitLiquidity(await fetchSettlementAccounts(axios, { module: 'wallet' }));
   } catch (e) {
     console.error('Failed to load accounts', e);
+    walletAccounts.value = [];
+    cashAccounts.value = [];
   }
 }
 

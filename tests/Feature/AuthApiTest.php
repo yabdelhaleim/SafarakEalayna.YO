@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -135,6 +136,69 @@ class AuthApiTest extends TestCase
                 'success' => false,
                 'success' => false,
             ]);
+    }
+
+    public function test_two_different_users_can_login_and_use_api_simultaneously(): void
+    {
+        $user1 = User::factory()->create([
+            'email' => 'user1@test.com',
+            'password' => Hash::make('password'),
+            'is_active' => true,
+        ]);
+        $user2 = User::factory()->create([
+            'email' => 'user2@test.com',
+            'password' => Hash::make('password'),
+            'is_active' => true,
+        ]);
+
+        $login1 = $this->postJson('/api/v1/auth/login', [
+            'email' => 'user1@test.com',
+            'password' => 'password',
+        ]);
+        $login2 = $this->postJson('/api/v1/auth/login', [
+            'email' => 'user2@test.com',
+            'password' => 'password',
+        ]);
+
+        $token1 = $login1->json('data.token');
+        $token2 = $login2->json('data.token');
+
+        $this->assertSame($user1->id, PersonalAccessToken::findToken($token1)?->tokenable_id);
+        $this->assertSame($user2->id, PersonalAccessToken::findToken($token2)?->tokenable_id);
+        $this->assertSame(2, PersonalAccessToken::count());
+        $this->assertNotSame($token1, $token2);
+    }
+
+    public function test_same_user_can_have_multiple_concurrent_sessions(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'multi@test.com',
+            'password' => Hash::make('password'),
+            'is_active' => true,
+        ]);
+
+        $login1 = $this->postJson('/api/v1/auth/login', [
+            'email' => 'multi@test.com',
+            'password' => 'password',
+        ]);
+        $login2 = $this->postJson('/api/v1/auth/login', [
+            'email' => 'multi@test.com',
+            'password' => 'password',
+        ]);
+
+        $token1 = $login1->json('data.token');
+        $token2 = $login2->json('data.token');
+
+        $this->assertNotSame($token1, $token2);
+        $this->assertSame(2, $user->tokens()->count());
+
+        $this->withToken($token1)
+            ->getJson('/api/v1/auth/me')
+            ->assertStatus(200);
+
+        $this->withToken($token2)
+            ->getJson('/api/v1/auth/me')
+            ->assertStatus(200);
     }
 
     public function test_authenticated_user_can_refresh_token(): void

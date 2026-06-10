@@ -11,7 +11,8 @@ class FlightRefundResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'booking_id' => $this->booking_id,
+            'flight_booking_id' => $this->flight_booking_id,
+            'booking_id' => $this->flight_booking_id,
             'airline_penalty' => (float) $this->airline_penalty,
             'office_penalty' => (float) $this->office_penalty,
             'total_paid' => (float) $this->total_paid,

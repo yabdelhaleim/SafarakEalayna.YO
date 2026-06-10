@@ -163,6 +163,7 @@ class VisaController extends Controller
             }
 
             $customer = Customer::findOrFail($clientId);
+            $resolver = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class);
             $items = [];
 
             $bookings = VisaBooking::where('customer_id', $customer->id)
@@ -185,7 +186,7 @@ class VisaController extends Controller
                     'id' => 'booking_'.$b->id, 'date' => $b->created_at,
                     'type' => 'invoice', 'type_label' => 'حجز تأشيرة',
                     'debit' => $totalSelling, 'credit' => 0.0,
-                    'description' => "تأشيرة {$country} ".($visaTypeStr ? "({$visaTypeStr})" : '')." — حجز #{$b->id}",
+                    'description' => $resolver->forVisaBooking($b).($visaTypeStr ? " — ({$visaTypeStr})" : ''),
                     'employee' => $b->createdBy?->name ?? '—',
                 ];
 
@@ -194,7 +195,7 @@ class VisaController extends Controller
                         'id' => 'payment_'.$p->id, 'date' => $p->payment_date ?: $p->created_at,
                         'type' => 'payment', 'type_label' => 'دفعة سداد',
                         'debit' => 0.0, 'credit' => (float) $p->amount,
-                        'description' => "دفعة لحجز #{$b->id}",
+                        'description' => 'سداد دفعة — '.$resolver->forVisaBooking($b),
                         'employee' => $p->createdBy?->name ?? '—',
                     ];
                 }
@@ -205,7 +206,14 @@ class VisaController extends Controller
                 $paymentTxIds = VisaPayment::whereHas('booking', fn ($q) => $q->where('customer_id', $customer->id))->pluck('transaction_id')->filter()->toArray();
                 $excluded = array_merge($bookingTxIds, $paymentTxIds);
 
-                $entries = AccountEntry::with(['transaction.createdBy'])
+                $entries = AccountEntry::with([
+                    'transaction.createdBy',
+                    'transaction.related' => function ($morph) {
+                        $morph->morphWith([
+                            VisaBooking::class => ['customer', 'visaDetail'],
+                        ]);
+                    },
+                ])
                     ->where('account_id', $customer->account_id)
                     ->whereHas('transaction', function ($q) use ($excluded) {
                         $q->where('module', 'visa');
@@ -224,7 +232,7 @@ class VisaController extends Controller
                         'type' => (float) $entry->credit > 0 ? 'payment' : 'invoice',
                         'type_label' => (float) $entry->credit > 0 ? 'سند قبض' : 'سند صرف',
                         'debit' => (float) $entry->debit, 'credit' => (float) $entry->credit,
-                        'description' => $tx->notes ?: ((float) $entry->credit > 0 ? 'سداد مديونية' : 'صرف للعميل'),
+                        'description' => $resolver->resolve($entry),
                         'employee' => $tx->createdBy?->name ?? '—',
                     ];
                 }

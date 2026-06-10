@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Bus;
 
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Bus\CancelBusBookingRequest;
 use App\Http\Requests\Bus\PayBusBookingRequest;
 use App\Http\Requests\Bus\StoreBusBookingRequest;
 use App\Http\Resources\Bus\BusBookingResource;
@@ -121,15 +122,29 @@ class BusBookingController extends Controller
         }
     }
 
-    public function cancel(BusBooking $busBooking): JsonResponse
+    public function cancel(CancelBusBookingRequest $request, BusBooking $busBooking): JsonResponse
     {
         try {
-            $booking = $this->bookingService->cancelBooking($busBooking);
+            $this->bookingService->cancelBooking($busBooking, $request->validated());
+
+            $busBooking->refresh();
+            $busBooking->load([
+                'inventory.company',
+                'customer',
+                'employee.user',
+                'account',
+                'payments',
+                'refund.account',
+                'refund.transaction',
+                'createdBy',
+            ]);
 
             return ApiResponse::success(
-                'Booking cancelled successfully.',
-                new BusBookingResource($booking)
+                'تم إلغاء الحجز وتسجيل الاسترداد بنجاح.',
+                new BusBookingResource($busBooking)
             );
+        } catch (\InvalidArgumentException $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

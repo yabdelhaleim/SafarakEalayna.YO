@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onActivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAccountStore } from '@/stores/accountStore';
@@ -202,13 +202,22 @@ const router = useRouter();
 const accountStore = useAccountStore();
 const transferError = ref('');
 
-const transfer = ref({
-  from_account_id: '',
-  to_account_id: '',
-  amount: 0,
-  exchange_rate: 1.0,
-  notes: '',
-});
+function createDefaultTransfer() {
+  return {
+    from_account_id: '',
+    to_account_id: '',
+    amount: 0,
+    exchange_rate: 1.0,
+    notes: '',
+  };
+}
+
+const transfer = ref(createDefaultTransfer());
+
+function resetForm() {
+  transfer.value = createDefaultTransfer();
+  transferError.value = '';
+}
 
 const { loading, accounts } = storeToRefs(accountStore);
 const treasuryAccountGroups = useTreasuryAccountGroups(accounts);
@@ -288,10 +297,15 @@ function formatCurrency(amount, currency = 'EGP') {
 }
 
 onMounted(() => {
+  resetForm();
   accountStore.fetchAccounts({
     types: 'cashbox,bank,treasury,wallet,post',
     is_active: true,
     per_page: 100,
   });
+});
+
+onActivated(() => {
+  resetForm();
 });
 </script>

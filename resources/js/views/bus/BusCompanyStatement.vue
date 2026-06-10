@@ -275,6 +275,7 @@ import { useRoute } from 'vue-router';
 import { useBusStore } from '@/stores/busStore';
 import { ArrowRight, Building2, Clock, RefreshCw, Wallet, Loader2, CheckCircle, Link } from 'lucide-vue-next';
 import axios from 'axios';
+import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 const route = useRoute();
 const store = useBusStore();
 
@@ -391,18 +392,7 @@ const processedTransactions = computed(() => {
 
 const loadAccounts = async () => {
   try {
-    const res = await axios.get('/api/v1/finance/accounts', { params: { per_page: 200 } });
-    let raw = res.data?.data;
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      if (Array.isArray(raw.items)) {
-        raw = raw.items;
-      } else if (raw.items && Array.isArray(raw.items.data)) {
-        raw = raw.items.data;
-      } else if (Array.isArray(raw.data)) {
-        raw = raw.data;
-      }
-    }
-    const all = Array.isArray(raw) ? raw : [];
+    const all = await fetchSettlementAccounts(axios, { module: 'bus', includePost: false });
     treasuryAccounts.value = all.filter(a => {
       const t = String(a.type?.value || a.type || '').toLowerCase();
       return ['cashbox', 'bank', 'wallet', 'treasury'].includes(t);

@@ -426,7 +426,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onActivated } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
@@ -465,40 +465,59 @@ const filteredAccounts = computed(() => {
   return accounts;
 });
 
-const newCustomer = ref({
-  full_name: '',
-  phone: '',
-  passport_number: '',
-  date_of_birth: ''
-});
+function createDefaultNewCustomer() {
+  return {
+    full_name: '',
+    phone: '',
+    passport_number: '',
+    date_of_birth: '',
+  };
+}
 
-const form = ref({
-  customer: null,
-  visa_details: {
-    visa_type: 'tourist',
-    country: '',
-    visa_duration_id: null,
-    duration: '',
-    entry_type: 'single',
-    visa_agent_id: null,
-    submission_date: new Date().toISOString().split('T')[0],
-    expected_result_date: ''
-  },
-  purchase_price: 0,
-  selling_price: 0,
-  service_fee: 0,
-  currency: 'EGP',
-  account_id: null,
-  agent_name: '',
-  notes: '',
-  initial_payment: {
-    payment_method: 'cash',
-    amount: 0,
+function createDefaultForm() {
+  return {
+    customer: null,
+    visa_details: {
+      visa_type: 'tourist',
+      country: '',
+      visa_duration_id: null,
+      duration: '',
+      entry_type: 'single',
+      visa_agent_id: null,
+      submission_date: new Date().toISOString().split('T')[0],
+      expected_result_date: '',
+    },
+    purchase_price: 0,
+    selling_price: 0,
+    service_fee: 0,
+    currency: 'EGP',
     account_id: null,
-    payment_date: new Date().toISOString().split('T')[0],
-    paid_by: ''
-  }
-});
+    agent_name: '',
+    notes: '',
+    initial_payment: {
+      payment_method: 'cash',
+      amount: 0,
+      account_id: null,
+      payment_date: new Date().toISOString().split('T')[0],
+      paid_by: '',
+    },
+  };
+}
+
+const newCustomer = ref(createDefaultNewCustomer());
+
+const form = ref(createDefaultForm());
+
+function resetBookingForm() {
+  currentStep.value = 1;
+  isSaving.value = false;
+  customerSearch.value = '';
+  showNewCustomerForm.value = false;
+  addPayment.value = false;
+  settlementCategoryUi.value = 'cash';
+  newCustomer.value = createDefaultNewCustomer();
+  form.value = createDefaultForm();
+}
 
 const steps = [
   { id: 1, title: 'العميل', label: 'اختيار عميل' },
@@ -727,11 +746,16 @@ function accountTypeLabel(a) {
 }
 
 onMounted(async () => {
+  resetBookingForm();
   await Promise.all([
     store.fetchSettings(),
     store.fetchAccounts({ module: 'visa' }),
     store.fetchCustomers(),
   ]);
+});
+
+onActivated(() => {
+  resetBookingForm();
 });
 </script>
 

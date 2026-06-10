@@ -39,7 +39,7 @@ class HajjUmraTreasuryResource extends Resource
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
     {
-        return AccountFormSchema::configure($schema, AccountType::Cashbox);
+        return AccountFormSchema::configure($schema, AccountType::Cashbox, 'hajj_umra');
     }
 
     public static function table(Table $table): Table

@@ -75,6 +75,7 @@ const routes = [
         path: 'create',
         name: 'flights.create',
         component: () => import('@/views/flights/FlightCreate.vue'),
+        meta: { title: 'حجز رحلة جديدة', noKeepAlive: true },
       },
       {
         path: 'customers',
@@ -133,7 +134,7 @@ const routes = [
         path: 'create',
         name: 'hajj.create',
         component: () => import('@/views/hajjUmra/HajjUmraCreate.vue'),
-        meta: { title: 'إنشاء حجز حج/عمرة' },
+        meta: { title: 'إنشاء حجز حج/عمرة', noKeepAlive: true },
       },
       {
         path: 'customer-balances',
@@ -223,7 +224,7 @@ const routes = [
         path: 'create',
         name: 'visa.create',
         component: () => import('@/views/visa/VisaCreate.vue'),
-        meta: { title: 'طلب جديد' }
+        meta: { title: 'طلب جديد', noKeepAlive: true },
       },
       {
         path: ':id',
@@ -270,7 +271,7 @@ const routes = [
         path: 'create',
         name: 'bus.create',
         component: () => import('@/views/bus/BusCreate.vue'),
-        meta: { title: 'إنشاء حجز باص' },
+        meta: { title: 'إنشاء حجز باص', noKeepAlive: true },
       },
 
       {
@@ -336,7 +337,7 @@ const routes = [
         path: 'create',
         name: 'wallet.create',
         component: () => import('@/views/wallet/WalletCreate.vue'),
-        meta: { title: 'عملية جديدة' },
+        meta: { title: 'عملية جديدة', noKeepAlive: true },
       },
       {
         path: 'customer-balances',
@@ -368,6 +369,7 @@ const routes = [
         path: 'execute',
         name: 'online.execute',
         component: () => import('@/views/online/OnlineExecute.vue'),
+        meta: { title: 'تنفيذ معاملة جديدة', noKeepAlive: true },
       },
       {
         path: 'customer-balances',
@@ -446,7 +448,7 @@ const routes = [
         path: 'create',
         name: 'fawry.create',
         component: () => import('@/views/fawry/FawryCreate.vue'),
-        meta: { title: 'معاملة فوري جديدة' },
+        meta: { title: 'معاملة فوري جديدة', noKeepAlive: true },
       },
       {
         path: ':id',
@@ -495,7 +497,7 @@ const routes = [
         path: 'create',
         name: 'employees.create',
         component: () => import('@/views/employees/EmployeeCreate.vue'),
-        meta: { title: 'إضافة موظف جديد' },
+        meta: { title: 'إضافة موظف جديد', noKeepAlive: true },
       },
       {
         path: ':id',
@@ -561,7 +563,7 @@ const routes = [
         path: 'transfers/create',
         name: 'finance.transfers.create',
         component: () => import('@/views/finance/TransferCreate.vue'),
-        meta: { title: 'تحويل أموال' },
+        meta: { title: 'تحويل أموال', noKeepAlive: true },
       },
       {
         path: 'transfers/history',
@@ -571,7 +573,7 @@ const routes = [
         path: 'transactions/create',
         name: 'finance.transactions.create',
         component: () => import('@/views/finance/TransactionCreate.vue'),
-        meta: { title: 'معاملة مالية جديدة' },
+        meta: { title: 'معاملة مالية جديدة', noKeepAlive: true },
       },
       {
         path: 'transactions/:id',

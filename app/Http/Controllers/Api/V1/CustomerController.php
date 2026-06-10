@@ -21,6 +21,7 @@ use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Flight\FlightBooking;
 use App\Services\CustomerService;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -163,8 +164,21 @@ class CustomerController extends Controller
             }
 
             // Get all entries for the customer account
+            $resolver = app(LedgerEntryDescriptionResolver::class);
+
             $entries = AccountEntry::with([
                 'transaction.createdBy',
+                'transaction.fromAccount',
+                'transaction.toAccount',
+                'transaction.related' => function ($morph) {
+                    $morph->morphWith([
+                        FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
+                        \App\Models\Bus\BusBooking::class => ['customer', 'inventory.company'],
+                        \App\Models\Online\OnlineTransaction::class => ['serviceType', 'provider'],
+                        \App\Models\VisaBooking::class => ['customer', 'visaDetail'],
+                        \App\Models\HajjUmraBooking::class => ['customer', 'program'],
+                    ]);
+                },
             ])
                 ->where('account_id', $customerAccount->id)
                 ->orderBy('created_at', 'asc')
@@ -187,34 +201,6 @@ class CustomerController extends Controller
                 $totalCredit += $credit;
 
                 $module = $tx->module instanceof TransactionModule ? $tx->module->value : $tx->module;
-                $description = $tx->notes ?: 'معاملة مالية';
-
-                // Try to resolve booking details if related is present
-                $bookingDetails = null;
-                if ($tx->related_type && $tx->related_id) {
-                    try {
-                        $related = $tx->related;
-                        if ($related) {
-                            if ($tx->related_type === FlightBooking::class) {
-                                $bookingDetails = [
-                                    'booking_id' => $related->id,
-                                    'booking_number' => $related->booking_number,
-                                    'pnr' => $related->pnr,
-                                    'provider_name' => $related->airline_name,
-                                    'route' => $related->route ?: ($related->from_airport.' → '.$related->to_airport),
-                                    'passengers' => $related->passengers && $related->passengers->count() ? $related->passengers->map(fn ($p) => trim(($p->first_name ?? '').' '.($p->last_name ?? '')))->filter()->implode('، ') : '—',
-                                    'status' => $related->status instanceof FlightBookingStatus ? $related->status->value : $related->status,
-                                    'selling_price' => (float) $related->selling_price,
-                                    'total_paid' => (float) $related->paid_amount,
-                                    'remaining' => (float) $related->remaining_amount,
-                                    'payment_status' => $related->computePaymentStatus(),
-                                ];
-                            }
-                        }
-                    } catch (\Exception $e) {
-                        // ignore if related model cannot be loaded
-                    }
-                }
 
                 $items[] = [
                     'id' => $entry->id,
@@ -222,15 +208,16 @@ class CustomerController extends Controller
                     'created_at' => $entry->created_at->toDateTimeString(),
                     'date_human' => $entry->created_at->format('Y-m-d H:i'),
                     'user_name' => $tx->createdBy ? $tx->createdBy->name : 'النظام',
-                    'reference_id' => $tx->id,
+                    'reference_id' => $tx->related_id ?: $tx->id,
                     'entity_name' => $customer->full_name,
-                    'description' => $description,
+                    'description' => $resolver->resolve($entry),
+                    'notes' => trim((string) ($entry->notes ?: ($tx->notes ?? ''))) ?: null,
                     'process_type' => $debit > 0 ? 'سند قبض / سداد نقدية' : 'فاتورة مبيعات / مديونية',
                     'module' => $module,
                     'debit' => $debit,
                     'credit' => $credit,
                     'balance_after' => (float) $entry->balance_after,
-                    'booking_details' => $bookingDetails,
+                    'booking_details' => $resolver->bookingDetails($tx),
                 ];
             }
 

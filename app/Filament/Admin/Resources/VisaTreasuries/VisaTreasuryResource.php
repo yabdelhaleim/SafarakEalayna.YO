@@ -40,7 +40,7 @@ class VisaTreasuryResource extends Resource
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
     {
-        return AccountFormSchema::configure($schema, AccountType::Cashbox);
+        return AccountFormSchema::configure($schema, AccountType::Cashbox, 'visas');
     }
 
     public static function table(Table $table): Table

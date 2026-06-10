@@ -410,11 +410,24 @@ export const useBusStore = defineStore('bus', {
       }
     },
 
-    async cancelBooking(id) {
+    /**
+     * إلغاء حجز باص مع خصم الشركة وعمولة الإلغاء.
+     * @param {number|string} id
+     * @param {{ company_penalty?: number, office_penalty?: number, account_id?: number, notes?: string }} payload
+     */
+    async cancelBooking(id, payload = {}) {
       this.loading.update = true;
       this.errors = {};
       try {
-        const response = await axios.post(`/api/v1/bus/bookings/${id}/cancel`);
+        const body = {
+          company_penalty: Number(payload.company_penalty ?? 0) || 0,
+          office_penalty: Number(payload.office_penalty ?? 0) || 0,
+          notes: payload.notes ?? null,
+        };
+        if (payload.account_id != null && payload.account_id !== '') {
+          body.account_id = parseInt(String(payload.account_id), 10);
+        }
+        const response = await axios.post(`/api/v1/bus/bookings/${id}/cancel`, body);
         const updated = this.mapBooking(response.data?.data || response.data);
         const index = this.bookings.findIndex((b) => b.id === id);
         if (index !== -1 && updated) this.bookings[index] = updated;

@@ -453,6 +453,7 @@ import TableSkeleton from '@/components/skeletons/TableSkeleton.vue';
 import ChartSkeleton from '@/components/skeletons/ChartSkeleton.vue';
 import GridSkeleton from '@/components/skeletons/GridSkeleton.vue';
 import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
+import { unwrapAccountItems } from '@/composables/useTreasuryAccountGroups';
 
 import {
   Plus,
@@ -532,16 +533,6 @@ const topAccounts = computed(() => {
     .sort((a, b) => Number(b.balance ?? 0) - Number(a.balance ?? 0))
     .slice(0, 5);
 });
-
-const unwrapAccountsPayload = (payload) => {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (payload && Array.isArray(payload.data)) {
-    return payload.data;
-  }
-  return [];
-};
 
 /** تقرير المعاملات: يطابق أعمدة DB + عرض لوحة التحكم */
 const normalizeReportTransaction = (row) => {
@@ -724,7 +715,7 @@ const fetchData = async () => {
     ]);
 
     const accountsPayload = accountsRes.data?.data;
-    accounts.value = unwrapAccountsPayload(accountsPayload);
+    accounts.value = unwrapAccountItems(accountsPayload);
 
     const { items, pagination: pag } = unwrapPaginatedItems(txRes.data);
     transactions.value = items.map(normalizeReportTransaction);

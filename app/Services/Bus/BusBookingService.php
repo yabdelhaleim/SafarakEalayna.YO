@@ -5,9 +5,12 @@ namespace App\Services\Bus;
 use App\Enums\BusBookingStatus;
 use App\Enums\BusPaymentStatus;
 use App\Enums\TransactionModule;
+use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusInventory;
+use App\Models\Bus\BusRefundRequest;
 use App\Models\Employee;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -434,117 +437,231 @@ class BusBookingService
     }
 
     /**
-     * Cancel a bus booking.
-     * Returns tickets to inventory.
-     * No financial refund handled here (done manually by admin if needed).
+     * Cancel a bus booking with optional penalties and customer cash refund.
+     *
+     * @param  array  $data  company_penalty, office_penalty, account_id, notes
      *
      * @throws \Exception
      */
-    public function cancelBooking(BusBooking $booking): BusBooking
+    public function cancelBooking(BusBooking $booking, array $data = []): BusRefundRequest
     {
-        if ($booking->status === BusBookingStatus::Cancelled) {
-            throw new \Exception('This booking is already cancelled.');
-        }
-
-        if ($booking->payments()->exists()) {
-            throw new \Exception('Cannot cancel a booking that has recorded payments. Use finance adjustment if needed.');
+        if (in_array($booking->status, [
+            BusBookingStatus::Cancelled,
+            BusBookingStatus::Refunded,
+            BusBookingStatus::PartiallyRefunded,
+        ], true)) {
+            throw new \Exception('الحجز ملغي أو مسترد بالفعل.');
         }
 
         try {
-            return DB::transaction(function () use ($booking) {
-                $inventory = $booking->inventory()->lockForUpdate()->first();
+            return DB::transaction(function () use ($booking, $data) {
+                $userId = Auth::id() ?: 1;
 
-                // 🛡️ ACCOUNTING INTEGRITY (inside transaction with lock — prevents TOCTOU race condition)
-                // If the company balance is >= 0, the debt was already settled via payDebt.
-                // Allowing cancellation would credit the company again, creating a phantom
-                // receivable and silently losing cash from the treasury.
-                $companyForCheck = $inventory->company;
-                if ($companyForCheck && $companyForCheck->account_id) {
-                    $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
-                    if ($costForThisBooking > 0) {
-                        // lockForUpdate prevents concurrent payDebt from changing balance mid-check
-                        $companyAccount = \App\Models\Account::lockForUpdate()->find($companyForCheck->account_id);
-                        if ($companyAccount && (float) $companyAccount->balance >= 0) {
-                            throw new \Exception(
-                                'لا يمكن إلغاء هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
-                                number_format((float) $companyAccount->balance, 2) . ' ج.م). ' .
-                                'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
-                            );
-                        }
-                    }
+                $booking = BusBooking::query()
+                    ->with(['inventory.company', 'customer', 'payments'])
+                    ->lockForUpdate()
+                    ->findOrFail($booking->id);
+
+                $companyPenalty = (float) ($data['company_penalty'] ?? 0);
+                $officePenalty = (float) ($data['office_penalty'] ?? 0);
+                $totalPenalties = $companyPenalty + $officePenalty;
+
+                $totalPaid = (float) $booking->payments()->sum('amount');
+                $totalPrice = (float) $booking->total_price;
+
+                if ($totalPenalties > $totalPrice + 0.001) {
+                    throw new \InvalidArgumentException('مجموع الخصومات لا يمكن أن يتجاوز سعر البيع.');
                 }
+
+                if ($totalPaid > 0.001 && $totalPenalties > $totalPaid + 0.001) {
+                    throw new \InvalidArgumentException('مجموع الخصومات لا يمكن أن يتجاوز المبلغ المدفوع من العميل.');
+                }
+
+                $refundAmount = max(0, $totalPaid - $totalPenalties);
+
+                if ($refundAmount > 0.001 && empty($data['account_id'])) {
+                    throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
+                }
+
+                $inventory = $booking->inventory()->lockForUpdate()->first();
+                $totalCost = (float) ($inventory->cost_per_ticket ?? 0) * (int) $booking->quantity;
+                $companyCreditAmount = max(0, $totalCost - $companyPenalty);
+
+                Log::info('Processing bus booking cancellation', [
+                    'booking_id' => $booking->id,
+                    'total_paid' => $totalPaid,
+                    'total_price' => $totalPrice,
+                    'total_cost' => $totalCost,
+                    'company_penalty' => $companyPenalty,
+                    'office_penalty' => $officePenalty,
+                    'refund_amount' => $refundAmount,
+                    'user_id' => $userId,
+                ]);
+
+                $this->applyCompanyCreditOnCancel($booking, $inventory, $companyCreditAmount);
 
                 $inventory->increment('available_tickets', $booking->quantity);
-                $inventory->save();
+
+                $debtReversalAmount = max(0, $totalPrice - max($totalPaid, $totalPenalties));
+                $this->reverseCustomerSaleDebt($booking, $debtReversalAmount);
+
+                $refundLedgerTx = null;
+                if ($refundAmount > 0.001 && ! empty($data['account_id'])) {
+                    $refundLedgerTx = $this->transactionService->recordExpense([
+                        'amount' => $refundAmount,
+                        'from_account_id' => (int) $data['account_id'],
+                        'module' => TransactionModule::Bus->value,
+                        'related_type' => BusBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'استرداد حجز باص #' . $booking->id,
+                    ]);
+                }
+
+                $company = $inventory->company;
+
+                $refund = BusRefundRequest::create([
+                    'bus_booking_id' => $booking->id,
+                    'company_id' => $company?->id ?? $inventory->company_id,
+                    'refund_type' => 'cancel',
+                    'original_currency' => 'EGP',
+                    'original_amount' => $totalPrice,
+                    'cancellation_fee' => $totalPenalties,
+                    'company_penalty' => $companyPenalty,
+                    'office_penalty' => $officePenalty,
+                    'total_paid' => $totalPaid,
+                    'refund_amount' => $refundAmount,
+                    'refund_currency' => 'EGP',
+                    'refund_exchange_rate' => 1,
+                    'base_currency_refund' => $refundAmount,
+                    'destination' => 'ledger',
+                    'account_id' => $data['account_id'] ?? null,
+                    'transaction_id' => $refundLedgerTx?->id,
+                    'status' => 'processed',
+                    'processed_at' => now(),
+                    'notes' => $data['notes'] ?? null,
+                    'created_by' => $userId,
+                ]);
+
+                $newStatus = match (true) {
+                    $refundAmount > 0.001 => BusBookingStatus::Refunded,
+                    $totalPenalties > 0.001 => BusBookingStatus::PartiallyRefunded,
+                    default => BusBookingStatus::Cancelled,
+                };
 
                 $booking->update([
-                    'status' => BusBookingStatus::Cancelled,
-                    'payment_status' => BusPaymentStatus::Pending,
+                    'status' => $newStatus,
+                    'payment_status' => $refundAmount > 0.001
+                        ? BusPaymentStatus::Pending
+                        : $booking->payment_status,
                 ]);
 
-                // ✅ Reverse company cost if it was recorded
-                $company = $inventory->company;
-                if ($company && $company->account_id) {
-                    $costPerTicket = $inventory->cost_per_ticket;
-                    $totalCost = $costPerTicket * $booking->quantity;
-                    $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
-
-                    if ($clearingAccountId && $totalCost > 0) {
-                        $this->transactionService->recordJournalTransfer([
-                            'amount'              => $totalCost,
-                            'from_account_id'     => $clearingAccountId,
-                            'to_account_id'       => $company->account_id,
-                            'module'              => TransactionModule::Bus->value,
-                            'related_type'        => BusBooking::class,
-                            'related_id'          => $booking->id,
-                            'notes'               => 'إلغاء تكلفة حجز باص #' . $booking->id,
-                            'allow_from_negative' => true,
-                        ]);
-                    }
-                }
-
-                // ✅ Reverse sale to customer
-                $customer = $booking->customer;
-                if ($customer && $customer->account_id) {
-                    $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
-                    if ($clearingAccountId) {
-                        $this->transactionService->recordJournalTransfer([
-                            'amount'              => $booking->total_price,
-                            'from_account_id'     => $customer->account_id,
-                            'to_account_id'       => $clearingAccountId,
-                            'module'              => TransactionModule::Bus->value,
-                            'related_type'        => BusBooking::class,
-                            'related_id'          => $booking->id,
-                            'notes'               => 'إلغاء مديونية حجز باص #' . $booking->id,
-                            'allow_from_negative' => true,
-                        ]);
-                    }
-                }
-
-                Log::info('Bus booking cancelled', [
-                    'booking_id'   => $booking->id,
-                    'inventory_id' => $inventory->id,
-                    'user_id'      => Auth::id(),
+                Log::info('Bus booking cancelled successfully', [
+                    'booking_id' => $booking->id,
+                    'refund_id' => $refund->id,
+                    'new_status' => $newStatus->value,
+                    'user_id' => $userId,
                 ]);
 
-                return $booking->fresh([
-                    'inventory.company',
-                    'customer',
-                    'employee.user',
-                    'payments',
-                    'createdBy',
-                ]);
+                return $refund->load(['booking', 'account', 'transaction', 'createdBy']);
             });
+        } catch (\InvalidArgumentException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('BusBookingService::cancelBooking failed', [
-                'error'        => $e->getMessage(),
-                'user_id'      => Auth::id(),
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
                 'inventory_id' => $booking->inventory_id,
-                'booking_id'   => $booking->id,
-                'input'        => null,
+                'booking_id' => $booking->id,
+                'input' => $data,
             ]);
-            throw $e;
+            throw new \Exception('فشل إلغاء الحجز: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Reduce company purchase debt (or block if debt was already settled).
+     */
+    protected function applyCompanyCreditOnCancel(
+        BusBooking $booking,
+        BusInventory $inventory,
+        float $companyCreditAmount
+    ): void {
+        if ($companyCreditAmount <= 0.001) {
+            return;
+        }
+
+        $company = $inventory->company;
+        if (! $company || ! $company->account_id) {
+            return;
+        }
+
+        $companyAccount = Account::query()->lockForUpdate()->find($company->account_id);
+        if (! $companyAccount) {
+            return;
+        }
+
+        $balance = (float) $companyAccount->balance;
+
+        if ($balance >= 0) {
+            throw new \Exception(
+                'لا يمكن إلغاء هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
+                number_format($balance, 2) . ' ج.م). ' .
+                'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
+            );
+        }
+
+        $owed = abs($balance);
+        if ($companyCreditAmount > $owed + 0.001) {
+            throw new \Exception(
+                'لا يمكن إلغاء هذا الحجز لأن جزءاً من دين الشركة تم تسديده بالفعل (المديونية المتبقية: ' .
+                number_format($owed, 2) . ' ج.م). ' .
+                'قم بتسوية يدوية من خلال قسم المحاسبة.'
+            );
+        }
+
+        $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
+        if (! $clearingAccountId) {
+            return;
+        }
+
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $companyCreditAmount,
+            'from_account_id' => $clearingAccountId,
+            'to_account_id' => $company->account_id,
+            'module' => TransactionModule::Bus->value,
+            'related_type' => BusBooking::class,
+            'related_id' => $booking->id,
+            'notes' => 'إلغاء تكلفة حجز باص #' . $booking->id . ' (بعد خصم الشركة)',
+            'allow_from_negative' => true,
+        ]);
+    }
+
+    /**
+     * Partially or fully reverse customer sale debt on cancellation.
+     */
+    protected function reverseCustomerSaleDebt(BusBooking $booking, float $amount): void
+    {
+        if ($amount <= 0.001 || ! $booking->customer_id) {
+            return;
+        }
+
+        $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+        $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+
+        if (! $clearingAccountId || $clearingAccountId === $customerAccount->id) {
+            return;
+        }
+
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $amount,
+            'from_account_id' => $customerAccount->id,
+            'to_account_id' => $clearingAccountId,
+            'module' => TransactionModule::Bus->value,
+            'related_type' => BusBooking::class,
+            'related_id' => $booking->id,
+            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+            'allow_from_negative' => true,
+        ]);
     }
 
     /**
@@ -723,6 +840,9 @@ class BusBookingService
             return;
         }
 
+        $booking->loadMissing(['customer', 'inventory']);
+        $saleNotes = app(LedgerEntryDescriptionResolver::class)->forBusBooking($booking);
+
         $tx = $this->transactionService->recordJournalTransfer([
             'amount' => $sellingPrice,
             'from_account_id' => $clearingAccountId,
@@ -731,7 +851,7 @@ class BusBookingService
             'module' => TransactionModule::Bus->value,
             'related_type' => BusBooking::class,
             'related_id' => $booking->id,
-            'notes' => 'حجز باص (مديونية) — حجز #' . $booking->id,
+            'notes' => $saleNotes,
             'created_by' => $userId,
         ]);
 

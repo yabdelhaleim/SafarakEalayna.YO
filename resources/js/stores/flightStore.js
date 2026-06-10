@@ -435,6 +435,34 @@ export const useFlightStore = defineStore('flight', {
       }
     },
 
+    /**
+     * إلغاء حجز واسترداد المبلغ للعميل (خصم الطيران + عمولة الوكيل).
+     * @param {number|string} bookingId
+     * @param {{ airline_penalty: number, office_penalty: number, account_id?: number, notes?: string }} payload
+     */
+    async cancelBooking(bookingId, payload) {
+      this.errors = {};
+      try {
+        const response = await axios.post(`/api/v1/flight/bookings/${bookingId}/cancel`, payload);
+        const raw = response.data?.data;
+        if (raw && this.currentBooking && String(this.currentBooking.id) === String(bookingId)) {
+          this.currentBooking = this.mapBooking(raw);
+        }
+        if (Array.isArray(this.bookings)) {
+          const idx = this.bookings.findIndex((b) => String(b.id) === String(bookingId));
+          if (idx !== -1 && raw) {
+            this.bookings[idx] = this.mapBooking(raw);
+          }
+        }
+        return raw;
+      } catch (error) {
+        this.errors = error.response?.data?.errors || {
+          message: error.response?.data?.message || 'فشل تنفيذ الاسترداد',
+        };
+        throw error;
+      }
+    },
+
     async fetchAirlineAccounts(filters = {}) {
       this.loading.airlineAccounts = true;
       this.errors = {};
@@ -570,6 +598,22 @@ export const useFlightStore = defineStore('flight', {
       }
     },
 
+    async updateCustomer(id, payload) {
+      this.errors = {};
+      try {
+        const response = await axios.put(`/api/v1/customers/${id}`, payload);
+        const updated = response.data?.data || response.data;
+        if (Array.isArray(this.customers)) {
+          const idx = this.customers.findIndex((c) => Number(c.id) === Number(id));
+          if (idx >= 0) this.customers[idx] = updated;
+        }
+        return updated;
+      } catch (error) {
+        this.errors = error.response?.data?.errors || { customer: 'حدث خطأ، حاول مرة أخرى' };
+        throw error;
+      }
+    },
+
     /**
      * Transform frontend camelCase payload to backend snake_case format
      */
@@ -583,16 +627,33 @@ export const useFlightStore = defineStore('flight', {
         payload.purchase_price ??
         0;
 
-      const bookingSource = payload.booking_source || 'direct';
-      let bookingChannelType = 'SIGN';
-      let purchaseBalanceSource = 'carrier';
+      const bookingSource =
+        payload.booking_source ||
+        payload.bookingSource ||
+        (payload.flight_group_id || payload.flightGroupId
+          ? 'group'
+          : payload.flight_system_id || payload.flightSystemId
+            ? 'system'
+            : 'direct');
 
-      if (bookingSource === 'group') {
+      const explicitPurchaseSource = String(
+        payload.purchase_balance_source || payload.purchaseBalanceSource || ''
+      )
+        .trim()
+        .toLowerCase();
+
+      let purchaseBalanceSource = 'carrier';
+      let bookingChannelType = 'SIGN';
+
+      if (explicitPurchaseSource === 'group' || bookingSource === 'group') {
         bookingChannelType = 'GROUP';
         purchaseBalanceSource = 'group';
-      } else if (bookingSource === 'system') {
+      } else if (explicitPurchaseSource === 'system' || bookingSource === 'system') {
         bookingChannelType = 'SYSTEM';
         purchaseBalanceSource = 'system';
+      } else if (explicitPurchaseSource === 'carrier' || bookingSource === 'direct') {
+        bookingChannelType = 'SIGN';
+        purchaseBalanceSource = 'carrier';
       }
 
       const data = {

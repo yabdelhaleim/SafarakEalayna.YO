@@ -6,7 +6,7 @@ use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Bus\BusBooking;
-use App\Models\FlightBooking;
+use App\Models\Flight\FlightBooking;
 use App\Models\HajjUmraBooking;
 use App\Models\Online\OnlineTransaction;
 use App\Models\VisaBooking;
@@ -219,11 +219,11 @@ class AccountService
                 'transaction.toAccount',
                 'transaction.related' => function ($morph) {
                     $morph->morphWith([
-                        FlightBooking::class => ['customer', 'passengers'],
-                        BusBooking::class => ['customer'],
+                        FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
+                        BusBooking::class => ['customer', 'inventory.company'],
                         OnlineTransaction::class => ['serviceType', 'provider'],
-                        VisaBooking::class => ['customer'],
-                        HajjUmraBooking::class => ['customer'],
+                        VisaBooking::class => ['customer', 'visaDetail'],
+                        HajjUmraBooking::class => ['customer', 'program'],
                     ]);
                 },
             ]);
