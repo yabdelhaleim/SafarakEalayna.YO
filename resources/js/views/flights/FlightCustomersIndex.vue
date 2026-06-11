@@ -1140,6 +1140,7 @@ import {
 import { useDebounceFn } from '@vueuse/core';
 import axios from 'axios';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
+import { formatLedgerBalance } from '@/composables/useLedgerBalance';
 
 const store = useCustomerStore();
 
@@ -1312,24 +1313,14 @@ const formatCurrency = (val) => {
 };
 
 const formatBalance = (balance, type) => {
-  const bal = parseFloat(balance) || 0;
-  if (bal > 0) {
-    return {
-      text: formatCurrency(bal),
-      label: type === 'group' ? '(مستحق لهم)' : '(مدين — عليه)',
-      class: 'text-error font-bold'
-    };
-  } else if (bal < 0) {
-    return {
-      text: formatCurrency(Math.abs(bal)),
-      label: type === 'group' ? '(مستحق لنا)' : '(دائن — له)',
-      class: 'text-success font-bold'
-    };
+  const formatted = formatLedgerBalance(balance, type);
+  if (formatted.direction === 'zero') {
+    return formatted;
   }
+
   return {
-    text: '0.00 — مستوفى',
-    label: '',
-    class: 'text-muted'
+    ...formatted,
+    text: formatCurrency(Math.abs(parseFloat(balance) || 0)),
   };
 };
 

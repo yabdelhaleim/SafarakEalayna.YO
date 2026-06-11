@@ -68,9 +68,18 @@
         <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
           <div class="min-w-0">
             <p class="text-[10px] font-bold uppercase tracking-[0.3em] text-sky-400/80 mb-2">Electronic Ticket Service</p>
-            <h1 class="font-mono text-3xl font-black tracking-tighter text-text-main sm:text-4xl lg:text-5xl">
+            <h1 v-if="booking.pnr" class="font-mono text-3xl font-black tracking-tighter text-text-main sm:text-4xl lg:text-5xl">
+              {{ booking.pnr }}
+            </h1>
+            <h1
+              class="font-mono font-black tracking-tighter text-text-main"
+              :class="booking.pnr ? 'text-lg text-text-muted mt-1' : 'text-3xl sm:text-4xl lg:text-5xl'"
+            >
               {{ booking.bookingNumber }}
             </h1>
+            <p v-if="booking.pnr" class="mt-1 text-[10px] font-bold uppercase tracking-wider text-sky-400/70">
+              مرجع المكتب الداخلي
+            </p>
             <p class="mt-4 flex items-center gap-2 text-xs font-medium text-text-muted">
               <Calendar class="h-3.5 w-3.5 text-sky-400/50" />
               تم إنشاء الحجز في {{ formatDate(booking.createdAt, true) }}
@@ -527,6 +536,16 @@
                   {{ formatCurrency(Math.max(0, getRemainingBalance())) }}
                 </span>
               </div>
+              <div
+                v-if="booking.customer"
+                class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm"
+              >
+                <span class="text-text-muted">رصيد العميل في الدفتر</span>
+                <span :class="['font-mono tabular-nums', customerLedgerDisplay.class]">
+                  {{ customerLedgerDisplay.text }}
+                  <span v-if="customerLedgerDisplay.label" class="text-[11px] font-sans mr-1">{{ customerLedgerDisplay.label }}</span>
+                </span>
+              </div>
             </div>
             
             <!-- Confirm Booking Call to Action -->
@@ -673,6 +692,13 @@
                 <div class="text-xs text-text-muted mt-1">كود الشركة: #{{ booking.customer?.id }} — المديونية على حساب الشركة</div>
               </div>
             </div>
+            <div class="mt-4 flex items-center justify-between rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 text-sm">
+              <span class="text-text-muted">رصيد الشركة في الدفتر</span>
+              <span :class="['font-mono tabular-nums', customerLedgerDisplay.class]">
+                {{ customerLedgerDisplay.text }}
+                <span v-if="customerLedgerDisplay.label" class="text-[11px] font-sans mr-1">{{ customerLedgerDisplay.label }}</span>
+              </span>
+            </div>
           </div>
 
           <!-- Passengers Panel -->
@@ -713,6 +739,13 @@
                 <Mail class="h-4 w-4 shrink-0 text-sky-400/80" />
                 <span class="truncate text-text-muted">{{ booking.customer.email }}</span>
               </div>
+              <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <span class="text-text-muted">رصيد العميل في الدفتر</span>
+                <span :class="['font-mono tabular-nums', customerLedgerDisplay.class]">
+                  {{ customerLedgerDisplay.text }}
+                  <span v-if="customerLedgerDisplay.label" class="text-[11px] font-sans mr-1">{{ customerLedgerDisplay.label }}</span>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -731,8 +764,8 @@
                 <span class="text-left font-bold text-text-main">{{ booking.systemType }}</span>
               </div>
               <div class="flex items-center justify-between gap-2">
-                <span class="text-text-muted">العملة</span>
-                <span class="font-mono font-bold text-gold">{{ booking.pricing?.currency || 'EGP' }}</span>
+                <span class="text-text-muted">عملة الشراء</span>
+                <span class="font-mono font-bold text-gold">{{ booking.purchaseCurrency || booking.pricing?.purchaseCurrency || 'EGP' }}</span>
               </div>
             </div>
           </div>
@@ -959,6 +992,7 @@ import {
 } from '@/utils/flightPassengerDisplay';
 import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+import { formatLedgerBalance } from '@/composables/useLedgerBalance';
 import {
   ArrowRight,
   Trash2,
@@ -1122,6 +1156,10 @@ const getRemainingBalance = () => {
     : booking.value?.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
   return sellingPrice - totalPaid;
 };
+
+const customerLedgerDisplay = computed(() =>
+  formatLedgerBalance(booking.value?.customer?.balance ?? 0, 'customer')
+);
 
 const showExtraPaymentForm = computed(() => getRemainingBalance() > 0.009);
 

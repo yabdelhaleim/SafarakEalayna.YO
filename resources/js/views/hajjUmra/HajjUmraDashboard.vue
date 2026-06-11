@@ -266,11 +266,11 @@ import {
   Vault,
 } from 'lucide-vue-next';
 
-const loading = ref(false);
+const loading = ref(true);
 const authStore = useAuthStore();
 const isAdmin = computed(() => authStore.isAdmin || authStore.user?.role === 'owner');
 const data = ref(null);
-const lastUpdated = computed(() => new Date().toLocaleString('ar-EG'));
+const lastUpdated = ref('');
 
 const fmt = (n) => Number(n || 0).toLocaleString('ar-EG');
 
@@ -287,6 +287,7 @@ const reload = async () => {
   try {
     const res = await axios.get('/api/v1/hajj-umra/dashboard');
     data.value = res.data?.data ?? null;
+    lastUpdated.value = new Date().toLocaleString('ar-EG');
   } catch (e) {
     console.error('HajjUmraDashboard reload', e);
     data.value = null;

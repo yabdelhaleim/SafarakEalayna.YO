@@ -14,6 +14,12 @@ class CurrencyExchangeTransferTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function actingAs($user, $driver = null)
+    {
+        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        return $this;
+    }
+
     public function test_cross_currency_transfer_records_transfer_row_and_balances(): void
     {
         $user = User::create([
@@ -21,6 +27,7 @@ class CurrencyExchangeTransferTest extends TestCase
             'email' => 'fx-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
             'role' => 'admin',
+            'is_active' => true,
         ]);
 
         Employee::create(['user_id' => $user->id, 'status' => 'active']);
@@ -84,6 +91,7 @@ class CurrencyExchangeTransferTest extends TestCase
             'email' => 'fx2-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
             'role' => 'admin',
+            'is_active' => true,
         ]);
 
         Employee::create(['user_id' => $user->id, 'status' => 'active']);

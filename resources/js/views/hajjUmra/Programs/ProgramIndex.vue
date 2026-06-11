@@ -4,15 +4,23 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight">برامج الحج والعمرة</h1>
-        <p class="text-muted mt-1">عرض البرامج النشطة — الإنشاء والتعديل من لوحة الإعدادات (Filament)</p>
+        <p class="text-muted mt-1">عرض وإدارة برامج الحج والعمرة النشطة</p>
       </div>
-      <a
-        :href="adminProgramsUrl"
-        target="_blank"
-        class="bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-gold/20"
-      >
-        <Plus class="w-5 h-5" /> إدارة البرامج (لوحة الإعدادات)
-      </a>
+      <div class="flex flex-wrap gap-3">
+        <router-link
+          :to="{ name: 'hajj.programs.create' }"
+          class="bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-gold/20"
+        >
+          <Plus class="w-5 h-5" /> برنامج جديد
+        </router-link>
+        <a
+          :href="adminProgramsUrl"
+          target="_blank"
+          class="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+        >
+          لوحة Filament
+        </a>
+      </div>
     </div>
 
     <!-- Programs List -->
@@ -23,9 +31,9 @@
         </div>
         <h3 class="text-xl font-bold mb-2">لا توجد برامج حالياً</h3>
         <p class="text-muted text-sm mb-4">ابدأ بإنشاء برنامج حج أو عمرة جديد</p>
-        <a :href="adminProgramsUrl" target="_blank" class="text-gold font-bold hover:underline">
-          إنشاء برنامج من لوحة الإعدادات
-        </a>
+        <router-link :to="{ name: 'hajj.programs.create' }" class="text-gold font-bold hover:underline">
+          إنشاء برنامج جديد
+        </router-link>
       </div>
 
       <div v-else class="overflow-x-auto">
@@ -39,11 +47,12 @@
               <th class="px-6 py-4 font-semibold">فندق المدينة</th>
               <th class="px-6 py-4 font-semibold">الطيران</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
+              <th class="px-6 py-4 font-semibold text-center">إجراءات</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading" v-for="i in 5" :key="i" class="border-b border-white/5">
-              <td v-for="j in 7" :key="j" class="px-6 py-4">
+              <td v-for="j in 8" :key="j" class="px-6 py-4">
                 <div class="h-4 animate-shimmer rounded w-full"></div>
               </td>
             </tr>
@@ -61,21 +70,28 @@
                 <div class="font-bold">{{ program.total_nights }} ليلة</div>
               </td>
               <td class="px-6 py-4">
-                <div class="text-sm">{{ program.mecca_hotel_name }}</div>
+                <div class="text-sm">{{ program.mecca_hotel_name || program.mecca_hotel_label || '—' }}</div>
                 <div class="text-xs text-muted">{{ program.mecca_nights }} ليلة</div>
               </td>
               <td class="px-6 py-4">
-                <div class="text-sm">{{ program.medina_hotel_name || '-' }}</div>
+                <div class="text-sm">{{ program.medina_hotel_name || program.medina_hotel_label || '—' }}</div>
                 <div class="text-xs text-muted">{{ program.medina_nights || 0 }} ليلة</div>
               </td>
               <td class="px-6 py-4">
                 <div class="text-sm">{{ program.airline }}</div>
               </td>
               <td class="px-6 py-4">
-                <div :class="['inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider',
-                  program.booking_status === 'active' ? 'bg-success/10 text-success' : 'bg-error/10 text-error']">
-                  {{ program.booking_status === 'active' ? 'نشط' : 'مغلق' }}
+                <div :class="['inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', programStatusClass(program.booking_status)]">
+                  {{ programStatusLabel(program.booking_status) }}
                 </div>
+              </td>
+              <td class="px-6 py-4 text-center">
+                <router-link
+                  :to="{ name: 'hajj.programs.edit', params: { id: program.id } }"
+                  class="text-gold hover:underline text-sm font-bold"
+                >
+                  تعديل
+                </router-link>
               </td>
             </tr>
           </tbody>
@@ -93,6 +109,28 @@ import { Plus, Calendar } from 'lucide-vue-next';
 
 const store = useHajjUmraStore();
 const authStore = useAuthStore();
+
+const programStatusLabel = (status) => {
+  const map = {
+    open: 'مفتوح',
+    closed: 'مغلق',
+    success: 'ناجح',
+    cancelled: 'ملغي',
+    active: 'نشط',
+  };
+  return map[status] || status || '—';
+};
+
+const programStatusClass = (status) => {
+  const map = {
+    open: 'bg-success/10 text-success',
+    closed: 'bg-error/10 text-error',
+    success: 'bg-info/10 text-info',
+    cancelled: 'bg-white/10 text-muted',
+    active: 'bg-success/10 text-success',
+  };
+  return map[status] || 'bg-white/10 text-muted';
+};
 
 const adminProgramsUrl = computed(() => {
   const token = authStore.token || localStorage.getItem('auth_token') || '';

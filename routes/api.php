@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\Flight\AviationController;
 use App\Http\Controllers\Api\V1\Flight\FlightCarrierController;
 use App\Http\Controllers\Api\V1\Flight\FlightController;
 use App\Http\Controllers\Api\V1\Flight\FlightDashboardController;
+use App\Http\Controllers\Api\V1\Flight\PassengerController;
 use App\Http\Controllers\Api\V1\Flight\FlightGroupController;
 use App\Http\Controllers\Api\V1\Flight\FlightSystemController;
 use App\Http\Controllers\Api\V1\Flight\FlightTreasuryController;
@@ -40,6 +41,7 @@ use App\Http\Controllers\Api\V1\Flight\ModificationController;
 use App\Http\Controllers\Api\V1\Flight\RefundController;
 use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraDashboardController;
 use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraExecutingCompanyFinanceController;
+use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraProgramController;
 use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraTreasuryController;
 use App\Http\Controllers\Api\V1\HajjUmra\UmrahSupplierApiController;
 use App\Http\Controllers\Api\V1\HajjUmraController;
@@ -95,6 +97,7 @@ Route::get('/user', function (Request $request) {
 
 Route::prefix('v1')->middleware([
     'auth:sanctum',
+    'active',
     CaptureFinancialPostingContext::class,
     RejectBannedFinancialBypassMarkers::class,
 ])->group(function () {
@@ -177,6 +180,7 @@ Route::prefix('v1')->middleware([
         Route::apiResource('systems', FlightSystemController::class)->names('flight_systems');
         Route::apiResource('carriers', FlightCarrierController::class)->names('flight_carriers');
         Route::get('carriers/{carrier}/balance', [FlightCarrierController::class, 'balance']);
+        Route::post('carriers/{carrier}/recharge', [FlightCarrierController::class, 'recharge']);
         Route::get('carriers/{carrier}/groups', [FlightGroupController::class, 'getByCarrier']);
         Route::get('groups/{group}/statement', [FlightGroupController::class, 'statement']);
         Route::post('groups/{group}/pay-debt', [FlightGroupController::class, 'payDebt']);
@@ -227,6 +231,16 @@ Route::prefix('v1')->middleware([
         });
 
         Route::get('bookings/{id}/modifications', [ModificationController::class, 'bookingModifications']);
+
+        // Passengers Directory & Notifications routes
+        Route::prefix('passengers')->group(function () {
+            Route::get('/', [PassengerController::class, 'index']);
+            Route::get('/alert-settings', [PassengerController::class, 'getAlertSettings']);
+            Route::put('/alert-settings', [PassengerController::class, 'updateAlertSettings']);
+            Route::get('/notifications', [PassengerController::class, 'getNotifications']);
+            Route::post('/notifications/mark-all-read', [PassengerController::class, 'markAllNotificationsRead']);
+            Route::post('/notifications/{id}/mark-read', [PassengerController::class, 'markNotificationRead']);
+        });
     });
 
     // Bus API
@@ -389,6 +403,8 @@ Route::prefix('v1')->middleware([
         Route::get('customer-ledger-balances', [FinancialReportController::class, 'customerLedgerBalances']);
         Route::get('bank-ledger-reconciliation', [FinancialReportController::class, 'bankLedgerReconciliation']);
         Route::get('ledger-reconciliation/latest', [FinancialReportController::class, 'latestLedgerReconciliation']);
+        Route::get('capital-analysis', [FinancialReportController::class, 'capitalAnalysis']);
+        Route::get('flights/detailed', [FinancialReportController::class, 'detailedFlightReport']);
     });
 
     // Customers API
@@ -405,6 +421,11 @@ Route::prefix('v1')->middleware([
         Route::get('executing-companies/dues', [HajjUmraExecutingCompanyFinanceController::class, 'dues']);
         Route::post('executing-companies/{company}/withdraw', [HajjUmraExecutingCompanyFinanceController::class, 'withdraw']);
         Route::post('executing-companies/{company}/repay', [HajjUmraExecutingCompanyFinanceController::class, 'repay']);
+
+        Route::get('programs', [HajjUmraProgramController::class, 'index']);
+        Route::post('programs', [HajjUmraProgramController::class, 'store']);
+        Route::get('programs/{program}', [HajjUmraProgramController::class, 'show']);
+        Route::match(['put', 'patch'], 'programs/{program}', [HajjUmraProgramController::class, 'update']);
 
         // Reference data (مدارة من Filament)
         Route::get('settings/programs', [HajjUmraReferenceController::class, 'programs']);

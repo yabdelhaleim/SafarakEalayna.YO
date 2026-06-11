@@ -91,4 +91,40 @@ class ReportsHubTest extends TestCase
             ->assertJsonPath('data.total_treasury', 2500)
             ->assertJsonCount(2, 'data.accounts');
     }
+
+    public function test_reports_hub_capital_analysis_endpoint(): void
+    {
+        $response = $this->getJson('/api/v1/reports/capital-analysis');
+
+        $response->assertOk()
+            ->assertHeader('Cache-Control')
+            ->assertJsonStructure([
+                'success',
+                'message',
+                'data' => [
+                    'tourism',
+                    'office',
+                    'currencies',
+                ]
+            ]);
+    }
+
+    public function test_reports_hub_detailed_flight_transactions_endpoint(): void
+    {
+        $response = $this->getJson('/api/v1/reports/flights/detailed');
+
+        $response->assertOk()
+            ->assertHeader('Cache-Control')
+            ->assertJsonStructure([
+                'success',
+                'message',
+                'data' => [
+                    'data',
+                    'current_page',
+                    'last_page',
+                    'per_page',
+                    'total',
+                ]
+            ]);
+    }
 }

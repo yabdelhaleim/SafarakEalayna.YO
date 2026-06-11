@@ -35,10 +35,9 @@ class AccountController extends Controller
     {
         $paginator = $this->accountService->getAllAccounts($request->all());
 
-        $baseOfficeQuery = Account::query();
-        AccountModuleDivision::applyLiquidityTreasuryScope($baseOfficeQuery);
+        $baseQuery = $this->accountService->buildAccountsQuery($request->all());
 
-        $liquidityAccounts = (clone $baseOfficeQuery)
+        $liquidityAccounts = (clone $baseQuery)
             ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
             ->get();
 

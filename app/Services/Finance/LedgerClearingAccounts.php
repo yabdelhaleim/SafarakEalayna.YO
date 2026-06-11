@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 
@@ -18,14 +19,18 @@ class LedgerClearingAccounts
         $name = config("accounting.clearing.income.{$key}")
             ?? config('accounting.clearing.income.general');
 
-        return $this->accountIdByName($name);
+        if ($name === null || $name === '') {
+            return null;
+        }
+
+        return $this->ensureClearingAccountExists($name, $key, 'income');
     }
 
     public function incomeContraIdForFlightBooking(): ?int
     {
         $fromFlightConfig = config('flight_accounting.ledger_clearing_account_name');
         if (is_string($fromFlightConfig) && $fromFlightConfig !== '') {
-            $id = $this->accountIdByName($fromFlightConfig);
+            $id = $this->ensureClearingAccountExists($fromFlightConfig, 'flight', 'income');
             if ($id !== null) {
                 return $id;
             }
@@ -40,21 +45,23 @@ class LedgerClearingAccounts
         $name = config("accounting.clearing.expense.{$key}")
             ?? config('accounting.clearing.expense.general');
 
-        return $this->accountIdByName($name);
+        if ($name === null || $name === '') {
+            return null;
+        }
+
+        return $this->ensureClearingAccountExists($name, $key, 'expense');
     }
 
     public function treasuryOperationsContraAccountId(): int
     {
         $name = config('accounting.clearing.treasury_operations');
-        $id = $this->accountIdByName($name);
-        if ($id === null) {
+        if (! is_string($name) || $name === '') {
             throw new \RuntimeException(
-                'حساب ضبط حركات الخزينة غير مُعرّف. شغّل migrations البذور أو عدّل config/accounting.php — الاسم المتوقع: '
-                .(is_string($name) ? $name : '')
+                'حساب ضبط حركات الخزينة غير مُعرّف في config/accounting.php.'
             );
         }
 
-        return $id;
+        return $this->ensureClearingAccountExists($name, 'general', 'treasury_operations');
     }
 
     protected function normalizeModuleKey(string|TransactionModule|null $module): string
@@ -81,6 +88,40 @@ class LedgerClearingAccounts
             ->where('name', $name)
             ->where('is_active', true)
             ->value('id');
+    }
+
+    protected function ensureClearingAccountExists(string $name, string $moduleKey, string $type): int
+    {
+        $id = $this->accountIdByName($name);
+        if ($id !== null) {
+            return $id;
+        }
+
+        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($name, $moduleKey, $type) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Cashbox,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'office',
+                    'is_module_vault' => false,
+                    'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type})",
+                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                ]
+            );
+
+            \Illuminate\Support\Facades\Log::info("Clearing account automatically created", [
+                'name' => $name,
+                'id' => $account->id,
+                'module' => $moduleKey,
+                'type' => $type
+            ]);
+
+            return $account->id;
+        }));
     }
 
     /**

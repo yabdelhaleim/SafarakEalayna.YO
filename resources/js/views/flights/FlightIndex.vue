@@ -157,12 +157,29 @@
                   :style="{ animationDelay: `${idx * 50}ms` }">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2 relative">
-                    <span @click="copyToClipboard(booking.bookingNumber)"
-                      class="font-mono text-gold font-bold cursor-pointer hover:underline underline-offset-4 decoration-gold/30">
-                      {{ booking.bookingNumber }}
-                    </span>
-                    <Copy class="w-3 h-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" />
-                    <div v-if="copiedTooltip === booking.bookingNumber" class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gold text-black text-[10px] font-bold rounded whitespace-nowrap animate-in fade-in zoom-in-95">
+                    <div class="flex flex-col min-w-0">
+                      <span
+                        v-if="booking.pnr"
+                        class="font-mono text-gold font-bold cursor-pointer hover:underline underline-offset-4 decoration-gold/30"
+                        :title="'PNR — انقر للنسخ'"
+                        @click="copyToClipboard(booking.pnr)"
+                      >
+                        {{ booking.pnr }}
+                      </span>
+                      <span
+                        class="font-mono cursor-pointer hover:underline underline-offset-4"
+                        :class="booking.pnr ? 'text-[10px] text-muted mt-0.5' : 'text-gold font-bold decoration-gold/30'"
+                        :title="booking.pnr ? 'مرجع المكتب — انقر للنسخ' : 'انقر للنسخ'"
+                        @click="copyToClipboard(booking.bookingNumber)"
+                      >
+                        {{ booking.bookingNumber }}
+                      </span>
+                    </div>
+                    <Copy class="w-3 h-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0" />
+                    <div
+                      v-if="copiedTooltip === booking.pnr || copiedTooltip === booking.bookingNumber"
+                      class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gold text-black text-[10px] font-bold rounded whitespace-nowrap animate-in fade-in zoom-in-95"
+                    >
                       تم النسخ!
                     </div>
                   </div>
@@ -192,7 +209,7 @@
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex flex-col">
-                    <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} {{ booking.pricing.currency }}</span>
+                    <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} ج.م</span>
                     <div :class="['flex items-center gap-1 text-[10px] font-bold', booking.pricing.profit >= 0 ? 'text-success' : 'text-error']">
                       <TrendingUp v-if="booking.pricing.profit >= 0" class="w-3 h-3" />
                       <TrendingDown v-else class="w-3 h-3" />
@@ -289,12 +306,22 @@
             >
             <!-- Top Row: Booking # + Status -->
             <div class="flex items-center justify-between">
-              <span
-                @click="copyToClipboard(booking.bookingNumber)"
-                class="font-mono text-gold font-bold text-sm cursor-pointer hover:underline"
-              >
-                {{ booking.bookingNumber }}
-              </span>
+              <div class="min-w-0">
+                <span
+                  v-if="booking.pnr"
+                  class="font-mono text-gold font-bold text-sm cursor-pointer hover:underline block"
+                  @click="copyToClipboard(booking.pnr)"
+                >
+                  {{ booking.pnr }}
+                </span>
+                <span
+                  class="font-mono cursor-pointer hover:underline block"
+                  :class="booking.pnr ? 'text-[10px] text-muted' : 'text-gold font-bold text-sm'"
+                  @click="copyToClipboard(booking.bookingNumber)"
+                >
+                  {{ booking.bookingNumber }}
+                </span>
+              </div>
               <div :class="['px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', statusStyles[booking.status]]">
                 <span v-if="booking.status === 'confirmed'" class="inline-block w-1 h-1 rounded-full bg-current mr-1 animate-pulse"></span>
                 {{ getStatusLabelAr(booking.status) }}

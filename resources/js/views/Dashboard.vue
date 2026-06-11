@@ -1,5 +1,17 @@
 <template>
   <div class="space-y-8 pb-12">
+    <div v-if="isError()" class="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+      <p class="text-red-400 font-bold">تعذر تحميل بيانات لوحة القيادة.</p>
+      <p v-if="error" class="mt-1 text-sm text-red-300/70">{{ error }}</p>
+      <button
+        type="button"
+        @click="refreshData"
+        class="mt-4 rounded-xl bg-red-500 px-6 py-2 text-white transition hover:bg-red-400"
+      >
+        إعادة المحاولة
+      </button>
+    </div>
+
     <!-- Premium App Header -->
     <header class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 p-8 shadow-2xl border border-white/10">
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent"></div>
@@ -717,7 +729,7 @@ import {
 } from 'lucide-vue-next';
 
 const flightStore = useFlightStore();
-const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
+const { state, error, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty, isError } = useAsyncState('loading');
 const isRefreshing = computed(() => isLoading());
 
 // Active layout view mapping: 'tourism' | 'office' | 'treasury'

@@ -92,6 +92,7 @@
               <router-link to="/flights/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/flights/list" class="nl-sub">قائمة الحجوزات</router-link>
               <router-link to="/flights/customers" class="nl-sub">عملاء الطيران</router-link>
+              <router-link to="/flights/passengers" class="nl-sub">دليل المسافرين</router-link>
               <router-link v-if="isAdminOrOwner" to="/flights/treasury" class="nl-sub">إدارة القسم (مالية وأرصدة)</router-link>
             </div>
           </div>
@@ -271,6 +272,7 @@
             <div v-show="isReportsOpen" class="dropdown-content-styled">
               <router-link to="/reports" class="nl-sub">مركز التقارير</router-link>
               <router-link to="/reports/debts" class="nl-sub">الديون والمديونيات</router-link>
+              <router-link to="/reports/flights-detailed" class="nl-sub">تقرير حركات الطيران</router-link>
             </div>
           </div>
 
@@ -324,9 +326,47 @@
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 3v5h-5M3 17v-5h5"/><path d="M15.66 7.5A7 7 0 104.34 14.5"/></svg>
           </button>
 
-          <button class="hdr-btn hdr-notif" type="button" aria-label="الإشعارات">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M15 8A5 5 0 005 8c0 5.5-2.5 7-2.5 7h15S15 13.5 15 8z"/><path d="M11.45 17.5a1.667 1.667 0 01-2.9 0"/></svg>
-          </button>
+          <div class="relative">
+            <button class="hdr-btn hdr-notif" type="button" aria-label="الإشعارات" @click.stop="toggleNotifDropdown">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M15 8A5 5 0 005 8c0 5.5-2.5 7-2.5 7h15S15 13.5 15 8z"/><path d="M11.45 17.5a1.667 1.667 0 01-2.9 0"/></svg>
+              <span v-if="unreadCount > 0" class="notif-badge-count">{{ unreadCount }}</span>
+            </button>
+
+            <!-- Notifications Dropdown -->
+            <transition name="t-dropdown">
+              <div v-if="isNotifDropdownOpen" class="notif-dropdown glass shadow-2xl rounded-2xl border border-slate-700/50" @click.stop>
+                <div class="notif-header">
+                  <h3>التنبيهات</h3>
+                  <button v-if="unreadCount > 0" class="mark-all-read-btn" @click="markAllAsRead">
+                    تحديد الكل كمقروء
+                  </button>
+                </div>
+                <div class="notif-list">
+                  <div v-if="notifications.length === 0" class="notif-empty">
+                    لا توجد تنبيهات جديدة
+                  </div>
+                  <div v-for="notif in notifications" :key="notif.id" class="notif-item" :class="{ 'notif-item--unread': !notif.read_at }" @click="handleNotifClick(notif)">
+                    <div class="notif-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                    </div>
+                    <div class="notif-content">
+                      <p class="notif-message">{{ notif.data.message }}</p>
+                      <div class="notif-meta">
+                        <span>تاريخ السفر: {{ notif.data.departure_date }} {{ notif.data.departure_time }}</span>
+                        <span class="notif-pnr" v-if="notif.data.pnr">PNR: {{ notif.data.pnr }}</span>
+                      </div>
+                    </div>
+                    <button v-if="!notif.read_at" class="mark-read-btn" title="تحديد كمقروء" @click.stop="markAsRead(notif.id)">
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.85rem; height: 0.85rem;"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="notif-footer">
+                  <router-link to="/flights/passengers" @click="isNotifDropdownOpen = false" class="view-all-link">عرض جميع المسافرين</router-link>
+                </div>
+              </div>
+            </transition>
+          </div>
 
           <button class="hdr-avatar" type="button" aria-label="الملف الشخصي">{{ authStore.userInitial }}</button>
         </div>
@@ -394,6 +434,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
+import axios from 'axios';
 import { useFlightStore } from '@/stores/flightStore';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
@@ -514,9 +555,78 @@ const handleEsc = (e) => {
   }
 };
 
+// Notifications state
+const notifications = ref([]);
+const unreadCount = ref(0);
+const isNotifDropdownOpen = ref(false);
+
+async function fetchNotifications() {
+  if (!authStore.token) return;
+  try {
+    const response = await axios.get('/api/v1/flight/passengers/notifications?type=unread');
+    notifications.value = response.data.data.items || [];
+    unreadCount.value = response.data.data.pagination?.total || 0;
+  } catch (e) {
+    console.error('Failed to fetch notifications', e);
+  }
+}
+
+function toggleNotifDropdown() {
+  isNotifDropdownOpen.value = !isNotifDropdownOpen.value;
+  if (isNotifDropdownOpen.value) {
+    fetchNotifications();
+  }
+}
+
+async function markAsRead(id) {
+  try {
+    await axios.post(`/api/v1/flight/passengers/notifications/${id}/mark-read`);
+    notifications.value = notifications.value.filter(n => n.id !== id);
+    unreadCount.value = Math.max(0, unreadCount.value - 1);
+    addToast('تم تحديد التنبيه كمقروء', 'success');
+  } catch (e) {
+    console.error(e);
+    addToast('فشل في تحديث حالة التنبيه', 'error');
+  }
+}
+
+async function markAllAsRead() {
+  try {
+    await axios.post('/api/v1/flight/passengers/notifications/mark-all-read');
+    notifications.value = [];
+    unreadCount.value = 0;
+    addToast('تم تحديد جميع التنبيهات كمقروءة', 'success');
+  } catch (e) {
+    console.error(e);
+    addToast('فشل في تحديث حالة التنبيهات', 'error');
+  }
+}
+
+function handleNotifClick(notif) {
+  if (!notif.read_at) {
+    markAsRead(notif.id);
+  }
+  isNotifDropdownOpen.value = false;
+  router.push('/flights/passengers');
+}
+
+const closeDropdowns = () => {
+  isNotifDropdownOpen.value = false;
+};
+
+watch(() => authStore.token, (val) => {
+  if (val) {
+    fetchNotifications();
+  } else {
+    notifications.value = [];
+    unreadCount.value = 0;
+  }
+});
+
 onMounted(async () => {
   window.addEventListener('resize', onResize, { passive: true });
   window.addEventListener('keydown', handleEsc);
+  window.addEventListener('click', closeDropdowns);
 
   window.addEventListener('show-toast', ({ detail }) =>
     addToast(detail.message, detail.type, detail.description)
@@ -525,11 +635,13 @@ onMounted(async () => {
   await authStore.initAuth();
   if (authStore.isAuthenticated) {
     printSettingsStore.fetch().catch(() => {});
+    fetchNotifications();
   }
 });
 onUnmounted(() => {
   window.removeEventListener('resize', onResize);
   window.removeEventListener('keydown', handleEsc);
+  window.removeEventListener('click', closeDropdowns);
 });
 </script>
 
@@ -1037,6 +1149,200 @@ html { direction: rtl; height: 100%; }
 
 .badge-success { background: var(--green); color: black; }
 .badge-purple { background: #a855f7; color: white; }
+
+/* ══ NOTIFICATIONS STYLES ══════════════ */
+.notif-badge-count {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  background: var(--red);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--surf);
+}
+
+.notif-dropdown {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  width: 340px;
+  background: rgba(14, 21, 37, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notif-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--t1);
+}
+
+.mark-all-read-btn {
+  font-size: 11px;
+  color: var(--blue);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.mark-all-read-btn:hover {
+  text-decoration: underline;
+}
+
+.notif-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.notif-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 13px;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+  text-align: right;
+}
+
+.notif-item:hover {
+  background: var(--hover);
+}
+
+.notif-item--unread {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.notif-item--unread::before {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.notif-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notif-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-message {
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin: 0 0 4px 0;
+  color: var(--t1);
+  font-weight: 500;
+}
+
+.notif-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.notif-pnr {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--t2);
+}
+
+.mark-read-btn {
+  color: var(--t3);
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+  padding: 4px;
+  margin-top: -2px;
+  border-radius: 6px;
+  background: none;
+  border: none;
+}
+
+.mark-read-btn:hover {
+  opacity: 1;
+  color: var(--green);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.notif-footer {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.view-all-link {
+  font-size: 12px;
+  color: var(--t2);
+  transition: color 0.15s;
+  display: block;
+  text-decoration: none;
+}
+
+.view-all-link:hover {
+  color: var(--blue);
+}
+
+/* Transitions */
+.t-dropdown-enter-active,
+.t-dropdown-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.t-dropdown-enter-from,
+.t-dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
 
 /* ══ PRINT STYLES ══════════════════════ */
 @media print {

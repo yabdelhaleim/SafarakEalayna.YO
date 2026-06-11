@@ -18,12 +18,12 @@ class FlightStatsWidget extends BaseWidget
         $totalBalance = Account::query()
             ->where('is_active', true)
             ->where('module_type', 'flights')
-            ->sum('balance');
+            ->sum('balance') ?? 0;
 
         $totalBookings = FlightBooking::count();
         $revenueThisMonth = FlightBooking::whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
-            ->sum('selling_price');
+            ->sum('selling_price') ?? 0;
 
         return [
             Stat::make('إجمالي أرصدة الطيران', number_format($totalBalance, 2).' ج.م')

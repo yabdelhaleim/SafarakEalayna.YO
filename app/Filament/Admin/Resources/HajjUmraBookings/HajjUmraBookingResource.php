@@ -2,12 +2,16 @@
 
 namespace App\Filament\Admin\Resources\HajjUmraBookings;
 
+use App\Enums\HajjUmraPaymentMethod;
 use App\Enums\HajjUmraStatus;
+use App\Rules\HajjUmraLiquidityAccount;
 use App\Filament\Admin\Resources\HajjUmraBookings\HajjUmraBookingResource\Widgets\HajjUmraStats;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\CreateHajjUmraBooking;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\EditHajjUmraBooking;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\ListHajjUmraBookings;
 use App\Filament\Admin\Resources\HajjUmraBookings\Pages\ViewHajjUmraBooking;
+use App\Models\Account;
+use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmraBooking;
 use App\Models\Program;
 use App\Services\HajjUmra\HajjUmraBookingService;
@@ -21,6 +25,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\EditAction;
@@ -67,7 +72,8 @@ class HajjUmraBookingResource extends Resource
                             ->label('المرافق (اختياري)')
                             ->relationship('companion', 'full_name')
                             ->searchable(['full_name', 'phone', 'passport_number'])
-                            ->preload(),
+                            ->preload()
+                            ->live(),
 
                         Select::make('program_id')
                             ->label('البرنامج')
@@ -88,6 +94,50 @@ class HajjUmraBookingResource extends Resource
                                     $set('selling_price', (float) $p->default_selling_price);
                                 }
                             }),
+                    ]),
+                ])->columnSpanFull(),
+
+            Section::make('المرافق والمورّد')
+                ->schema([
+                    Grid::make(2)->schema([
+                        TextInput::make('companion_purchase_price')
+                            ->label('سعر شراء المرافق')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->step(0.01)
+                            ->minValue(0)
+                            ->visible(fn (Get $get): bool => filled($get('companion_customer_id'))),
+
+                        TextInput::make('companion_selling_price')
+                            ->label('سعر بيع المرافق')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->step(0.01)
+                            ->minValue(0)
+                            ->visible(fn (Get $get): bool => filled($get('companion_customer_id'))),
+
+                        Select::make('supplier_id')
+                            ->label('المورّد (وكيل / شركة)')
+                            ->options(fn () => UmrahSupplier::query()->orderBy('name')->pluck('name', 'id')->all())
+                            ->searchable()
+                            ->preload(),
+
+                        Select::make('accommodation_choice')
+                            ->label('خيار التسكين')
+                            ->options([
+                                'standard' => 'تسكين عادي (مشترك)',
+                                'private' => 'غرفة خاصة',
+                            ])
+                            ->default('standard')
+                            ->live(),
+
+                        TextInput::make('accommodation_extra_charge')
+                            ->label('رسوم السكن الخاص الإضافية')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->step(0.01)
+                            ->minValue(0)
+                            ->visible(fn (Get $get): bool => $get('accommodation_choice') === 'private'),
                     ]),
                 ])->columnSpanFull(),
 
@@ -118,12 +168,27 @@ class HajjUmraBookingResource extends Resource
                     ]),
                 ])->columnSpanFull(),
 
+            Section::make('شبكة تسعير الأسرة')
+                ->description('اختياري — لتوثيق تفصيل الفئات (بالغ / طفل / رضيع).')
+                ->schema([
+                    Grid::make(4)->schema([
+                        TextInput::make('passenger_adult_count')->label('بالغ — العدد')->numeric()->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_adult_unit_price')->label('بالغ — سعر الفرد')->numeric()->prefix('ج.م')->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_child_with_bed_count')->label('طفل بسرير — العدد')->numeric()->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_child_with_bed_unit_price')->label('طفل بسرير — سعر الفرد')->numeric()->prefix('ج.م')->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_child_no_bed_count')->label('طفل بدون سرير — العدد')->numeric()->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_child_no_bed_unit_price')->label('طفل بدون سرير — سعر الفرد')->numeric()->prefix('ج.م')->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_infant_count')->label('رضيع — العدد')->numeric()->minValue(0)->default(0)->dehydrated(),
+                        TextInput::make('passenger_infant_unit_price')->label('رضيع — سعر الفرد')->numeric()->prefix('ج.م')->minValue(0)->default(0)->dehydrated(),
+                    ]),
+                ])->columnSpanFull(),
+
             Section::make('المحاسبة والدفع')
                 ->schema([
                     Grid::make(2)->schema([
                         Select::make('account_id')
                             ->label('حساب التسوية / الخزينة')
-                            ->relationship('account', 'name', fn (Builder $query) => $query->where('is_active', true))
+                            ->relationship('account', 'name', fn (Builder $query) => HajjUmraLiquidityAccount::applyLiquidityScope($query))
                             ->searchable()
                             ->preload()
                             ->required()
@@ -144,6 +209,60 @@ class HajjUmraBookingResource extends Resource
                         TextInput::make('agent_name')
                             ->label('اسم الموظف (نص)')
                             ->maxLength(150),
+                    ]),
+                ])->columnSpanFull(),
+
+            Section::make('الدفعة الأولية')
+                ->description('اختياري — تُسجَّل مع إنشاء الحجز عبر القيد المحاسبي.')
+                ->schema([
+                    Toggle::make('register_initial_payment')
+                        ->label('تسجيل دفعة أولية الآن')
+                        ->default(false)
+                        ->live()
+                        ->dehydrated(),
+
+                    Grid::make(2)->schema([
+                        TextInput::make('initial_payment_amount')
+                            ->label('مبلغ الدفعة')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->step(0.01)
+                            ->minValue(0)
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
+
+                        Select::make('initial_payment_method')
+                            ->label('طريقة الدفع')
+                            ->options(HajjUmraPaymentMethod::forDropdown())
+                            ->default(HajjUmraPaymentMethod::Cash->value)
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
+
+                        Select::make('initial_payment_account_id')
+                            ->label('حساب التحصيل')
+                            ->options(fn () => HajjUmraLiquidityAccount::applyLiquidityScope(Account::query())->pluck('name', 'id')->all())
+                            ->searchable()
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
+
+                        DatePicker::make('initial_payment_date')
+                            ->label('تاريخ الدفع')
+                            ->default(now())
+                            ->native(false)
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
+
+                        TextInput::make('initial_payment_reference')
+                            ->label('رقم المرجع')
+                            ->maxLength(100)
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
+
+                        TextInput::make('initial_payment_paid_by')
+                            ->label('المدفوع بواسطة')
+                            ->maxLength(150)
+                            ->dehydrated()
+                            ->visible(fn (Get $get): bool => (bool) $get('register_initial_payment')),
                     ]),
                 ])->columnSpanFull(),
 
@@ -207,16 +326,10 @@ class HajjUmraBookingResource extends Resource
                     ->schema([
                         TextInput::make('amount')->label('المبلغ')->numeric()->required()->prefix('ج.م'),
                         Select::make('account_id')->label('الحساب')
-                            ->relationship('account', 'name', fn (Builder $query) => $query->where('is_active', true))
+                            ->relationship('account', 'name', fn (Builder $query) => HajjUmraLiquidityAccount::applyLiquidityScope($query))
                             ->searchable()->preload()->required(),
                         Select::make('payment_method')->label('طريقة الدفع')->required()
-                            ->options([
-                                'cash' => 'نقدي',
-                                'bank_transfer' => 'تحويل بنكي',
-                                'wallet' => 'محفظة إلكترونية',
-                                'postal' => 'بريد',
-                                'other' => 'أخرى',
-                            ]),
+                            ->options(HajjUmraPaymentMethod::forDropdown()),
                         DatePicker::make('payment_date')->label('تاريخ الدفع')->default(now())->native(false),
                         TextInput::make('reference')->label('رقم المرجع')->maxLength(100),
                         TextInput::make('paid_by')->label('المدفوع بواسطة')->maxLength(150),

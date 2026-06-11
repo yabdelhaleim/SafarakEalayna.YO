@@ -412,9 +412,15 @@ const getOperationTypeClass = (type) => {
 
 const reload = async () => {
   loading.value = true;
-  data.value = await store.fetchFawryDashboard();
-  loading.value = false;
-  lastUpdated.value = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  try {
+    data.value = await store.fetchFawryDashboard();
+    lastUpdated.value = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    console.error('FawryDashboard reload', e);
+    data.value = null;
+  } finally {
+    loading.value = false;
+  }
 };
 
 let pollingInterval = null;

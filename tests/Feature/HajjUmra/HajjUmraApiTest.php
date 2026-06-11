@@ -259,6 +259,45 @@ class HajjUmraApiTest extends TestCase
             ->assertJsonPath('data.summary.total_debt', 8500);
     }
 
+    public function test_program_crud_via_api(): void
+    {
+        $createResponse = $this->postJson('/api/v1/hajj-umra/programs', [
+            'program_name' => 'برنامج API',
+            'program_type' => 'umra',
+            'total_nights' => 12,
+            'mecca_hotel_name' => 'فندق مكة',
+            'mecca_nights' => 6,
+            'medina_hotel_name' => 'فندق المدينة',
+            'medina_nights' => 6,
+            'airline' => 'مصر للطيران',
+            'executing_company' => 'شركة منفذة',
+            'trip_supervisor' => 'مشرف',
+            'departure_point' => 'القاهرة',
+            'departure_date' => now()->addDays(5)->toDateString(),
+            'return_date' => now()->addDays(17)->toDateString(),
+            'booking_status' => 'open',
+            'default_purchase_price' => 8000,
+            'default_selling_price' => 10000,
+        ]);
+
+        $createResponse->assertCreated()
+            ->assertJsonPath('data.program_name', 'برنامج API')
+            ->assertJsonPath('data.booking_status', 'open');
+
+        $programId = $createResponse->json('data.id');
+
+        $this->getJson("/api/v1/hajj-umra/programs/{$programId}")
+            ->assertOk()
+            ->assertJsonPath('data.program_name', 'برنامج API');
+
+        $this->patchJson("/api/v1/hajj-umra/programs/{$programId}", [
+            'program_name' => 'برنامج محدّث',
+            'booking_status' => 'closed',
+        ])->assertOk()
+            ->assertJsonPath('data.program_name', 'برنامج محدّث')
+            ->assertJsonPath('data.booking_status', 'closed');
+    }
+
     public function test_update_selling_price_reposts_income_transaction(): void
     {
         $program = $this->createProgram();

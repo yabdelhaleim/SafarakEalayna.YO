@@ -9,6 +9,7 @@ use App\Http\Requests\Bus\StoreBusCompanyRequest;
 use App\Http\Requests\Bus\UpdateBusCompanyRequest;
 use App\Rules\BusLiquidityAccount;
 use App\Http\Resources\Bus\BusCompanyResource;
+use App\Http\Resources\Bus\PublicBusCompanyResource;
 use App\Models\Bus\BusCompany;
 use App\Services\Bus\BusCompanyService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -51,7 +52,7 @@ class BusCompanyController extends Controller
 
             return ApiResponse::success(
                 'Active bus companies retrieved successfully.',
-                BusCompanyResource::collection($companies)
+                PublicBusCompanyResource::collection($companies)
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

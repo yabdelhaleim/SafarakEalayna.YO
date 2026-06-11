@@ -12,7 +12,7 @@ enum BookingChannelType: string
     {
         return match($this) {
             self::SYSTEM => 'نظام GDS / NDC',
-            self::SIGN => 'بورصة / وكيل مباشر',
+            self::SIGN => 'ساين',
             self::GROUP => 'حجز مجموعة',
         };
     }

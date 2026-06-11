@@ -8,6 +8,7 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\AuditLog;
 use App\Models\Transaction;
+use App\Services\Flight\FlightBookingService;
 use App\Support\Finance\AccountModuleDivision;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\DB;
@@ -158,6 +159,7 @@ class LedgerRepairService
         $before = $reconcile->runPostingAndBalanceIntegrityScan();
 
         $backfill = $this->backfillLegacySingleLegPostings($backfillLimit);
+        $flightSales = app(FlightBookingService::class)->backfillMissingCustomerSaleLedgers($backfillLimit);
         $customers = $this->syncCustomerBalancesFromLedger($actorUserId);
         $modules = $this->fixMisclassifiedTreasuryModules();
 
@@ -171,6 +173,7 @@ class LedgerRepairService
 
         return [
             'backfill' => $backfill,
+            'flight_sales' => $flightSales,
             'customers' => $customers,
             'modules' => $modules,
             'balance_chains' => $chains,

@@ -18,13 +18,15 @@ class ProgramProfitability extends BaseWidget
 
         $bookings = $this->record->bookings;
         
-        $totalRevenue = $bookings->sum('selling_price');
-        $bookingCosts = $bookings->sum('purchase_price');
+        $totalRevenue = $bookings->sum(fn ($booking) => $booking->total_selling_price);
+        $bookingCosts = $bookings->sum(
+            fn ($booking) => (float) $booking->purchase_price
+                + (float) ($booking->companion_purchase_price ?? 0)
+        );
         
-        // Extra costs linked to the program via transactions
         $extraCosts = \App\Models\Transaction::where('program_id', $this->record->id)
             ->where('type', \App\Enums\TransactionType::Expense->value)
-            ->sum('amount');
+            ->sum('amount') ?? 0;
             
         $totalCosts = $bookingCosts + $extraCosts;
         $profit = $totalRevenue - $totalCosts;

@@ -35,6 +35,18 @@ class FawryTransactionControllerTest extends TestCase
             'name_ar' => 'دفع فواتير',
             'is_active' => true,
         ]);
+
+        \App\Models\Fawry\FawryPaymentMethod::factory()->create([
+            'code' => 'cash',
+            'name_ar' => 'نقدي',
+            'is_active' => true,
+        ]);
+    }
+
+    public function actingAs($user, $driver = null)
+    {
+        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        return $this;
     }
 
     public function test_can_list_fawry_transactions()

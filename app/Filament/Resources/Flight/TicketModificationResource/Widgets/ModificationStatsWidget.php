@@ -14,9 +14,8 @@ class ModificationStatsWidget extends BaseWidget
     {
         $totalModifications = TicketModification::count();
         $confirmedModifications = TicketModification::where('status', 'confirmed')->count();
-        
-        $totalFees = TicketModification::where('status', 'confirmed')->sum('airline_change_fee');
-        $totalCommissions = TicketModification::where('status', 'confirmed')->sum('agency_commission');
+        $totalFees = TicketModification::where('status', 'confirmed')->sum('airline_change_fee') ?? 0;
+        $totalCommissions = TicketModification::where('status', 'confirmed')->sum('agency_commission') ?? 0;
         
         $pendingReconciliation = TicketModification::where('status', 'confirmed')
             ->where('reconciliation_status', 'unreconciled')

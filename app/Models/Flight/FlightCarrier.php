@@ -46,7 +46,7 @@ class FlightCarrier extends Model
     public function system(): BelongsTo
     {
         return $this->belongsTo(FlightSystem::class, 'flight_system_id')->withDefault([
-            'name' => 'حجز مباشر (بدون نظام)',
+            'name' => 'ساين (بدون نظام)',
         ]);
     }
 

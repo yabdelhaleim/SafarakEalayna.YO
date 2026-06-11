@@ -69,7 +69,7 @@ class ProgramResource extends Resource
                     Grid::make(2)->schema([
                         Select::make('mecca_hotel_id')
                             ->label('فندق مكة (من القائمة)')
-                            ->relationship('meccaHotel', 'name', fn ($q) => $q->where('city', 'like', '%مكة%'))
+                            ->relationship('meccaHotel', 'name', fn ($query) => $query->where('city', 'like', '%مكة%'))
                             ->searchable()
                             ->preload()
                             ->createOptionForm([
@@ -81,7 +81,7 @@ class ProgramResource extends Resource
 
                         Select::make('medina_hotel_id')
                             ->label('فندق المدينة (من القائمة)')
-                            ->relationship('medinaHotel', 'name', fn ($q) => $q->where('city', 'like', '%مدينة%'))
+                            ->relationship('medinaHotel', 'name', fn ($query) => $query->where('city', 'like', '%مدينة%'))
                             ->searchable()
                             ->preload()
                             ->createOptionForm([

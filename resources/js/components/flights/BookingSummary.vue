@@ -47,17 +47,17 @@
         <div class="space-y-4">
           <div class="flex justify-between items-center text-muted">
             <span>Purchase Price</span>
-            <span class="font-mono">{{ booking.pricing.purchasePrice.toLocaleString() }} {{ booking.pricing.currency }}</span>
+            <span class="font-mono">{{ booking.pricing.purchasePrice.toLocaleString() }} ج.م</span>
           </div>
           <div class="flex justify-between items-center text-xl font-bold">
             <span>Selling Price</span>
-            <span class="font-mono text-gold">{{ booking.pricing.sellingPrice.toLocaleString() }} {{ booking.pricing.currency }}</span>
+            <span class="font-mono text-gold">{{ booking.pricing.sellingPrice.toLocaleString() }} ج.م</span>
           </div>
           <div class="pt-4 border-t border-white/10 flex justify-between items-center">
             <span class="text-sm text-muted">Expected Profit</span>
             <div class="flex flex-col items-end">
               <span :class="['text-2xl font-bold font-mono', booking.pricing.profit >= 0 ? 'text-success' : 'text-error']">
-                {{ booking.pricing.profit >= 0 ? '+' : '' }}{{ booking.pricing.profit.toLocaleString() }} {{ booking.pricing.currency }}
+                {{ booking.pricing.profit >= 0 ? '+' : '' }}{{ booking.pricing.profit.toLocaleString() }} ج.م
               </span>
               <span class="text-[10px] px-2 py-0.5 rounded bg-success/10 text-success font-bold">
                 {{ profitPercentage }}% Margin

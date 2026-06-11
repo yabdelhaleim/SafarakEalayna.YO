@@ -201,7 +201,7 @@
           <div
             v-for="(perf, mod) in dbStats.performance"
             :key="mod"
-            v-show="perf.profit !== 0 || perf.income !== 0"
+            v-show="(perf.profit !== 0 || perf.income !== 0) && availableModules.some(m => m.value === mod)"
             class="rounded-2xl border border-white/5 bg-white/[0.02] p-5"
           >
             <div class="mb-4 flex items-center justify-between gap-3">

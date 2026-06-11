@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'is_active', 'permissions'])]
+#[Fillable(['name', 'email', 'password', 'role', 'is_active', 'permissions', 'travel_alert_days_before', 'travel_alert_time'])]
 #[Hidden(['password'])]
 class User extends Authenticatable implements FilamentUser
 {
-    use HasApiTokens, HasFactory;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected function casts(): array
     {
@@ -24,6 +25,7 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_active' => 'boolean',
             'permissions' => 'array',
+            'travel_alert_days_before' => 'integer',
         ];
     }
 

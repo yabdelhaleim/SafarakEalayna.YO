@@ -39,6 +39,7 @@ class FlightTreasuryController extends Controller
             AccountType::Wallet->value,
             AccountType::Bank->value,
             AccountType::Treasury->value,
+            AccountType::Post->value,
         ];
 
         $accounts = Account::query()
@@ -66,11 +67,66 @@ class FlightTreasuryController extends Controller
             ->limit(40)
             ->get(['id', 'type', 'amount', 'from_account_id', 'to_account_id', 'notes', 'related_type', 'related_id', 'created_at']);
 
+        // ── ملخص السيولة مقسّم حسب العملة ──────────────────────────────
+        // القاعدة: نجمع balance الفعلي فقط (ليس credit_limit)
+        // كل عملة تُحسب على حدة حتى لا تُخلط أرقام EGP مع KWD
+        $currencySummary = [];
+
+        foreach ($systems as $sys) {
+            $cur = strtoupper((string) $sys->currency);
+            $currencySummary[$cur]['systems_balance'] = ($currencySummary[$cur]['systems_balance'] ?? 0) + (float) $sys->balance;
+            $currencySummary[$cur]['systems_credit_limit'] = ($currencySummary[$cur]['systems_credit_limit'] ?? 0) + (float) $sys->credit_limit;
+        }
+
+        foreach ($carriers as $carrier) {
+            $cur = strtoupper((string) $carrier->currency);
+            $currencySummary[$cur]['carriers_balance'] = ($currencySummary[$cur]['carriers_balance'] ?? 0) + (float) $carrier->balance;
+            $currencySummary[$cur]['carriers_credit_limit'] = ($currencySummary[$cur]['carriers_credit_limit'] ?? 0) + (float) $carrier->credit_limit;
+        }
+
+        foreach ($accounts as $acc) {
+            $cur = strtoupper((string) ($acc->currency ?? 'EGP'));
+            $currencySummary[$cur]['accounts_balance'] = ($currencySummary[$cur]['accounts_balance'] ?? 0) + (float) $acc->balance;
+        }
+
+        // حساب الإجماليات لكل عملة
+        $summaryByCurrency = [];
+        foreach ($currencySummary as $currency => $vals) {
+            $systemsBalance = $vals['systems_balance'] ?? 0;
+            $systemsCreditLimit = $vals['systems_credit_limit'] ?? 0;
+            $carriersBalance = $vals['carriers_balance'] ?? 0;
+            $carriersCreditLimit = $vals['carriers_credit_limit'] ?? 0;
+            $accountsBalance = $vals['accounts_balance'] ?? 0;
+
+            $summaryByCurrency[] = [
+                'currency' => $currency,
+                // ── الرصيد الفعلي (المال المشحون فعلاً) ──
+                'systems_balance' => round($systemsBalance, 2),
+                'carriers_balance' => round($carriersBalance, 2),
+                'accounts_balance' => round($accountsBalance, 2),
+                'total_actual' => round($systemsBalance + $carriersBalance + $accountsBalance, 2),
+                // ── حدود الائتمان (ليست سيولة نقدية) ──
+                'systems_credit_limit' => round($systemsCreditLimit, 2),
+                'carriers_credit_limit' => round($carriersCreditLimit, 2),
+                // ── المتاح للخصم (الفعلي + الائتمان) ──
+                'total_available' => round(
+                    $systemsBalance + $systemsCreditLimit +
+                    $carriersBalance + $carriersCreditLimit +
+                    $accountsBalance,
+                    2
+                ),
+            ];
+        }
+
+        // ترتيب: EGP أولاً ثم باقي العملات
+        usort($summaryByCurrency, fn ($a, $b) => $a['currency'] === 'EGP' ? -1 : ($b['currency'] === 'EGP' ? 1 : strcmp($a['currency'], $b['currency'])));
+
         return ApiResponse::success('Flight treasury overview', [
             'systems' => $systems,
             'carriers' => $carriers,
             'settlement_accounts' => $accounts,
             'recent_flight_transactions' => $recentTransactions,
+            'liquidity_by_currency' => $summaryByCurrency,
         ]);
     }
 

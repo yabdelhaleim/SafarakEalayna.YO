@@ -26,7 +26,7 @@ class HajjUmraReferenceController extends Controller
     {
         $type = $request->string('type')->lower()->value();
 
-        $query = Program::with(['executingCompany', 'tripSupervisor', 'accommodationTypeRow'])
+        $query = Program::with(['executingCompany', 'tripSupervisor', 'accommodationTypeRow', 'meccaHotel', 'medinaHotel'])
             ->where('is_active', true);
 
         if ($type !== '') {
@@ -39,9 +39,11 @@ class HajjUmraReferenceController extends Controller
             'program_type' => $p->program_type,
             'season' => $p->season,
             'total_nights' => $p->total_nights,
-            'mecca_hotel_name' => $p->mecca_hotel_name,
+            'mecca_hotel_name' => $p->mecca_hotel_name ?: $p->meccaHotel?->name,
+            'mecca_hotel_label' => $p->meccaHotel?->name,
             'mecca_nights' => $p->mecca_nights,
-            'medina_hotel_name' => $p->medina_hotel_name,
+            'medina_hotel_name' => $p->medina_hotel_name ?: $p->medinaHotel?->name,
+            'medina_hotel_label' => $p->medinaHotel?->name,
             'medina_nights' => $p->medina_nights,
             'departure_date' => $p->departure_date?->format('Y-m-d'),
             'return_date' => $p->return_date?->format('Y-m-d'),

@@ -108,7 +108,9 @@ class FlightBookingResource extends JsonResource
             'selling_price' => (float) $this->selling_price,
             'profit' => (float) $this->profit,
             'profit_margin' => number_format($profitMargin, 2).'%',
-            'currency' => $this->currency ?? 'SAR',
+            'currency' => $this->currency ?? 'EGP',
+            'purchase_currency' => $this->currency ?? 'EGP',
+            'selling_currency' => 'EGP',
             'currency_used' => $this->currency_used,
             'balance_currency_used' => $this->balance_currency_used,
             'exchange_rate_used' => $this->exchange_rate_used !== null ? (float) $this->exchange_rate_used : null,
@@ -127,6 +129,7 @@ class FlightBookingResource extends JsonResource
                 'name' => $this->customer->full_name,
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
+                'balance' => (float) ($this->customer->ledgerAccount?->balance ?? 0),
                 'type' => $this->customer->type instanceof CustomerType
                     ? ($this->customer->type === CustomerType::Company ? 'counter' : 'regular')
                     : ($this->customer->type === 'company' || $this->customer->type === 'counter' ? 'counter' : 'regular'),

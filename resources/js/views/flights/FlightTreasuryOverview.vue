@@ -40,6 +40,85 @@
     </div>
 
     <template v-else-if="ov">
+
+      <!-- ── ملخص السيولة حسب العملة ─────────────────────────────── -->
+      <section v-if="ov.liquidity_by_currency?.length" class="space-y-3">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <h2 class="text-xl font-bold text-white">ملخص السيولة</h2>
+          <div class="flex items-center gap-2 text-xs text-text-muted">
+            <span class="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+              ● الرصيد الفعلي = المال المشحون فعلاً
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+              ● حد الائتمان = تسهيل، ليس نقداً
+            </span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+          <table class="min-w-full text-right text-sm">
+            <thead class="border-b border-white/10 bg-white/[0.03] text-[11px] uppercase tracking-wider text-text-muted">
+              <tr>
+                <th class="px-5 py-3 font-bold">العملة</th>
+                <th class="px-5 py-3 font-bold text-violet-300">رصيد الأنظمة</th>
+                <th class="px-5 py-3 font-bold text-sky-300">رصيد الناقلين</th>
+                <th class="px-5 py-3 font-bold text-emerald-300">الحسابات</th>
+                <th class="px-5 py-3 font-bold text-white border-r border-white/10">
+                  إجمالي الرصيد الفعلي
+                </th>
+                <th class="px-5 py-3 font-bold text-amber-300/70">حد الائتمان (أنظمة)</th>
+                <th class="px-5 py-3 font-bold text-amber-300/70">حد الائتمان (ناقلين)</th>
+                <th class="px-5 py-3 font-bold text-gold">المتاح للخصم</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <tr
+                v-for="row in ov.liquidity_by_currency"
+                :key="row.currency"
+                class="transition-colors hover:bg-white/[0.03]"
+              >
+                <td class="px-5 py-3">
+                  <span class="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-black text-white">
+                    {{ row.currency }}
+                  </span>
+                </td>
+                <td class="px-5 py-3 font-mono font-bold text-violet-300 tabular-nums">
+                  {{ fmtNum(row.systems_balance) }}
+                </td>
+                <td class="px-5 py-3 font-mono font-bold text-sky-300 tabular-nums">
+                  {{ fmtNum(row.carriers_balance) }}
+                </td>
+                <td class="px-5 py-3 font-mono font-bold text-emerald-300 tabular-nums">
+                  {{ fmtNum(row.accounts_balance) }}
+                </td>
+                <td class="px-5 py-3 border-r border-white/10">
+                  <span class="font-mono text-base font-black text-white tabular-nums">
+                    {{ fmtNum(row.total_actual) }} {{ row.currency }}
+                  </span>
+                </td>
+                <td class="px-5 py-3 font-mono text-amber-400/60 tabular-nums text-xs">
+                  {{ fmtNum(row.systems_credit_limit) }}
+                </td>
+                <td class="px-5 py-3 font-mono text-amber-400/60 tabular-nums text-xs">
+                  {{ fmtNum(row.carriers_credit_limit) }}
+                </td>
+                <td class="px-5 py-3">
+                  <span class="font-mono font-black text-gold tabular-nums">
+                    {{ fmtNum(row.total_available) }} {{ row.currency }}
+                  </span>
+                  <p class="text-[10px] text-text-muted mt-0.5">فعلي + ائتمان</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="text-xs text-text-muted">
+          ⚠️ العملات المختلفة لا تُجمع مع بعض — كل عملة معروضة على حدة لتجنب الخلط.
+          «المتاح للخصم» يشمل حد الائتمان وليس سيولة نقدية حقيقية.
+        </p>
+      </section>
+
       <!-- أنظمة الحجز -->
       <section class="space-y-4">
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -173,18 +252,57 @@
 
       <!-- شركات الطيران -->
       <section v-if="ov.carriers?.length" class="space-y-4">
-        <h2 class="text-xl font-bold text-white">أرصدة شركات الطيران</h2>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <h2 class="text-xl font-bold text-white">أرصدة شركات الطيران</h2>
+          <span class="text-xs text-text-muted">الرصيد المتاح = الرصيد + حد الائتمان · اشحن الرصيد بالنقر على «شحن»</span>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div
             v-for="c in ov.carriers"
             :key="c.id"
-            class="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm"
+            class="dashboard-kpi group flex flex-col gap-3 border border-sky-500/20 bg-gradient-to-br from-sky-500/10 to-transparent p-5"
           >
-            <p class="font-bold text-white">{{ c.name }}</p>
-            <p class="text-xs text-text-muted">{{ c.system?.name || '—' }} · {{ c.code }}</p>
-            <p class="mt-2 font-mono text-gold tabular-nums">
-              {{ Number(c.available_balance ?? c.balance ?? 0).toLocaleString('ar-EG') }} {{ c.currency }}
-            </p>
+            <!-- Header: اسم + أزرار -->
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-sky-300/90">ناقل طيران</p>
+                <h3 class="truncate text-base font-black text-white">{{ c.name }}</h3>
+                <p class="text-xs text-text-muted">{{ c.code }} · {{ c.currency }}</p>
+              </div>
+              <div class="flex shrink-0 flex-col gap-1 sm:flex-row sm:items-center">
+                <button
+                  v-if="c.is_active !== false"
+                  type="button"
+                  class="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/25"
+                  @click="openRechargeCarrier(c)"
+                >
+                  <Wallet class="h-3.5 w-3.5" />
+                  شحن
+                </button>
+              </div>
+            </div>
+            <!-- تفاصيل الأرصدة -->
+            <div class="space-y-2 border-t border-white/10 pt-3 text-sm">
+              <div class="flex justify-between gap-2 text-text-muted">
+                <span>الرصيد</span>
+                <span class="font-mono font-bold text-white tabular-nums">{{ fmt(c.balance, c.currency) }}</span>
+              </div>
+              <div v-if="Number(c.credit_limit) > 0" class="flex justify-between gap-2 text-text-muted">
+                <span>حد ائتمان</span>
+                <span class="font-mono text-white/90 tabular-nums">{{ fmt(c.credit_limit, c.currency) }}</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="font-bold text-sky-200">المتاح</span>
+                <span class="font-mono text-lg font-black tabular-nums text-gold">
+                  {{ fmt(availableForCarrier(c), c.currency) }}
+                </span>
+              </div>
+              <div v-if="c.system?.name" class="pt-1">
+                <span class="inline-flex items-center rounded-md border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-300">
+                  {{ c.system.name }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -527,6 +645,104 @@
       </div>
     </Teleport>
 
+    <!-- Modal: شحن رصيد ناقل طيران -->
+    <Teleport to="body">
+      <div
+        v-if="modal.type === 'rechargeCarrier' && modal.carrier"
+        class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-300"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeModal"
+      >
+        <div class="w-full max-w-md overflow-hidden rounded-2xl border border-sky-500/20 bg-[#0b1220] shadow-2xl animate-in zoom-in-95 duration-300">
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                <Wallet class="h-5 w-5" />
+              </div>
+              <div>
+                <p class="text-xs text-text-muted">شحن رصيد ناقل طيران</p>
+                <h3 class="text-lg font-bold text-white">{{ modal.carrier.name }}</h3>
+                <p class="text-xs text-text-muted">
+                  {{ modal.carrier.code }} · {{ modal.carrier.currency }}
+                  · الرصيد الحالي: <span class="font-bold text-gold">{{ fmt(modal.carrier.balance, modal.carrier.currency) }}</span>
+                </p>
+              </div>
+            </div>
+            <button type="button" class="rounded-lg p-2 text-text-muted hover:bg-white/10 transition-colors" @click="closeModal">
+              <X class="h-4 w-4" />
+            </button>
+          </div>
+          <!-- Form -->
+          <form class="space-y-4 p-5" @submit.prevent="submitRechargeCarrier">
+            <div>
+              <label class="mb-1.5 block text-xs font-bold text-text-muted">من حساب (محفظة / بنك / خزينة)</label>
+              <select
+                v-model="carrierRechargeForm.from_account_id"
+                required
+                class="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500/50 transition-colors"
+              >
+                <option value="">— اختر الحساب —</option>
+                <option v-for="acc in carrierRechargeAccounts" :key="'cr-' + acc.id" :value="acc.id">
+                  {{ formatRechargeSourceAccount(acc) }}
+                </option>
+              </select>
+              <p v-if="!carrierRechargeAccounts.length" class="mt-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                ⚠️ لا يوجد حساب تحصيل بعملة {{ modal.carrier.currency }}. أضف حساباً من لوحة الإدارة.
+              </p>
+            </div>
+            <div>
+              <label class="mb-1.5 block text-xs font-bold text-text-muted">المبلغ</label>
+              <div class="relative">
+                <input
+                  v-model="carrierRechargeForm.amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  class="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 pl-14 text-sm text-white outline-none focus:border-sky-500/50 transition-colors"
+                  placeholder="0.00"
+                />
+                <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 rounded-md bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-black text-sky-300">{{ modal.carrier.currency }}</span>
+              </div>
+            </div>
+            <div>
+              <label class="mb-1.5 block text-xs font-bold text-text-muted">ملاحظات (اختياري)</label>
+              <input
+                v-model="carrierRechargeForm.notes"
+                type="text"
+                maxlength="500"
+                class="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500/50 transition-colors"
+                placeholder="مثال: شحن يدوي — رصيد مسبق الدفع"
+              />
+            </div>
+            <p v-if="carrierRechargeError" class="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
+              {{ carrierRechargeError }}
+            </p>
+            <div class="flex gap-2 pt-1">
+              <button
+                type="button"
+                class="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-bold text-text-muted transition hover:bg-white/5"
+                :disabled="carrierRechargeSubmitting"
+                @click="closeModal"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                class="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-sky-500/50 bg-sky-600/90 py-2.5 text-sm font-black text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-500 disabled:opacity-50"
+                :disabled="carrierRechargeSubmitting || !carrierRechargeAccounts.length"
+              >
+                <Loader2 v-if="carrierRechargeSubmitting" class="h-4 w-4 animate-spin" />
+                تنفيذ الشحن
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Modal: حركات حساب (طيران) -->
     <Teleport to="body">
       <div
@@ -650,6 +866,7 @@ const settlementTypeLabel = (type) => {
   if (t === 'bank') return 'بنك';
   if (t === 'wallet') return 'محفظة';
   if (t === 'treasury') return 'خزينة عامة';
+  if (t === 'post') return 'بريد';
   return t || 'حساب';
 };
 
@@ -660,13 +877,17 @@ const settlementCardClass = (type) => {
   if (t === 'bank') return `${base} border-sky-500/25 bg-sky-500/10`;
   if (t === 'wallet') return `${base} border-emerald-500/25 bg-emerald-500/10`;
   if (t === 'treasury') return `${base} border-white/15 bg-white/[0.04]`;
+  if (t === 'post') return `${base} border-sky-500/25 bg-sky-500/10`;
   return `${base} border-white/10 bg-white/[0.03]`;
 };
 
 const fmt = (n, cur) => `${Number(n ?? 0).toLocaleString('ar-EG')} ${cur || ''}`.trim();
 
+// تنسيق رقم بدون عملة (للجداول)
+const fmtNum = (n) => Number(n ?? 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 });
+
 const cashboxAccounts = computed(() => (ov.value?.settlement_accounts || []).filter(a => a.type === 'cashbox' || a.type === 'treasury'));
-const bankAccounts = computed(() => (ov.value?.settlement_accounts || []).filter(a => a.type === 'bank'));
+const bankAccounts = computed(() => (ov.value?.settlement_accounts || []).filter(a => a.type === 'bank' || a.type === 'post'));
 const walletAccounts = computed(() => (ov.value?.settlement_accounts || []).filter(a => a.type === 'wallet'));
 
 const availableForSystem = (sys) => {
@@ -674,6 +895,13 @@ const availableForSystem = (sys) => {
     return Number(sys.available_balance);
   }
   return Number(sys.balance ?? 0) + Number(sys.credit_limit ?? 0);
+};
+
+const availableForCarrier = (c) => {
+  if (c.available_balance != null && c.available_balance !== '') {
+    return Number(c.available_balance);
+  }
+  return Number(c.balance ?? 0) + Number(c.credit_limit ?? 0);
 };
 
 const formatDt = (iso) => {
@@ -760,6 +988,55 @@ const openRecharge = (sys) => {
   rechargeError.value = '';
   rechargeForm.value = { from_account_id: '', amount: '', notes: '' };
   modal.value = { type: 'recharge', system: sys };
+};
+
+// ---- شحن ناقل طيران ----
+const carrierRechargeForm = ref({ from_account_id: '', amount: '', notes: '' });
+const carrierRechargeSubmitting = ref(false);
+const carrierRechargeError = ref('');
+
+const carrierRechargeAccounts = computed(() => {
+  const carrier = modal.value.carrier;
+  const list = ov.value?.settlement_accounts;
+  if (modal.value.type !== 'rechargeCarrier' || !carrier || !Array.isArray(list)) return [];
+  const cur = String(carrier.currency || 'EGP').toUpperCase();
+  return list.filter((a) => String(a.currency || 'EGP').toUpperCase() === cur);
+});
+
+const openRechargeCarrier = (carrier) => {
+  carrierRechargeError.value = '';
+  carrierRechargeForm.value = { from_account_id: '', amount: '', notes: '' };
+  modal.value = { type: 'rechargeCarrier', carrier };
+};
+
+const submitRechargeCarrier = async () => {
+  carrierRechargeError.value = '';
+  const carrier = modal.value.carrier;
+  if (!carrier || modal.value.type !== 'rechargeCarrier') return;
+  const aid = carrierRechargeForm.value.from_account_id;
+  const amt = Number(carrierRechargeForm.value.amount);
+  if (!aid) {
+    carrierRechargeError.value = 'اختر حساب المصدر.';
+    return;
+  }
+  if (!Number.isFinite(amt) || amt <= 0) {
+    carrierRechargeError.value = 'أدخل مبلغاً أكبر من صفر.';
+    return;
+  }
+  carrierRechargeSubmitting.value = true;
+  try {
+    await store.rechargeCarrier(carrier.id, {
+      from_account_id: parseInt(String(aid), 10),
+      amount: amt,
+      notes: carrierRechargeForm.value.notes?.trim() || null,
+    });
+    await store.fetchFlightTreasuryOverview();
+    closeModal();
+  } catch (e) {
+    carrierRechargeError.value = e.response?.data?.message || e.message || 'فشل تنفيذ الشحن';
+  } finally {
+    carrierRechargeSubmitting.value = false;
+  }
 };
 
 const submitRecharge = async () => {

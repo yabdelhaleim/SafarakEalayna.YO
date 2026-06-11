@@ -71,19 +71,21 @@ Route::get('/sso-login', function (Illuminate\Http\Request $request) {
     return redirect('/login');
 })->middleware('web');
 
-Route::get('/set-session', function () {
-    Auth::login(\App\Models\User::find(2));
-    session(['test_val' => 'HELLO WORLD']);
-    return redirect('/test-session');
-})->middleware('web');
+if (app()->environment('local', 'testing')) {
+    Route::get('/set-session', function () {
+        Auth::login(\App\Models\User::find(2));
+        session(['test_val' => 'HELLO WORLD']);
+        return redirect('/test-session');
+    })->middleware('web');
 
-Route::get('/test-session', function () {
-    return 'AUTH ID: ' . Auth::id() . ' | SESSION: ' . json_encode(session()->all());
-})->middleware('web');
+    Route::get('/test-session', function () {
+        return 'AUTH ID: ' . Auth::id() . ' | SESSION: ' . json_encode(session()->all());
+    })->middleware('web');
 
-Route::get('/test-sso', function () {
-    return 'AUTH ID: ' . Auth::id() . ' | USER: ' . json_encode(Auth::user());
-})->middleware('web');
+    Route::get('/test-sso', function () {
+        return 'AUTH ID: ' . Auth::id() . ' | USER: ' . json_encode(Auth::user());
+    })->middleware('web');
+}
 
 // SPA (Single Page Application) - Catch all routes and serve Vue app
 // Exclude /api and /admin from the catch-all to allow proper 404 handling

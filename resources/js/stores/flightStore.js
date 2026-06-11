@@ -78,12 +78,18 @@ export const useFlightStore = defineStore('flight', {
         filtered = filtered.filter(b => b.status === filters.status);
       }
 
-      if (filters.trip_type) {
-        filtered = filtered.filter(b => b.trip_type === filters.trip_type);
+      const tripTypeFilter = filters.trip_type || filters.tripType;
+      if (tripTypeFilter) {
+        filtered = filtered.filter(
+          (b) => (b.trip_type || b.tripType) === tripTypeFilter
+        );
       }
 
       if (filters.currency) {
-        filtered = filtered.filter(b => b.currency === filters.currency);
+        const code = String(filters.currency).toUpperCase();
+        filtered = filtered.filter(
+          (b) => (b.purchaseCurrency || b.pricing?.purchaseCurrency || 'EGP').toUpperCase() === code
+        );
       }
 
       if (filters.flight_system_id) {
@@ -185,6 +191,7 @@ export const useFlightStore = defineStore('flight', {
           name: b.customer.name || b.customer.full_name || '',
           phone: b.customer.phone || '',
           email: b.customer.email || '',
+          balance: parseFloat(b.customer.balance ?? 0),
           type: b.customer.type || 'regular',
         } : null,
         employee: b.employee ? {
@@ -241,11 +248,18 @@ export const useFlightStore = defineStore('flight', {
           status: b.refund.status || '',
         } : null,
         pricing: {
-          purchasePrice: parseFloat(b.purchase_price || b.pricing?.purchasePrice || 0),
-          sellingPrice: parseFloat(b.selling_price || b.pricing?.sellingPrice || 0),
-          profit: parseFloat(b.profit || b.pricing?.profit || 0),
-          currency: b.currency || b.pricing?.currency || 'EGP',
+          purchasePrice: parseFloat(b.purchase_price_egp ?? b.purchase_price ?? b.pricing?.purchasePrice ?? 0),
+          sellingPrice: parseFloat(b.selling_price ?? b.pricing?.sellingPrice ?? 0),
+          profit: parseFloat(b.profit ?? b.pricing?.profit ?? 0),
+          purchaseCurrency: String(
+            b.purchase_currency || b.currency || b.pricing?.purchaseCurrency || 'EGP'
+          ).toUpperCase(),
+          currency: String(b.selling_currency || b.pricing?.currency || 'EGP').toUpperCase(),
+          purchasePriceForeign: b.purchase_price_foreign != null ? parseFloat(b.purchase_price_foreign) : null,
+          exchangeRate: b.exchange_rate != null ? parseFloat(b.exchange_rate) : null,
         },
+        currency: String(b.selling_currency || 'EGP').toUpperCase(),
+        purchaseCurrency: String(b.purchase_currency || b.currency || 'EGP').toUpperCase(),
         route: b.route || `${b.from_airport || ''} → ${b.to_airport || ''}`,
         trip_type: b.trip_type || null,
         tripType: b.trip_type || null,
@@ -266,7 +280,24 @@ export const useFlightStore = defineStore('flight', {
         from_airport_id: b.from_airport_id ?? null,
         to_airport_id: b.to_airport_id ?? null,
         account_id: b.account_id ?? null,
-        baggage_allowance_kg: b.baggage_allowance_kg ?? 0,
+        baggage_allowance_kg: (() => {
+          const fromBooking = Number(b.baggage_allowance_kg) || 0;
+          if (fromBooking > 0) return fromBooking;
+          const passengers = b.passengers || [];
+          return passengers.reduce(
+            (sum, p) => sum + (Number(p.baggage_allowance_kg ?? p.baggageAllowanceKg) || 0),
+            0
+          );
+        })(),
+        baggageAllowanceKg: (() => {
+          const fromBooking = Number(b.baggage_allowance_kg) || 0;
+          if (fromBooking > 0) return fromBooking;
+          const passengers = b.passengers || [];
+          return passengers.reduce(
+            (sum, p) => sum + (Number(p.baggage_allowance_kg ?? p.baggageAllowanceKg) || 0),
+            0
+          );
+        })(),
         flight_group_id: b.flight_group_id ?? null,
         purchase_price_foreign: b.purchase_price_foreign != null ? parseFloat(b.purchase_price_foreign) : null,
         exchange_rate: b.exchange_rate != null ? parseFloat(b.exchange_rate) : null,
@@ -286,7 +317,15 @@ export const useFlightStore = defineStore('flight', {
               availableBalance: parseFloat(b.flight_system.available_balance ?? 0),
             }
           : null,
-        flightCarrier: b.flight_carrier || null,
+        flightCarrier: b.flight_carrier
+          ? {
+              id: b.flight_carrier.id,
+              name: b.flight_carrier.name,
+              currency: b.flight_carrier.currency,
+              balance: parseFloat(b.flight_carrier.balance ?? 0),
+              availableBalance: parseFloat(b.flight_carrier.available_balance ?? 0),
+            }
+          : null,
         flightGroup: b.flight_group
           ? {
               id: b.flight_group.id,
@@ -346,9 +385,21 @@ export const useFlightStore = defineStore('flight', {
         const apiPayload = this.transformPayloadForApi(payload);
         const response = await axios.post('/api/v1/flight/bookings', apiPayload);
         const newBooking = response.data?.data || response.data;
+        const bookingId = newBooking?.id;
+        if (bookingId) {
+          await this.fetchBookingById(bookingId);
+        }
+        const mapped = bookingId && this.currentBooking?.id
+          ? { ...this.currentBooking }
+          : this.mapBooking(newBooking);
         if (!Array.isArray(this.bookings)) this.bookings = [];
-        this.bookings.unshift(this.mapBooking(newBooking));
-        return newBooking;
+        const existingIdx = this.bookings.findIndex((b) => String(b.id) === String(bookingId));
+        if (existingIdx >= 0) {
+          this.bookings[existingIdx] = mapped;
+        } else {
+          this.bookings.unshift(mapped);
+        }
+        return bookingId ? { ...newBooking, id: bookingId } : newBooking;
       } catch (error) {
         this.errors = error.response?.data?.errors || { message: 'حدث خطأ، حاول مرة أخرى' };
         throw error;
@@ -893,6 +944,21 @@ export const useFlightStore = defineStore('flight', {
      */
     async rechargeFlightSystem(systemId, payload) {
       const response = await axios.post(`/api/v1/flight/treasury/systems/${systemId}/recharge`, {
+        from_account_id: payload.from_account_id,
+        amount: payload.amount,
+        notes: payload.notes || null,
+      });
+      return response.data?.data ?? null;
+    },
+
+    /**
+     * شحن رصيد ناقل طيران من حساب تحصيل (محفظة/بنك/خزينة).
+     *
+     * @param {number|string} carrierId
+     * @param {{ from_account_id: number, amount: number|string, notes?: string|null }} payload
+     */
+    async rechargeCarrier(carrierId, payload) {
+      const response = await axios.post(`/api/v1/flight/carriers/${carrierId}/recharge`, {
         from_account_id: payload.from_account_id,
         amount: payload.amount,
         notes: payload.notes || null,

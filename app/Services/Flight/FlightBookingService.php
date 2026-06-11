@@ -23,6 +23,7 @@ use App\Models\Flight\FlightTicket;
 use App\Models\Setting\Currency;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryLedgerMirror;
@@ -55,10 +56,16 @@ class FlightBookingService
 
     protected TreasuryService $treasuryService;
 
-    public function __construct(TransactionService $transactionService, TreasuryService $treasuryService)
-    {
+    protected LedgerClearingAccounts $ledgerClearingAccounts;
+
+    public function __construct(
+        TransactionService $transactionService,
+        TreasuryService $treasuryService,
+        LedgerClearingAccounts $ledgerClearingAccounts,
+    ) {
         $this->transactionService = $transactionService;
         $this->treasuryService = $treasuryService;
+        $this->ledgerClearingAccounts = $ledgerClearingAccounts;
     }
 
     /**
@@ -355,7 +362,7 @@ class FlightBookingService
                 ]);
 
                 return $booking->load([
-                    'customer',
+                    'customer.ledgerAccount',
                     'employee.user',
                     'account',
                     'airlineAccount',
@@ -930,19 +937,110 @@ class FlightBookingService
     {
         $configured = config('flight_accounting.ledger_clearing_account_id');
         if ($configured !== null && $configured !== '') {
-            return (int) $configured;
+            $id = (int) $configured;
+            if (Account::query()->where('id', $id)->where('is_active', true)->exists()) {
+                return $id;
+            }
         }
 
-        $name = config('flight_accounting.ledger_clearing_account_name');
-        if (! is_string($name) || $name === '') {
-            return null;
-        }
-
-        return Account::query()->where('name', $name)->value('id');
+        return $this->ledgerClearingAccounts->incomeContraIdForFlightBooking();
     }
 
     /**
-     * Reverse the sale journal (treasury → clearing) when the booking was settled only via GL (no cash payments).
+     * يضمن وجود حساب إقفال إيرادات الطيران قبل تسجيل مديونية العميل.
+     */
+    protected function ensureFlightIncomeClearingAccount(int $userId): int
+    {
+        $existing = $this->flightLedgerContraAccountId();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $name = config('flight_accounting.ledger_clearing_account_name')
+            ?? config('accounting.clearing.income.flight')
+            ?? 'إقفال مبيعات الطيران (نظام)';
+
+        if (! is_string($name) || $name === '') {
+            throw new \RuntimeException('تعذر تحديد اسم حساب إقفال مبيعات الطيران.');
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => (int) DB::transaction(function () use ($name, $userId) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Cashbox,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'office',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب إقفال إيرادات مبيعات الطيران (نظام)',
+                    'created_by' => $userId,
+                ]
+            );
+
+            Log::info('Flight income clearing account provisioned', [
+                'account_id' => $account->id,
+                'name' => $account->name,
+            ]);
+
+            return $account->id;
+        }));
+    }
+
+    /**
+     * إصلاح حجوزات سابقة لم يُسجَّل عليها قيد بيع العميل (مديونية التذكرة).
+     *
+     * @return array{repaired:int, skipped:int, errors:array<int,string>}
+     */
+    public function backfillMissingCustomerSaleLedgers(?int $limit = null): array
+    {
+        $stats = ['repaired' => 0, 'skipped' => 0, 'errors' => []];
+
+        $query = FlightBooking::query()
+            ->whereNull('sale_gl_transaction_id')
+            ->where('selling_price', '>', 0)
+            ->whereNotIn('status', [FlightBookingStatus::CANCELLED, FlightBookingStatus::REFUNDED])
+            ->orderBy('id');
+
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        foreach ($query->get() as $booking) {
+            try {
+                DB::transaction(function () use ($booking, &$stats): void {
+                    $booking->refresh();
+                    if ($booking->sale_gl_transaction_id !== null || (float) $booking->selling_price <= 0) {
+                        $stats['skipped']++;
+
+                        return;
+                    }
+
+                    $this->recordSaleToCustomer(
+                        $booking,
+                        (int) $booking->customer_id,
+                        (float) $booking->selling_price,
+                        (int) ($booking->created_by ?? Auth::id() ?? 1),
+                    );
+
+                    $stats['repaired']++;
+                });
+            } catch (\Throwable $e) {
+                $stats['errors'][(int) $booking->id] = $e->getMessage();
+                Log::warning('flight_sale_ledger_backfill_failed', [
+                    'flight_booking_id' => $booking->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Reverse the sale journal (clearing → customer) when the booking was settled only via GL (no cash payments).
      */
     protected function reverseFlightBookingSaleLedger(FlightBooking $booking, int $userId): void
     {
@@ -955,28 +1053,21 @@ class FlightBookingService
             return;
         }
 
-        $contraId = (int) $orig->from_account_id;
-        $treasuryId = (int) $orig->to_account_id;
+        $clearingId = (int) $orig->from_account_id;
+        $customerAccountId = (int) $orig->to_account_id;
         $amount = (float) $orig->amount;
 
-        $reversal = $this->transactionService->recordJournalTransfer([
+        $this->transactionService->recordJournalTransfer([
             'amount' => $amount,
-            'from_account_id' => $treasuryId,
-            'to_account_id' => $contraId,
-            'allow_from_negative' => false,
+            'from_account_id' => $customerAccountId,
+            'to_account_id' => $clearingId,
+            'allow_from_negative' => true,
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightBooking::class,
             'related_id' => $booking->id,
             'notes' => 'إلغاء بيع تذكرة طيران — حجز #'.$booking->booking_number,
             'created_by' => $userId,
         ]);
-
-        TreasuryLedgerMirror::mirrorFlightOutboundFromCash(
-            $reversal,
-            $booking->id,
-            'مرآة عكس بيع طيران (صرف من الخزينة) — حجز #'.$booking->booking_number,
-            User::query()->find($userId)?->name ?? 'System',
-        );
 
         $booking->forceFill(['sale_gl_transaction_id' => null])->save();
 
@@ -1903,17 +1994,15 @@ class FlightBookingService
      */
     protected function recordSaleToCustomer(FlightBooking $booking, int $customerId, float $sellingPrice, int $userId, array $passengers = []): void
     {
-        $customerAccount = $this->ensureCustomerAccount($customerId);
-        $clearingAccountId = $this->flightLedgerContraAccountId();
-
-        if ($clearingAccountId === null) {
-            Log::warning('No flight clearing account configured. Skipping sale journal.');
-
+        if ($sellingPrice <= 0) {
             return;
         }
 
+        $customerAccount = $this->ensureCustomerAccount($customerId);
+        $clearingAccountId = $this->ensureFlightIncomeClearingAccount($userId);
+
         if ($clearingAccountId === $customerAccount->id) {
-            return;
+            throw new \RuntimeException('حساب إقفال مبيعات الطيران يطابق حساب العميل — لا يمكن تسجيل المديونية.');
         }
 
         $booking->loadMissing(['customer', 'passengers', 'fromAirport', 'toAirport']);

@@ -137,6 +137,17 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'module_type' => 'fawry',
         ]);
 
+        $fawryClearingName = config('accounting.clearing.income.fawry', 'إقفال إيرادات فوري');
+        $fawryClearing = Account::query()->create([
+            'name' => $fawryClearingName,
+            'type' => AccountType::Cashbox,
+            'balance' => 0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+        ]);
+
         $clearing = app(LedgerClearingAccounts::class);
         $incomeId = $clearing->incomeContraIdForModule('fawry');
         $this->assertNotNull($incomeId);
@@ -319,5 +330,45 @@ class FinanceAccountsModuleFilterTest extends TestCase
         $response->assertOk();
         $ids = collect($response->json('data.items'))->pluck('id')->all();
         $this->assertContains($account->id, $ids);
+    }
+
+    public function test_accounts_index_stats_are_filtered_by_module_type(): void
+    {
+        Account::query()->create([
+            'name' => 'Tourism Cashbox',
+            'type' => AccountType::Cashbox,
+            'balance' => 2000,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'module' => 'flight',
+        ]);
+
+        Account::query()->create([
+            'name' => 'Office Cashbox',
+            'type' => AccountType::Cashbox,
+            'balance' => 3000,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'module' => 'bus',
+        ]);
+
+        // Unfiltered stats
+        $responseAll = $this->getJson('/api/v1/finance/accounts?per_page=100');
+        $responseAll->assertOk();
+        $this->assertEquals(5000.0, (float) $responseAll->json('data.stats.total_balance'));
+
+        // Tourism filtered stats
+        $responseTourism = $this->getJson('/api/v1/finance/accounts?module_type=tourism&per_page=100');
+        $responseTourism->assertOk();
+        $this->assertEquals(2000.0, (float) $responseTourism->json('data.stats.total_balance'));
+
+        // Office filtered stats
+        $responseOffice = $this->getJson('/api/v1/finance/accounts?module_type=office&per_page=100');
+        $responseOffice->assertOk();
+        $this->assertEquals(3000.0, (float) $responseOffice->json('data.stats.total_balance'));
     }
 }

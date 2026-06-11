@@ -233,17 +233,31 @@
           <div class="space-y-6">
 
             <!-- Total Liquidity Card -->
-            <div v-if="isAdmin" class="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/60 to-transparent p-6 text-center relative overflow-hidden">
+            <div v-if="isAdmin" class="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/60 to-transparent p-6 relative overflow-hidden">
               <div class="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent pointer-events-none"></div>
               <div class="relative">
                 <div class="flex items-center justify-center gap-2 mb-4">
                   <Activity class="w-4 h-4 text-sky-400" />
-                  <h2 class="text-xs font-bold uppercase tracking-widest text-sky-400/80">إجمالي السيولة</h2>
+                  <h2 class="text-xs font-bold uppercase tracking-widest text-sky-400/80">إجمالي السيولة (EGP)</h2>
                 </div>
-                <p class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-sky-300 drop-shadow tabular-nums mb-2">
+                <p class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-sky-300 drop-shadow tabular-nums mb-1 text-center">
                   {{ fmt(data.liquidity?.total || 0) }}
                 </p>
-                <p class="text-xs text-white/30">يشمل جميع حسابات الطيران</p>
+                <p class="text-xs text-white/30 text-center mb-4">جنيه مصري — رصيد فعلي مشحون</p>
+
+                <!-- تفصيل حسب العملة إن وُجدت عملات أخرى -->
+                <div v-if="otherCurrencies.length" class="space-y-2 border-t border-white/10 pt-4">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-amber-400/70 mb-2">عملات أخرى (لا تُضاف لـ EGP)</p>
+                  <div v-for="row in otherCurrencies" :key="row.currency" class="flex items-center justify-between text-sm">
+                    <div class="flex items-center gap-2">
+                      <span class="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black text-white">{{ row.currency }}</span>
+                      <span class="text-xs text-white/50">فعلي</span>
+                    </div>
+                    <span class="font-mono font-bold text-white">{{ Number(row.total_actual || 0).toLocaleString('ar-EG') }}</span>
+                  </div>
+                </div>
+
+                <p class="text-[10px] text-white/20 text-center mt-3">حد الائتمان مستثنى — اضغط على «الخزينة» للتفصيل</p>
               </div>
             </div>
 
@@ -368,6 +382,12 @@ const loading = ref(true);
 const lastUpdated = ref('—');
 
 const fmt = (v) => Number(v || 0).toLocaleString('ar-EG');
+
+// العملات غير EGP لعرضها منفصلة
+const otherCurrencies = computed(() => {
+  const rows = data.value?.liquidity?.by_currency || [];
+  return rows.filter(r => r.currency !== 'EGP' && (r.total_actual > 0 || r.total_available > 0));
+});
 
 const formatDt = (iso) => {
   if (!iso) return '—';

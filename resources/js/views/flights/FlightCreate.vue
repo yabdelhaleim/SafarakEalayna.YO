@@ -420,7 +420,7 @@
                     </p>
                     <h2 class="flight-panel__title">مصدر الحجز</h2>
                     <p class="flight-panel__subtitle">
-                      سيستم أو مجموعة أو مباشر — خط الطيران يُختار لاحقاً كبيانات فقط؛ الخصم من رصيد الساين في الحجز المباشر فقط
+                      سيستم أو مجموعة أو ساين — خط الطيران يُختار لاحقاً كبيانات فقط؛ الخصم من رصيد الساين في حجز الساين فقط
                     </p>
                   </div>
                 </div>
@@ -445,7 +445,7 @@
                       :class="form.booking_source === 'direct' ? 'border-info/50 bg-info/20 text-white shadow-lg shadow-info/20' : 'border-white/10 bg-white/5 text-gray-400 hover:bg-white/10'"
                     >
                       <Plane class="h-6 w-6" />
-                      <span class="font-bold">حجز مباشر (Airline)</span>
+                      <span class="font-bold">ساين (Airline)</span>
                     </button>
                     <button 
                       type="button"
@@ -482,7 +482,7 @@
                   <!-- Case 2: Direct Booking -->
                   <div v-if="form.booking_source === 'direct'" class="space-y-6">
                     <p class="text-sm text-text-muted text-center">
-                      خط الطيران في الخطوة التالية — تكلفة الشراء تُخصم من رصيد الساين (الحجز المباشر الوحيد).
+                      خط الطيران في الخطوة التالية — تكلفة الشراء تُخصم من رصيد الساين (حجز الساين الوحيد).
                     </p>
                   </div>
 
@@ -668,6 +668,7 @@
                       خط الطيران (الناقل) <span class="text-error">*</span>
                     </label>
                     <select
+                      v-if="form.booking_source === 'direct'"
                       v-model="form.flight_carrier_id"
                       :disabled="loadingCarriers"
                       class="flight-select"
@@ -678,6 +679,13 @@
                         {{ carrier.name }}{{ form.booking_source === 'direct' ? ` (${carrier.currency})` : '' }}
                       </option>
                     </select>
+                    <input
+                      v-else
+                      v-model="form.airline_name"
+                      type="text"
+                      class="flight-input"
+                      placeholder="أدخل خط الطيران يدويًا (مثال: مصر للطيران)"
+                    />
                   </div>
                   <div>
                     <label class="mb-2 block text-sm font-medium text-text-muted">موظف مسؤول</label>
@@ -1238,6 +1246,50 @@
                         </button>
                       </div>
                     </div>
+
+                    <!-- Regular customer ledger preview -->
+                    <div
+                      v-if="form.customer"
+                      class="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-6"
+                    >
+                      <div class="flex items-center gap-3">
+                        <div class="rounded-xl bg-gold/10 p-3 text-gold">
+                          <CreditCard class="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h4 class="font-bold text-white">رصيد العميل في الدفتر</h4>
+                          <p class="text-xs text-text-muted">يُضاف قيمة التذكرة ويُخصم الدفع المبدئي عند الحفظ.</p>
+                        </div>
+                      </div>
+                      <div class="divide-y divide-white/5 space-y-3">
+                        <div class="flex justify-between items-center pt-1">
+                          <span class="text-xs text-text-muted">الرصيد الحالي:</span>
+                          <span :class="['font-mono text-sm', customerCurrentLedger.class]">
+                            {{ customerCurrentLedger.text }}
+                            <span v-if="customerCurrentLedger.label" class="text-[11px] font-sans mr-1">{{ customerCurrentLedger.label }}</span>
+                          </span>
+                        </div>
+                        <div class="flex justify-between items-center pt-3">
+                          <span class="text-xs text-text-muted">قيمة هذا الحجز:</span>
+                          <span class="font-mono text-sm font-bold text-gold">
+                            {{ Number(form.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          </span>
+                        </div>
+                        <div v-if="form.initial_payment > 0" class="flex justify-between items-center pt-3">
+                          <span class="text-xs text-text-muted">الدفع المبدئي:</span>
+                          <span class="font-mono text-sm font-bold text-success">
+                            − {{ Number(form.initial_payment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          </span>
+                        </div>
+                        <div class="flex justify-between items-center border-t border-white/10 pt-3">
+                          <span class="text-xs font-bold text-white">الرصيد المتوقع بعد الحجز:</span>
+                          <span :class="['font-mono text-base font-black', customerProjectedLedger.class]">
+                            {{ customerProjectedLedger.text }}
+                            <span v-if="customerProjectedLedger.label" class="text-[11px] font-sans mr-1">{{ customerProjectedLedger.label }}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <!-- B2B credit details -->
@@ -1260,20 +1312,22 @@
                         </div>
                         <div class="flex justify-between items-center pt-3">
                           <span class="text-xs text-text-muted">الرصيد الحالي (المديونية):</span>
-                          <span class="font-mono text-sm font-bold text-white">
-                            {{ Number(form.customer.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          <span :class="['font-mono text-sm', counterCurrentLedger.class]">
+                            {{ counterCurrentLedger.text }}
+                            <span v-if="counterCurrentLedger.label" class="text-[11px] font-sans mr-1">{{ counterCurrentLedger.label }}</span>
                           </span>
                         </div>
                         <div class="flex justify-between items-center pt-3">
                           <span class="text-xs text-text-muted">قيمة الحجز الحالي:</span>
                           <span class="font-mono text-sm font-bold text-gold">
-                            {{ Number(form.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.m
+                            {{ Number(form.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
                           </span>
                         </div>
                         <div class="flex justify-between items-center pt-3 border-t border-white/10">
                           <span class="text-xs font-bold text-white">المديونية المتوقعة بعد الحجز:</span>
-                          <span class="font-mono text-base font-black text-sky-400">
-                            {{ Number((Number(form.customer.balance || 0) + Number(form.selling_price || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                          <span :class="['font-mono text-base font-black', counterProjectedLedger.class]">
+                            {{ counterProjectedLedger.text }}
+                            <span v-if="counterProjectedLedger.label" class="text-[11px] font-sans mr-1">{{ counterProjectedLedger.label }}</span>
                           </span>
                         </div>
                       </div>
@@ -1382,9 +1436,9 @@
                         <span class="text-gray-400 block text-xs">نظام الحجز</span>
                         <span class="text-white font-bold">{{ selectedFlightSystemName }}</span>
                       </div>
-                      <div v-if="resolvedCarrier">
+                      <div v-if="resolvedCarrier || form.airline_name">
                         <span class="text-gray-400 block text-xs">خط الطيران (الناقل)</span>
-                        <span class="text-white font-bold">{{ resolvedCarrier.name }}</span>
+                        <span class="text-white font-bold">{{ resolvedCarrier ? resolvedCarrier.name : form.airline_name }}</span>
                       </div>
                     </div>
                   </div>
@@ -1725,9 +1779,9 @@
                       </span>
                     </div>
                   </template>
-                  <div v-if="resolvedCarrier" class="flex justify-between">
+                  <div v-if="resolvedCarrier || form.airline_name" class="flex justify-between">
                     <span class="text-gray-400">{{ form.booking_source === 'direct' ? 'الساين' : 'خط الطيران' }}</span>
-                    <span class="text-white font-bold">{{ resolvedCarrier.name }}</span>
+                    <span class="text-white font-bold">{{ resolvedCarrier ? resolvedCarrier.name : form.airline_name }}</span>
                   </div>
                   <div v-if="resolvedCarrier && form.booking_source === 'direct'" class="flex justify-between">
                     <span class="text-gray-400">الرصيد / العملة</span>
@@ -2045,6 +2099,7 @@ import CustomerSelect from '@/components/flights/CustomerSelect.vue';
 import CompactPassengerList from '@/components/flights/CompactPassengerList.vue';
 import { passengerFirstName, passengerLastName } from '@/utils/flightPassengerDisplay';
 import { fetchSettlementAccounts as fetchModuleSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
+import { formatLedgerBalance, projectedLedgerBalance } from '@/composables/useLedgerBalance';
 import {
   ArrowRight,
   ArrowLeft,
@@ -2166,6 +2221,7 @@ function createDefaultForm() {
     booking_source: 'direct',
     flight_system_id: null,
     flight_carrier_id: null,
+    airline_name: '',
     flight_group_id: null,
     /** مصدر خصم تكلفة الشراء على الخادم: carrier | system */
     purchase_balance_source: 'carrier',
@@ -2194,6 +2250,32 @@ function createDefaultForm() {
 
 // Form data
 const form = ref(createDefaultForm());
+
+const customerCurrentLedger = computed(() =>
+  formatLedgerBalance(form.value.customer?.balance ?? 0, 'customer')
+);
+
+const customerProjectedLedger = computed(() =>
+  formatLedgerBalance(
+    projectedLedgerBalance(
+      form.value.customer?.balance ?? 0,
+      form.value.selling_price ?? 0,
+      form.value.initial_payment ?? 0
+    ),
+    'customer'
+  )
+);
+
+const counterCurrentLedger = computed(() =>
+  formatLedgerBalance(form.value.customer?.balance ?? 0, 'customer')
+);
+
+const counterProjectedLedger = computed(() =>
+  formatLedgerBalance(
+    projectedLedgerBalance(form.value.customer?.balance ?? 0, form.value.selling_price ?? 0, 0),
+    'customer'
+  )
+);
 
 const customerProfile = ref({
   full_name: '',
@@ -2255,8 +2337,14 @@ function getStep4MissingFields() {
     if (!p.travel_country) missing.push('بلد العميل');
   }
 
-  if (!form.value.flight_carrier_id) {
-    missing.push('خط الطيران (الناقل)');
+  if (form.value.booking_source === 'direct') {
+    if (!form.value.flight_carrier_id) {
+      missing.push('خط الطيران (الناقل)');
+    }
+  } else {
+    if (!String(form.value.airline_name || '').trim()) {
+      missing.push('خط الطيران (الناقل)');
+    }
   }
   if (!String(form.value.pnr || '').trim()) {
     missing.push('رقم الحجز (PNR)');
@@ -2718,7 +2806,7 @@ const selectedGroupName = computed(() => {
 const bookingSourceTypeLabel = computed(() => {
   if (form.value.booking_source === 'system') return 'حجز سيستم';
   if (form.value.booking_source === 'group') return 'حجز مجموعة';
-  return 'حجز مباشر';
+  return 'حجز ساين';
 });
 
 /** يعرض نوع الحجز + المصدر الفعلي (نظام / ساين / مجموعة) في الملخص. */
@@ -3252,12 +3340,16 @@ const onCarrierChange = async () => {
   loadingGroups.value = false;
 
   if (!form.value.flight_carrier_id) {
+    form.value.airline_name = '';
     return;
   }
 
   selectedCarrier.value = availableCarriers.value.find(
     (c) => Number(c.id) === Number(form.value.flight_carrier_id)
   );
+  if (selectedCarrier.value) {
+    form.value.airline_name = selectedCarrier.value.name;
+  }
   loadingGroups.value = true;
   try {
     availableGroups.value = await store.fetchGroupsByCarrier(form.value.flight_carrier_id);
@@ -3413,6 +3505,7 @@ const hydrateForEdit = async (id) => {
     form.value.account_id = raw.account_id != null ? Number(raw.account_id) : null;
     form.value.flight_system_id = raw.flight_system_id || null;
     form.value.flight_carrier_id = raw.flight_carrier_id || null;
+    form.value.airline_name = raw.airline_name || '';
     form.value.flight_group_id = raw.flight_group_id || null;
     form.value.purchase_balance_source = raw.purchase_balance_source || 'carrier';
     if (form.value.purchase_balance_source === 'group') {
@@ -3583,8 +3676,9 @@ const submitBooking = async () => {
       return_date: routeFields.return_date,
       return_time: routeFields.return_time,
       flight_system_id: form.value.flight_system_id,
-      flight_carrier_id: form.value.flight_carrier_id,
+      flight_carrier_id: form.value.booking_source === 'direct' ? form.value.flight_carrier_id : null,
       flight_group_id: form.value.flight_group_id,
+      airline_name: form.value.airline_name || null,
       booking_source: form.value.booking_source,
       purchase_balance_source: form.value.purchase_balance_source || 'carrier',
       currency: form.value.currency,
@@ -3604,7 +3698,10 @@ const submitBooking = async () => {
       payment_method: form.value.payment_method || 'cash',
       pnr: String(form.value.pnr || '').trim() || null,
       employee_id,
-      baggage_allowance_kg: Number(form.value.baggage_allowance_kg) || 0,
+      baggage_allowance_kg: form.value.passengers.reduce(
+        (sum, p) => sum + (Number(p.baggage_allowance_kg) || 0),
+        0
+      ),
       departure_time: routeFields.departure_time || null,
       arrival_time: routeFields.arrival_time || null,
       segments: buildRouteSegments(),

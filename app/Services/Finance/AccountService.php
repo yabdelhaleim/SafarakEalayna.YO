@@ -21,7 +21,7 @@ use Illuminate\Validation\ValidationException;
 
 class AccountService
 {
-    public function getAllAccounts(array $filters): LengthAwarePaginator
+    public function buildAccountsQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
         $query = Account::query();
 
@@ -96,6 +96,13 @@ class AccountService
                 $query->whereBetween('balance', [1, 1000]);
             }
         }
+
+        return $query;
+    }
+
+    public function getAllAccounts(array $filters): LengthAwarePaginator
+    {
+        $query = $this->buildAccountsQuery($filters);
 
         $perPage = min($filters['per_page'] ?? 15, 100);
         $accounts = $query

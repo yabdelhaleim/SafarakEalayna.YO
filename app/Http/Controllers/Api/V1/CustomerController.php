@@ -117,7 +117,9 @@ class CustomerController extends Controller
                 return ApiResponse::success('Query is empty.', []);
             }
 
-            $customers = Customer::where('full_name', 'like', "%{$query}%")
+            $customers = Customer::query()
+                ->with('ledgerAccount')
+                ->where('full_name', 'like', "%{$query}%")
                 ->orWhere('phone', 'like', "%{$query}%")
                 ->limit(10)
                 ->get();

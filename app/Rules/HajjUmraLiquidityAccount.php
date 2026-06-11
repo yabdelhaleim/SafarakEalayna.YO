@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Support\Finance\AccountModuleDivision;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Database\Eloquent\Builder;
 
 class HajjUmraLiquidityAccount implements ValidationRule
 {
@@ -32,6 +33,16 @@ class HajjUmraLiquidityAccount implements ValidationRule
         if (! $account->is_active) {
             $fail('الحساب المحدد غير مفعّل.');
         }
+    }
+
+    public static function applyLiquidityScope(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->where(function (Builder $q): void {
+                $q->where('module_type', 'hajj_umra')->orWhere('module', 'hajj_umra');
+            })
+            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES);
     }
 
     public static function belongsToHajjUmraModule(Account $account): bool

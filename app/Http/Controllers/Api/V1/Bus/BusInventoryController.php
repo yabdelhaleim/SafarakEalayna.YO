@@ -9,6 +9,7 @@ use App\Http\Requests\Bus\StoreBusInventoryRequest;
 use App\Http\Requests\Bus\UpdateBusInventoryRequest;
 use App\Http\Resources\Bus\BusCompanyPaymentResource;
 use App\Http\Resources\Bus\BusInventoryResource;
+use App\Http\Resources\Bus\PublicBusInventoryResource;
 use App\Models\Bus\BusCompany;
 use App\Models\Bus\BusInventory;
 use App\Services\Bus\BusInventoryService;
@@ -72,7 +73,7 @@ class BusInventoryController extends Controller
 
             return ApiResponse::success(
                 'Available inventories retrieved successfully.',
-                BusInventoryResource::collection($inventories)
+                PublicBusInventoryResource::collection($inventories)
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

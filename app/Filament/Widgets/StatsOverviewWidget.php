@@ -24,7 +24,7 @@ class StatsOverviewWidget extends BaseWidget
     {
         $monthRevenue = Booking::whereMonth('created_at', now()->month)
             ->where('payment_status', 'paid')
-            ->sum('total_price');
+            ->sum('total_price') ?? 0;
 
         $monthBookings = Booking::whereMonth('created_at', now()->month)->count();
 

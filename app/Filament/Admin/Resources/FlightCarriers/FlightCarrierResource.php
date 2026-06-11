@@ -2,31 +2,35 @@
 
 namespace App\Filament\Admin\Resources\FlightCarriers;
 
+use App\Enums\AccountType;
+use App\Enums\WalletProvider;
 use App\Filament\Admin\Concerns\BelongsToFlightModuleNavigation;
 use App\Filament\Admin\Resources\FlightCarriers\Pages\CreateFlightCarrier;
 use App\Filament\Admin\Resources\FlightCarriers\Pages\EditFlightCarrier;
 use App\Filament\Admin\Resources\FlightCarriers\Pages\ListFlightCarriers;
+use App\Models\Account;
 use App\Models\Flight\FlightCarrier;
+use App\Services\Flight\FlightCarrierRechargeService;
 use BackedEnum;
-use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\ForceDeleteAction;
-use Filament\Tables\Actions\ForceDeleteBulkAction;
-use Filament\Tables\Actions\RestoreAction;
-use Filament\Tables\Actions\RestoreBulkAction;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\RestoreAction;
+use Filament\Tables\Actions\RestoreBulkAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -236,6 +240,62 @@ class FlightCarrierResource extends Resource
             ])
             ->defaultSort('name')
             ->recordActions([
+                Action::make('rechargeBalance')
+                    ->label('شحن رصيد')
+                    ->icon('heroicon-o-arrow-trending-up')
+                    ->color('success')
+                    ->visible(fn (FlightCarrier $record): bool => (bool) $record->is_active)
+                    ->modalHeading(fn (FlightCarrier $record): string => 'شحن رصيد ناقل: '.$record->name.' ('.$record->code.')'
+                    )
+                    ->modalDescription(fn (FlightCarrier $record): string => 'العملة: '.$record->currency.
+                        ' — الرصيد الحالي: '.number_format((float) $record->balance, 2).' '.$record->currency.
+                        ' — سيُخصم المبلغ من حساب تحصيل بنفس العملة.'
+                    )
+                    ->form(fn (FlightCarrier $record): array => [
+                        Select::make('from_account_id')
+                            ->label('من حساب (محفظة / بنك / خزينة)')
+                            ->options(self::accountOptionsForCarrier($record))
+                            ->required()
+                            ->searchable()
+                            ->native(false)
+                            ->helperText('فقط الحسابات النشطة بعملة '.$record->currency.' تظهر هنا.'),
+                        TextInput::make('amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->required()
+                            ->minValue(0.01)
+                            ->step(0.01)
+                            ->suffix($record->currency),
+                        Textarea::make('notes')
+                            ->label('ملاحظات (اختياري)')
+                            ->rows(2)
+                            ->maxLength(500),
+                    ])
+                    ->action(function (array $data, FlightCarrier $record): void {
+                        $account = Account::query()->findOrFail((int) $data['from_account_id']);
+                        $amount = (float) $data['amount'];
+                        $notes = filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null;
+
+                        try {
+                            app(FlightCarrierRechargeService::class)->rechargeFromAccount(
+                                $record,
+                                $account,
+                                $amount,
+                                $notes,
+                            );
+                            Notification::make()
+                                ->title('تم شحن رصيد الناقل بنجاح')
+                                ->body('الرصيد الجديد: '.number_format($record->fresh()->balance, 2).' '.$record->currency)
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('تعذر تنفيذ الشحن')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
                 EditAction::make()->modal(false),
                 DeleteAction::make(),
                 RestoreAction::make(),
@@ -263,5 +323,58 @@ class FlightCarrierResource extends Resource
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
+    }
+
+    /**
+     * خيارات الحسابات المالية المتاحة لشحن رصيد الناقل (نفس العملة فقط).
+     *
+     * @return array<int, string>
+     */
+    protected static function accountOptionsForCarrier(FlightCarrier $carrier): array
+    {
+        $types = [
+            AccountType::Cashbox->value,
+            AccountType::Wallet->value,
+            AccountType::Bank->value,
+            AccountType::Treasury->value,
+        ];
+
+        return Account::query()
+            ->where('is_active', true)
+            ->where('module_type', 'flights')
+            ->whereIn('type', $types)
+            ->where('currency', $carrier->currency)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(fn (Account $a) => [$a->id => self::accountOptionLabel($a)])
+            ->all();
+    }
+
+    protected static function accountOptionLabel(Account $a): string
+    {
+        $typeVal = $a->type instanceof BackedEnum ? $a->type->value : (string) $a->type;
+        $bal = number_format((float) $a->balance, 2);
+        $cur = $a->currency ?? 'EGP';
+
+        if ($typeVal === AccountType::Wallet->value) {
+            $prov = $a->wallet_provider instanceof BackedEnum
+                ? $a->wallet_provider->value
+                : (string) ($a->wallet_provider ?? '');
+            $pl = WalletProvider::tryFrom($prov)?->label() ?? ($prov !== '' ? $prov : 'محفظة');
+            $num = trim((string) ($a->wallet_number ?? ''));
+            $mid = $num !== '' ? "{$pl} — {$num}" : $pl;
+
+            return "{$a->name} — {$mid} — {$bal} {$cur}";
+        }
+
+        $typeLabel = match ($typeVal) {
+            AccountType::Cashbox->value => 'نقدي / درج',
+            AccountType::Treasury->value => 'خزينة عامة',
+            AccountType::Bank->value => 'بنك',
+            default => $typeVal,
+        };
+
+        return "{$a->name} — {$typeLabel} — {$bal} {$cur}";
     }
 }

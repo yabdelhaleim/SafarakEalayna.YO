@@ -270,7 +270,7 @@
                     {{ item.name }}
                   </span>
                   <span v-if="item.entity_type === 'airline_account'" class="text-[10px] text-white/40 block mt-0.5">
-                    خط طيران مباشر
+                    ساين
                   </span>
                 </td>
                 
@@ -303,17 +303,21 @@
                 <!-- Balance & Actions -->
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
-                    <span 
+                    <span
                       class="font-mono font-bold text-sm"
-                      :class="item.balance > 0 ? 'text-success' : 'text-rose-400'"
+                      :class="debtBalanceView(item.balance).class"
                     >
-                      {{ item.balance > 0 ? '+' : '' }}{{ item.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} EGP
+                      {{ debtBalanceView(item.balance).amount }} EGP
                     </span>
-                    <span 
+                    <span
                       class="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider"
-                      :class="item.balance > 0 ? 'bg-success/10 text-success border border-success/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'"
+                      :class="debtBalanceView(item.balance).direction === 'debit'
+                        ? 'bg-error/10 text-error border border-error/20'
+                        : debtBalanceView(item.balance).direction === 'credit'
+                          ? 'bg-success/10 text-success border border-success/20'
+                          : 'bg-white/5 text-muted border border-white/10'"
                     >
-                      {{ item.balance > 0 ? 'لنا (مدين)' : 'عليه (دائن)' }}
+                      {{ debtBalanceView(item.balance).direction === 'debit' ? 'لنا (مدين)' : debtBalanceView(item.balance).direction === 'credit' ? 'له (دائن)' : 'مستوفى' }}
                     </span>
                   </div>
                   
@@ -364,6 +368,15 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+import { formatLedgerBalance } from '@/composables/useLedgerBalance';
+
+const debtBalanceView = (balance) => {
+  const view = formatLedgerBalance(balance);
+  return {
+    ...view,
+    amount: view.text.replace(' جنيه', ''),
+  };
+};
 
 const printSettingsStore = usePrintSettingsStore();
 import {
@@ -523,8 +536,9 @@ const printReport = () => {
 
 // Currency formatter
 const formatCurrency = (val) => {
-  if (!val && val !== 0) return '0.00 EGP';
-  return parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
+  const num = Number(val);
+  if (!Number.isFinite(num)) return '0.00 EGP';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
 };
 
 // Dynamic labels for print page

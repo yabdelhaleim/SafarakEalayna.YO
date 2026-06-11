@@ -1,5 +1,17 @@
 <template>
   <div class="finance-dashboard flight-booking animate-in pb-10 fade-in duration-700">
+    <div v-if="isError()" class="mx-auto mb-6 max-w-7xl rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center px-4 sm:px-6 lg:px-8">
+      <p class="text-red-400 font-bold">تعذر تحميل بيانات لوحة المالية.</p>
+      <p v-if="error" class="mt-1 text-sm text-red-300/70">{{ error }}</p>
+      <button
+        type="button"
+        @click="fetchData"
+        class="mt-4 rounded-xl bg-red-500 px-6 py-2 text-white transition hover:bg-red-400"
+      >
+        إعادة المحاولة
+      </button>
+    </div>
+
     <header class="flight-hero relative">
       <div
         class="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8"
@@ -74,85 +86,209 @@
         </div>
       </div>
 
-      <div v-if="isLoading()" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICardSkeleton v-for="i in 4" :key="`kpi-${i}`" />
+      <!-- قسم مؤشرات الأداء الموحد للقطاعات (رأس المال - الأرباح - المصروفات) -->
+      <div v-if="isLoading()" class="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-pulse">
+        <div v-for="i in 2" :key="`cap-skeleton-${i}`" class="flight-panel !p-6 rounded-2xl bg-white/5 border border-white/10 h-[220px]">
+          <div class="h-6 bg-white/10 rounded w-1/3 mb-4"></div>
+          <div class="grid grid-cols-3 gap-4">
+            <div v-for="j in 3" :key="j" class="h-16 bg-white/10 rounded"></div>
+          </div>
+        </div>
       </div>
-      <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="dashboard-kpi group flex flex-col justify-between">
-          <div class="mb-4 flex items-start justify-between">
-            <div class="dashboard-kpi__icon group-hover:scale-105">
-              <Wallet class="h-6 w-6" />
+      <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- قطاع السياحة والطيران -->
+        <div class="flight-panel !p-6 border border-amber-500/20 bg-gradient-to-br from-slate-900 via-amber-950/10 to-slate-900 rounded-2xl relative overflow-hidden transition-all hover:border-amber-500/40">
+          <div class="absolute -left-6 -bottom-6 text-amber-500/5 text-8xl font-black select-none pointer-events-none">✈️</div>
+          
+          <div class="mb-5 flex items-center justify-between border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">✈️</span>
+              <h3 class="text-base font-black text-white font-bold">قطاع السياحة والطيران</h3>
             </div>
-            <span class="rounded-full border border-gold/30 bg-gold/10 px-2 py-1 text-[10px] font-bold text-gold">
-              إجمالي
+            
+            <!-- محول العملات للوحة التحكم -->
+            <div class="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+              <button
+                v-for="currency in capitalData.currencies"
+                :key="currency"
+                type="button"
+                @click="selectedCurrency = currency"
+                :class="[
+                  'px-3 py-1 text-[11px] font-bold rounded-lg transition-all',
+                  selectedCurrency === currency
+                    ? 'bg-gradient-to-r from-gold to-amber-500 text-slate-950 shadow-md'
+                    : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                ]"
+              >
+                {{ currency }}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <!-- رأس المال -->
+            <div 
+              @click="openCapitalDetails('tourism')" 
+              class="cursor-pointer rounded-xl border border-amber-500/10 bg-white/5 p-4 transition-all hover:border-amber-500/40 hover:bg-white/10 group/item relative overflow-hidden flex flex-col justify-between min-h-[120px]"
+            >
+              <div>
+                <div class="text-[10px] font-bold text-amber-400 mb-1 flex items-center gap-1">
+                  <span>رأس المال الفعلي</span>
+                  <Info class="h-3 w-3 inline opacity-70 group-hover/item:opacity-100" />
+                </div>
+                <div class="font-mono text-2xl font-black text-white tracking-tight">
+                  {{ formatAmount(getCapitalValue('tourism', 'total'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-amber-400/80 font-bold mt-2 flex items-center gap-1">
+                <span>عرض البنود الـ 5</span>
+                <span>←</span>
+              </div>
+            </div>
+
+            <!-- الأرباح -->
+            <div class="rounded-xl border border-success/10 bg-success/5 p-4 flex flex-col justify-between min-h-[120px]">
+              <div>
+                <div class="text-[10px] font-bold text-success mb-1">صافي الأرباح</div>
+                <div class="font-mono text-2xl font-black text-success tracking-tight">
+                  {{ formatAmount(getCapitalValue('tourism', 'profit'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-success/70 mt-2 font-medium">خلال الفترة المحددة</div>
+            </div>
+
+            <!-- المصروفات -->
+            <div class="rounded-xl border border-error/10 bg-error/5 p-4 flex flex-col justify-between min-h-[120px]">
+              <div>
+                <div class="text-[10px] font-bold text-error mb-1">المصروفات والتكاليف</div>
+                <div class="font-mono text-2xl font-black text-error tracking-tight">
+                  {{ formatAmount(getCapitalValue('tourism', 'expense'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-error/70 mt-2 font-medium">خلال الفترة المحددة</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- قطاع المكتب والخدمات -->
+        <div class="flight-panel !p-6 border border-sky-500/20 bg-gradient-to-br from-slate-900 via-sky-950/10 to-slate-900 rounded-2xl relative overflow-hidden transition-all hover:border-sky-500/40">
+          <div class="absolute -left-6 -bottom-6 text-sky-500/5 text-8xl font-black select-none pointer-events-none">🏢</div>
+          
+          <div class="mb-5 flex items-center justify-between border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🏢</span>
+              <h3 class="text-base font-black text-white font-bold">قطاع المكتب والخدمات</h3>
+            </div>
+            
+            <span class="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/25">
+              باص / فوري / خدمات
             </span>
           </div>
-          <div>
-            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">الرصيد الكلي</div>
-            <div class="font-mono text-2xl font-bold text-text-main transition-colors group-hover:text-gold">
-              {{ formatCurrency(stats.total_balance) }}
+
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <!-- رأس المال -->
+            <div 
+              @click="openCapitalDetails('office')" 
+              class="cursor-pointer rounded-xl border border-sky-500/10 bg-white/5 p-4 transition-all hover:border-sky-500/40 hover:bg-white/10 group/item relative overflow-hidden flex flex-col justify-between min-h-[120px]"
+            >
+              <div>
+                <div class="text-[10px] font-bold text-sky-400 mb-1 flex items-center gap-1">
+                  <span>رأس المال الفعلي</span>
+                  <Info class="h-3 w-3 inline opacity-70 group-hover/item:opacity-100" />
+                </div>
+                <div class="font-mono text-2xl font-black text-white tracking-tight">
+                  {{ formatAmount(getCapitalValue('office', 'total'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-sky-400/80 font-bold mt-2 flex items-center gap-1">
+                <span>عرض البنود</span>
+                <span>←</span>
+              </div>
             </div>
-            <div class="mt-1 text-[11px] text-text-muted">ج.م</div>
+
+            <!-- الأرباح -->
+            <div class="rounded-xl border border-success/10 bg-success/5 p-4 flex flex-col justify-between min-h-[120px]">
+              <div>
+                <div class="text-[10px] font-bold text-success mb-1">صافي الأرباح</div>
+                <div class="font-mono text-2xl font-black text-success tracking-tight">
+                  {{ formatAmount(getCapitalValue('office', 'profit'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-success/70 mt-2 font-medium">خلال الفترة المحددة</div>
+            </div>
+
+            <!-- المصروفات -->
+            <div class="rounded-xl border border-error/10 bg-error/5 p-4 flex flex-col justify-between min-h-[120px]">
+              <div>
+                <div class="text-[10px] font-bold text-error mb-1">المصروفات والتكاليف</div>
+                <div class="font-mono text-2xl font-black text-error tracking-tight">
+                  {{ formatAmount(getCapitalValue('office', 'expense'), selectedCurrency) }}
+                </div>
+              </div>
+              <div class="text-[9px] text-error/70 mt-2 font-medium">خلال الفترة المحددة</div>
+            </div>
           </div>
         </div>
 
-        <div class="dashboard-kpi group flex flex-col justify-between">
-          <div class="mb-4 flex items-start justify-between">
-            <div class="dashboard-kpi__icon group-hover:scale-105">
-              <TrendingUp class="h-6 w-6" />
-            </div>
-          </div>
-          <div>
-            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">إجمالي الدخل</div>
-            <div class="font-mono text-2xl font-bold text-success transition-colors group-hover:text-success">
-              {{ formatCurrency(stats.total_income) }}
-            </div>
-            <div class="mt-1 text-[11px] text-text-muted">ج.م</div>
-          </div>
-        </div>
+      </div>
 
-        <div class="dashboard-kpi group flex flex-col justify-between">
-          <div class="mb-4 flex items-start justify-between">
-            <div class="dashboard-kpi__icon group-hover:scale-105">
-              <TrendingDown class="h-6 w-6" />
-            </div>
+      <!-- Modal تفاصيل رأس المال الموزع للقطاع -->
+      <div v-if="isCapitalModalOpen && activeCapitalDetails" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div class="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-right">
+          <div class="mb-5 flex items-center justify-between border-b border-white/5 pb-3">
+            <h3 class="text-base font-black text-white flex items-center gap-2 font-bold">
+              <Coins class="h-5 w-5 text-gold" />
+              تفاصيل رأس المال: {{ activeCapitalDetails.title }}
+            </h3>
+            <button @click="isCapitalModalOpen = false" type="button" class="text-text-muted hover:text-white p-1">
+              <X class="h-5 w-5" />
+            </button>
           </div>
-          <div>
-            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">تكاليف ومصروفات</div>
-            <div class="font-mono text-2xl font-bold text-error transition-colors">
-              {{ formatCurrency(stats.total_expense) }}
-            </div>
-            <div class="mt-1 text-[11px] text-text-muted">ج.م</div>
-          </div>
-        </div>
 
-        <div class="dashboard-kpi group flex flex-col justify-between">
-          <div class="mb-4 flex items-start justify-between">
-            <div class="dashboard-kpi__icon group-hover:scale-105">
-              <DollarSign class="h-6 w-6" />
-            </div>
-            <span
+          <div class="space-y-3">
+            <p class="text-xs text-text-muted mb-2 font-bold">مكونات رأس المال للعملة <span class="text-gold font-bold">{{ selectedCurrency }}</span>:</p>
+            
+            <div 
+              v-for="(item, idx) in activeCapitalDetails.items" 
+              :key="idx"
               :class="[
-                'rounded-full border px-2 py-1 text-[10px] font-bold',
-                isProfitable
-                  ? 'border-success/30 bg-success/10 text-success'
-                  : 'border-error/30 bg-error/10 text-error',
+                'flex items-center justify-between p-3 rounded-xl border transition-all text-sm',
+                item.isSubtracted 
+                  ? 'border-rose-500/20 bg-rose-500/5 text-rose-300' 
+                  : 'border-white/5 bg-white/5 text-text-main'
               ]"
             >
-              {{ isProfitable ? 'ربح' : 'خسارة' }}
-            </span>
-          </div>
-          <div>
-            <div class="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">صافي الربح</div>
-            <div
-              :class="[
-                'font-mono text-2xl font-bold transition-colors group-hover:text-gold',
-                isProfitable ? 'text-success' : 'text-error',
-              ]"
-            >
-              {{ formatCurrency(Math.abs(stats.net_profit)) }}
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-text-muted font-mono bg-white/5 px-2 py-0.5 rounded">
+                  {{ idx + 1 }}
+                </span>
+                <span class="font-bold">{{ item.label }}</span>
+              </div>
+              <div class="font-mono font-bold text-left">
+                {{ item.isSubtracted ? '-' : '' }}{{ formatAmount(item.value, selectedCurrency) }}
+              </div>
             </div>
-            <div class="mt-1 text-[11px] text-text-muted">ج.م</div>
+
+            <div class="mt-6 border-t border-white/10 pt-4 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-bold text-text-muted">صافي رأس المال الحالي</div>
+                <div class="text-[9px] text-text-muted mt-0.5">المعادلة: (1 + 2 + 3 + 4) - 5</div>
+              </div>
+              <div class="text-xl font-black text-gold font-mono font-bold">
+                {{ formatAmount(activeCapitalDetails.total, selectedCurrency) }}
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <button 
+              @click="isCapitalModalOpen = false" 
+              type="button" 
+              class="btn-airline px-6 py-2 text-xs font-bold"
+            >
+              إغلاق
+            </button>
           </div>
         </div>
       </div>
@@ -467,10 +603,13 @@ import {
   PieChart,
   FileText,
   CreditCard,
+  Coins,
+  X,
+  Info,
 } from 'lucide-vue-next';
 
 const financeStore = useFinanceStore();
-const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty } = useAsyncState('loading');
+const { state, error, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess, isEmpty, isError } = useAsyncState('loading');
 
 // Filters
 const filters = ref({
@@ -491,6 +630,12 @@ const stats = ref({
   total_expense: 0,
   net_profit: 0,
 });
+
+// Capital Analysis Data
+const capitalData = ref({ tourism: {}, office: {}, currencies: [] });
+const selectedCurrency = ref('EGP');
+const activeCapitalDetails = ref(null);
+const isCapitalModalOpen = ref(false);
 
 const todayTransactionsTotal = ref(0);
 
@@ -576,6 +721,53 @@ const formatCurrency = (amount) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount || 0);
+};
+
+const formatAmount = (value, currency = 'EGP') => {
+  return new Intl.NumberFormat('ar-EG', {
+    style: 'currency',
+    currency: currency || 'EGP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+};
+
+const getCapitalValue = (sector, key) => {
+  const currencyData = capitalData.value[sector]?.[selectedCurrency.value];
+  if (!currencyData) return 0;
+  if (key === 'profit' || key === 'expense' || key === 'revenue') {
+    return currencyData[key] || 0;
+  }
+  return currencyData.capital?.[key] || 0;
+};
+
+const openCapitalDetails = (sector) => {
+  const currencyData = capitalData.value[sector]?.[selectedCurrency.value];
+  if (!currencyData || !currencyData.capital) return;
+  
+  const cap = currencyData.capital;
+  const isTourism = sector === 'tourism';
+  
+  const items = isTourism ? [
+    { label: 'أرصدة الأنظمة (GDS/NDC)', value: cap.systems, isSubtracted: false },
+    { label: 'أرصدة الساينات (خطوط الطيران)', value: cap.carriers, isSubtracted: false },
+    { label: 'أرصدة الخزن والتحصيل (نقدي، بنوك، بريد، محافظ)', value: cap.vaults, isSubtracted: false },
+    { label: 'مديونيات العملاء (أفراد وشركات)', value: cap.receivables, isSubtracted: false },
+    { label: 'مديونيات المجموعات (Flight Groups)', value: cap.payables, isSubtracted: true },
+  ] : [
+    { label: 'أرصدة أنظمة فوري والخدمات', value: cap.systems, isSubtracted: false },
+    { label: 'أرصدة الساينات (غير مفعل)', value: cap.carriers, isSubtracted: false },
+    { label: 'أرصدة الخزن والتشغيل للمكتب', value: cap.vaults, isSubtracted: false },
+    { label: 'مديونيات العملاء (باصات وخدمات)', value: cap.receivables, isSubtracted: false },
+    { label: 'مستحقات شركات الباصات والموردين', value: cap.payables, isSubtracted: true },
+  ];
+
+  activeCapitalDetails.value = {
+    title: isTourism ? 'قطاع السياحة والطيران' : 'قطاع المكتب والخدمات',
+    items,
+    total: cap.total,
+  };
+  isCapitalModalOpen.value = true;
 };
 
 const formatDate = (date) => {
@@ -676,7 +868,7 @@ const fetchData = async () => {
 
     const today = new Date().toISOString().split('T')[0];
 
-    const [accountsRes, txRes, summaryRes, balRes, todayTxRes] = await Promise.all([
+    const [accountsRes, txRes, summaryRes, balRes, todayTxRes, capitalRes] = await Promise.all([
       axios.get('/api/v1/finance/accounts', { params: accountParams, signal }),
       axios.get('/api/v1/reports/transactions', {
         params: {
@@ -712,10 +904,27 @@ const fetchData = async () => {
         },
         signal,
       }),
+      axios.get('/api/v1/reports/capital-analysis', {
+        params: {
+          from_date: filters.value.date_from,
+          to_date: filters.value.date_to,
+          _t: Date.now(),
+        },
+        signal,
+      }),
     ]);
 
     const accountsPayload = accountsRes.data?.data;
     accounts.value = unwrapAccountItems(accountsPayload);
+
+    // Assign capital data
+    const cap = capitalRes.data?.data || { tourism: {}, office: {}, currencies: ['EGP'] };
+    capitalData.value = cap;
+    if (cap.currencies && cap.currencies.length > 0) {
+      if (!cap.currencies.includes(selectedCurrency.value)) {
+        selectedCurrency.value = cap.currencies[0];
+      }
+    }
 
     const { items, pagination: pag } = unwrapPaginatedItems(txRes.data);
     transactions.value = items.map(normalizeReportTransaction);

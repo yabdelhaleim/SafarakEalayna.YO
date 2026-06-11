@@ -12,12 +12,16 @@ use App\Models\Bus\BusCompany;
 use App\Models\Customer;
 use App\Models\Flight\AirlineAccount;
 use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightSystem;
+use App\Models\Flight\FlightCarrier;
+use App\Models\Fawry\FawryMachine;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use App\Models\HajjUmra\Hotel;
 use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Supplier;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
 
 class FinancialReportService
 {
@@ -946,4 +950,574 @@ class FinancialReportService
             default => 'عام / كاش',
         };
     }
+
+    /**
+     * تحليل رأس المال للقطاعات بالعملات المتعددة
+     */
+    public function getCapitalAnalysis(array $filters = []): array
+    {
+        $fromDate = $filters['from_date'] ?? null;
+        $toDate = $filters['to_date'] ?? null;
+
+        // 1. Get all active currencies in the system
+        $currencies = collect()
+            ->merge(Account::pluck('currency'))
+            ->merge(FlightSystem::pluck('currency'))
+            ->merge(FlightCarrier::pluck('currency'))
+            ->unique()
+            ->filter()
+            ->values()
+            ->toArray();
+
+        if (empty($currencies)) {
+            $currencies = ['EGP'];
+        }
+
+        $tourismReport = [];
+        $officeReport = [];
+
+        $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $maps = $clearingAccounts->moduleAccountMaps();
+        $incomeClearing = $maps['income'];
+        $expenseClearing = $maps['expense'];
+
+        foreach ($currencies as $currency) {
+            $tourismCapital = $this->calculateTourismCapital($currency);
+            $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing);
+
+            $tourismReport[$currency] = [
+                'capital' => $tourismCapital,
+                'profit' => $tourismPL['profit'],
+                'expense' => $tourismPL['expense'],
+                'revenue' => $tourismPL['revenue'],
+            ];
+
+            $officeCapital = $this->calculateOfficeCapital($currency);
+            $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing);
+
+            $officeReport[$currency] = [
+                'capital' => $officeCapital,
+                'profit' => $officePL['profit'],
+                'expense' => $officePL['expense'],
+                'revenue' => $officePL['revenue'],
+            ];
+        }
+
+        return [
+            'tourism' => $tourismReport,
+            'office' => $officeReport,
+            'currencies' => $currencies,
+        ];
+    }
+
+    protected function calculateTourismCapital(string $currency): array
+    {
+        $systems = FlightSystem::where('currency', $currency)->sum('balance');
+        $carriers = FlightCarrier::where('currency', $currency)->sum('balance');
+        
+        $vaults = Account::tourism()
+            ->whereIn('type', [
+                \App\Enums\AccountType::Cashbox->value,
+                \App\Enums\AccountType::Bank->value,
+                \App\Enums\AccountType::Post->value,
+                \App\Enums\AccountType::Wallet->value,
+                \App\Enums\AccountType::Treasury->value,
+            ])
+            ->where('currency', $currency)
+            ->where('is_active', true)
+            ->sum('balance');
+
+        $receivables = Customer::whereHas('ledgerAccount', function($q) use ($currency) {
+            $q->where('currency', $currency)->where('balance', '>', 0);
+        })->where(function($q) {
+            $q->whereHas('flightBookings')
+              ->orWhereHas('hajjUmraBookings')
+              ->orWhereHas('visaBookings');
+        })->with('ledgerAccount')->get()->sum(fn($c) => (float)$c->ledgerAccount->balance);
+
+        $payables = FlightGroup::whereHas('account', function($q) use ($currency) {
+            $q->where('currency', $currency)->where('balance', '<', 0);
+        })->with('account')->get()->sum(fn($g) => abs((float)$g->account->balance));
+
+        $total = ($systems + $carriers + $vaults + $receivables) - $payables;
+
+        return [
+            'systems' => (float)$systems,
+            'carriers' => (float)$carriers,
+            'vaults' => (float)$vaults,
+            'receivables' => (float)$receivables,
+            'payables' => (float)$payables,
+            'total' => (float)$total,
+        ];
+    }
+
+    protected function calculateOfficeCapital(string $currency): array
+    {
+        $systems = 0.0;
+        if (strtoupper($currency) === 'EGP') {
+            $systems = (float)FawryMachine::sum('balance');
+        }
+
+        $carriers = 0.0;
+
+        $vaults = Account::office()
+            ->whereIn('type', [
+                \App\Enums\AccountType::Cashbox->value,
+                \App\Enums\AccountType::Bank->value,
+                \App\Enums\AccountType::Post->value,
+                \App\Enums\AccountType::Wallet->value,
+                \App\Enums\AccountType::Treasury->value,
+            ])
+            ->where('currency', $currency)
+            ->where('is_active', true)
+            ->sum('balance');
+
+        $receivables = Customer::whereHas('ledgerAccount', function($q) use ($currency) {
+            $q->where('currency', $currency)->where('balance', '>', 0);
+        })->where(function($q) {
+            $q->whereHas('busBookings')
+              ->orWhereHas('fawryTransactions')
+              ->orWhereHas('onlineTransactions')
+              ->orWhereHas('walletTransactions')
+              ->orWhere(function($sub) {
+                  $sub->whereDoesntHave('flightBookings')
+                      ->whereDoesntHave('hajjUmraBookings')
+                      ->whereDoesntHave('visaBookings');
+              });
+        })->with('ledgerAccount')->get()->sum(fn($c) => (float)$c->ledgerAccount->balance);
+
+        $busPayables = BusCompany::whereHas('account', function($q) use ($currency) {
+            $q->where('currency', $currency)->where('balance', '<', 0);
+        })->with('account')->get()->sum(fn($b) => abs((float)$b->account->balance));
+
+        $supplierPayables = Supplier::whereHas('account', function($q) use ($currency) {
+            $q->where('currency', $currency)->where('balance', '<', 0);
+        })->whereIn('type', [SupplierType::ServiceProvider->value, SupplierType::Other->value])
+          ->with('account')->get()->sum(fn($s) => abs((float)$s->account->balance));
+
+        $payables = $busPayables + $supplierPayables;
+
+        $total = ($systems + $carriers + $vaults + $receivables) - $payables;
+
+        return [
+            'systems' => (float)$systems,
+            'carriers' => (float)$carriers,
+            'vaults' => (float)$vaults,
+            'receivables' => (float)$receivables,
+            'payables' => (float)$payables,
+            'total' => (float)$total,
+        ];
+    }
+
+    protected function calculatePL(
+        string $currency,
+        string $category,
+        ?string $fromDate,
+        ?string $toDate,
+        array $incomeClearing,
+        array $expenseClearing
+    ): array {
+        $query = DB::table('transactions as t')
+            ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
+            ->select([
+                't.id',
+                't.type',
+                't.module',
+                't.amount',
+                't.from_account_id',
+                't.to_account_id',
+                'to_acc.type as to_account_type',
+                'to_acc.name as to_account_name',
+                'to_acc.currency as to_account_currency',
+                'from_acc.currency as from_account_currency',
+            ]);
+
+        if (! empty($fromDate)) {
+            $query->whereDate('t.created_at', '>=', $fromDate);
+        }
+        if (! empty($toDate)) {
+            $query->whereDate('t.created_at', '<=', $toDate);
+        }
+
+        $allClearingIds = array_values(array_unique(array_merge(
+            array_keys($incomeClearing),
+            array_keys($expenseClearing)
+        )));
+
+        $query->where(function ($outer) use ($allClearingIds): void {
+            $outer->whereIn('t.type', ['income', 'expense', 'refund']);
+            $outer->orWhere(function ($transfer) use ($allClearingIds): void {
+                $transfer->where('t.type', 'transfer')
+                    ->where(function ($legs) use ($allClearingIds): void {
+                        if ($allClearingIds !== []) {
+                            $legs->whereIn('t.from_account_id', $allClearingIds)
+                                ->orWhereIn('t.to_account_id', $allClearingIds);
+                        }
+                        $legs->orWhere('to_acc.type', 'expense');
+                    });
+            });
+        });
+
+        $modules = $category === 'tourism' 
+            ? ['flight', 'hajj_umra', 'visa'] 
+            : ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service'];
+
+        $clearingIds = [];
+        foreach ([$incomeClearing, $expenseClearing] as $map) {
+            foreach ($map as $accountId => $module) {
+                if (in_array($module, $modules, true)) {
+                    $clearingIds[] = (int) $accountId;
+                }
+            }
+        }
+        $clearingIds = array_values(array_unique($clearingIds));
+
+        $query->where(function ($q) use ($modules, $clearingIds): void {
+            $q->whereIn('t.module', $modules);
+            if ($clearingIds !== []) {
+                $q->orWhereIn('t.from_account_id', $clearingIds)
+                  ->orWhereIn('t.to_account_id', $clearingIds);
+            }
+        });
+
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        $totalExpense = 0.0;
+
+        foreach ($query->orderBy('t.id')->cursor() as $tx) {
+            $txCurrency = $tx->to_account_currency ?: $tx->from_account_currency;
+            if ($txCurrency !== $currency) {
+                continue;
+            }
+
+            $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing);
+            if ($classification === null) {
+                continue;
+            }
+
+            $amount = (float) $tx->amount;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            if ($classification === 'revenue') {
+                $totalRevenue += $amount;
+            } elseif ($classification === 'revenue_reversal' || $classification === 'refund') {
+                $totalRevenue -= $amount;
+            } elseif ($classification === 'cogs') {
+                $totalCogs += $amount;
+            } elseif ($classification === 'cogs_reversal') {
+                $totalCogs -= $amount;
+            } elseif ($classification === 'operating_expense') {
+                $totalExpense += $amount;
+            }
+        }
+
+        $totalRevenue = max(0, round($totalRevenue, 2));
+        $totalCogs = max(0, round($totalCogs, 2));
+        $totalExpense = max(0, round($totalExpense, 2));
+        $profit = round($totalRevenue - $totalCogs - $totalExpense, 2);
+
+        return [
+            'revenue' => $totalRevenue,
+            'expense' => $totalCogs + $totalExpense,
+            'profit' => $profit,
+        ];
+    }
+
+    private function classifyPL(object $tx, array $incomeClearing, array $expenseClearing): ?string
+    {
+        $type = (string) $tx->type;
+        $fromId = (int) ($tx->from_account_id ?? 0);
+        $toId = (int) ($tx->to_account_id ?? 0);
+        $toType = (string) ($tx->to_account_type ?? '');
+
+        if ($type === 'income') {
+            return 'revenue';
+        }
+
+        if ($type === 'refund') {
+            return 'refund';
+        }
+
+        if ($type === 'expense') {
+            return 'operating_expense';
+        }
+
+        if ($type !== 'transfer') {
+            return null;
+        }
+
+        $fromIncome = $fromId > 0 && isset($incomeClearing[$fromId]);
+        $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
+        $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
+        $toExpense = $toId > 0 && isset($expenseClearing[$toId]);
+
+        if ($fromIncome && ! $toIncome) {
+            return 'revenue';
+        }
+
+        if ($toIncome && ! $fromIncome) {
+            return 'revenue_reversal';
+        }
+
+        if ($toExpense && ! $fromExpense) {
+            return 'cogs';
+        }
+
+        if ($fromExpense && ! $toExpense) {
+            return 'cogs_reversal';
+        }
+
+        if ($toType === 'expense') {
+            return 'operating_expense';
+        }
+
+        return null;
+    }
+
+    /**
+     * تقرير حركات الطيران التفصيلي الموحد
+     */
+    public function getDetailedFlightReport(array $filters = []): array
+    {
+        $perPage = isset($filters['per_page']) ? (int) $filters['per_page'] : 15;
+        $fromDate = $filters['from_date'] ?? null;
+        $toDate = $filters['to_date'] ?? null;
+        $bookingSystem = $filters['booking_system'] ?? null; // 'system_{id}' or 'carrier_{id}'
+        $search = $filters['search'] ?? null;
+
+        // 1. Build carrier/airline transaction query
+        $airlineQuery = DB::table('airline_transactions')
+            ->select(
+                'airline_transactions.id',
+                'airline_transactions.created_at',
+                'airline_transactions.type',
+                'airline_transactions.amount',
+                'airline_transactions.balance_before',
+                'airline_transactions.balance_after',
+                'airline_transactions.description',
+                'airline_transactions.created_by',
+                'airline_transactions.flight_booking_id',
+                'airline_transactions.flight_carrier_id',
+                DB::raw('NULL as flight_system_id'),
+                DB::raw("'carrier' as source_type")
+            );
+
+        // 2. Build GDS system transaction query
+        $systemQuery = DB::table('flight_system_transactions')
+            ->select(
+                'flight_system_transactions.id',
+                'flight_system_transactions.created_at',
+                'flight_system_transactions.type',
+                'flight_system_transactions.amount',
+                'flight_system_transactions.balance_before',
+                'flight_system_transactions.balance_after',
+                'flight_system_transactions.description',
+                'flight_system_transactions.created_by',
+                'flight_system_transactions.flight_booking_id',
+                DB::raw('NULL as flight_carrier_id'),
+                'flight_system_transactions.flight_system_id',
+                DB::raw("'system' as source_type")
+            );
+
+        // Apply filters & search to Airline Query
+        if ($fromDate) {
+            $airlineQuery->where('airline_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+        }
+        if ($toDate) {
+            $airlineQuery->where('airline_transactions.created_at', '<=', $toDate . ' 23:59:59');
+        }
+
+        if ($bookingSystem) {
+            if (str_starts_with($bookingSystem, 'carrier_')) {
+                $carrierId = (int) str_replace('carrier_', '', $bookingSystem);
+                $airlineQuery->where('airline_transactions.flight_carrier_id', $carrierId);
+            } elseif (str_starts_with($bookingSystem, 'system_')) {
+                $systemId = (int) str_replace('system_', '', $bookingSystem);
+                // Get all carriers belonging to this system
+                $carrierIds = DB::table('flight_carriers')
+                    ->where('flight_system_id', $systemId)
+                    ->pluck('id')
+                    ->toArray();
+                if (empty($carrierIds)) {
+                    $airlineQuery->whereRaw('1 = 0');
+                } else {
+                    $airlineQuery->whereIn('airline_transactions.flight_carrier_id', $carrierIds);
+                }
+            }
+        }
+
+        if ($search) {
+            $matchingBookingIds = DB::table('flight_bookings')
+                ->leftJoin('customers', 'flight_bookings.customer_id', '=', 'customers.id')
+                ->where('flight_bookings.booking_number', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.pnr', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.origin', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.destination', 'like', "%{$search}%")
+                ->orWhere('customers.full_name', 'like', "%{$search}%")
+                ->orWhere('customers.affiliation', 'like', "%{$search}%")
+                ->pluck('flight_bookings.id')
+                ->toArray();
+
+            $airlineQuery->where(function ($q) use ($matchingBookingIds, $search) {
+                if (!empty($matchingBookingIds)) {
+                    $q->whereIn('airline_transactions.flight_booking_id', $matchingBookingIds)
+                      ->orWhere('airline_transactions.description', 'like', "%{$search}%");
+                } else {
+                    $q->where('airline_transactions.description', 'like', "%{$search}%");
+                }
+            });
+        }
+
+        // Apply filters & search to System Query
+        if ($fromDate) {
+            $systemQuery->where('flight_system_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+        }
+        if ($toDate) {
+            $systemQuery->where('flight_system_transactions.created_at', '<=', $toDate . ' 23:59:59');
+        }
+
+        if ($bookingSystem) {
+            if (str_starts_with($bookingSystem, 'system_')) {
+                $systemId = (int) str_replace('system_', '', $bookingSystem);
+                $systemQuery->where('flight_system_transactions.flight_system_id', $systemId);
+            } else {
+                // If filtering by carrier, the GDS system query won't match any carrier directly, so force empty
+                $systemQuery->whereRaw('1 = 0');
+            }
+        }
+
+        if ($search) {
+            $matchingBookingIds = DB::table('flight_bookings')
+                ->leftJoin('customers', 'flight_bookings.customer_id', '=', 'customers.id')
+                ->where('flight_bookings.booking_number', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.pnr', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.origin', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.destination', 'like', "%{$search}%")
+                ->orWhere('customers.full_name', 'like', "%{$search}%")
+                ->orWhere('customers.affiliation', 'like', "%{$search}%")
+                ->pluck('flight_bookings.id')
+                ->toArray();
+
+            $systemQuery->where(function ($q) use ($matchingBookingIds, $search) {
+                if (!empty($matchingBookingIds)) {
+                    $q->whereIn('flight_system_transactions.flight_booking_id', $matchingBookingIds)
+                      ->orWhere('flight_system_transactions.description', 'like', "%{$search}%");
+                } else {
+                    $q->where('flight_system_transactions.description', 'like', "%{$search}%");
+                }
+            });
+        }
+
+        // 3. Union them and paginate
+        $unionQuery = $airlineQuery->unionAll($systemQuery);
+
+        $paginator = DB::table(DB::raw("({$unionQuery->toSql()}) as union_table"))
+            ->mergeBindings($unionQuery)
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        // 4. Retrieve original models with relations for the current page
+        $items = collect($paginator->items());
+        $carrierTxIds = $items->where('source_type', 'carrier')->pluck('id')->toArray();
+        $systemTxIds = $items->where('source_type', 'system')->pluck('id')->toArray();
+
+        $carrierTxs = \App\Models\Flight\AirlineTransaction::with([
+            'flightCarrier',
+            'flightBooking.customer',
+            'flightBooking.employee',
+            'createdBy'
+        ])->whereIn('id', $carrierTxIds)->get()->keyBy('id');
+
+        $systemTxs = \App\Models\Flight\FlightSystemTransaction::with([
+            'system',
+            'flightBooking.customer',
+            'flightBooking.employee',
+            'createdBy'
+        ])->whereIn('id', $systemTxIds)->get()->keyBy('id');
+
+        // 5. Map back and format
+        $formattedItems = $items->map(function ($item) use ($carrierTxs, $systemTxs) {
+            if ($item->source_type === 'carrier') {
+                $tx = $carrierTxs->get($item->id);
+                $booking = $tx ? $tx->flightBooking : null;
+                $systemName = $tx && $tx->flightCarrier ? $tx->flightCarrier->name : 'N/A';
+            } else {
+                $tx = $systemTxs->get($item->id);
+                $booking = $tx ? $tx->flightBooking : null;
+                $systemName = $tx && $tx->system ? $tx->system->name : 'N/A';
+            }
+
+            if (!$tx) {
+                return null;
+            }
+
+            // Customer presentation logic
+            $customerName = '-';
+            $customerType = '-';
+            if ($booking && $booking->customer) {
+                if ($booking->customer->type->value === 'individual') {
+                    $customerName = $booking->customer->full_name ?: $booking->customer->name;
+                    $customerType = 'عميل كاونتر';
+                } elseif ($booking->customer->type->value === 'company') {
+                    $customerName = $booking->customer->affiliation ?: ($booking->customer->full_name ?: $booking->customer->name);
+                    $customerType = 'شركات';
+                }
+            }
+
+            // Route representation
+            $route = '-';
+            if ($booking) {
+                $route = ($booking->origin && $booking->destination)
+                    ? "{$booking->origin} - {$booking->destination}"
+                    : '-';
+            }
+
+            // Debit/Credit (خصم / ايداع)
+            $debit = ($tx->type === 'debit') ? $tx->amount : 0;
+            $credit = ($tx->type === 'credit' || $tx->type === 'refund') ? $tx->amount : 0;
+
+            // Status Arabic Translation
+            $statusAr = 'شحن';
+            if ($tx->type === 'debit') {
+                $statusAr = 'حجز';
+            } elseif ($tx->type === 'refund') {
+                $statusAr = 'استرجاع';
+            }
+
+            return [
+                'id' => $tx->id,
+                'source_type' => $item->source_type,
+                'created_at' => $tx->created_at->toDateTimeString(),
+                'system_name' => $systemName,
+                'type' => $tx->type,
+                'status_ar' => $statusAr,
+                'amount' => (float) $tx->amount,
+                'debit' => (float) $debit,
+                'credit' => (float) $credit,
+                'balance_before' => (float) $tx->balance_before,
+                'balance_after' => (float) $tx->balance_after,
+                'description' => $tx->description,
+                'booking_number' => $booking ? ($booking->booking_number ?: $booking->booking_reference) : null,
+                'pnr' => $booking ? $booking->pnr : null,
+                'route' => $route,
+                'departure_date' => $booking ? ($booking->departure_date ? $booking->departure_date->toDateString() : '-') : '-',
+                'customer_name' => $customerName,
+                'customer_type' => $customerType,
+                'employee_name' => $booking && $booking->employee ? ($booking->employee->full_name ?: $booking->employee->name) : ($tx->createdBy ? $tx->createdBy->name : '-'),
+                'payment_system' => $booking ? ($booking->purchase_balance_source ?: 'المحفظة') : 'شحن رصيد',
+            ];
+        })->filter()->values();
+
+        return [
+            'data' => $formattedItems,
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+        ];
+    }
 }
+

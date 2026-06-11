@@ -14,8 +14,11 @@ class Passenger extends Model
         'flight_booking_id',
         'first_name',
         'last_name',
+        'national_id',
+        'passport_number',
         'type',
         'date_of_birth',
+        'baggage_allowance_kg',
         'relation_to_customer',
         'responsible_adult_id',
     ];

@@ -78,6 +78,9 @@ class RepairLedgerCommand extends Command
         $this->newLine();
         $this->info('── نتائج الإصلاح ──');
         $this->line('Backfill: '.json_encode($report['backfill'], JSON_UNESCAPED_UNICODE));
+        if (isset($report['flight_sales'])) {
+            $this->line('Flight sales: '.json_encode($report['flight_sales'], JSON_UNESCAPED_UNICODE));
+        }
         $this->line('Customers: '.json_encode($report['customers'], JSON_UNESCAPED_UNICODE));
         $this->line('Modules: '.json_encode($report['modules'], JSON_UNESCAPED_UNICODE));
 

@@ -14,7 +14,9 @@ class FlightSystemRechargeTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected FlightSystem $system;
+
     protected Account $flightAccount;
 
     protected function setUp(): void
@@ -40,6 +42,17 @@ class FlightSystemRechargeTest extends TestCase
             'type' => 'cashbox',
             'currency' => 'EGP',
             'balance' => 5000.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'created_by' => $this->user->id,
+        ]);
+
+        Account::create([
+            'name' => 'إقفال تكاليف الطيران',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 0.00,
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'flights',

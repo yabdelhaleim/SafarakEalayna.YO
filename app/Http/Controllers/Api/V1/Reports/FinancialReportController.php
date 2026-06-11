@@ -156,4 +156,34 @@ class FinancialReportController extends Controller
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
+    /**
+     * تقرير تحليل رأس المال للقطاعات بالعملات المتعددة
+     */
+    public function capitalAnalysis(Request $request): JsonResponse
+    {
+        try {
+            $report = $this->reportService->getCapitalAnalysis($request->all());
+
+            return ApiResponse::success('Capital analysis report generated successfully.', $report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * تقرير حركات الطيران التفصيلي الموحد
+     */
+    public function detailedFlightReport(Request $request): JsonResponse
+    {
+        try {
+            $report = $this->reportService->getDetailedFlightReport($request->all());
+
+            return ApiResponse::success('Detailed flight report generated successfully.', $report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
 }

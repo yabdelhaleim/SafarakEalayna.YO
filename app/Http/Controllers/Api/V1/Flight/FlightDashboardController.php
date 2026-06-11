@@ -7,8 +7,8 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Flight\FlightBooking;
-use App\Models\Flight\FlightSystem;
 use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightSystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -32,12 +32,12 @@ class FlightDashboardController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->where('module_type', 'flights')
-            ->get(['type', 'balance']);
+            ->get(['type', 'balance', 'currency']);
 
         // Safe enum comparison
-        $cashboxes = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
-        $banks = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Bank->value);
-        $wallets = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
+        $cashboxes = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Cashbox->value, AccountType::Treasury->value], true));
+        $banks = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Bank->value, AccountType::Post->value], true));
+        $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
         $cashboxCount = $cashboxes->count();
         $cashboxBalance = $cashboxes->sum('balance');
@@ -48,9 +48,52 @@ class FlightDashboardController extends Controller
         $walletCount = $wallets->count();
         $walletBalance = $wallets->sum('balance');
 
-        // 4. System Liquidity
-        $totalLiquidity = FlightSystem::query()->sum('balance');
-        $totalCarrierLiquidity = FlightCarrier::query()->sum('balance');
+        // 4. System & Carrier Liquidity — مقسّم حسب العملة (balance الفعلي فقط، بدون credit_limit)
+        $systems = FlightSystem::query()->where('is_active', true)->get(['currency', 'balance', 'credit_limit']);
+        $carriers = FlightCarrier::query()->where('is_active', true)->get(['currency', 'balance', 'credit_limit']);
+
+        $liquidityByCurrency = [];
+
+        foreach ($systems as $s) {
+            $cur = strtoupper((string) $s->currency);
+            $liquidityByCurrency[$cur]['systems_balance'] = ($liquidityByCurrency[$cur]['systems_balance'] ?? 0) + (float) $s->balance;
+            $liquidityByCurrency[$cur]['systems_credit_limit'] = ($liquidityByCurrency[$cur]['systems_credit_limit'] ?? 0) + (float) $s->credit_limit;
+        }
+        foreach ($carriers as $c) {
+            $cur = strtoupper((string) $c->currency);
+            $liquidityByCurrency[$cur]['carriers_balance'] = ($liquidityByCurrency[$cur]['carriers_balance'] ?? 0) + (float) $c->balance;
+            $liquidityByCurrency[$cur]['carriers_credit_limit'] = ($liquidityByCurrency[$cur]['carriers_credit_limit'] ?? 0) + (float) $c->credit_limit;
+        }
+        foreach ($accounts as $a) {
+            $cur = strtoupper((string) ($a->currency ?? 'EGP'));
+            $liquidityByCurrency[$cur]['accounts_balance'] = ($liquidityByCurrency[$cur]['accounts_balance'] ?? 0) + (float) $a->balance;
+        }
+
+        $liquiditySummary = [];
+        foreach ($liquidityByCurrency as $cur => $vals) {
+            $sb = $vals['systems_balance'] ?? 0;
+            $sl = $vals['systems_credit_limit'] ?? 0;
+            $cb = $vals['carriers_balance'] ?? 0;
+            $cl = $vals['carriers_credit_limit'] ?? 0;
+            $ab = $vals['accounts_balance'] ?? 0;
+
+            $liquiditySummary[] = [
+                'currency' => $cur,
+                'systems_balance' => round($sb, 2),
+                'systems_credit' => round($sl, 2),
+                'carriers_balance' => round($cb, 2),
+                'carriers_credit' => round($cl, 2),
+                'accounts_balance' => round($ab, 2),
+                'total_actual' => round($sb + $cb + $ab, 2),       // الرصيد الفعلي
+                'total_available' => round($sb + $sl + $cb + $cl + $ab, 2), // الفعلي + الائتمان
+            ];
+        }
+
+        usort($liquiditySummary, fn ($a, $b) => $a['currency'] === 'EGP' ? -1 : ($b['currency'] === 'EGP' ? 1 : strcmp($a['currency'], $b['currency'])));
+
+        // الإجمالي EGP فقط للبطاقة الرئيسية
+        $egpRow = collect($liquiditySummary)->firstWhere('currency', 'EGP');
+        $totalEgpActual = $egpRow['total_actual'] ?? 0;
 
         // 5. Recent Bookings (Limit 10)
         $recentBookings = FlightBooking::query()
@@ -100,8 +143,10 @@ class FlightDashboardController extends Controller
             ],
             'recent_bookings' => $recentBookings,
             'liquidity' => [
-                'total' => $totalLiquidity + $totalCarrierLiquidity + $cashboxBalance + $bankBalance + $walletBalance,
-            ]
+                'total' => $totalEgpActual,        // EGP فقط — الرصيد الفعلي
+                'by_currency' => $liquiditySummary,      // تفصيل حسب العملة
+                'note' => 'الإجمالي يعكس الرصيد الفعلي EGP فقط. العملات الأخرى موضّحة في by_currency.',
+            ],
         ]);
     }
 }

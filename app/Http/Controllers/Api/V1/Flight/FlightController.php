@@ -159,7 +159,7 @@ class FlightController extends Controller
         try {
             // Load relations on the route model bound instance
             $flightBooking->load([
-                'customer',
+                'customer.ledgerAccount',
                 'employee.user',
                 'account',
                 'flightSystem',
@@ -250,7 +250,7 @@ class FlightController extends Controller
 
             $flightBooking->refresh();
             $flightBooking->load([
-                'customer',
+                'customer.ledgerAccount',
                 'employee.user',
                 'account',
                 'flightSystem',
@@ -284,7 +284,7 @@ class FlightController extends Controller
 
             // Return the updated booking with all relations
             $flightBooking->load([
-                'customer',
+                'customer.ledgerAccount',
                 'employee.user',
                 'account',
                 'flightSystem',

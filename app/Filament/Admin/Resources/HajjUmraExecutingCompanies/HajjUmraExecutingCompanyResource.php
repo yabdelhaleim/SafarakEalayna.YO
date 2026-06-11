@@ -69,6 +69,12 @@ class HajjUmraExecutingCompanyResource extends Resource
                     ->color('info')
                     ->visible(fn ($record) => $record->account_id !== null)
                     ->url(fn ($record): string => AccountStatement::getUrl(['accountId' => $record->account_id])),
+                Action::make('advances')
+                    ->label('سحب / سداد')
+                    ->icon('heroicon-o-arrows-right-left')
+                    ->color('warning')
+                    ->visible(fn ($record) => $record->account_id !== null)
+                    ->url(fn ($record): string => \App\Filament\Admin\Pages\HajjUmraExecutingCompanyAdvances::getUrl(['companyId' => $record->id])),
                 EditAction::make(),
             ])
             ->toolbarActions([]);
