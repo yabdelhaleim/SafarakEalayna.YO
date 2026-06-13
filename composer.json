@@ -47,7 +47,11 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"npm run dev\" --names=server,queue,vite --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#34d399\" \"php artisan serve --no-reload --host=127.0.0.1 --port=8000\" \"php artisan queue:work --tries=3 --timeout=120 --max-jobs=500\" \"php artisan queue:work --tries=3 --timeout=120 --max-jobs=500 --name=queue-2\" \"npm run dev\" --names=server,queue1,queue2,vite --kill-others"
+        ],
+        "dev:laragon": [
+            "Composer\\Config::disableProcessTimeout",
+            "npx concurrently -c \"#c4b5fd,#fb7185,#34d399\" \"php artisan queue:work --tries=3 --timeout=120 --max-jobs=500\" \"php artisan queue:work --tries=3 --timeout=120 --max-jobs=500 --name=queue-2\" \"npm run dev\" --names=queue1,queue2,vite --kill-others"
         ],
         "test": [
             "@php artisan config:clear --ansi",

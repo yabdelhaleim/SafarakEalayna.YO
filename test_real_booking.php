@@ -11,8 +11,8 @@ echo "=== إنشاء حجز رحلة فعلي في قاعدة البيانات =
 echo "1. تسجيل الدخول كـ Admin...\n";
 try {
     $request = Illuminate\Http\Request::create('/api/v1/auth/login', 'POST', [], [], [], [], json_encode([
-        'email' => 'admin@safarak.com',
-        'password' => 'admin123',
+        'email' => 'admin@admin.com',
+        'password' => '11223311',
     ]));
 
     $request->headers->set('Content-Type', 'application/json');
@@ -106,6 +106,26 @@ try {
         'currency' => 'SAR',
         'notes' => 'حجز مهم - عميل VIP',
         'created_by' => 1,
+        'passengers' => [
+            [
+                'first_name' => 'خالد',
+                'last_name' => 'محمد',
+                'type' => 'adult',
+                'passport_number' => 'A1234567',
+                'national_id' => '1234567890',
+                'date_of_birth' => '1990-01-01',
+                'baggage_allowance_kg' => 23,
+            ],
+            [
+                'first_name' => 'أحمد',
+                'last_name' => 'علي',
+                'type' => 'adult',
+                'passport_number' => 'B7654321',
+                'national_id' => '0987654321',
+                'date_of_birth' => '1992-05-05',
+                'baggage_allowance_kg' => 23,
+            ]
+        ],
     ];
 
     $request = Illuminate\Http\Request::create('/api/v1/flight/bookings', 'POST', [], [], [], [], json_encode($bookingData));

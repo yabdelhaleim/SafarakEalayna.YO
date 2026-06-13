@@ -6,7 +6,7 @@ use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryMachineTransaction;
-use App\Services\Finance\TransactionService;
+use App\Services\Finance\PrepaidLedgerService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 class FawryMachineRechargeService
 {
     public function __construct(
-        protected TransactionService $transactionService
+        protected PrepaidLedgerService $prepaidLedgerService,
     ) {}
 
     /**
@@ -37,15 +37,15 @@ class FawryMachineRechargeService
                 $desc .= ' — '.$notes;
             }
 
-            // تسجيل قيد مالي بالخصم من حساب التمويل
-            $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $source->id,
-                'module' => TransactionModule::Fawry->value,
-                'related_type' => FawryMachine::class,
-                'related_id' => $machine->id,
-                'notes' => $desc,
-            ]);
+            $this->prepaidLedgerService->recharge(
+                prepaidKey: 'fawry',
+                source: $source,
+                amount: $amount,
+                module: TransactionModule::Fawry,
+                notes: $desc,
+                relatedType: FawryMachine::class,
+                relatedId: $machine->id,
+            );
 
             // زيادة رصيد الماكينة
             $machineTx = $machine->credit($amount, $desc, (int) (Auth::id() ?: 1), null);

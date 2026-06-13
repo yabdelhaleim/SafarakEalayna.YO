@@ -6,7 +6,7 @@ use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Flight\AirlineTransaction;
 use App\Models\Flight\FlightCarrier;
-use App\Services\Finance\TransactionService;
+use App\Services\Finance\PrepaidLedgerService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,12 +14,12 @@ use Illuminate\Support\Facades\Log;
 class FlightCarrierRechargeService
 {
     public function __construct(
-        protected TransactionService $transactionService
+        protected PrepaidLedgerService $prepaidLedgerService,
     ) {}
 
     /**
      * يخصم من حساب مالي (محفظة/بنك/خزينة) ويزيد رصيد ناقل الطيران،
-     * مع تسجيل قيد مصروف وحركة airline_transaction.
+     * مع تسجيل قيد تحويل لرصيد مسبق وحركة airline_transaction.
      *
      * @return array{carrier: FlightCarrier, source_account: Account, airline_transaction: AirlineTransaction}
      *
@@ -49,15 +49,15 @@ class FlightCarrierRechargeService
                 $desc .= ' — '.$notes;
             }
 
-            // قيد مصروف من الحساب المالي
-            $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $source->id,
-                'module' => TransactionModule::Flight->value,
-                'related_type' => FlightCarrier::class,
-                'related_id' => $carrier->id,
-                'notes' => $desc,
-            ]);
+            $this->prepaidLedgerService->recharge(
+                prepaidKey: 'flight_carrier',
+                source: $source,
+                amount: $amount,
+                module: TransactionModule::Flight,
+                notes: $desc,
+                relatedType: FlightCarrier::class,
+                relatedId: $carrier->id,
+            );
 
             // زيادة رصيد الناقل وتسجيل حركة airline_transaction
             $carrierTx = $carrier->credit($amount, $desc, (int) (Auth::id() ?: 1), null);

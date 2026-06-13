@@ -102,6 +102,14 @@ return [
             'general' => env('ACCOUNTING_EXPENSE_CLEARING_GENERAL_NAME', 'إقفال تكلفة عامة (نظام)'),
         ],
         /*
+         * Prepaid asset accounts — شحن الأنظمة/الناقلين/فوري (لا يدخل P&L حتى الاستهلاك).
+         */
+        'prepaid' => [
+            'flight_system' => env('ACCOUNTING_PREPAID_FLIGHT_SYSTEM_NAME', 'رصيد مسبق — أنظمة حجز الطيران'),
+            'flight_carrier' => env('ACCOUNTING_PREPAID_FLIGHT_CARRIER_NAME', 'رصيد مسبق — ناقلو الطيران'),
+            'fawry' => env('ACCOUNTING_PREPAID_FAWRY_NAME', 'رصيد مسبق — ماكينات فوري'),
+        ],
+        /*
          * Offset for raw TreasuryService::credit / ::debit when no module context exists.
          */
         'treasury_operations' => env(

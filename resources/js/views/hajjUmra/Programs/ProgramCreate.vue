@@ -87,12 +87,22 @@
 
           <div>
             <label class="block text-xs text-muted mb-2">الشركة المنفذة</label>
-            <input v-model="form.executing_company" type="text" required class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+            <select v-model="form.executing_company" required class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none appearance-none text-white cursor-pointer">
+              <option value="">اختر الشركة المنفذة...</option>
+              <option v-for="c in store.executingCompanies" :key="c.id" :value="c.name">
+                {{ c.name }}
+              </option>
+            </select>
           </div>
 
           <div>
             <label class="block text-xs text-muted mb-2">مشرف الرحلة</label>
-            <input v-model="form.trip_supervisor" type="text" required class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+            <select v-model="form.trip_supervisor" required class="w-full p-4 bg-input border border-white/10 rounded-xl focus:border-gold outline-none appearance-none text-white cursor-pointer">
+              <option value="">اختر مشرف الرحلة...</option>
+              <option v-for="s in store.tripSupervisors" :key="s.id" :value="s.name">
+                {{ s.name }}
+              </option>
+            </select>
           </div>
 
           <div>
@@ -154,7 +164,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowLeft, Loader2 } from 'lucide-vue-next';
 import axios from 'axios';
@@ -206,6 +216,14 @@ const saveProgram = async () => {
     isSaving.value = false;
   }
 };
+
+onMounted(async () => {
+  try {
+    await store.fetchSettings();
+  } catch (e) {
+    console.error('Failed to load settings', e);
+  }
+});
 </script>
 
 <style scoped>

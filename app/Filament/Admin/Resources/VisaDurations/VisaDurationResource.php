@@ -16,6 +16,8 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class VisaDurationResource extends Resource
@@ -80,6 +82,16 @@ class VisaDurationResource extends Resource
                         default => '-',
                     }),
                 IconColumn::make('is_active')->label('مفعّل')->boolean(),
+            ])
+            ->filters([
+                TernaryFilter::make('is_active')->label('مفعّل'),
+                SelectFilter::make('entry_type')
+                    ->label('نوع الدخول')
+                    ->options([
+                        'single' => 'دخول واحد',
+                        'multiple' => 'دخول متعدد',
+                        'triple' => 'دخول ثلاثي',
+                    ]),
             ])
             ->recordActions([EditAction::make(), DeleteAction::make()])
             ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);

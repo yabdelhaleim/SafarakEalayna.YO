@@ -136,7 +136,7 @@
                       سحب
                     </button>
                     <router-link
-                      :to="{ name: 'accounts.list', query: { account_id: company.account_id } }"
+                      :to="{ name: 'finance.accounts.statement.detail', params: { id: company.account_id } }"
                       class="p-2 rounded-lg bg-white/5 border border-white/5 text-white/40 hover:text-blue-400 transition-all"
                       title="كشف الحساب"
                     >
@@ -258,7 +258,10 @@ const hajjAccounts = computed(() => {
 });
 
 const totalNetDue = computed(() => {
-  return store.executingCompaniesFinance.reduce((sum, c) => sum + (c.net_due > 0 ? c.net_due : 0), 0);
+  return store.executingCompaniesFinance.reduce((sum, c) => {
+    const netDue = Number(c.net_due) || 0;
+    return sum + (netDue > 0 ? netDue : 0);
+  }, 0);
 });
 
 const loadData = async () => {

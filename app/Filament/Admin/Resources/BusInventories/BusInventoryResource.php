@@ -247,14 +247,34 @@ class BusInventoryResource extends Resource
                         '1' => 'فيه مقاعد متاحة',
                         '0' => 'مافيش مقاعد',
                     ])
-                    ->query(fn ($query) => $query->hasAvailableTickets()),
+                    ->query(function ($query, $value) {
+                        if ($value === '1') {
+                            return $query->hasAvailableTickets();
+                        }
+
+                        if ($value === '0') {
+                            return $query->where('available_tickets', '<=', 0);
+                        }
+
+                        return $query;
+                    }),
 
                 SelectFilter::make('with_debt', 'عندها مديونية')
                     ->options([
                         '1' => 'عندها مديونية',
                         '0' => 'مسدد بالكامل',
                     ])
-                    ->query(fn ($query) => $query->withDebt()),
+                    ->query(function ($query, $value) {
+                        if ($value === '1') {
+                            return $query->withDebt();
+                        }
+
+                        if ($value === '0') {
+                            return $query->where('remaining_debt', '<=', 0);
+                        }
+
+                        return $query;
+                    }),
             ])
             ->defaultSort('travel_date', 'desc')
             ->recordActions([

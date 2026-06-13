@@ -16,6 +16,7 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class HajjUmraExecutingCompanyResource extends Resource
@@ -62,6 +63,9 @@ class HajjUmraExecutingCompanyResource extends Resource
             TextColumn::make('phone')->label('الهاتف')->toggleable(),
             IconColumn::make('is_active')->label('مفعّلة')->boolean(),
         ])
+            ->filters([
+                TernaryFilter::make('is_active')->label('مفعّلة'),
+            ])
             ->recordActions([
                 Action::make('statement')
                     ->label('كشف الحساب')

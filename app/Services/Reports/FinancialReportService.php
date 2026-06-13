@@ -519,6 +519,7 @@ class FinancialReportService
                     'module' => $custMod,
                     'module_label' => $this->getModuleLabel($custMod),
                     'balance' => $balance,
+                    'currency' => $c->ledgerAccount ? $c->ledgerAccount->currency : 'EGP',
                     'account_id' => $c->account_id,
                     'statement_url' => $c->account_id ? "/finance/account-statement/{$c->account_id}" : null,
                 ];
@@ -640,6 +641,7 @@ class FinancialReportService
                     'module' => $supMod,
                     'module_label' => $this->getModuleLabel($supMod),
                     'balance' => $balance,
+                    'currency' => $s->account ? $s->account->currency : 'EGP',
                     'account_id' => $s->account_id,
                     'statement_url' => $s->account_id ? "/finance/account-statement/{$s->account_id}" : null,
                 ];
@@ -677,6 +679,7 @@ class FinancialReportService
                         'module' => 'visa',
                         'module_label' => 'تأشيرات',
                         'balance' => $balance,
+                        'currency' => $a->account ? $a->account->currency : 'EGP',
                         'account_id' => $a->account_id,
                         'statement_url' => $a->account_id ? "/finance/account-statement/{$a->account_id}" : null,
                     ];
@@ -715,6 +718,7 @@ class FinancialReportService
                         'module' => 'hajj_umra',
                         'module_label' => 'حج وعمرة',
                         'balance' => $balance,
+                        'currency' => $e->account ? $e->account->currency : 'EGP',
                         'account_id' => $e->account_id,
                         'statement_url' => $e->account_id ? "/finance/account-statement/{$e->account_id}" : null,
                     ];
@@ -753,6 +757,7 @@ class FinancialReportService
                         'module' => 'bus',
                         'module_label' => 'باص',
                         'balance' => $balance,
+                        'currency' => $b->account ? $b->account->currency : 'EGP',
                         'account_id' => $b->account_id,
                         'statement_url' => $b->account_id ? "/finance/account-statement/{$b->account_id}" : null,
                     ];
@@ -791,49 +796,14 @@ class FinancialReportService
                         'module' => 'flight',
                         'module_label' => 'طيران',
                         'balance' => $balance,
+                        'currency' => $a->currency ?: 'EGP',
                         'account_id' => null,
                         'statement_url' => "/flights/airline-accounts/{$a->id}/transactions",
                     ];
                 }
             }
 
-            // 7. QUERY FLIGHT GROUPS (tourism -> flight)
-            if ((! $department || $department === 'tourism') && (! $module || $module === 'flight')) {
-                $groupQuery = FlightGroup::query()->with('account');
-                if ($search) {
-                    $groupQuery->where(function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                            ->orWhere('code', 'like', "%{$search}%");
-                    });
-                }
-                $groups = $groupQuery->get();
-                foreach ($groups as $g) {
-                    $balance = $g->account ? (float) $g->account->balance : 0.0;
-                    if ($balance == 0.0) {
-                        continue;
-                    }
 
-                    $dir = $balance < 0 ? 'payables' : 'receivables';
-                    if ($direction !== 'all' && $direction !== $dir) {
-                        continue;
-                    }
-
-                    $results[] = [
-                        'id' => $g->id,
-                        'name' => $g->name,
-                        'phone' => $g->contact_phone,
-                        'entity_type' => 'flight_group',
-                        'entity_type_label' => 'مجموعة طيران',
-                        'department' => 'tourism',
-                        'department_label' => 'قسم سياحه',
-                        'module' => 'flight',
-                        'module_label' => 'طيران',
-                        'balance' => $balance,
-                        'account_id' => $g->account_id,
-                        'statement_url' => $g->account_id ? "/finance/account-statement/{$g->account_id}" : null,
-                    ];
-                }
-            }
 
             // 8. QUERY HOTELS (tourism -> hajj_umra)
             if ((! $department || $department === 'tourism') && (! $module || $module === 'hajj_umra')) {
@@ -867,6 +837,7 @@ class FinancialReportService
                         'module' => 'hajj_umra',
                         'module_label' => 'حج وعمرة',
                         'balance' => $balance,
+                        'currency' => $h->account ? $h->account->currency : 'EGP',
                         'account_id' => $h->account_id,
                         'statement_url' => $h->account_id ? "/finance/account-statement/{$h->account_id}" : null,
                     ];
@@ -905,8 +876,59 @@ class FinancialReportService
                         'module' => 'hajj_umra',
                         'module_label' => 'حج وعمرة',
                         'balance' => $balance,
+                        'currency' => $us->account ? $us->account->currency : 'EGP',
                         'account_id' => $us->account_id,
                         'statement_url' => $us->account_id ? "/finance/account-statement/{$us->account_id}" : null,
+                    ];
+                }
+            }
+        }
+
+        // 7. QUERY FLIGHT GROUPS (tourism -> flight) - Query for all entity filters (customers, suppliers, or all)
+        if ($entityType === 'all' || $entityType === 'supplier' || $entityType === 'customer') {
+            if ((! $department || $department === 'tourism') && (! $module || $module === 'flight')) {
+                $groupQuery = FlightGroup::query()->with(['account', 'carrier']);
+                if ($search) {
+                    $groupQuery->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
+                    });
+                }
+                $groups = $groupQuery->get();
+                foreach ($groups as $g) {
+                    $totalDebt = (float) $g->groupTransactions()->where('type', 'debt')->sum('amount');
+                    $totalPayment = (float) $g->groupTransactions()->where('type', 'payment')->sum('amount');
+                    
+                    if ($totalDebt > 0 || $totalPayment > 0) {
+                        // Standard debts report convention: positive balance = receivable (they owe us), negative balance = payable (we owe them)
+                        $balance = $totalPayment - $totalDebt;
+                    } else {
+                        $balance = $g->account ? (float) $g->account->balance : 0.0;
+                    }
+
+                    if ($balance == 0.0) {
+                        continue;
+                    }
+
+                    $dir = $balance < 0 ? 'payables' : 'receivables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => $g->id,
+                        'name' => $g->name,
+                        'phone' => $g->contact_phone,
+                        'entity_type' => 'flight_group',
+                        'entity_type_label' => 'مجموعة طيران',
+                        'department' => 'tourism',
+                        'department_label' => 'قسم سياحه',
+                        'module' => 'flight',
+                        'module_label' => 'طيران',
+                        'balance' => $balance,
+                        'currency' => $g->carrier ? $g->carrier->currency : 'EGP',
+                        'account_id' => $g->account_id,
+                        'statement_url' => '/flights/customers',
                     ];
                 }
             }
@@ -1035,9 +1057,20 @@ class FinancialReportService
               ->orWhereHas('visaBookings');
         })->with('ledgerAccount')->get()->sum(fn($c) => (float)$c->ledgerAccount->balance);
 
-        $payables = FlightGroup::whereHas('account', function($q) use ($currency) {
-            $q->where('currency', $currency)->where('balance', '<', 0);
-        })->with('account')->get()->sum(fn($g) => abs((float)$g->account->balance));
+        $payables = 0.0;
+        $groups = FlightGroup::with('carrier')->get();
+        foreach ($groups as $g) {
+            $gCurrency = $g->carrier?->currency ?: 'EGP';
+            if (strtoupper($gCurrency) !== strtoupper($currency)) {
+                continue;
+            }
+            $totalDebt = (float) $g->groupTransactions()->where('type', 'debt')->sum('amount');
+            $totalPayment = (float) $g->groupTransactions()->where('type', 'payment')->sum('amount');
+            $netBalance = $totalDebt - $totalPayment;
+            if ($netBalance > 0) {
+                $payables += $netBalance;
+            }
+        }
 
         $total = ($systems + $carriers + $vaults + $receivables) - $payables;
 

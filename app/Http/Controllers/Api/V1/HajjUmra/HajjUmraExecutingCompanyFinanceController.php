@@ -16,34 +16,49 @@ class HajjUmraExecutingCompanyFinanceController extends Controller
 {
     public function dues(Request $request): JsonResponse
     {
-        $rows = HajjUmraExecutingCompany::query()
+        $companies = HajjUmraExecutingCompany::query()
             ->where('is_active', true)
-            ->whereNotNull('account_id')
             ->orderBy('name')
-            ->get(['id', 'name', 'account_id', 'phone'])
-            ->map(function (HajjUmraExecutingCompany $c) {
-                $totals = AccountEntry::query()
-                    ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
-                    ->where('account_entries.account_id', $c->account_id)
-                    ->where('transactions.module', TransactionModule::HajjUmra->value)
-                    ->selectRaw('COALESCE(SUM(account_entries.debit), 0) as total_debit, COALESCE(SUM(account_entries.credit), 0) as total_credit')
-                    ->first();
+            ->get();
 
-                $debit = (float) ($totals?->total_debit ?? 0);
-                $credit = (float) ($totals?->total_credit ?? 0);
-                $netDue = $debit - $credit;
+        $rows = $companies->map(function (HajjUmraExecutingCompany $c) {
+            if (! $c->account_id) {
+                $account = Account::create([
+                    'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($c->name ?: 'غير مسمى'),
+                    'type' => \App\Enums\AccountType::Supplier->value,
+                    'currency' => 'EGP',
+                    'balance' => 0.00,
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'hajj_umra',
+                    'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
+                    'created_by' => auth()->id() ?? 1,
+                ]);
+                $c->account_id = $account->id;
+                $c->save();
+            }
 
-                return [
-                    'id' => $c->id,
-                    'name' => $c->name,
-                    'phone' => $c->phone,
-                    'account_id' => (int) $c->account_id,
-                    'total_withdrawn' => $debit,
-                    'total_repaid' => $credit,
-                    'net_due' => $netDue,
-                ];
-            })
-            ->values();
+            $totals = AccountEntry::query()
+                ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
+                ->where('account_entries.account_id', $c->account_id)
+                ->where('transactions.module', TransactionModule::HajjUmra->value)
+                ->selectRaw('COALESCE(SUM(account_entries.debit), 0) as total_debit, COALESCE(SUM(account_entries.credit), 0) as total_credit')
+                ->first();
+
+            $debit = (float) ($totals?->total_debit ?? 0);
+            $credit = (float) ($totals?->total_credit ?? 0);
+            $netDue = $debit - $credit;
+
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'account_id' => (int) $c->account_id,
+                'total_withdrawn' => $debit,
+                'total_repaid' => $credit,
+                'net_due' => $netDue,
+            ];
+        })->values();
 
         return ApiResponse::success('Executing companies dues fetched', [
             'items' => $rows,

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\FlightBookings;
 
+use App\Enums\FlightBookingStatus;
 use App\Filament\Admin\Concerns\BelongsToFlightModuleNavigation;
 use App\Filament\Admin\Resources\FlightBookings\Pages\CreateFlightBooking;
 use App\Filament\Admin\Resources\FlightBookings\Pages\EditFlightBooking;
@@ -28,6 +29,8 @@ use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -274,6 +277,42 @@ class FlightBookingResource extends Resource
             ])
             ->filters([
                 TrashedFilter::make(),
+                SelectFilter::make('status')
+                    ->label('الحالة')
+                    ->options(FlightBookingStatus::forDropdown()),
+                SelectFilter::make('flight_system_id')
+                    ->label('النظام')
+                    ->relationship('flightSystem', 'name')
+                    ->searchable()
+                    ->preload(),
+                SelectFilter::make('flight_carrier_id')
+                    ->label('الشركة')
+                    ->relationship('flightCarrier', 'name')
+                    ->searchable()
+                    ->preload(),
+                SelectFilter::make('flight_group_id')
+                    ->label('المجموعة')
+                    ->relationship('flightGroup', 'name')
+                    ->searchable()
+                    ->preload(),
+                Filter::make('departure_date')
+                    ->form([
+                        DatePicker::make('from')
+                            ->label('من'),
+                        DatePicker::make('until')
+                            ->label('إلى'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('departure_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('departure_date', '<=', $date),
+                            );
+                    }),
             ])
             ->actions([
                 \Filament\Tables\Actions\Action::make('modify')

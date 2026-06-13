@@ -15,13 +15,12 @@ print_r($profitRes);
 
 echo "\n--- Debts Report (tourism department, all directions) ---\n";
 $debtsRes = $service->getDebtsReport([
-    'department' => 'tourism',
-    'direction' => 'all',
+    'entity_type' => 'customer',
 ]);
 echo "Total Receivables: {$debtsRes['total_receivables']}\n";
 echo "Total Payables: {$debtsRes['total_payables']}\n";
 echo "Net Balance: {$debtsRes['net_balance']}\n";
 echo 'Items Count: '.count($debtsRes['items'])."\n";
 foreach (array_slice($debtsRes['items'], 0, 10) as $item) {
-    echo "- Name: {$item['name']}, Type: {$item['entity_type_label']}, Balance: {$item['balance']}\n";
+    echo "- Name: {$item['name']}, Type: {$item['entity_type_label']}, Balance: {$item['balance']} {$item['currency']}\n";
 }

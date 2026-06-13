@@ -77,6 +77,7 @@ class FlightBooking extends Model
     protected function casts(): array
     {
         return [
+            'booking_channel_type' => \App\Casts\BookingChannelTypeCast::class,
             'purchase_price' => 'decimal:2',
             'selling_price' => 'decimal:2',
             'profit' => 'decimal:2',

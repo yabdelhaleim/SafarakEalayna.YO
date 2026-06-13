@@ -134,7 +134,7 @@ class PassengerDirectoryTest extends TestCase
         // Set current time mock or just compute alert time based on current time to guarantee execution
         $this->user->update([
             'travel_alert_days_before' => 1,
-            'travel_alert_time' => now()->subHour()->format('H:i:s') // Guaranteed to be past alert time
+            'travel_alert_time' => '00:00:00' // Always before or equal to current time to avoid midnight-wrap test flakes
         ]);
 
         // Create booking for tomorrow (1 day before)

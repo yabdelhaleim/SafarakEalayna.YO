@@ -19,6 +19,8 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class VisaAgentResource extends Resource
@@ -66,6 +68,18 @@ class VisaAgentResource extends Resource
             TextColumn::make('email')->label('البريد الإلكتروني')->toggleable(),
             TextColumn::make('country')->label('الدولة')->toggleable(),
             IconColumn::make('is_active')->label('مفعّل')->boolean(),
+        ])
+        ->filters([
+            TernaryFilter::make('is_active')->label('مفعّل'),
+            SelectFilter::make('country')
+                ->label('الدولة')
+                ->options(fn (): array => VisaAgent::query()
+                    ->whereNotNull('country')
+                    ->where('country', '!=', '')
+                    ->distinct()
+                    ->orderBy('country')
+                    ->pluck('country', 'country')
+                    ->all()),
         ])
         ->recordActions([
             Action::make('statement')

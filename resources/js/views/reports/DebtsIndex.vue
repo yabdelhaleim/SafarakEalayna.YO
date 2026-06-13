@@ -307,7 +307,7 @@
                       class="font-mono font-bold text-sm"
                       :class="debtBalanceView(item.balance).class"
                     >
-                      {{ debtBalanceView(item.balance).amount }} EGP
+                      {{ debtBalanceView(item.balance).amount }} {{ item.currency || 'EGP' }}
                     </span>
                     <span
                       class="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider"

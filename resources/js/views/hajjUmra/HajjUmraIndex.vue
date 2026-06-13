@@ -125,7 +125,11 @@
                   <td class="px-6 py-4">
                     <div class="flex flex-col">
                       <span class="font-bold text-sm">{{ booking.program?.program_name }}</span>
-                      <span class="text-xs text-muted">{{ booking.program?.total_nights }} ليلة</span>
+                      <div class="text-xs text-muted flex items-center gap-1.5 mt-0.5">
+                        <span>{{ booking.program?.total_nights }} ليلة</span>
+                        <span v-if="booking.program?.executing_company" class="text-white/20">•</span>
+                        <span v-if="booking.program?.executing_company" class="text-gold font-bold">{{ booking.program?.executing_company }}</span>
+                      </div>
                     </div>
                   </td>
                   <td class="px-6 py-4">

@@ -55,7 +55,7 @@ class QuickStatsWidget extends BaseWidget
                 ->description('إجمالي العملاء')
                 ->descriptionIcon('heroicon-o-users')
                 ->color('primary')
-                ->chart([7, 12, 10, 14, 12, 16, 18])
+                ->chart($this->dailyTableCounts('customers'))
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -64,7 +64,7 @@ class QuickStatsWidget extends BaseWidget
                 ->description('من أصل '.(Schema::hasTable('employees') ? Employee::count() : 0).' موظف')
                 ->descriptionIcon('heroicon-o-briefcase')
                 ->color('success')
-                ->chart([5, 8, 6, 9, 7, 10, 8])
+                ->chart($this->dailyEmployeeHires())
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -73,7 +73,7 @@ class QuickStatsWidget extends BaseWidget
                 ->description('إجمالي الفواتير')
                 ->descriptionIcon('heroicon-o-document-text')
                 ->color('warning')
-                ->chart([10, 15, 12, 18, 14, 20, 16])
+                ->chart($this->dailyTableCounts('invoices'))
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -82,11 +82,60 @@ class QuickStatsWidget extends BaseWidget
                 ->description('تحتاج إجراء')
                 ->descriptionIcon('heroicon-o-clipboard-document-list')
                 ->color($pendingTasks > 10 ? 'danger' : 'info')
-                ->chart([3, 5, 4, 6, 5, 7, $pendingTasks])
+                ->chart($this->dailyPendingTasks())
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
         ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function dailyTableCounts(string $table, int $days = 7): array
+    {
+        if (! Schema::hasTable($table)) {
+            return array_fill(0, $days, 0);
+        }
+
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo): int => (int) DB::table($table)
+                ->whereDate('created_at', now()->subDays($daysAgo))
+                ->count())
+            ->all();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function dailyEmployeeHires(int $days = 7): array
+    {
+        if (! Schema::hasTable('employees')) {
+            return array_fill(0, $days, 0);
+        }
+
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo): int => Employee::query()
+                ->whereDate('hire_date', now()->subDays($daysAgo))
+                ->count())
+            ->all();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function dailyPendingTasks(int $days = 7): array
+    {
+        if (! Schema::hasTable('tasks')) {
+            return array_fill(0, $days, 0);
+        }
+
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo): int => (int) DB::table('tasks')
+                ->where('status', 'pending')
+                ->whereDate('created_at', '<=', now()->subDays($daysAgo))
+                ->count())
+            ->all();
     }
 
     protected function getColumns(): int

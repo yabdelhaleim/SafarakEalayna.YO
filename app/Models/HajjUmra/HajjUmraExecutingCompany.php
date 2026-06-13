@@ -14,6 +14,33 @@ class HajjUmraExecutingCompany extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::saving(function (HajjUmraExecutingCompany $company): void {
+            if (! $company->account_id) {
+                $account = \App\Models\Account::create([
+                    'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
+                    'type' => \App\Enums\AccountType::Supplier->value,
+                    'currency' => 'EGP',
+                    'balance' => 0.00,
+                    'is_active' => true,
+                    'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'hajj_umra',
+                    'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
+                    'created_by' => auth()->id() ?? 1,
+                ]);
+                $company->account_id = $account->id;
+            } else {
+                $account = $company->account;
+                if ($account && $company->isDirty('name')) {
+                    $account->update([
+                        'name' => 'حساب الشركة المنفذة للحج/العمرة: '.$company->name,
+                    ]);
+                }
+            }
+        });
+    }
+
     protected $fillable = [
         'name',
         'license_number',

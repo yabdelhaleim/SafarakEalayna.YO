@@ -4,6 +4,7 @@ namespace App\Filament\Admin\Resources\VisaWallets;
 
 use App\Enums\AccountType;
 use App\Filament\Admin\Resources\Accounts\AccountFormSchema;
+use App\Filament\Support\AccountTableFilters;
 use App\Models\Account;
 use App\Models\VisaBooking;
 use BackedEnum;
@@ -80,6 +81,7 @@ class VisaWalletResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
+            ->filters(AccountTableFilters::defaults())
             ->recordActions([
                 Action::make('statement')
                     ->label('كشف الحساب')

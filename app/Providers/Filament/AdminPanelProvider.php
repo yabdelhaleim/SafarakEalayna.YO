@@ -58,6 +58,7 @@ class AdminPanelProvider extends PanelProvider
             ->collapsedSidebarWidth('68px')
 
             ->discoverResources(in: app_path('Filament/Admin/Resources'), for: 'App\Filament\Admin\Resources')
+            ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\Filament\Clusters')
             ->discoverPages(in: app_path('Filament/Admin/Pages'), for: 'App\Filament\Admin\Pages')
             ->resources([
                 AirportResource::class,

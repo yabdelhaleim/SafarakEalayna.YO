@@ -52,6 +52,70 @@ class LedgerClearingAccounts
         return $this->ensureClearingAccountExists($name, $key, 'expense');
     }
 
+    /**
+     * @param  'flight_system'|'flight_carrier'|'fawry'  $key
+     */
+    public function prepaidAccountId(string $key): int
+    {
+        $name = config("accounting.clearing.prepaid.{$key}");
+        if (! is_string($name) || $name === '') {
+            throw new \RuntimeException(
+                'حساب الرصيد المسبق غير مُعرّف في config/accounting.php للمفتاح «'.$key.'».'
+            );
+        }
+
+        return $this->ensurePrepaidAccountExists($name, $key);
+    }
+
+    /**
+     * @return array<int, string> account_id => prepaid key
+     */
+    public function prepaidAccountIdMap(): array
+    {
+        $prepaidNames = config('accounting.clearing.prepaid', []);
+        if (! is_array($prepaidNames) || $prepaidNames === []) {
+            return [];
+        }
+
+        $nameToKey = [];
+        foreach ($prepaidNames as $key => $name) {
+            if (is_string($name) && $name !== '') {
+                $nameToKey[$name] = (string) $key;
+            }
+        }
+
+        if ($nameToKey === []) {
+            return [];
+        }
+
+        $accounts = Account::query()
+            ->whereIn('name', array_keys($nameToKey))
+            ->where('is_active', true)
+            ->get(['id', 'name']);
+
+        $map = [];
+        foreach ($accounts as $account) {
+            $key = $nameToKey[$account->name] ?? null;
+            if ($key !== null) {
+                $map[(int) $account->id] = $key;
+            }
+        }
+
+        foreach ($nameToKey as $name => $key) {
+            if (! in_array($key, $map, true)) {
+                $id = $this->prepaidAccountId($key);
+                $map[$id] = $key;
+            }
+        }
+
+        return $map;
+    }
+
+    public function isPrepaidAccountId(int $accountId): bool
+    {
+        return isset($this->prepaidAccountIdMap()[$accountId]);
+    }
+
     public function treasuryOperationsContraAccountId(): int
     {
         $name = config('accounting.clearing.treasury_operations');
@@ -118,6 +182,39 @@ class LedgerClearingAccounts
                 'id' => $account->id,
                 'module' => $moduleKey,
                 'type' => $type
+            ]);
+
+            return $account->id;
+        }));
+    }
+
+    protected function ensurePrepaidAccountExists(string $name, string $key): int
+    {
+        $id = $this->accountIdByName($name);
+        if ($id !== null) {
+            return $id;
+        }
+
+        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($name, $key) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Cashbox,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'office',
+                    'is_module_vault' => false,
+                    'notes' => "حساب رصيد مسبق (أصل): {$key}",
+                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                ]
+            );
+
+            \Illuminate\Support\Facades\Log::info('Prepaid account automatically created', [
+                'name' => $name,
+                'id' => $account->id,
+                'key' => $key,
             ]);
 
             return $account->id;

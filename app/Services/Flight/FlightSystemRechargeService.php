@@ -6,7 +6,7 @@ use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Flight\FlightSystem;
 use App\Models\Flight\FlightSystemTransaction;
-use App\Services\Finance\TransactionService;
+use App\Services\Finance\PrepaidLedgerService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\Log;
 class FlightSystemRechargeService
 {
     public function __construct(
-        protected TransactionService $transactionService
+        protected PrepaidLedgerService $prepaidLedgerService,
     ) {}
 
     /**
-     * يخصم من حساب مالي (محفظة/بنك/خزينة) ويزيد رصيد نظام الحجز، مع قيد مصروف وحركة نظام.
+     * يخصم من حساب مالي (محفظة/بنك/خزينة) ويزيد رصيد نظام الحجز، مع قيد تحويل لرصيد مسبق وحركة نظام.
      *
      * @return array{system: FlightSystem, source_account: Account, flight_system_transaction: FlightSystemTransaction}
      */
@@ -37,14 +37,15 @@ class FlightSystemRechargeService
                 $desc .= ' — '.$notes;
             }
 
-            $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $source->id,
-                'module' => TransactionModule::Flight->value,
-                'related_type' => FlightSystem::class,
-                'related_id' => $system->id,
-                'notes' => $desc,
-            ]);
+            $this->prepaidLedgerService->recharge(
+                prepaidKey: 'flight_system',
+                source: $source,
+                amount: $amount,
+                module: TransactionModule::Flight,
+                notes: $desc,
+                relatedType: FlightSystem::class,
+                relatedId: $system->id,
+            );
 
             $systemTx = $system->credit($amount, $desc, (int) (Auth::id() ?: 1), null);
 

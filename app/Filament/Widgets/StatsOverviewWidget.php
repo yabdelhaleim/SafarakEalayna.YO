@@ -22,26 +22,42 @@ class StatsOverviewWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $monthRevenue = Booking::whereMonth('created_at', now()->month)
+        $now = now();
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd = $now->copy()->endOfMonth();
+        $lastMonthStart = $now->copy()->subMonth()->startOfMonth();
+        $lastMonthEnd = $now->copy()->subMonth()->endOfMonth();
+
+        $monthRevenue = Booking::query()
+            ->whereBetween('created_at', [$monthStart, $monthEnd])
             ->where('payment_status', 'paid')
             ->sum('total_price') ?? 0;
 
-        $monthBookings = Booking::whereMonth('created_at', now()->month)->count();
+        $monthBookings = Booking::query()
+            ->whereBetween('created_at', [$monthStart, $monthEnd])
+            ->count();
 
-        $lastMonthBookings = Booking::whereMonth('created_at', now()->subMonth()->month)->count();
+        $lastMonthBookings = Booking::query()
+            ->whereBetween('created_at', [$lastMonthStart, $lastMonthEnd])
+            ->count();
+
         $bookingGrowth = $lastMonthBookings > 0
             ? round((($monthBookings - $lastMonthBookings) / $lastMonthBookings) * 100, 1)
             : 0;
 
-        // Fetch count for chart
-        $chartData = Booking::selectRaw('COUNT(*) as count')
-            ->whereMonth('created_at', '>=', now()->subMonths(6)->month)
-            ->groupByRaw('MONTH(created_at)')
-            ->pluck('count')
-            ->toArray();
+        $chartData = collect(range(5, 0))
+            ->map(function (int $monthsAgo): int {
+                $start = now()->subMonths($monthsAgo)->startOfMonth();
+                $end = now()->subMonths($monthsAgo)->endOfMonth();
 
-        // Default chart data if empty to prevent empty array warnings
-        if (empty($chartData)) {
+                return Booking::query()
+                    ->whereBetween('created_at', [$start, $end])
+                    ->count();
+            })
+            ->values()
+            ->all();
+
+        if ($chartData === []) {
             $chartData = [0, 0, 0, 0, 0, 0];
         }
 
@@ -53,7 +69,7 @@ class StatsOverviewWidget extends BaseWidget
                 ->chart($chartData),
 
             Stat::make('الإيرادات (ج.م)', 'ج.م '.number_format($monthRevenue, 0))
-                ->description('إيرادات '.now()->translatedFormat('F Y'))
+                ->description('إيرادات '.$now->translatedFormat('F Y'))
                 ->descriptionIcon('heroicon-m-banknotes')
                 ->color('primary'),
 

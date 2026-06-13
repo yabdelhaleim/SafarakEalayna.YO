@@ -8,6 +8,7 @@ use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\HajjUmra\UmrahSupplier;
+use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\Program;
@@ -171,6 +172,26 @@ class HajjUmraBookingService
                 if ($supplier && $supplier->account_id) {
                     $expenseAccountId = $supplier->account_id;
                 }
+            } elseif ($program->executing_company_id) {
+                $company = HajjUmraExecutingCompany::find($program->executing_company_id);
+                if ($company) {
+                    if (! $company->account_id) {
+                        $account = \App\Models\Account::create([
+                            'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
+                            'type' => \App\Enums\AccountType::Supplier->value,
+                            'currency' => 'EGP',
+                            'balance' => 0.00,
+                            'is_active' => true,
+                            'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                            'module_type' => 'hajj_umra',
+                            'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
+                            'created_by' => $createdBy,
+                        ]);
+                        $company->account_id = $account->id;
+                        $company->save();
+                    }
+                    $expenseAccountId = $company->account_id;
+                }
             }
 
             $expense = $this->transactions->recordExpense([
@@ -218,17 +239,41 @@ class HajjUmraBookingService
 
     protected function repostExpenseTransaction(HajjUmraBooking $booking, Transaction $transaction, float $newAmount): Transaction
     {
-        $oldAmount = (float) $transaction->amount;
-        if ($oldAmount === $newAmount) {
-            return $transaction;
-        }
-
         $expenseAccountId = (int) $booking->account_id;
         if ($booking->supplier_id) {
             $supplier = UmrahSupplier::find($booking->supplier_id);
             if ($supplier?->account_id) {
                 $expenseAccountId = (int) $supplier->account_id;
             }
+        } else {
+            $program = Program::find($booking->program_id);
+            if ($program && $program->executing_company_id) {
+                $company = HajjUmraExecutingCompany::find($program->executing_company_id);
+                if ($company) {
+                    if (! $company->account_id) {
+                        $account = \App\Models\Account::create([
+                            'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
+                            'type' => \App\Enums\AccountType::Supplier->value,
+                            'currency' => 'EGP',
+                            'balance' => 0.00,
+                            'is_active' => true,
+                            'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                            'module_type' => 'hajj_umra',
+                            'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
+                            'created_by' => $booking->created_by ?? 1,
+                        ]);
+                        $company->account_id = $account->id;
+                        $company->save();
+                    }
+                    $expenseAccountId = (int) $company->account_id;
+                }
+            }
+        }
+
+        $oldAmount = (float) $transaction->amount;
+        $accountChanged = ($expenseAccountId !== (int) $transaction->from_account_id);
+        if ($oldAmount === $newAmount && !$accountChanged) {
+            return $transaction;
         }
 
         $this->transactions->voidTransactionJournal($transaction);
@@ -241,7 +286,7 @@ class HajjUmraBookingService
             'related_type' => HajjUmraBooking::class,
             'related_id' => $booking->id,
             'notes' => $transaction->notes,
-            'created_by' => $transaction->created_by,
+            'created_by' => $transaction->created_by ?? 1,
         ]);
     }
 

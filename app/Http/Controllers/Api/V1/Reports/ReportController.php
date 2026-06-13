@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Reports;
 
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
+use App\Services\Reports\FinanceOperationsReportService;
 use App\Services\Reports\ReportCustomerService;
 use App\Services\Reports\ReportEmployeeService;
 use App\Services\Reports\ReportFinanceService;
@@ -101,6 +102,31 @@ class ReportController extends Controller
             return ApiResponse::success('Profit & Loss retrieved successfully.', $data)
                 ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
                 ->header('Pragma', 'no-cache');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    public function financeOperations(Request $request): JsonResponse
+    {
+        try {
+            $filters = $this->validateDateFilters($request);
+            if ($request->filled('operation_type')) {
+                $filters['operation_type'] = $request->input('operation_type');
+            }
+            if ($request->filled('module')) {
+                $filters['module'] = $request->input('module');
+            }
+            if ($request->filled('search')) {
+                $filters['search'] = $request->input('search');
+            }
+            $filters['per_page'] = $request->input('per_page', 25);
+            $filters['page'] = $request->input('page', 1);
+
+            $data = app(FinanceOperationsReportService::class)->report($filters);
+
+            return ApiResponse::success('Finance operations ledger retrieved successfully.', $data)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

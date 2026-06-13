@@ -3,10 +3,14 @@
 namespace App\Services\Finance;
 
 use App\Enums\AccountType;
+use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Bus\BusBooking;
 use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightGroupTransaction;
 use App\Models\HajjUmraBooking;
 use App\Models\Online\OnlineTransaction;
 use App\Models\VisaBooking;
@@ -219,6 +223,11 @@ class AccountService
 
     public function getAccountStatement(Account $account, array $filters): array
     {
+        $flightGroup = FlightGroup::where('account_id', $account->id)->first();
+        if ($flightGroup) {
+            return $this->getFlightGroupStatementForAccount($flightGroup, $account, $filters);
+        }
+
         $query = $account->entries()
             ->with([
                 'transaction.createdBy',
@@ -413,4 +422,219 @@ class AccountService
     {
         return LedgerBalanceMutationGuard::run(fn () => $this->debitAccount($account, $amount, $transactionId));
     }
+
+    public function getFlightGroupStatementForAccount(FlightGroup $flightGroup, Account $account, array $filters): array
+    {
+        // 1. Fetch all transactions for this flight group to calculate running balances chronologically
+        $allTxQuery = $flightGroup->groupTransactions()
+            ->with([
+                'booking.customer',
+                'booking.passengers',
+                'booking.fromAirport',
+                'booking.toAirport',
+                'createdBy:id,name',
+            ])
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc');
+
+        $allTransactions = $allTxQuery->get();
+
+        $running = 0.0;
+        
+        // Find if there's any opening balance entry in account_entries.
+        $firstEntry = $account->entries()->where('notes', 'رصيد افتتاحي')->first();
+        if ($firstEntry) {
+            $running += ($firstEntry->credit - $firstEntry->debit);
+        }
+
+        foreach ($allTransactions as $tx) {
+            if ($tx->type === 'payment') {
+                $running += (float) $tx->amount;
+            } else {
+                $running -= (float) $tx->amount;
+            }
+            $tx->balance_after = $running;
+        }
+
+        // 2. Filter the transactions based on filters
+        $filteredTransactions = $allTransactions;
+
+        if (! empty($filters['search'])) {
+            $search = mb_strtolower($filters['search']);
+            $resolver = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class);
+            $filteredTransactions = $filteredTransactions->filter(function ($tx) use ($search, $resolver) {
+                if (str_contains(mb_strtolower((string) $tx->notes), $search)) {
+                    return true;
+                }
+                if ($tx->createdBy && str_contains(mb_strtolower($tx->createdBy->name), $search)) {
+                    return true;
+                }
+                if ($tx->booking) {
+                    $bookingRef = $tx->booking->booking_reference ?: $tx->booking->booking_number ?: $tx->booking->pnr;
+                    if (str_contains(mb_strtolower((string) $bookingRef), $search)) {
+                        return true;
+                    }
+                    if ($tx->booking->customer && str_contains(mb_strtolower($tx->booking->customer->full_name), $search)) {
+                        return true;
+                    }
+                    $desc = $resolver->forFlightBooking($tx->booking);
+                    if (str_contains(mb_strtolower($desc), $search)) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        $fromDate = ! empty($filters['from_date']) ? \Carbon\Carbon::parse($filters['from_date'])->startOfDay() : null;
+        $toDate = ! empty($filters['to_date']) ? \Carbon\Carbon::parse($filters['to_date'])->endOfDay() : null;
+
+        if ($fromDate) {
+            $filteredTransactions = $filteredTransactions->filter(function ($tx) use ($fromDate) {
+                return \Carbon\Carbon::parse($tx->created_at)->gte($fromDate);
+            });
+        }
+
+        if ($toDate) {
+            $filteredTransactions = $filteredTransactions->filter(function ($tx) use ($toDate) {
+                return \Carbon\Carbon::parse($tx->created_at)->lte($toDate);
+            });
+        }
+
+        if (! empty($filters['type'])) {
+            $filteredTransactions = $filteredTransactions->filter(function ($tx) use ($filters) {
+                if ($filters['type'] === 'credit') {
+                    return $tx->type === 'payment';
+                } elseif ($filters['type'] === 'debit') {
+                    return $tx->type === 'debt';
+                }
+                return true;
+            });
+        }
+
+        // Stats calculations
+        $openingBalance = 0.0;
+        if ($firstEntry) {
+            $openingBalance += ($firstEntry->credit - $firstEntry->debit);
+        }
+
+        if ($fromDate) {
+            $lastTxBefore = $allTransactions->filter(function ($tx) use ($fromDate) {
+                return \Carbon\Carbon::parse($tx->created_at)->lt($fromDate);
+            })->last();
+
+            if ($lastTxBefore) {
+                $openingBalance = $lastTxBefore->balance_after;
+            }
+        }
+
+        $periodCredit = 0.0;
+        $periodDebit = 0.0;
+        foreach ($filteredTransactions as $tx) {
+            if ($tx->type === 'payment') {
+                $periodCredit += (float) $tx->amount;
+            } else {
+                $periodDebit += (float) $tx->amount;
+            }
+        }
+
+        $closingBalance = $openingBalance + $periodCredit - $periodDebit;
+
+        // Sort items by created_at desc, id desc (matching standard ledger entries)
+        $sortedTransactions = $filteredTransactions->sortByDesc(function ($tx) {
+            return \Carbon\Carbon::parse($tx->created_at)->timestamp . '_' . sprintf('%010d', $tx->id);
+        });
+
+        // Map flight group transactions to mock AccountEntry instances
+        $mockEntries = $sortedTransactions->map(function ($tx) use ($account) {
+            return $this->mapFlightGroupTransactionToAccountEntry($tx, $account);
+        });
+
+        $perPage = min($filters['per_page'] ?? 20, 100);
+        $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage();
+        $currentPageItems = $mockEntries->slice(($currentPage - 1) * $perPage, $perPage)->values();
+
+        $paginator = new LengthAwarePaginator(
+            $currentPageItems,
+            $mockEntries->count(),
+            $perPage,
+            $currentPage,
+            ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]
+        );
+
+        return [
+            'items' => $paginator->getCollection(),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'stats' => [
+                'opening_balance' => (float) $openingBalance,
+                'period_credit' => (float) $periodCredit,
+                'period_debit' => (float) $periodDebit,
+                'closing_balance' => (float) $closingBalance,
+                'account_balance' => (float) $account->balance,
+            ],
+        ];
+    }
+
+    protected function mapFlightGroupTransactionToAccountEntry($tx, Account $account): AccountEntry
+    {
+        $entry = new AccountEntry();
+        $entry->id = $tx->id;
+        $entry->account_id = $account->id;
+        $entry->debit = $tx->type === 'debt' ? (float) $tx->amount : 0.0;
+        $entry->credit = $tx->type === 'payment' ? (float) $tx->amount : 0.0;
+        $entry->balance_after = (float) $tx->balance_after;
+        $entry->notes = $tx->notes;
+        $entry->created_at = $tx->created_at;
+        $entry->updated_at = $tx->updated_at;
+
+        // Try to find a real Transaction model for this payment/debt
+        $realTransaction = \App\Models\Transaction::where('related_type', FlightGroupTransaction::class)
+            ->where('related_id', $tx->id)
+            ->with(['createdBy', 'fromAccount', 'toAccount'])
+            ->first();
+
+        if ($realTransaction) {
+            $entry->transaction_id = $realTransaction->id;
+            if ($tx->booking) {
+                $realTransaction->related_type = get_class($tx->booking);
+                $realTransaction->related_id = $tx->booking->id;
+                $realTransaction->setRelation('related', $tx->booking);
+            }
+            $entry->setRelation('transaction', $realTransaction);
+        } else {
+            $transaction = new \App\Models\Transaction();
+            $transaction->id = $tx->id;
+            $transaction->type = $tx->type === 'payment' 
+                ? TransactionType::Income 
+                : TransactionType::Expense;
+            $transaction->module = TransactionModule::Flight;
+            $transaction->notes = $tx->notes;
+            $transaction->created_by = $tx->created_by;
+            
+            $transaction->setRelation('createdBy', $tx->createdBy);
+
+            if ($tx->booking) {
+                $transaction->related_type = get_class($tx->booking);
+                $transaction->related_id = $tx->booking->id;
+                $transaction->setRelation('related', $tx->booking);
+            } else {
+                $transaction->related_type = null;
+                $transaction->related_id = null;
+                $transaction->setRelation('related', null);
+            }
+
+            $entry->transaction_id = null;
+            $entry->setRelation('transaction', $transaction);
+        }
+
+        return $entry;
+    }
 }
+

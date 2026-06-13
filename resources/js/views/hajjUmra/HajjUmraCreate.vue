@@ -220,11 +220,17 @@
                     <label class="block text-xs text-muted mb-2">المورِّد (وكيل / شركة)</label>
                     <select v-model="form.supplier_id" @change="onSupplierSelect"
                       class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none cursor-pointer text-white">
-                      <option :value="null">بدون مورد محدد</option>
+                      <option :value="null">
+                        الشركة المنفذة للبرنامج: {{ selectedProgram?.executing_company_label || selectedProgram?.executing_company || 'غير محددة' }}
+                      </option>
                       <option v-for="s in store.suppliers" :key="s.id" :value="s.id">
                         {{ s.name }}
                       </option>
                     </select>
+                    <div v-if="selectedProgram" class="text-[10px] text-muted mt-1.5 flex items-center gap-1">
+                      <span>الشركة المنفذة للبرنامج:</span>
+                      <span class="text-gold font-bold">{{ selectedProgram.executing_company_label || selectedProgram.executing_company || 'غير محددة' }}</span>
+                    </div>
                   </div>
                   <div>
                     <label class="block text-xs text-muted mb-2">سعر شراء البرنامج (التكلفة)</label>
@@ -477,6 +483,7 @@
                 <h3 class="font-bold text-sm text-gold border-b border-white/10 pb-1">البيانات العامة</h3>
                 <Row label="العميل الأساسي" :value="form.customer?.full_name || form.customer?.name" />
                 <Row label="البرنامج المختار" :value="selectedProgram?.program_name" />
+                <Row v-if="selectedProgram" label="الشركة المنفذة للبرنامج" :value="selectedProgram.executing_company_label || selectedProgram.executing_company || 'غير محددة'" />
                 <Row v-if="form.supplier_id" label="المورِّد (الشركة الموردة)" :value="supplierName" />
                 <Row v-if="form.companion_customer_id" label="المرافق" :value="companionName" />
                 <Row label="خيار السكن" :value="form.accommodation_choice === 'private' ? 'غرفة خاصة' : 'تسكين عادي'" />
@@ -555,6 +562,7 @@ import { ref, computed, onMounted, onActivated, h } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
+import { useAuthStore } from '@/stores/authStore';
 import { 
   ArrowLeft, Check, Loader2, Search, Plus, TrendingUp, TrendingDown,
   Banknote, Wallet, Landmark
@@ -562,6 +570,7 @@ import {
 
 const store = useHajjUmraStore();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const currentStep = ref(1);
 const isSaving = ref(false);
@@ -612,7 +621,7 @@ function createDefaultForm() {
     accommodation_extra_charge: 0,
     status: 'confirmed',
     account_id: null,
-    agent_name: '',
+    agent_name: authStore.userName || '',
     notes: '',
     initial_payment: {
       amount: 0,
@@ -825,7 +834,6 @@ const onCompanionSearchDebounced = () => {
 
 function selectCustomer(c) {
   form.value.customer = c;
-  form.value.agent_name = form.value.agent_name || c.full_name || c.name || '';
   form.value.initial_payment.paid_by = c.full_name || c.name || '';
   customerSearch.value = '';
   searchResults.value = [];
@@ -933,7 +941,7 @@ async function saveBooking() {
       accommodation_extra_charge: Number(form.value.accommodation_extra_charge) || 0,
       status: form.value.status,
       account_id: form.value.account_id,
-      agent_name: form.value.agent_name?.trim() || form.value.customer?.full_name || '',
+      agent_name: form.value.agent_name?.trim() || '',
       notes: form.value.notes?.trim() || null,
       passengers: passengers.value.filter(p => p.count > 0).map(p => ({
         category: p.category,

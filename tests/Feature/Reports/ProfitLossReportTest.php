@@ -92,6 +92,26 @@ class ProfitLossReportTest extends TestCase
         $this->assertSame(3000.0, $report['netProfit']);
     }
 
+    public function test_prepaid_recharge_is_neutral_until_cogs_consumption(): void
+    {
+        $clearing = app(LedgerClearingAccounts::class);
+        $prepaidId = $clearing->prepaidAccountId('flight_system');
+        $flightExpenseId = $clearing->expenseContraIdForModule('flight');
+        $this->assertNotNull($flightExpenseId);
+
+        $this->createTransfer($this->treasury->id, $prepaidId, 3000, 'flight', 'شحن نظام [رصيد مسبق]');
+
+        $afterRecharge = app(ProfitLossReportService::class)->report([]);
+        $this->assertEquals(0.0, $afterRecharge['totalCogs']);
+        $this->assertEquals(0.0, $afterRecharge['netProfit']);
+
+        $this->createTransfer($prepaidId, $flightExpenseId, 1200, 'flight', 'تكلفة حجز [COGS]');
+
+        $afterCogs = app(ProfitLossReportService::class)->report([]);
+        $this->assertSame(1200.0, $afterCogs['totalCogs']);
+        $this->assertSame(-1200.0, $afterCogs['netProfit']);
+    }
+
     public function test_treasury_to_treasury_transfer_is_excluded(): void
     {
         $otherTreasury = Account::create([

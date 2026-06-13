@@ -7,6 +7,7 @@ use Filament\Forms;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class InventoriesRelationManager extends RelationManager
@@ -79,7 +80,26 @@ class InventoriesRelationManager extends RelationManager
                     ->money('EGP'),
             ])
             ->filters([
-                //
+                SelectFilter::make('payment_type')
+                    ->label('نوع الدفع')
+                    ->options(BusInventoryPaymentType::class),
+                SelectFilter::make('has_available')
+                    ->label('هل فيه مقاعد؟')
+                    ->options([
+                        '1' => 'فيه مقاعد متاحة',
+                        '0' => 'مافيش مقاعد',
+                    ])
+                    ->query(function ($query, $value) {
+                        if ($value === '1') {
+                            return $query->where('available_tickets', '>', 0);
+                        }
+
+                        if ($value === '0') {
+                            return $query->where('available_tickets', '<=', 0);
+                        }
+
+                        return $query;
+                    }),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()

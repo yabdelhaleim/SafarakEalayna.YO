@@ -48,7 +48,6 @@ class FinancialStatsWidget extends BaseWidget
 
         $profit = $income - $expense;
 
-        // Get previous month data for comparison
         $previousMonthIncome = DB::table('transactions')
             ->where('type', 'income')
             ->whereMonth('created_at', $prevMonth)
@@ -59,12 +58,20 @@ class FinancialStatsWidget extends BaseWidget
             ? (($income - $previousMonthIncome) / $previousMonthIncome) * 100
             : 0;
 
+        $monthlyIncome = $this->monthlyTransactionTotals('income');
+        $monthlyExpense = $this->monthlyTransactionTotals('expense');
+        $monthlyProfit = array_map(
+            fn (float $incomeValue, float $expenseValue): float => $incomeValue - $expenseValue,
+            $monthlyIncome,
+            $monthlyExpense
+        );
+
         return [
             Stat::make('إجمالي الدخل', number_format($income, 2).' ج.م')
                 ->description($incomeGrowth >= 0 ? '+ '.number_format($incomeGrowth, 1).'%' : number_format($incomeGrowth, 1).'% من الشهر الماضي')
                 ->descriptionIcon($incomeGrowth >= 0 ? 'heroicon-o-arrow-trending-up' : 'heroicon-o-arrow-trending-down')
                 ->color('success')
-                ->chart([7, 12, 10, 14, 12, 16, 18, 15, 20, 18, 22, 20])
+                ->chart($monthlyIncome)
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -73,7 +80,7 @@ class FinancialStatsWidget extends BaseWidget
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-arrow-trending-down')
                 ->color('danger')
-                ->chart([5, 4, 6, 3, 5, 4, 3, 4, 5, 3, 4, 3])
+                ->chart($monthlyExpense)
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -82,15 +89,29 @@ class FinancialStatsWidget extends BaseWidget
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-chart-pie')
                 ->color($profit >= 0 ? 'success' : 'danger')
-                ->chart([
-                    $profit >= 0 ? abs($profit / 1000) : abs($profit / 1000),
-                    $profit >= 0 ? abs($profit / 800) : abs($profit / 800),
-                    $profit >= 0 ? abs($profit / 1200) : abs($profit / 1200),
-                ])
+                ->chart(array_map(fn (float $value): float => abs($value), $monthlyProfit))
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
         ];
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function monthlyTransactionTotals(string $type, int $months = 7): array
+    {
+        return collect(range($months - 1, 0))
+            ->map(function (int $monthsAgo) use ($type): float {
+                $date = now()->subMonths($monthsAgo);
+
+                return (float) (DB::table('transactions')
+                    ->where('type', $type)
+                    ->whereMonth('created_at', $date->month)
+                    ->whereYear('created_at', $date->year)
+                    ->sum('amount') ?? 0);
+            })
+            ->all();
     }
 
     protected function getColumns(): int

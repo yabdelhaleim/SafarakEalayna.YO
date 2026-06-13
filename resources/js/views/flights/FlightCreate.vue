@@ -3911,4 +3911,16 @@ watch(
     }
   }
 );
+
+watch(
+  () => form.value.flight_group_id,
+  (groupId) => {
+    if (form.value.booking_source === 'group' && groupId) {
+      const selectedGroup = availableGroups.value.find(g => sameId(g.id, groupId));
+      if (selectedGroup && selectedGroup.carrier) {
+        form.value.currency = selectedGroup.carrier.currency || 'EGP';
+      }
+    }
+  }
+);
 </script>

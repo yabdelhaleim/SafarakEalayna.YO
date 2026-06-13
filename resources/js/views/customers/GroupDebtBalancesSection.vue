@@ -430,7 +430,7 @@ const paginatedRecords = computed(() => {
 
 const summaryStats = computed(() => {
   const payable = records.value.filter((r) => Number(r.balance) > 0);
-  const totalPayable = payable.reduce((s, r) => s + Number(r.balance), 0);
+  const totalPayable = payable.reduce((s, r) => s + (Number(r.balance) || 0), 0);
   return [
     {
       label: 'إجمالي المجموعات',

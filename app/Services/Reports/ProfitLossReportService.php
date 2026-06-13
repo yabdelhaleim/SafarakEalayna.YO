@@ -30,9 +30,11 @@ class ProfitLossReportService
         $maps = $this->clearingAccounts->moduleAccountMaps();
         $incomeClearing = $maps['income'];
         $expenseClearing = $maps['expense'];
+        $prepaidAccounts = $this->clearingAccounts->prepaidAccountIdMap();
         $allClearingIds = array_values(array_unique(array_merge(
             array_keys($incomeClearing),
-            array_keys($expenseClearing)
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
         )));
 
         $query = DB::table('transactions as t')
@@ -67,7 +69,7 @@ class ProfitLossReportService
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
 
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
             }
@@ -148,9 +150,11 @@ class ProfitLossReportService
         $maps = $this->clearingAccounts->moduleAccountMaps();
         $incomeClearing = $maps['income'];
         $expenseClearing = $maps['expense'];
+        $prepaidAccounts = $this->clearingAccounts->prepaidAccountIdMap();
         $allClearingIds = array_values(array_unique(array_merge(
             array_keys($incomeClearing),
-            array_keys($expenseClearing)
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
         )));
 
         $query = DB::table('transactions as t')
@@ -178,7 +182,7 @@ class ProfitLossReportService
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
 
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
             }
@@ -338,8 +342,9 @@ class ProfitLossReportService
     /**
      * @param  array<int, string>  $incomeClearing
      * @param  array<int, string>  $expenseClearing
+     * @param  array<int, string>  $prepaidAccounts
      */
-    private function classify(object $tx, array $incomeClearing, array $expenseClearing): ?string
+    private function classify(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
     {
         $type = (string) $tx->type;
         $fromId = (int) ($tx->from_account_id ?? 0);
@@ -366,6 +371,22 @@ class ProfitLossReportService
         $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
         $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
         $toExpense = $toId > 0 && isset($expenseClearing[$toId]);
+        $fromPrepaid = $fromId > 0 && isset($prepaidAccounts[$fromId]);
+        $toPrepaid = $toId > 0 && isset($prepaidAccounts[$toId]);
+
+        // شحن رصيد مسبق: سيولة → أصل (محايد في P&L)
+        if ($toPrepaid && ! $fromPrepaid && ! $fromExpense && ! $fromIncome) {
+            return null;
+        }
+
+        // استهلاك COGS: رصيد مسبق → إقفال تكاليف
+        if ($fromPrepaid && $toExpense && ! $toPrepaid) {
+            return 'cogs';
+        }
+
+        if ($toPrepaid && $fromExpense && ! $fromPrepaid) {
+            return 'cogs_reversal';
+        }
 
         if ($fromIncome && ! $toIncome) {
             return 'revenue';
@@ -375,7 +396,7 @@ class ProfitLossReportService
             return 'revenue_reversal';
         }
 
-        if ($toExpense && ! $fromExpense) {
+        if ($toExpense && ! $fromExpense && ! $fromPrepaid) {
             return 'cogs';
         }
 

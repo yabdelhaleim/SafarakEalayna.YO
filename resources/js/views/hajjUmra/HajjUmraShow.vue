@@ -73,15 +73,35 @@
         <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt class="text-xs text-text-muted">البرنامج</dt>
-            <dd class="mt-1 font-bold">{{ booking.program?.program_name }}</dd>
+            <dd class="mt-1 font-bold text-white">{{ booking.program?.program_name }}</dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">النوع</dt>
-            <dd class="mt-1 font-bold">{{ booking.program?.program_type === 'hajj' ? '🕋 حج' : '🕋 عمرة' }}</dd>
+            <dd class="mt-1 font-bold text-white">{{ booking.program?.program_type === 'hajj' ? '🕋 حج' : '🕋 عمرة' }}</dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">مدة البرنامج</dt>
-            <dd class="mt-1 font-bold">{{ booking.program?.total_nights || '—' }} ليلة</dd>
+            <dd class="mt-1 font-bold text-white">{{ booking.program?.total_nights || '—' }} ليلة</dd>
+          </div>
+          <div v-if="booking.program?.executing_company">
+            <dt class="text-xs text-text-muted">الشركة المنفذة</dt>
+            <dd class="mt-1 font-bold text-gold">{{ booking.program?.executing_company }}</dd>
+          </div>
+          <div v-if="booking.program?.trip_supervisor">
+            <dt class="text-xs text-text-muted">مشرف الرحلة</dt>
+            <dd class="mt-1 font-bold text-gold">{{ booking.program?.trip_supervisor }}</dd>
+          </div>
+          <div v-if="booking.program?.airline">
+            <dt class="text-xs text-text-muted">طيران</dt>
+            <dd class="mt-1 font-bold text-white">{{ booking.program?.airline }}</dd>
+          </div>
+          <div v-if="booking.program?.departure_date">
+            <dt class="text-xs text-text-muted">تاريخ السفر</dt>
+            <dd class="mt-1 font-bold text-white font-mono">{{ booking.program?.departure_date }}</dd>
+          </div>
+          <div v-if="booking.program?.return_date">
+            <dt class="text-xs text-text-muted">تاريخ العودة</dt>
+            <dd class="mt-1 font-bold text-white font-mono">{{ booking.program?.return_date }}</dd>
           </div>
           <div v-if="booking.baggage">
             <dt class="text-xs text-text-muted">الأمتعة</dt>
@@ -200,6 +220,26 @@
               <div class="break-inside-avoid rounded-lg border border-slate-200 p-4">
                 <div class="text-xs font-bold text-slate-500">المدة</div>
                 <div class="mt-1 font-bold text-slate-900">{{ booking.program?.total_nights }} ليلة</div>
+              </div>
+              <div v-if="booking.program?.executing_company" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div class="text-xs font-bold text-slate-500">الشركة المنفذة</div>
+                <div class="mt-1 font-bold text-slate-900">{{ booking.program?.executing_company }}</div>
+              </div>
+              <div v-if="booking.program?.trip_supervisor" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div class="text-xs font-bold text-slate-500">مشرف الرحلة</div>
+                <div class="mt-1 font-bold text-slate-900">{{ booking.program?.trip_supervisor }}</div>
+              </div>
+              <div v-if="booking.program?.airline" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div class="text-xs font-bold text-slate-500">طيران</div>
+                <div class="mt-1 font-bold text-slate-900">{{ booking.program?.airline }}</div>
+              </div>
+              <div v-if="booking.program?.departure_date" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div class="text-xs font-bold text-slate-500">تاريخ السفر</div>
+                <div class="mt-1 font-bold text-slate-900 font-mono">{{ booking.program?.departure_date }}</div>
+              </div>
+              <div v-if="booking.program?.return_date" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div class="text-xs font-bold text-slate-500">تاريخ العودة</div>
+                <div class="mt-1 font-bold text-slate-900 font-mono">{{ booking.program?.return_date }}</div>
               </div>
               <div v-if="printOptions.baggage && booking.baggage" class="break-inside-avoid rounded-lg border border-slate-200 p-4">
                 <div class="text-xs font-bold text-slate-500">الأمتعة</div>

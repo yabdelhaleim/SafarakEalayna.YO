@@ -243,6 +243,7 @@
               <router-link to="/finance/profit-loss" class="nl-sub">الأرباح والخسائر</router-link>
               <router-link to="/finance/department/tourism" class="nl-sub">المركز المالي - السياحة</router-link>
               <router-link to="/finance/department/office" class="nl-sub">المركز المالي - المكتب</router-link>
+              <router-link to="/finance/operations/ledger" class="nl-sub">شحن الأنظمة والتحويلات</router-link>
               <router-link to="/finance/operations/tourism" class="nl-sub">دفتر القيود - السياحة</router-link>
               <router-link to="/finance/operations/office" class="nl-sub">دفتر القيود - المكتب</router-link>
               <router-link to="/suppliers" class="nl-sub">الموردين</router-link>

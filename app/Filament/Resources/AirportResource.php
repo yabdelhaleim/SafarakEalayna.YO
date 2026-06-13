@@ -6,6 +6,7 @@ use App\Filament\Resources\AirportResource\Pages;
 use App\Models\Airport;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -33,7 +34,7 @@ class AirportResource extends Resource
                 \Filament\Schemas\Components\Section::make('معلومات المطار')
                     ->description('بيانات المطار الأساسية')
                     ->schema([
-                        Forms\Components\Grid::make(3)
+                        Grid::make(3)
                             ->schema([
                                 Forms\Components\TextInput::make('iata_code')
                                     ->label('كود IATA')
@@ -57,7 +58,7 @@ class AirportResource extends Resource
                                     ->inline(false),
                             ]),
 
-                        Forms\Components\Grid::make(2)
+                        Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('city_name_en')
                                     ->label('اسم المدينة (إنجليزي)')
@@ -70,7 +71,7 @@ class AirportResource extends Resource
                                     ->maxLength(255),
                             ]),
 
-                        Forms\Components\Grid::make(2)
+                        Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('airport_name_en')
                                     ->label('اسم المطار (إنجليزي)')
@@ -83,7 +84,7 @@ class AirportResource extends Resource
                                     ->maxLength(255),
                             ]),
 
-                        Forms\Components\Grid::make(3)
+                        Grid::make(3)
                             ->schema([
                                 Forms\Components\TextInput::make('country_code')
                                     ->label('كود الدولة')
@@ -104,21 +105,21 @@ class AirportResource extends Resource
                                     ->maxLength(255),
                             ]),
 
-                        Forms\Components\Grid::make(3)
+                        Grid::make(3)
                             ->schema([
                                 Forms\Components\TextInput::make('latitude')
                                     ->label('خط العرض')
                                     ->numeric()
                                     ->step(0.00000001)
-                                    ->max(90)
-                                    ->min(-90),
+                                    ->maxValue(90)
+                                    ->minValue(-90),
 
                                 Forms\Components\TextInput::make('longitude')
                                     ->label('خط الطول')
                                     ->numeric()
                                     ->step(0.00000001)
-                                    ->max(180)
-                                    ->min(-180),
+                                    ->maxValue(180)
+                                    ->minValue(-180),
 
                                 Forms\Components\TextInput::make('timezone')
                                     ->label('التوقيت')

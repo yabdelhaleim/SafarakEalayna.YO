@@ -10,7 +10,6 @@ use App\Models\Fawry\FawryTransaction;
 use App\Models\User;
 use App\Services\Fawry\FawryMachineRechargeService;
 use App\Services\Fawry\FawryTransactionService;
-use App\Services\Finance\TransactionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
@@ -35,8 +34,8 @@ class FawryMachineServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->rechargeService = new FawryMachineRechargeService(app(TransactionService::class));
-        $this->transactionService = new FawryTransactionService(app(TransactionService::class));
+        $this->rechargeService = app(FawryMachineRechargeService::class);
+        $this->transactionService = app(FawryTransactionService::class);
         $this->user = User::factory()->create();
         $this->account = Account::factory()->active()->create([
             'balance' => 5000.00,

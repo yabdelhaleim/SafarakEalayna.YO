@@ -44,8 +44,8 @@ class HajjUmraBookingResource extends JsonResource
                 'return_date' => $this->program->return_date,
                 'airline' => $this->program->airline,
                 'accommodation_type' => $this->program->accommodation_type,
-                'trip_supervisor' => $this->program->trip_supervisor,
-                'executing_company' => $this->program->executing_company,
+                'trip_supervisor' => $this->program->tripSupervisor?->full_name ?: $this->program->trip_supervisor,
+                'executing_company' => $this->program->executingCompany?->name ?: $this->program->executing_company,
                 'departure_point' => $this->program->departure_point,
             ]),
             'pricing' => [

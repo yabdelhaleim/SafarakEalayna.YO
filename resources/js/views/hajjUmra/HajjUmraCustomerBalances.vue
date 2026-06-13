@@ -541,9 +541,9 @@ const paginatedRecords = computed(() => {
 
 // Stats Cards Computations
 const customerStats = computed(() => {
-  const totalSales = records.value.reduce((s, r) => s + Number(r.total_sales), 0);
-  const totalPaid = records.value.reduce((s, r) => s + Number(r.total_paid), 0);
-  const totalDebt = records.value.reduce((s, r) => s + Number(r.total_debt), 0);
+  const totalSales = records.value.reduce((s, r) => s + (Number(r.total_sales) || 0), 0);
+  const totalPaid = records.value.reduce((s, r) => s + (Number(r.total_paid) || 0), 0);
+  const totalDebt = records.value.reduce((s, r) => s + (Number(r.total_debt) || 0), 0);
   const activeDebtors = records.value.filter(r => Number(r.total_debt) > 0).length;
 
   return [

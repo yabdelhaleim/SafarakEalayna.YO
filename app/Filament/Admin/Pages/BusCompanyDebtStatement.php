@@ -8,11 +8,13 @@ use App\Models\Bus\BusInventory;
 use App\Services\Bus\BusInventoryService;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -96,6 +98,24 @@ class BusCompanyDebtStatement extends Page implements HasTable
                     ->color('danger')
                     ->sortable()
                     ->summarize(\Filament\Tables\Columns\Summarizers\Sum::make()->label('إجمالي المتبقي')),
+            ])
+            ->filters([
+                Filter::make('travel_date')
+                    ->form([
+                        DatePicker::make('from')->label('من'),
+                        DatePicker::make('until')->label('إلى'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('travel_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('travel_date', '<=', $date),
+                            );
+                    }),
             ])
             ->recordActions([
                 Action::make('payDebt')

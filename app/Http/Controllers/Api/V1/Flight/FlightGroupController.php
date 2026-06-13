@@ -33,7 +33,7 @@ class FlightGroupController extends Controller
     public function index(Request $request)
     {
         $groups = FlightGroup::active()
-            ->with('carrier:id,name,code')
+            ->with('carrier:id,name,code,currency')
             ->withSum(['groupTransactions as total_debt' => function ($q) {
                 $q->where('type', 'debt');
             }], 'amount')

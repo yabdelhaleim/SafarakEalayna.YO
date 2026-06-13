@@ -19,6 +19,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class BusGovernorateResource extends Resource
@@ -86,6 +87,9 @@ class BusGovernorateResource extends Resource
                     ->label('تاريخ الإضافة')
                     ->dateTime('d/m/Y H:i')
                     ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                TernaryFilter::make('is_active')->label('نشطة'),
             ])
             ->recordActions([
                 EditAction::make(),

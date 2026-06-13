@@ -58,6 +58,17 @@ class FlightSystemRechargeTest extends TestCase
             'module_type' => 'flights',
             'created_by' => $this->user->id,
         ]);
+
+        Account::create([
+            'name' => 'رصيد مسبق — أنظمة حجز الطيران',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 0.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
     }
 
     public function test_can_recharge_flight_system_successfully(): void
@@ -82,6 +93,13 @@ class FlightSystemRechargeTest extends TestCase
             'flight_system_id' => $this->system->id,
             'amount' => 1000.00,
             'type' => 'credit',
+        ]);
+
+        $this->assertDatabaseHas('transactions', [
+            'type' => 'transfer',
+            'related_type' => FlightSystem::class,
+            'related_id' => $this->system->id,
+            'amount' => 1000.00,
         ]);
     }
 

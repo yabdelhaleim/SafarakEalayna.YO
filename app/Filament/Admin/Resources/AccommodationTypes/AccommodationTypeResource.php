@@ -16,6 +16,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class AccommodationTypeResource extends Resource
@@ -78,6 +79,9 @@ class AccommodationTypeResource extends Resource
                 TextColumn::make('capacity')->label('السعة')->sortable(),
                 TextColumn::make('sort_order')->label('الترتيب')->sortable()->toggleable(),
                 IconColumn::make('is_active')->label('مفعّل')->boolean(),
+            ])
+            ->filters([
+                TernaryFilter::make('is_active')->label('مفعّل'),
             ])
             ->recordActions([
                 EditAction::make(),

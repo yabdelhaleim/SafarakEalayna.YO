@@ -25,6 +25,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
+use App\Services\Finance\PrepaidLedgerService;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryLedgerMirror;
 use App\Services\Treasury\TreasuryService;
@@ -58,14 +59,18 @@ class FlightBookingService
 
     protected LedgerClearingAccounts $ledgerClearingAccounts;
 
+    protected PrepaidLedgerService $prepaidLedgerService;
+
     public function __construct(
         TransactionService $transactionService,
         TreasuryService $treasuryService,
         LedgerClearingAccounts $ledgerClearingAccounts,
+        PrepaidLedgerService $prepaidLedgerService,
     ) {
         $this->transactionService = $transactionService;
         $this->treasuryService = $treasuryService;
         $this->ledgerClearingAccounts = $ledgerClearingAccounts;
+        $this->prepaidLedgerService = $prepaidLedgerService;
     }
 
     /**
@@ -240,8 +245,8 @@ class FlightBookingService
                     'employee_id' => $data['employee_id'] ?? null,
                     'booking_reference' => "FLT-{$bookingNumber}",
                     'booking_number' => "FLT-{$bookingNumber}",
-                    'booking_channel_type' => $data['booking_channel_type'] ?? 'office',
-                    'booking_channel_provider' => $data['booking_channel_provider'] ?? 'office',
+                    'booking_channel_type' => $data['booking_channel_type'] ?? \App\Enums\BookingChannelType::SIGN->value,
+                    'booking_channel_provider' => $data['booking_channel_provider'] ?? 'SIGN',
                     'system_type' => $data['system_type'] ?? FlightSystemType::Manual,
                     'pnr' => $data['pnr'] ?? null,
                     'airline_name' => $data['airline_name'] ?? 'Manual',
@@ -809,6 +814,15 @@ class FlightBookingService
             userId: $userId
         );
 
+        $this->prepaidLedgerService->consumeCogs(
+            prepaidKey: 'flight_carrier',
+            module: TransactionModule::Flight,
+            amount: $debitAmount,
+            notes: sprintf('تكلفة حجز %s — ناقل %s', $booking->booking_number, $carrier->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
+        );
+
         Log::info('Flight carrier debited', [
             'flight_booking_id' => $booking->id,
             'carrier_id' => $carrier->id,
@@ -850,6 +864,15 @@ class FlightBookingService
             amount: $debitAmount,
             bookingId: $booking->id,
             userId: $userId
+        );
+
+        $this->prepaidLedgerService->consumeCogs(
+            prepaidKey: 'flight_system',
+            module: TransactionModule::Flight,
+            amount: $debitAmount,
+            notes: sprintf('تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
         );
 
         Log::info('Flight system debited', [
@@ -2030,9 +2053,6 @@ class FlightBookingService
         ]);
     }
 
-    /**
-     * Record flight purchase from group (Accounts Payable)
-     */
     protected function recordPurchaseFromGroup(
         FlightBooking $booking,
         int $groupId,
@@ -2040,12 +2060,22 @@ class FlightBookingService
         int $userId
     ): void {
         $group = FlightGroup::findOrFail($groupId);
+        $carrier = $group->carrier;
+        $groupCurrency = $carrier?->currency ?: 'EGP';
+
+        $debitAmount = $this->purchaseAmountInBalanceCurrency(
+            (string) $groupCurrency,
+            $booking->foreign_currency ?: 'EGP',
+            $purchasePriceEGP,
+            $booking->purchase_price_foreign,
+            $booking->exchange_rate
+        );
 
         FlightGroupTransaction::create([
             'flight_group_id' => $group->id,
             'flight_booking_id' => $booking->id,
             'type' => 'debt',
-            'amount' => $purchasePriceEGP,
+            'amount' => $debitAmount,
             'notes' => 'شراء تذكرة طيران بالأجل — حجز #'.$booking->booking_number,
             'created_by' => $userId,
         ]);
@@ -2053,7 +2083,8 @@ class FlightBookingService
         Log::info('Flight purchase from group recorded on group ledger', [
             'booking_id' => $booking->id,
             'group_id' => $groupId,
-            'amount' => $purchasePriceEGP,
+            'amount' => $debitAmount,
+            'currency' => $groupCurrency,
         ]);
     }
 
@@ -2068,15 +2099,30 @@ class FlightBookingService
         }
 
         $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
-        $netReversal = max(0.0, $purchaseEgp - (float) $airlinePenalty);
+        $netReversalEgp = max(0.0, $purchaseEgp - (float) $airlinePenalty);
 
-        if ($netReversal <= 0) {
+        if ($netReversalEgp <= 0) {
             Log::info('No reversal for group purchase (penalty >= purchase)', [
                 'flight_booking_id' => $booking->id,
                 'purchase_price' => $booking->purchase_price,
                 'penalty' => $airlinePenalty,
             ]);
 
+            return;
+        }
+
+        $carrier = $group->carrier;
+        $groupCurrency = $carrier?->currency ?: 'EGP';
+
+        $netReversal = $this->purchaseAmountInBalanceCurrency(
+            (string) $groupCurrency,
+            'EGP',
+            $netReversalEgp,
+            null,
+            $this->lockedRateFromBookingSnapshot($booking, (string) $groupCurrency)
+        );
+
+        if ($netReversal <= 0) {
             return;
         }
 
@@ -2094,6 +2140,7 @@ class FlightBookingService
             'group_id' => $group->id,
             'reversal_amount' => $netReversal,
             'penalty' => $airlinePenalty,
+            'currency' => $groupCurrency,
         ]);
     }
 }

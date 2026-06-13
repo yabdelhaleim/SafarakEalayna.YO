@@ -89,8 +89,12 @@ class PayrollResource extends Resource
                     }),
             ])
             ->filters([
-                SelectFilter::make('month')->label('الشهر')->options(array_combine(range(1,12), range(1,12))),
-                SelectFilter::make('year')->label('السنة')->options([2024 => '2024', 2025 => '2025', 2026 => '2026']),
+                SelectFilter::make('month')->label('الشهر')->options(array_combine(range(1, 12), range(1, 12))),
+                SelectFilter::make('year')->label('السنة')->options(
+                    collect(range(now()->year - 2, now()->year + 1))
+                        ->mapWithKeys(fn (int $year): array => [$year => (string) $year])
+                        ->all()
+                ),
             ])
             ->actions([
                 \Filament\Tables\Actions\ViewAction::make(),

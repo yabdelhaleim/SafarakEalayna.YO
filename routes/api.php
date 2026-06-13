@@ -388,6 +388,7 @@ Route::prefix('v1')->middleware([
         Route::get('transactions/{id}', [ReportController::class, 'transactionDetail']);
         Route::get('sales', [ReportController::class, 'sales']);
         Route::get('profit-loss', [ReportController::class, 'profitLoss']);
+        Route::get('finance/operations', [ReportController::class, 'financeOperations']);
 
         // Financial Reports
         Route::get('treasury', [FinancialReportController::class, 'treasuryReport']);

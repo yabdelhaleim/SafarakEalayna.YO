@@ -188,6 +188,25 @@
           </div>
         </router-link>
 
+        <!-- Operations Ledger Portal -->
+        <router-link to="/finance/operations/ledger" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
+          <div class="absolute inset-0 bg-gradient-to-br from-violet-600/80 to-purple-900/90 z-0"></div>
+          <div class="relative z-10 p-6 flex flex-col h-full justify-between">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform shadow-xl">
+              <Activity class="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-violet-200 transition-colors">شحن الأنظمة والتحويلات</h3>
+              <p class="text-white/70 text-sm font-medium leading-relaxed">
+                تفاصيل شحن GDS والناقلين وفوري، استهلاك التكلفة، والتحويلات بين موديولات الخزينة.
+              </p>
+            </div>
+          </div>
+          <div class="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 group-hover:-translate-x-2 transition-all">
+            <ArrowLeft class="w-6 h-6 text-gold" />
+          </div>
+        </router-link>
+
         <!-- Treasury Portal -->
         <router-link to="/finance/treasury" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
           <div class="absolute inset-0 bg-gradient-to-br from-emerald-600/80 to-teal-900/90 z-0"></div>

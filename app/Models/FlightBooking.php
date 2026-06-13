@@ -49,7 +49,7 @@ class FlightBooking extends Model
     protected function casts(): array
     {
         return [
-            'booking_channel_type' => \App\Enums\BookingChannelType::class,
+            'booking_channel_type' => \App\Casts\BookingChannelTypeCast::class,
             'status' => \App\Enums\FlightBookingStatus::class,
             'trip_type' => \App\Enums\TripType::class,
             'system_type' => \App\Enums\FlightSystemType::class,

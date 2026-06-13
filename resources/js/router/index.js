@@ -620,6 +620,12 @@ const routes = [
         meta: { title: 'دفتر قيود السياحة' },
       },
       {
+        path: 'operations/ledger',
+        name: 'finance.operations.ledger',
+        component: () => import('@/views/finance/FinanceOperationsLedger.vue'),
+        meta: { title: 'عمليات الشحن والتحويلات' },
+      },
+      {
         path: 'operations/office',
         name: 'finance.operations.office',
         component: () => import('@/views/finance/OfficeOperations.vue'),

@@ -25,12 +25,15 @@ class FlightStatsWidget extends BaseWidget
             ->whereYear('created_at', now()->year)
             ->sum('selling_price') ?? 0;
 
+        $dailyBookings = $this->dailyBookingCounts();
+        $dailyRevenue = $this->dailyRevenueTotals();
+
         return [
             Stat::make('إجمالي أرصدة الطيران', number_format($totalBalance, 2).' ج.م')
                 ->description('إجمالي أرصدة الحسابات والمحافظ')
                 ->descriptionIcon('heroicon-o-banknotes')
                 ->color('primary')
-                ->chart([10, 15, 12, 18, 14, 20, 16])
+                ->chart($dailyRevenue)
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -39,7 +42,7 @@ class FlightStatsWidget extends BaseWidget
                 ->description('إجمالي الحجوزات المسجلة')
                 ->descriptionIcon('heroicon-o-paper-airplane')
                 ->color('success')
-                ->chart([5, 8, 6, 9, 7, 10, 8])
+                ->chart($dailyBookings)
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
@@ -48,10 +51,34 @@ class FlightStatsWidget extends BaseWidget
                 ->description('إجمالي مبيعات الشهر الحالي')
                 ->descriptionIcon('heroicon-o-arrow-trending-up')
                 ->color('warning')
-                ->chart([7, 12, 10, 14, 12, 16, 18])
+                ->chart($dailyRevenue)
                 ->extraAttributes([
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
         ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function dailyBookingCounts(int $days = 7): array
+    {
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo): int => FlightBooking::query()
+                ->whereDate('created_at', now()->subDays($daysAgo))
+                ->count())
+            ->all();
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function dailyRevenueTotals(int $days = 7): array
+    {
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo): float => (float) (FlightBooking::query()
+                ->whereDate('created_at', now()->subDays($daysAgo))
+                ->sum('selling_price') ?? 0))
+            ->all();
     }
 }

@@ -11,6 +11,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class EmployeeBonusResource extends Resource
@@ -107,7 +108,20 @@ class EmployeeBonusResource extends Resource
                     ->sortable(),
             ])
             ->filters([
-                //
+                SelectFilter::make('type')
+                    ->label('النوع')
+                    ->options([
+                        'bonus' => 'مكافأة',
+                        'deduction' => 'خصم',
+                    ]),
+                SelectFilter::make('employee_id')
+                    ->label('الموظف')
+                    ->relationship('employee', 'full_name')
+                    ->getOptionLabelFromRecordUsing(fn ($record): string => $record->full_name
+                        ?? trim(($record->first_name ?? '').' '.($record->last_name ?? ''))
+                        ?: ('#'.$record->id))
+                    ->searchable()
+                    ->preload(),
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make(),

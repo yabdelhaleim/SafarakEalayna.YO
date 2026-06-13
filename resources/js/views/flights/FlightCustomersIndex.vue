@@ -381,10 +381,10 @@
                 <!-- Balance — للمجموعة = مديونية نحن ندين لهم -->
                 <td @click="openPayDebtModal(group)" class="balance-cell" title="اضغط لتسجيل سند صرف (دفع للمجموعة)">
                   <div class="flex flex-col">
-                    <span :class="['font-mono text-sm', formatBalance(group.balance, 'group').class]">
-                      {{ formatBalance(group.balance, 'group').text }}
-                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(group.balance, 'group').label">
-                        {{ formatBalance(group.balance, 'group').label }}
+                    <span :class="['font-mono text-sm', formatBalance(group.balance, 'group', group.carrier?.currency).class]">
+                      {{ formatBalance(group.balance, 'group', group.carrier?.currency).text }}
+                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(group.balance, 'group', group.carrier?.currency).label">
+                        {{ formatBalance(group.balance, 'group', group.carrier?.currency).label }}
                       </span>
                     </span>
                   </div>
@@ -408,7 +408,7 @@
         <div v-if="!loadingList && customers.length > 0" class="groups-total">
           <span class="text-sm text-muted font-bold">إجمالي المديونيات للمجموعات:</span>
           <span class="mono-text text-error font-black">
-            {{ formatCurrency(customers.filter(g => g.balance > 0).reduce((s, g) => s + g.balance, 0)) }}
+            {{ formatCurrency(customers.filter(g => Number(g.balance || 0) > 0).reduce((s, g) => s + Number(g.balance || 0), 0)) }}
           </span>
         </div>
       </div>
@@ -1104,8 +1104,8 @@
             </label>
             <select v-model="payDebtForm.account_id" required class="form-input">
               <option value="" disabled>اختر الحساب المالي...</option>
-              <option v-for="account in activeAccounts" :key="account.id" :value="account.id">
-                {{ account.name }} — الرصيد: {{ formatCurrency(account.balance) }}
+              <option v-for="account in activeAccounts.filter(acc => acc.currency === payDebtCurrency)" :key="account.id" :value="account.id">
+                {{ account.name }} — الرصيد: {{ formatMoney(account.balance, account.currency) }}
               </option>
             </select>
           </div>
@@ -1178,6 +1178,7 @@ const showPayDebtModal = ref(false);
 const payDebtLoading = ref(false);
 const selectedCustomerForPayment = ref(null);
 const activeAccounts = ref([]);
+const payDebtCurrency = ref('EGP');
 const payDebtForm = reactive({ amount: '', account_id: '', notes: '', booking_id: null, booking_number: null, booking_remaining: null, type: 'receipt' });
 
 // Data
@@ -1308,11 +1309,16 @@ const formatWhatsApp = (phone) => {
   return clean;
 };
 
-const formatCurrency = (val) => {
-  return (parseFloat(val) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' جنيه';
+const formatMoney = (amount, currencyCode = 'EGP') => {
+  const symbolMap = { EGP: 'جنيه', KWD: 'د.ك', SAR: 'ر.س', USD: '$' };
+  const suffix = symbolMap[currencyCode] || currencyCode;
+  const formatted = (parseFloat(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${formatted} ${suffix}`;
 };
 
-const formatBalance = (balance, type) => {
+const formatCurrency = (val) => formatMoney(val, 'EGP');
+
+const formatBalance = (balance, type, currencyCode = 'EGP') => {
   const formatted = formatLedgerBalance(balance, type);
   if (formatted.direction === 'zero') {
     return formatted;
@@ -1320,7 +1326,7 @@ const formatBalance = (balance, type) => {
 
   return {
     ...formatted,
-    text: formatCurrency(Math.abs(parseFloat(balance) || 0)),
+    text: formatMoney(Math.abs(parseFloat(balance) || 0), currencyCode),
   };
 };
 
@@ -1629,6 +1635,10 @@ const openPayDebtModal = (customerRef, booking = null) => {
 
   const isGroup = activeTab.value === 'group' || customer.is_group_flag;
   selectedCustomerForPayment.value = { ...customer, is_group_flag: isGroup };
+
+  payDebtCurrency.value = isGroup 
+    ? (customer.carrier?.currency || 'EGP')
+    : (customer.ledger_account?.currency || customer.currency || 'EGP');
 
   let defaultType = 'receipt';
   if (isGroup) {

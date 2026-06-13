@@ -30,6 +30,74 @@ class Program extends Model
             } elseif (! filled($program->accommodation_type)) {
                 $program->accommodation_type = null;
             }
+
+            // Executing Company synchronization
+            if ($program->isDirty('executing_company_id')) {
+                if ($program->executing_company_id) {
+                    $company = HajjUmraExecutingCompany::query()->find($program->executing_company_id);
+                    $program->executing_company = $company ? $company->name : null;
+                } else {
+                    $program->executing_company = null;
+                }
+            } elseif ($program->isDirty('executing_company')) {
+                if (filled($program->executing_company)) {
+                    $company = HajjUmraExecutingCompany::firstOrCreate([
+                        'name' => $program->executing_company,
+                    ], [
+                        'is_active' => true,
+                    ]);
+                    $program->executing_company_id = $company->id;
+                } else {
+                    $program->executing_company_id = null;
+                }
+            } elseif (! $program->exists) {
+                // For new records, fallback to whatever is filled
+                if ($program->executing_company_id) {
+                    $company = HajjUmraExecutingCompany::query()->find($program->executing_company_id);
+                    $program->executing_company = $company ? $company->name : null;
+                } elseif (filled($program->executing_company)) {
+                    $company = HajjUmraExecutingCompany::firstOrCreate([
+                        'name' => $program->executing_company,
+                    ], [
+                        'is_active' => true,
+                    ]);
+                    $program->executing_company_id = $company->id;
+                }
+            }
+
+            // Trip Supervisor synchronization
+            if ($program->isDirty('trip_supervisor_id')) {
+                if ($program->trip_supervisor_id) {
+                    $supervisor = TripSupervisor::query()->find($program->trip_supervisor_id);
+                    $program->trip_supervisor = $supervisor ? $supervisor->full_name : null;
+                } else {
+                    $program->trip_supervisor = null;
+                }
+            } elseif ($program->isDirty('trip_supervisor')) {
+                if (filled($program->trip_supervisor)) {
+                    $supervisor = TripSupervisor::firstOrCreate([
+                        'full_name' => $program->trip_supervisor,
+                    ], [
+                        'is_active' => true,
+                    ]);
+                    $program->trip_supervisor_id = $supervisor->id;
+                } else {
+                    $program->trip_supervisor_id = null;
+                }
+            } elseif (! $program->exists) {
+                // For new records, fallback to whatever is filled
+                if ($program->trip_supervisor_id) {
+                    $supervisor = TripSupervisor::query()->find($program->trip_supervisor_id);
+                    $program->trip_supervisor = $supervisor ? $supervisor->full_name : null;
+                } elseif (filled($program->trip_supervisor)) {
+                    $supervisor = TripSupervisor::firstOrCreate([
+                        'full_name' => $program->trip_supervisor,
+                    ], [
+                        'is_active' => true,
+                    ]);
+                    $program->trip_supervisor_id = $supervisor->id;
+                }
+            }
         });
     }
 

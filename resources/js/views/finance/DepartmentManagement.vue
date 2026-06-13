@@ -196,7 +196,7 @@
                   </td>
                   <td class="font-mono text-xs text-muted">{{ item.phone || '—' }}</td>
                   <td>
-                    <span class="font-black text-error text-lg font-mono">{{ formatCurrency(Math.abs(item.balance)) }}</span>
+                    <span class="font-black text-error text-lg font-mono">{{ formatMoney(Math.abs(item.balance), item.currency) }}</span>
                   </td>
                   <td>
                     <router-link v-if="item.statement_url" :to="item.statement_url"
@@ -277,7 +277,7 @@
                   </td>
                   <td class="font-mono text-xs text-muted">{{ item.phone || '—' }}</td>
                   <td>
-                    <span class="font-black text-success text-lg font-mono">{{ formatCurrency(item.balance) }}</span>
+                    <span class="font-black text-success text-lg font-mono">{{ formatMoney(item.balance, item.currency) }}</span>
                   </td>
                   <td>
                     <router-link v-if="item.statement_url" :to="item.statement_url"
@@ -449,6 +449,12 @@ const refreshAll = async () => {
 // Helpers
 const formatCurrency = (val) =>
   (parseFloat(val) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' جنيه';
+
+const formatMoney = (val, currency = 'EGP') => {
+  const currencyLabels = { EGP: 'جنيه', USD: '$', SAR: 'ر.س', KWD: 'د.ك' };
+  const label = currencyLabels[currency] || currency;
+  return (parseFloat(val) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + label;
+};
 
 const getModuleLabel = (mod) => {
   const map = {

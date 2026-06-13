@@ -86,6 +86,8 @@ class StoreFlightBookingRequest extends FormRequest
             'flight_carrier_id' => 'nullable|integer|exists:flight_carriers,id',
             'flight_group_id' => 'nullable|integer|exists:flight_groups,id',
             'purchase_balance_source' => 'nullable|string|in:carrier,system,group',
+            'booking_channel_type' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Enums\BookingChannelType::validationValues())],
+            'booking_channel_provider' => 'nullable|string|max:100',
             'cabin_class' => 'nullable|string|in:economy,premium_economy,business,first',
             'notes' => 'nullable|string|max:1000',
             'passengers' => 'required|array|min:1',

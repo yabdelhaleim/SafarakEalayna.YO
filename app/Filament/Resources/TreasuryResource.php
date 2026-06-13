@@ -6,6 +6,7 @@ use App\Filament\Resources\TreasuryResource\Pages;
 use App\Models\Treasury;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -33,7 +34,7 @@ class TreasuryResource extends Resource
                 \Filament\Schemas\Components\Section::make('معلومات الخزينة')
                     ->description('إعدادات وتفاصيل خزينة الاسترجاع المستقلة')
                     ->schema([
-                        Forms\Components\Grid::make(2)
+                        Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('name')
                                     ->label('اسم الخزينة')
@@ -49,7 +50,7 @@ class TreasuryResource extends Resource
                                     ->helperText('يجب إدخال كود العملة القياسي من 3 أحرف (مثال: KWD, USD, EGP)'),
                             ]),
 
-                        Forms\Components\Grid::make(2)
+                        Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('current_balance')
                                     ->label('الرصيد الحالي')

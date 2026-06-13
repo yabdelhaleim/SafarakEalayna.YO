@@ -338,5 +338,17 @@ class FinancialReportTest extends TestCase
         $this->assertEquals('tourism', $data[0]['department']);
         $this->assertEquals('flight', $data[0]['module']);
         $this->assertEquals(-4500.00, $data[0]['balance']);
+
+        // Verify it is returned when filtering by entity_type=customer
+        $customerResponse = $this->getJson('/api/v1/reports/debts?department=tourism&module=flight&entity_type=customer');
+        $customerResponse->assertOk();
+        $this->assertCount(1, $customerResponse->json('data.items'));
+        $this->assertEquals('Discount Flights Group', $customerResponse->json('data.items.0.name'));
+
+        // Verify it is returned when filtering by entity_type=supplier
+        $supplierResponse = $this->getJson('/api/v1/reports/debts?department=tourism&module=flight&entity_type=supplier');
+        $supplierResponse->assertOk();
+        $this->assertCount(1, $supplierResponse->json('data.items'));
+        $this->assertEquals('Discount Flights Group', $supplierResponse->json('data.items.0.name'));
     }
 }

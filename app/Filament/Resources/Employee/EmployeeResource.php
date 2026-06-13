@@ -10,11 +10,13 @@ use Filament\Resources\Resource;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
+use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 
 class EmployeeResource extends Resource
@@ -140,7 +142,18 @@ class EmployeeResource extends Resource
                     ->sortable()
             ])
             ->filters([
-                //
+                SelectFilter::make('status', 'الحالة')
+                    ->options([
+                        'active' => 'نشط',
+                        'inactive' => 'غير نشط',
+                    ]),
+                SelectFilter::make('employment_type', 'نوع التوظيف')
+                    ->options([
+                        'full_time' => 'دوام كامل',
+                        'part_time' => 'دوام جزئي',
+                        'contract' => 'عقد',
+                        'temporary' => 'مؤقت',
+                    ]),
             ])
             ->actions([
                 \Filament\Actions\ViewAction::make(),

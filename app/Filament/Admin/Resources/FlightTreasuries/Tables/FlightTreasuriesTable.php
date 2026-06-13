@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\FlightTreasuries\Tables;
 
 use App\Enums\AccountType;
+use App\Filament\Support\AccountTableFilters;
 use App\Models\Account;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\IconColumn;
@@ -56,9 +57,7 @@ class FlightTreasuriesTable
                     ])
                     ->formatStateUsing(fn ($state) => $state ? 'نشط' : 'غير نشط'),
             ])
-            ->filters([
-                //
-            ])
+            ->filters(AccountTableFilters::defaults())
             ->recordActions([
                 EditAction::make(),
                 DeleteAction::make()

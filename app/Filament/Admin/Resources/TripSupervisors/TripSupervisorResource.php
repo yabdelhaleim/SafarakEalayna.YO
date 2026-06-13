@@ -16,6 +16,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
 class TripSupervisorResource extends Resource
@@ -51,6 +52,9 @@ class TripSupervisorResource extends Resource
                 TextColumn::make('national_id')->label('الرقم القومي')->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('is_active')->label('مفعّل')->boolean(),
                 TextColumn::make('created_at')->label('أنشئ في')->dateTime('d/m/Y')->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                TernaryFilter::make('is_active')->label('مفعّل'),
             ])
             ->recordActions([
                 EditAction::make(),
