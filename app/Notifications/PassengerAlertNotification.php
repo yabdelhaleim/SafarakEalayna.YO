@@ -53,7 +53,7 @@ class PassengerAlertNotification extends Notification
         if ($this->daysBefore === 0) {
             $message = "يسافر اليوم الراكب {$name} إلى {$booking?->destination} (PNR: {$booking?->pnr})";
         } elseif ($this->daysBefore === 1) {
-            $message = "يسافر غداً الراكb {$name} إلى {$booking?->destination} (PNR: {$booking?->pnr})";
+            $message = "يسافر غداً الراكب {$name} إلى {$booking?->destination} (PNR: {$booking?->pnr})";
         } else {
             $message = "يسافر بعد {$this->daysBefore} أيام الراكب {$name} إلى {$booking?->destination} (PNR: {$booking?->pnr})";
         }

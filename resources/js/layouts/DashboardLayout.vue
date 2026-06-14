@@ -323,51 +323,173 @@
             <kbd>K</kbd>
           </div>
 
-          <button class="hdr-btn" aria-label="تحديث">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 3v5h-5M3 17v-5h5"/><path d="M15.66 7.5A7 7 0 104.34 14.5"/></svg>
+          <button class="hdr-btn" aria-label="تحديث" @click="fetchNotifications">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" :class="{ 'animate-spin': isNotifRefreshing }"><path d="M17 3v5h-5M3 17v-5h5"/><path d="M15.66 7.5A7 7 0 104.34 14.5"/></svg>
           </button>
 
-          <div class="relative">
-            <button class="hdr-btn hdr-notif" type="button" aria-label="الإشعارات" @click.stop="toggleNotifDropdown">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M15 8A5 5 0 005 8c0 5.5-2.5 7-2.5 7h15S15 13.5 15 8z"/><path d="M11.45 17.5a1.667 1.667 0 01-2.9 0"/></svg>
-              <span v-if="unreadCount > 0" class="notif-badge-count">{{ unreadCount }}</span>
+          <div class="notif-wrap" ref="notifWrapRef">
+            <button
+              class="hdr-notif-btn"
+              type="button"
+              :class="{
+                'hdr-notif-btn--active': unreadCount > 0,
+                'hdr-notif-btn--open': isNotifDropdownOpen,
+              }"
+              :aria-expanded="isNotifDropdownOpen"
+              aria-label="تنبيهات سفر المسافرين"
+              @click.stop="toggleNotifDropdown"
+            >
+              <span v-if="unreadCount > 0" class="notif-ring" aria-hidden="true"></span>
+              <svg class="notif-bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 01-3.46 0"/>
+              </svg>
+              <span v-if="unreadCount > 0" class="notif-badge-count">
+                {{ unreadCount > 99 ? '99+' : unreadCount }}
+              </span>
             </button>
 
             <!-- Notifications Dropdown -->
             <transition name="t-dropdown">
-              <div v-if="isNotifDropdownOpen" class="notif-dropdown glass shadow-2xl rounded-2xl border border-slate-700/50" @click.stop>
+              <div v-if="isNotifDropdownOpen" class="notif-dropdown" @click.stop>
                 <div class="notif-header">
-                  <h3>التنبيهات</h3>
-                  <button v-if="unreadCount > 0" class="mark-all-read-btn" @click="markAllAsRead">
-                    تحديد الكل كمقروء
-                  </button>
-                </div>
-                <div class="notif-list">
-                  <div v-if="notifications.length === 0" class="notif-empty">
-                    لا توجد تنبيهات جديدة
+                  <div class="notif-header-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                    <div>
+                      <h3>تنبيهات سفر المسافرين</h3>
+                      <p v-if="unreadCount > 0">{{ unreadCount }} تنبيه جديد</p>
+                      <p v-else>لا توجد تنبيهات جديدة</p>
+                    </div>
                   </div>
-                  <div v-for="notif in notifications" :key="notif.id" class="notif-item" :class="{ 'notif-item--unread': !notif.read_at }" @click="handleNotifClick(notif)">
-                    <div class="notif-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
-                    </div>
-                    <div class="notif-content">
-                      <p class="notif-message">{{ notif.data.message }}</p>
-                      <div class="notif-meta">
-                        <span>تاريخ السفر: {{ notif.data.departure_date }} {{ notif.data.departure_time }}</span>
-                        <span class="notif-pnr" v-if="notif.data.pnr">PNR: {{ notif.data.pnr }}</span>
-                      </div>
-                    </div>
-                    <button v-if="!notif.read_at" class="mark-read-btn" title="تحديد كمقروء" @click.stop="markAsRead(notif.id)">
-                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.85rem; height: 0.85rem;"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
+                  <div class="notif-header-actions">
+                    <button class="notif-refresh-btn" title="تحديث" @click="fetchNotifications">
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" :class="{ 'animate-spin': isNotifRefreshing }"><path d="M17 3v5h-5M3 17v-5h5"/><path d="M15.66 7.5A7 7 0 104.34 14.5"/></svg>
+                    </button>
+                    <button v-if="unreadCount > 0" class="mark-all-read-btn" @click="markAllAsRead">
+                      تحديد الكل كمقروء
                     </button>
                   </div>
                 </div>
+
+                <div class="notif-list">
+                  <div v-if="isNotifRefreshing && notifications.length === 0" class="notif-empty">
+                    <span class="notif-loading-spinner"></span>
+                    جاري تحميل التنبيهات...
+                  </div>
+                  <div v-else-if="notifications.length === 0" class="notif-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                    <p>لا توجد تنبيهات سفر حالياً</p>
+                    <span>ستظهر هنا عند اقتراب موعد مغادرة مسافر</span>
+                  </div>
+                  <button
+                    v-for="notif in notifications"
+                    :key="notif.id"
+                    type="button"
+                    class="notif-item"
+                    :class="{ 'notif-item--unread': !notif.read_at }"
+                    @click="openNotifDetail(notif)"
+                  >
+                    <div class="notif-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                    </div>
+                    <div class="notif-content">
+                      <div class="notif-item-top">
+                        <span class="notif-passenger-name">{{ notif.data.passenger_name }}</span>
+                        <span class="notif-days-badge">{{ getDaysBeforeLabel(notif.data.days_before) }}</span>
+                      </div>
+                      <p class="notif-message">{{ notif.data.message }}</p>
+                      <div class="notif-meta">
+                        <span v-if="notif.data.origin && notif.data.destination" class="notif-route">
+                          {{ notif.data.origin }} ← {{ notif.data.destination }}
+                        </span>
+                        <span>{{ formatNotifDate(notif.data.departure_date) }} · {{ notif.data.departure_time || '--:--' }}</span>
+                        <span v-if="notif.data.pnr" class="notif-pnr">PNR: {{ notif.data.pnr }}</span>
+                      </div>
+                    </div>
+                    <span class="notif-chevron" aria-hidden="true">
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-5 5 5 5"/></svg>
+                    </span>
+                  </button>
+                </div>
+
                 <div class="notif-footer">
-                  <router-link to="/flights/passengers" @click="isNotifDropdownOpen = false" class="view-all-link">عرض جميع المسافرين</router-link>
+                  <router-link to="/flights/passengers" @click="isNotifDropdownOpen = false" class="view-all-link">
+                    عرض دليل المسافرين وإعدادات التنبيهات
+                  </router-link>
                 </div>
               </div>
             </transition>
           </div>
+
+          <!-- Notification Detail Modal -->
+          <Teleport to="body">
+            <transition name="t-modal">
+              <div v-if="selectedNotif" class="notif-detail-overlay" @click.self="closeNotifDetail">
+                <div class="notif-detail-modal" role="dialog" aria-labelledby="notif-detail-title">
+                  <div class="notif-detail-header">
+                    <div class="notif-detail-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                    </div>
+                    <div>
+                      <p class="notif-detail-label">تفاصيل تنبيه السفر</p>
+                      <h2 id="notif-detail-title">{{ selectedNotif.data.passenger_name }}</h2>
+                    </div>
+                    <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+                    </button>
+                  </div>
+
+                  <div class="notif-detail-body">
+                    <div class="notif-detail-alert">
+                      <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
+                      <p>{{ selectedNotif.data.message }}</p>
+                    </div>
+
+                    <div class="notif-detail-grid">
+                      <div class="notif-detail-field">
+                        <span class="notif-detail-field-label">خط السفر</span>
+                        <span class="notif-detail-field-value notif-detail-route">
+                          {{ selectedNotif.data.origin || '—' }}
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                          {{ selectedNotif.data.destination || '—' }}
+                        </span>
+                      </div>
+                      <div class="notif-detail-field">
+                        <span class="notif-detail-field-label">تاريخ المغادرة</span>
+                        <span class="notif-detail-field-value">{{ formatNotifDate(selectedNotif.data.departure_date) }}</span>
+                      </div>
+                      <div class="notif-detail-field">
+                        <span class="notif-detail-field-label">وقت المغادرة</span>
+                        <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.departure_time || '—' }}</span>
+                      </div>
+                      <div class="notif-detail-field">
+                        <span class="notif-detail-field-label">PNR</span>
+                        <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.pnr || '—' }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="notif-detail-footer">
+                    <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
+                    <button
+                      v-if="!selectedNotif.read_at"
+                      class="notif-detail-btn notif-detail-btn--ghost"
+                      @click="markAsRead(selectedNotif.id); closeNotifDetail()"
+                    >
+                      تحديد كمقروء
+                    </button>
+                    <button
+                      v-if="selectedNotif.data.flight_booking_id"
+                      class="notif-detail-btn notif-detail-btn--primary"
+                      @click="goToBooking(selectedNotif)"
+                    >
+                      عرض الحجز
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </Teleport>
 
           <button class="hdr-avatar" type="button" aria-label="الملف الشخصي">{{ authStore.userInitial }}</button>
         </div>
@@ -551,8 +673,18 @@ function reloadPage() {
 }
 
 const handleEsc = (e) => {
-  if (e.key === 'Escape' && isSidebarOpen.value && isMobile.value) {
-    isSidebarOpen.value = false;
+  if (e.key === 'Escape') {
+    if (selectedNotif.value) {
+      closeNotifDetail();
+      return;
+    }
+    if (isNotifDropdownOpen.value) {
+      isNotifDropdownOpen.value = false;
+      return;
+    }
+    if (isSidebarOpen.value && isMobile.value) {
+      isSidebarOpen.value = false;
+    }
   }
 };
 
@@ -560,15 +692,43 @@ const handleEsc = (e) => {
 const notifications = ref([]);
 const unreadCount = ref(0);
 const isNotifDropdownOpen = ref(false);
+const isNotifRefreshing = ref(false);
+const selectedNotif = ref(null);
+const notifWrapRef = ref(null);
+let notifPollInterval = null;
+
+function formatNotifDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('ar-EG', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function getDaysBeforeLabel(days) {
+  if (days === 0) return 'اليوم';
+  if (days === 1) return 'غداً';
+  if (days === 7) return 'بعد أسبوع';
+  return `بعد ${days} أيام`;
+}
 
 async function fetchNotifications() {
   if (!authStore.token) return;
+  isNotifRefreshing.value = true;
   try {
     const response = await axios.get('/api/v1/flight/passengers/notifications?type=unread');
     notifications.value = response.data.data.items || [];
     unreadCount.value = response.data.data.pagination?.total || 0;
   } catch (e) {
     console.error('Failed to fetch notifications', e);
+  } finally {
+    isNotifRefreshing.value = false;
   }
 }
 
@@ -579,12 +739,33 @@ function toggleNotifDropdown() {
   }
 }
 
+function openNotifDetail(notif) {
+  selectedNotif.value = notif;
+  isNotifDropdownOpen.value = false;
+}
+
+function closeNotifDetail() {
+  selectedNotif.value = null;
+}
+
+function goToBooking(notif) {
+  const bookingId = notif?.data?.flight_booking_id;
+  if (!bookingId) return;
+  if (!notif.read_at) {
+    markAsRead(notif.id);
+  }
+  closeNotifDetail();
+  router.push(`/flights/${bookingId}`);
+}
+
 async function markAsRead(id) {
   try {
     await axios.post(`/api/v1/flight/passengers/notifications/${id}/mark-read`);
     notifications.value = notifications.value.filter(n => n.id !== id);
     unreadCount.value = Math.max(0, unreadCount.value - 1);
-    addToast('تم تحديد التنبيه كمقروء', 'success');
+    if (selectedNotif.value?.id === id) {
+      selectedNotif.value = { ...selectedNotif.value, read_at: new Date().toISOString() };
+    }
   } catch (e) {
     console.error(e);
     addToast('فشل في تحديث حالة التنبيه', 'error');
@@ -603,24 +784,24 @@ async function markAllAsRead() {
   }
 }
 
-function handleNotifClick(notif) {
-  if (!notif.read_at) {
-    markAsRead(notif.id);
-  }
-  isNotifDropdownOpen.value = false;
-  router.push('/flights/passengers');
-}
-
-const closeDropdowns = () => {
+const closeDropdowns = (e) => {
+  if (notifWrapRef.value?.contains(e.target)) return;
   isNotifDropdownOpen.value = false;
 };
 
 watch(() => authStore.token, (val) => {
   if (val) {
     fetchNotifications();
+    if (!notifPollInterval) {
+      notifPollInterval = setInterval(fetchNotifications, 120000);
+    }
   } else {
     notifications.value = [];
     unreadCount.value = 0;
+    if (notifPollInterval) {
+      clearInterval(notifPollInterval);
+      notifPollInterval = null;
+    }
   }
 });
 
@@ -637,12 +818,14 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     printSettingsStore.fetch().catch(() => {});
     fetchNotifications();
+    notifPollInterval = setInterval(fetchNotifications, 120000);
   }
 });
 onUnmounted(() => {
   window.removeEventListener('resize', onResize);
   window.removeEventListener('keydown', handleEsc);
   window.removeEventListener('click', closeDropdowns);
+  if (notifPollInterval) clearInterval(notifPollInterval);
 });
 </script>
 
@@ -1152,65 +1335,176 @@ html { direction: rtl; height: 100%; }
 .badge-purple { background: #a855f7; color: white; }
 
 /* ══ NOTIFICATIONS STYLES ══════════════ */
-.notif-badge-count {
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  background: var(--red);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
+.notif-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.hdr-notif-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  border: 1px solid var(--b);
+  background: var(--raise);
+  color: var(--t2);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--surf);
+  cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s, box-shadow .2s;
+}
+
+.hdr-notif-btn:hover {
+  background: var(--hover);
+  color: var(--t1);
+  border-color: var(--b-hi);
+}
+
+.hdr-notif-btn--active {
+  background: linear-gradient(135deg, rgba(212, 168, 67, .2), rgba(245, 158, 11, .1));
+  border-color: rgba(212, 168, 67, .55);
+  color: #E8C468;
+  box-shadow: 0 0 20px rgba(212, 168, 67, .18), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.hdr-notif-btn--open {
+  border-color: rgba(79, 142, 247, .55);
+  background: rgba(59, 130, 246, .1);
+  color: var(--blue);
+}
+
+.notif-bell-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.notif-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 14px;
+  border: 2px solid rgba(212, 168, 67, .55);
+  animation: notif-pulse 2.2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes notif-pulse {
+  0%   { transform: scale(1);   opacity: .85; }
+  70%  { transform: scale(1.28); opacity: 0; }
+  100% { transform: scale(1.28); opacity: 0; }
+}
+
+.notif-badge-count {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, #F04545, #DC2626);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surf);
+  box-shadow: 0 2px 10px rgba(240, 69, 69, .55);
+  line-height: 1;
 }
 
 .notif-dropdown {
   position: absolute;
-  top: 50px;
+  top: calc(100% + 10px);
   left: 0;
-  width: 340px;
-  background: rgba(14, 21, 37, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  z-index: 120;
+  width: min(380px, calc(100vw - 24px));
+  background: rgba(10, 16, 30, .97);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  z-index: 200;
   display: flex;
   flex-direction: column;
-  max-height: 420px;
+  max-height: min(480px, calc(100vh - 100px));
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(212, 168, 67, .18);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .55), 0 0 40px rgba(212, 168, 67, .06);
 }
 
 .notif-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: linear-gradient(180deg, rgba(212, 168, 67, .06), transparent);
 }
 
-.notif-header h3 {
+.notif-header-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.notif-header-title > svg {
+  width: 20px;
+  height: 20px;
+  color: #E8C468;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notif-header-title h3 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
   color: var(--t1);
+  line-height: 1.3;
+}
+
+.notif-header-title p {
+  font-size: 11px;
+  color: var(--t3);
+  margin: 2px 0 0;
+}
+
+.notif-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.notif-refresh-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--b);
+  background: var(--raise);
+  color: var(--t3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.notif-refresh-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .mark-all-read-btn {
   font-size: 11px;
   color: var(--blue);
   cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-}
-
-.mark-all-read-btn:hover {
-  text-decoration: underline;
+  background: rgba(59, 130, 246, .08);
+  border: 1px solid rgba(59, 130, 246, .2);
+  border-radius: 8px;
+  padding: 5px 8px;
+  white-space: nowrap;
 }
 
 .notif-list {
@@ -1219,22 +1513,55 @@ html { direction: rtl; height: 100%; }
 }
 
 .notif-empty {
-  padding: 24px;
+  padding: 32px 20px;
   text-align: center;
   color: var(--t3);
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-empty svg {
+  width: 32px;
+  height: 32px;
+  opacity: .35;
+}
+
+.notif-empty span {
+  font-size: 11px;
+  opacity: .75;
+}
+
+.notif-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(59, 130, 246, .2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: notif-spin .7s linear infinite;
+}
+
+@keyframes notif-spin {
+  to { transform: rotate(360deg); }
 }
 
 .notif-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+  background: transparent;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background .15s;
   position: relative;
   text-align: right;
+  font-family: inherit;
+  color: inherit;
 }
 
 .notif-item:hover {
@@ -1242,32 +1569,34 @@ html { direction: rtl; height: 100%; }
 }
 
 .notif-item--unread {
-  background: rgba(59, 130, 246, 0.04);
+  background: rgba(59, 130, 246, .05);
 }
 
 .notif-item--unread::before {
   content: '';
   position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--blue);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--blue), #6366F1);
 }
 
 .notif-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(16, 185, 129, 0.1);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, .12);
   color: var(--green);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-top: 2px;
+}
+
+.notif-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .notif-content {
@@ -1275,57 +1604,91 @@ html { direction: rtl; height: 100%; }
   min-width: 0;
 }
 
-.notif-message {
-  font-size: 12.5px;
-  line-height: 1.4;
-  margin: 0 0 4px 0;
+.notif-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.notif-passenger-name {
+  font-size: 13px;
+  font-weight: 700;
   color: var(--t1);
-  font-weight: 500;
+}
+
+.notif-days-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(212, 168, 67, .15);
+  color: #E8C468;
+  border: 1px solid rgba(212, 168, 67, .25);
+  white-space: nowrap;
+}
+
+.notif-days-badge--lg {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.notif-message {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 6px 0;
+  color: var(--t2);
 }
 
 .notif-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   font-size: 11px;
   color: var(--t3);
 }
 
+.notif-route {
+  color: var(--t2);
+  font-weight: 600;
+}
+
 .notif-pnr {
-  background: rgba(255, 255, 255, 0.05);
-  padding: 0 4px;
+  background: rgba(255, 255, 255, .06);
+  padding: 1px 6px;
   border-radius: 4px;
   color: var(--t2);
+  font-family: monospace;
 }
 
-.mark-read-btn {
+.notif-chevron {
   color: var(--t3);
-  opacity: 0.5;
-  transition: opacity 0.15s, color 0.15s;
+  opacity: .4;
   flex-shrink: 0;
-  padding: 4px;
-  margin-top: -2px;
-  border-radius: 6px;
-  background: none;
-  border: none;
+  margin-top: 6px;
 }
 
-.mark-read-btn:hover {
-  opacity: 1;
-  color: var(--green);
-  background: rgba(16, 185, 129, 0.05);
+.notif-chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+.notif-item:hover .notif-chevron {
+  opacity: .8;
 }
 
 .notif-footer {
-  padding: 10px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 11px 16px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
   text-align: center;
+  background: rgba(0, 0, 0, .15);
 }
 
 .view-all-link {
   font-size: 12px;
   color: var(--t2);
-  transition: color 0.15s;
+  transition: color .15s;
   display: block;
   text-decoration: none;
 }
@@ -1334,7 +1697,192 @@ html { direction: rtl; height: 100%; }
   color: var(--blue);
 }
 
-/* Transitions */
+.notif-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  background: rgba(2, 8, 16, .75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.notif-detail-modal {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surf);
+  border: 1px solid rgba(212, 168, 67, .2);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.notif-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: linear-gradient(135deg, rgba(212, 168, 67, .08), rgba(59, 130, 246, .04));
+}
+
+.notif-detail-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, .15);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notif-detail-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.notif-detail-label {
+  font-size: 11px;
+  color: var(--t3);
+  margin: 0 0 2px;
+}
+
+.notif-detail-header h2 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--t1);
+  margin: 0;
+}
+
+.notif-detail-close {
+  margin-right: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--b);
+  background: var(--raise);
+  color: var(--t3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.notif-detail-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.notif-detail-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notif-detail-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, .06);
+  border: 1px solid rgba(59, 130, 246, .15);
+}
+
+.notif-detail-alert p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--t1);
+}
+
+.notif-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.notif-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--raise);
+  border: 1px solid var(--b);
+}
+
+.notif-detail-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t3);
+}
+
+.notif-detail-field-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+}
+
+.notif-detail-route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notif-detail-route svg {
+  width: 14px;
+  height: 14px;
+  color: var(--t3);
+}
+
+.notif-detail-mono {
+  font-family: monospace;
+}
+
+.notif-detail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+
+.notif-detail-btn {
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.notif-detail-btn--ghost {
+  background: var(--raise);
+  border-color: var(--b);
+  color: var(--t2);
+}
+
+.notif-detail-btn--primary {
+  background: linear-gradient(135deg, var(--blue), #6366F1);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, .3);
+}
+
+@media (max-width: 640px) {
+  .hdr-notif-btn { width: 36px; height: 36px; }
+  .notif-dropdown { left: auto; right: 0; }
+  .notif-detail-grid { grid-template-columns: 1fr; }
+}
+
 .t-dropdown-enter-active,
 .t-dropdown-leave-active {
   transition: opacity 0.2s, transform 0.2s;
@@ -1342,7 +1890,25 @@ html { direction: rtl; height: 100%; }
 .t-dropdown-enter-from,
 .t-dropdown-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-8px) scale(0.97);
+}
+
+.t-modal-enter-active,
+.t-modal-leave-active {
+  transition: opacity .25s ease;
+}
+.t-modal-enter-from,
+.t-modal-leave-to {
+  opacity: 0;
+}
+.t-modal-enter-active .notif-detail-modal,
+.t-modal-leave-active .notif-detail-modal {
+  transition: transform .25s cubic-bezier(.34, 1.2, .64, 1), opacity .25s;
+}
+.t-modal-enter-from .notif-detail-modal,
+.t-modal-leave-to .notif-detail-modal {
+  transform: scale(0.92) translateY(12px);
+  opacity: 0;
 }
 
 /* ══ PRINT STYLES ══════════════════════ */
