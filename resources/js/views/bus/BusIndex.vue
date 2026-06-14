@@ -183,23 +183,21 @@
                   <div class="flex flex-col">
                     <div class="flex items-center gap-1 font-semibold text-sm">
                       <MapPin class="w-3 h-3 text-gold" />
-                      {{ booking.inventory?.route_from }}
-                      <ArrowRight class="w-3 h-3 text-text-muted" />
-                      {{ booking.inventory?.route_to }}
+                      {{ booking.inventory?.route || '—' }}
                     </div>
-                    <span class="text-xs text-text-muted mt-1">{{ booking.inventory?.bus_company?.name }}</span>
+                    <span class="text-xs text-text-muted mt-1">{{ booking.company?.name || '—' }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex flex-col">
-                    <span class="text-sm font-semibold">{{ formatDate(booking.travel_date) }}</span>
+                    <span class="text-sm font-semibold">{{ formatDate(booking.inventory?.travel_date) }}</span>
                     <span class="text-xs text-text-muted">{{ booking.inventory?.departure_time }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-1.5 text-sm">
                     <Users class="w-3 h-3 text-text-muted" />
-                    <span class="font-semibold">{{ booking.seats_count }}</span>
+                    <span class="font-semibold">{{ booking.quantity }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -469,7 +467,7 @@ import axios from 'axios';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import {
   Plus, Search, Bus, CheckCircle, Clock, DollarSign,
-  MapPin, ArrowRight, Users, Eye, CreditCard, XCircle,
+  MapPin, Users, Eye, CreditCard, XCircle,
   Banknote, Wallet, Landmark,
 } from 'lucide-vue-next';
 

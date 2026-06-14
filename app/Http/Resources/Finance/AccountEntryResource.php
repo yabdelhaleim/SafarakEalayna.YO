@@ -3,8 +3,7 @@
 namespace App\Http\Resources\Finance;
 
 use App\Models\Bus\BusBooking;
-use App\Models\Flight\FlightBooking as FlightBookingModel;
-use App\Models\FlightBooking;
+use App\Models\Flight\FlightBooking;
 use App\Models\HajjUmraBooking;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Transfer;
@@ -27,7 +26,7 @@ class AccountEntryResource extends JsonResource
         $status = null;
         $provider_name = null;
 
-        if ($related instanceof FlightBookingModel || $related instanceof FlightBooking) {
+        if ($related instanceof FlightBooking) {
             $reference_id = $related->booking_reference ?: $related->booking_number ?: $related->pnr;
             $entity_name = $related->customer?->full_name;
             $process_type = 'حجز طيران';

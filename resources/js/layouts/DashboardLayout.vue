@@ -146,7 +146,7 @@
             <div v-show="isBusOpen" class="dropdown-content-styled">
               <router-link to="/bus/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/bus/create" class="nl-sub">إنشاء حجز</router-link>
-              <router-link to="/bus" class="nl-sub">قائمة الحجوزات</router-link>
+              <router-link to="/bus/list" class="nl-sub">قائمة الحجوزات</router-link>
               <router-link to="/bus/customers" class="nl-sub">عملاء الباصات</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/treasury" class="nl-sub">إدارة القسم (مالية الباصات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/companies" class="nl-sub">إدارة الشركات</router-link>

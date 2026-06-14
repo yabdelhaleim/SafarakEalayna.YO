@@ -13,10 +13,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\ClearsCache;
 
 class OnlineTransaction extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, ClearsCache;
 
     protected $fillable = [
         'service_type_id',

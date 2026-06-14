@@ -143,6 +143,10 @@ class WalletTransactionController extends Controller
                 ->pluck('account_id', 'id')
                 ->filter();
 
+            // Pre-load customer phones in one query to avoid N+1
+            $customerPhones = Customer::whereIn('id', $clientIds)
+                ->pluck('phone', 'id');
+
             $accountBalances = [];
             if ($customerAccounts->isNotEmpty()) {
                 $balances = DB::table('account_entries')
@@ -166,8 +170,7 @@ class WalletTransactionController extends Controller
                 }
             }
 
-            $formatted = $records->map(function ($r) use ($accountBalances) {
-                $customer = $r->customer_id ? Customer::find($r->customer_id) : null;
+            $formatted = $records->map(function ($r) use ($accountBalances, $customerPhones) {
                 $totalSales = (float) $r->total_sales;
 
                 if ($r->customer_id && isset($accountBalances[$r->customer_id])) {
@@ -181,7 +184,7 @@ class WalletTransactionController extends Controller
                 return [
                     'client_id' => $r->customer_id,
                     'client_name' => $r->customer_name,
-                    'phone' => $customer?->phone ?? '—',
+                    'phone' => $customerPhones->get($r->customer_id) ?? '—',
                     'total_sales' => $totalSales,
                     'total_paid' => $totalPaid,
                     'total_debt' => $totalDebt,
@@ -211,6 +214,9 @@ class WalletTransactionController extends Controller
             $customer = $clientId ? Customer::find($clientId) : null;
             $customerAccount = $customer?->account_id ? Account::find($customer->account_id) : null;
 
+            $running = 0.0;
+            $formatted = [];
+
             if ($customerAccount) {
                 $entries = AccountEntry::with([
                     'transaction.createdBy',
@@ -224,9 +230,6 @@ class WalletTransactionController extends Controller
                     })
                     ->orderBy('created_at', 'asc')
                     ->get();
-
-                $running = 0.0;
-                $formatted = [];
 
                 foreach ($entries as $entry) {
                     $tx = $entry->transaction;
@@ -268,12 +271,10 @@ class WalletTransactionController extends Controller
                     ->orderBy('created_at', 'asc')
                     ->get();
 
-                $running = 0.0;
-                $formatted = [];
                 foreach ($txs as $tx) {
                     $amountPaid = (float) $tx->amount_paid;
                     $totalAmount = (float) $tx->total_amount;
-                    $debt = $totalAmount - $amountPaid;
+                    $debt = max(0.0, $totalAmount - $amountPaid);
 
                     $running += $debt;
 

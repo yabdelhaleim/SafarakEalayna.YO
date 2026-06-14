@@ -7,7 +7,7 @@ use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Bus\BusBooking;
-use App\Models\FlightBooking;
+use App\Models\Flight\FlightBooking;
 use App\Models\HajjUmraBooking;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Transaction;

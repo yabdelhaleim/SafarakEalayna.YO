@@ -30,14 +30,21 @@ class InvoiceController extends Controller
             'from_date' => $request->from_date,
             'to_date' => $request->to_date,
             'search' => $request->search,
+            'per_page' => min($request->per_page ?? 15, 100),
+            'page' => $request->get('page', 1),
         ];
 
-        $invoices = $this->invoiceService->getAllInvoices($filters)
-            ->paginate(min($request->per_page ?? 15, 100));
+        $cacheKey = 'invoices_list_' . md5(serialize($filters));
+
+        $data = \App\Helpers\CacheHelper::tags(['invoices'])->remember($cacheKey, 60, function () use ($filters) {
+            $invoices = $this->invoiceService->getAllInvoices($filters)
+                ->paginate($filters['per_page']);
+            return InvoiceResource::collection($invoices)->response()->getData(true);
+        });
 
         return ApiResponse::success(
             'Invoices retrieved successfully',
-            InvoiceResource::collection($invoices)->response()->getData(true),
+            $data,
         );
     }
 

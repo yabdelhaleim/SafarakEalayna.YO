@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use App\Traits\ClearsCache;
+
 #[Fillable([
     'inventory_id',
     'customer_id',
@@ -34,7 +36,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusBooking extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, ClearsCache;
 
     protected function casts(): array
     {
@@ -116,7 +118,7 @@ class BusBooking extends Model
 
     public function getRemainingAmountAttribute(): float
     {
-        return (float) $this->total_price - (float) $this->paid_amount;
+        return max(0.0, (float) $this->total_price - (float) $this->paid_amount);
     }
 
     public function getIsFullyPaidAttribute(): bool

@@ -39,14 +39,21 @@ class EmployeeController extends Controller
             'search' => $request->search,
             'status' => $request->status,
             'employment_type' => $request->employment_type,
+            'per_page' => min($request->per_page ?? 15, 100),
+            'page' => $request->get('page', 1),
         ];
 
-        $employees = $this->employeeService->getAllEmployees($filters)
-            ->paginate(min($request->per_page ?? 15, 100));
+        $cacheKey = 'employees_list_' . md5(serialize($filters));
+
+        $data = \App\Helpers\CacheHelper::tags(['employees'])->remember($cacheKey, 60, function () use ($filters) {
+            $employees = $this->employeeService->getAllEmployees($filters)
+                ->paginate($filters['per_page']);
+            return EmployeeResource::collection($employees)->response()->getData(true);
+        });
 
         return ApiResponse::success(
             'Employees retrieved successfully',
-            EmployeeResource::collection($employees)->response()->getData(true)
+            $data
         );
     }
 

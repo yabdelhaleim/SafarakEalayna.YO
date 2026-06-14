@@ -33,90 +33,101 @@ class AccountController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $paginator = $this->accountService->getAllAccounts($request->all());
+        $params = $request->all();
+        $params['page'] = $request->get('page', 1);
+        $userRole = $request->user()?->role ?? 'guest';
+        $cacheKey = 'accounts_list_' . $userRole . '_' . md5(serialize($params));
 
-        $baseQuery = $this->accountService->buildAccountsQuery($request->all());
+        $data = \App\Helpers\CacheHelper::tags(['accounts'])->remember($cacheKey, 60, function () use ($request) {
+            $paginator = $this->accountService->getAllAccounts($request->all());
 
-        $liquidityAccounts = (clone $baseQuery)
-            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
-            ->get();
+            $baseQuery = $this->accountService->buildAccountsQuery($request->all());
 
-        $performance = [];
-        $moduleBreakdown = app(ProfitLossReportService::class)->moduleBreakdown([
-            'from_date' => now()->startOfMonth()->toDateString(),
-            'to_date' => now()->toDateString(),
-        ]);
-        foreach ($moduleBreakdown['by_module'] as $row) {
-            $performance[$row['module']] = [
-                'income' => (float) $row['income'],
-                'expense' => (float) $row['expense'],
-                'profit' => (float) $row['profit'],
+            $liquidityAccounts = (clone $baseQuery)
+                ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
+                ->get();
+
+            $performance = [];
+            $moduleBreakdown = app(ProfitLossReportService::class)->moduleBreakdown([
+                'from_date' => now()->startOfMonth()->toDateString(),
+                'to_date' => now()->toDateString(),
+            ]);
+            foreach ($moduleBreakdown['by_module'] as $row) {
+                $performance[$row['module']] = [
+                    'income' => (float) $row['income'],
+                    'expense' => (float) $row['expense'],
+                    'profit' => (float) $row['profit'],
+                ];
+            }
+
+            $liquidity = [
+                'cashbox' => (float) $liquidityAccounts->where('type', AccountType::Cashbox)->sum('balance'),
+                'bank' => (float) $liquidityAccounts->where('type', AccountType::Bank)->sum('balance'),
+                'wallet' => (float) $liquidityAccounts->where('type', AccountType::Wallet)->sum('balance'),
+                'treasury' => (float) $liquidityAccounts->where('type', AccountType::Treasury)->sum('balance'),
+                'post' => (float) $liquidityAccounts->where('type', AccountType::Post)->sum('balance'),
             ];
-        }
 
-        $liquidity = [
-            'cashbox' => (float) $liquidityAccounts->where('type', AccountType::Cashbox)->sum('balance'),
-            'bank' => (float) $liquidityAccounts->where('type', AccountType::Bank)->sum('balance'),
-            'wallet' => (float) $liquidityAccounts->where('type', AccountType::Wallet)->sum('balance'),
-            'treasury' => (float) $liquidityAccounts->where('type', AccountType::Treasury)->sum('balance'),
-            'post' => (float) $liquidityAccounts->where('type', AccountType::Post)->sum('balance'),
-        ];
+            $reportFinance = app(ReportFinanceService::class);
+            $recentTransactions = Transaction::query()
+                ->with(['createdBy', 'fromAccount:id,type', 'toAccount:id,type'])
+                ->latest()
+                ->take(10)
+                ->get()
+                ->map(function ($t) use ($reportFinance) {
+                    $type = $t->type instanceof TransactionType ? $t->type->value : (string) $t->type;
+                    $module = $t->module instanceof TransactionModule ? $t->module->value : (string) $t->module;
+                    $fromType = $t->fromAccount?->type;
+                    $toType = $t->toAccount?->type;
 
-        $reportFinance = app(ReportFinanceService::class);
-        $recentTransactions = Transaction::query()
-            ->with(['createdBy', 'fromAccount:id,type', 'toAccount:id,type'])
-            ->latest()
-            ->take(10)
-            ->get()
-            ->map(function ($t) use ($reportFinance) {
-                $type = $t->type instanceof TransactionType ? $t->type->value : (string) $t->type;
-                $module = $t->module instanceof TransactionModule ? $t->module->value : (string) $t->module;
-                $fromType = $t->fromAccount?->type;
-                $toType = $t->toAccount?->type;
+                    return $reportFinance->enrichLedgerRowArray((object) [
+                        'id' => $t->id,
+                        'type' => $type,
+                        'amount' => (float) $t->amount,
+                        'module' => $module,
+                        'notes' => $t->notes,
+                        'created_at' => $t->created_at->toDateTimeString(),
+                        'created_by_name' => $t->createdBy?->name,
+                        'from_account_id' => $t->from_account_id,
+                        'to_account_id' => $t->to_account_id,
+                        'from_account_type' => $fromType instanceof AccountType ? $fromType->value : (string) ($fromType ?? ''),
+                        'to_account_type' => $toType instanceof AccountType ? $toType->value : (string) ($toType ?? ''),
+                    ]);
+                })->toArray();
 
-                return $reportFinance->enrichLedgerRowArray((object) [
-                    'id' => $t->id,
-                    'type' => $type,
-                    'amount' => (float) $t->amount,
-                    'module' => $module,
-                    'notes' => $t->notes,
-                    'created_at' => $t->created_at->toDateTimeString(),
-                    'created_by_name' => $t->createdBy?->name,
-                    'from_account_id' => $t->from_account_id,
-                    'to_account_id' => $t->to_account_id,
-                    'from_account_type' => $fromType instanceof AccountType ? $fromType->value : (string) ($fromType ?? ''),
-                    'to_account_type' => $toType instanceof AccountType ? $toType->value : (string) ($toType ?? ''),
-                ]);
-            });
+            $itemsArray = AccountResource::collection($paginator->items())->toArray($request);
 
-        $data = [
-            'items' => AccountResource::collection($paginator->items()),
-            'pagination' => [
-                'total' => $paginator->total(),
-                'per_page' => $paginator->perPage(),
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'has_more' => $paginator->hasMorePages(),
-            ],
-        ];
-
-        if ($request->user() && ($request->user()->role === 'admin' || $request->user()->role === 'owner')) {
-            $data['stats'] = [
-                'total_balance' => (float) $liquidityAccounts->sum('balance'),
-                'active_count' => $liquidityAccounts->where('is_active', true)->count(),
-                'tourism_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::TOURISM)->count(),
-                'office_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::OFFICE)->count(),
-                'performance' => $performance,
-                'liquidity' => $liquidity,
-                'recent_transactions' => $recentTransactions,
-                'deficit_accounts' => $liquidityAccounts->where('balance', '<', 0)->map(fn (Account $a) => [
-                    'id' => $a->id,
-                    'name' => $a->name,
-                    'balance' => (float) $a->balance,
-                    'currency' => $a->currency,
-                ])->values(),
+            $resData = [
+                'items' => $itemsArray,
+                'pagination' => [
+                    'total' => $paginator->total(),
+                    'per_page' => $paginator->perPage(),
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'has_more' => $paginator->hasMorePages(),
+                ],
             ];
-        }
+
+            if ($request->user() && ($request->user()->role === 'admin' || $request->user()->role === 'owner')) {
+                $resData['stats'] = [
+                    'total_balance' => (float) $liquidityAccounts->sum('balance'),
+                    'active_count' => $liquidityAccounts->where('is_active', true)->count(),
+                    'tourism_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::TOURISM)->count(),
+                    'office_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::OFFICE)->count(),
+                    'performance' => $performance,
+                    'liquidity' => $liquidity,
+                    'recent_transactions' => $recentTransactions,
+                    'deficit_accounts' => $liquidityAccounts->where('balance', '<', 0)->map(fn (Account $a) => [
+                        'id' => $a->id,
+                        'name' => $a->name,
+                        'balance' => (float) $a->balance,
+                        'currency' => $a->currency,
+                    ])->values()->toArray(),
+                ];
+            }
+
+            return $resData;
+        });
 
         return ApiResponse::success(__('accounts.list_success'), $data)
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

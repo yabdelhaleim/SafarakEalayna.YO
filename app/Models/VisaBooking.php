@@ -10,9 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use App\Traits\ClearsCache;
+
 class VisaBooking extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, ClearsCache;
 
     protected $fillable = [
         'customer_id',
@@ -98,8 +100,7 @@ class VisaBooking extends Model
 
     public function getRemainingAmountAttribute(): float
     {
-        return (float) $this->selling_price + (float) ($this->service_fee ?? 0)
-            - $this->paid_amount;
+        return max(0.0, (float) $this->selling_price + (float) ($this->service_fee ?? 0) - $this->paid_amount);
     }
 
     public function getPaidAmountAttribute(): float

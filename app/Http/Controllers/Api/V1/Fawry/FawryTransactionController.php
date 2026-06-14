@@ -35,14 +35,25 @@ class FawryTransactionController extends Controller
                 'search',
                 'per_page',
             ]);
+            $filters['page'] = $request->get('page', 1);
 
-            $paginator = $this->transactionService->getAllTransactions($filters);
+            $cacheKey = 'fawry_transactions_list_' . md5(serialize($filters));
 
-            return ApiResponse::paginated(
-                'Fawry transactions retrieved successfully.',
-                FawryTransactionResource::collection($paginator),
-                $paginator
-            );
+            $data = \App\Helpers\CacheHelper::tags(['fawry_transactions'])->remember($cacheKey, 60, function () use ($filters) {
+                $paginator = $this->transactionService->getAllTransactions($filters);
+                return [
+                    'items' => FawryTransactionResource::collection($paginator)->resolve(),
+                    'pagination' => [
+                        'total' => $paginator->total(),
+                        'per_page' => $paginator->perPage(),
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'has_more' => $paginator->hasMorePages(),
+                    ],
+                ];
+            });
+
+            return ApiResponse::success('Fawry transactions retrieved successfully.', $data);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -152,6 +163,7 @@ class FawryTransactionController extends Controller
                 ->select([
                     'fawry_transactions.client_id',
                     'fawry_transactions.client_name',
+                    'customers.phone as client_phone',
                     DB::raw('MAX(fawry_transactions.id) as id'),
                     DB::raw('SUM(fawry_transactions.selling_price) as total_sales'),
                     DB::raw('SUM(fawry_transactions.amount) as total_paid'),
@@ -160,7 +172,7 @@ class FawryTransactionController extends Controller
                     DB::raw('MAX(fawry_transactions.created_at) as last_transaction'),
                 ])
                 ->leftJoin('customers', 'fawry_transactions.client_id', '=', 'customers.id')
-                ->groupBy(['fawry_transactions.client_id', 'fawry_transactions.client_name'])
+                ->groupBy(['fawry_transactions.client_id', 'fawry_transactions.client_name', 'customers.phone'])
                 ->when($search, function ($q) use ($search) {
                     $q->where(function ($inner) use ($search) {
                         $inner->where('fawry_transactions.client_name', 'like', '%'.$search.'%')
@@ -211,7 +223,6 @@ class FawryTransactionController extends Controller
             }
 
             $formatted = $records->map(function ($r) use ($accountBalances) {
-                $customer = $r->client_id ? Customer::find($r->client_id) : null;
                 $totalSales = (float) $r->total_sales;
 
                 if ($r->client_id && isset($accountBalances[$r->client_id])) {
@@ -225,7 +236,7 @@ class FawryTransactionController extends Controller
                 return [
                     'client_id' => $r->client_id,
                     'client_name' => $r->client_name,
-                    'phone' => $customer?->phone ?? '—',
+                    'phone' => $r->client_phone ?? '—',
                     'total_sales' => $totalSales,
                     'total_paid' => $totalPaid,
                     'total_debt' => $totalDebt,

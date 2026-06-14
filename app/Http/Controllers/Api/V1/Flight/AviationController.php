@@ -38,11 +38,18 @@ class AviationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['date_from', 'date_to', 'airline']);
-        $report = $this->aviationService->getReport($filters);
+        $filters['page'] = $request->get('page', 1);
+
+        $cacheKey = 'aviation_bookings_list_' . md5(serialize($filters));
+
+        $bookings = \App\Helpers\CacheHelper::tags(['flight_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+            $report = $this->aviationService->getReport($filters);
+            return $report['bookings'] ?? [];
+        });
         
         return ApiResponse::success(
             'Aviation bookings retrieved successfully',
-            $report['bookings'] ?? []
+            $bookings
         );
     }
 
@@ -153,7 +160,7 @@ class AviationController extends Controller
     public function destroy($id): JsonResponse
     {
         try {
-            $booking = \App\Models\FlightBooking::findOrFail($id);
+            $booking = \App\Models\Flight\FlightBooking::findOrFail($id);
             $booking->delete();
             return ApiResponse::success('Booking deleted successfully');
         } catch (\Exception $e) {

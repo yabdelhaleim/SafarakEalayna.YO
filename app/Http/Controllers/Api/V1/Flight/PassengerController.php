@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1\Flight;
 
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
-use App\Models\Passenger;
+use App\Models\Flight\FlightPassenger as Passenger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -60,6 +60,13 @@ class PassengerController extends Controller
             return ApiResponse::paginated('Passengers retrieved successfully.', $paginator->getCollection(), $paginator);
         } catch (\Exception $e) {
             report($e);
+            file_put_contents('C:\laragon\tmp\passenger_error.log', 
+                "Timestamp: " . date('Y-m-d H:i:s') . "\n" .
+                "Message: " . $e->getMessage() . "\n" .
+                "File: " . $e->getFile() . ":" . $e->getLine() . "\n" .
+                "Trace:\n" . $e->getTraceAsString() . "\n" .
+                "Request params: " . json_encode($request->all()) . "\n"
+            );
             return ApiResponse::error($e->getMessage(), null, 500);
         }
     }

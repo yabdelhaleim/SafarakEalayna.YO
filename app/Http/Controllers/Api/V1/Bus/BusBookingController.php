@@ -23,7 +23,9 @@ class BusBookingController extends Controller
     public function stats(): JsonResponse
     {
         try {
-            $data = $this->bookingService->getBookingStats();
+            $data = \App\Helpers\CacheHelper::tags(['bus_bookings'])->remember('bus_bookings_stats', 60, function () {
+                return $this->bookingService->getBookingStats();
+            });
 
             return ApiResponse::success('Bus booking statistics retrieved successfully.', $data);
         } catch (\Exception $e) {
@@ -46,13 +48,25 @@ class BusBookingController extends Controller
                 'per_page',
                 'page',
             ]);
-            $paginator = $this->bookingService->getAllBookings($filters);
+            $filters['page'] = $request->get('page', 1);
 
-            return ApiResponse::paginated(
-                'Bus bookings retrieved successfully.',
-                BusBookingResource::collection($paginator),
-                $paginator
-            );
+            $cacheKey = 'bus_bookings_list_' . md5(serialize($filters));
+
+            $data = \App\Helpers\CacheHelper::tags(['bus_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+                $paginator = $this->bookingService->getAllBookings($filters);
+                return [
+                    'items' => BusBookingResource::collection($paginator)->resolve(),
+                    'pagination' => [
+                        'total' => $paginator->total(),
+                        'per_page' => $paginator->perPage(),
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'has_more' => $paginator->hasMorePages(),
+                    ],
+                ];
+            });
+
+            return ApiResponse::success('Bus bookings retrieved successfully.', $data);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

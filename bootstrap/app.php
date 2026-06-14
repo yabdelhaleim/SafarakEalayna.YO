@@ -94,6 +94,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
 
                 if ($statusCode >= 500) {
+                    file_put_contents('C:\laragon\tmp\passenger_error.log', 
+                        "Timestamp: " . date('Y-m-d H:i:s') . "\n" .
+                        "CRITICAL API ERROR: " . $e->getMessage() . "\n" .
+                        "Exception: " . get_class($e) . "\n" .
+                        "Path: " . $request->fullUrl() . "\n" .
+                        "User ID: " . (auth()->id() ?? 'guest') . "\n" .
+                        "Payload: " . json_encode($request->all()) . "\n" .
+                        "Trace:\n" . $e->getTraceAsString() . "\n",
+                        FILE_APPEND
+                    );
                     \Log::critical('CRITICAL API ERROR: ' . $e->getMessage(), [
                         'exception' => get_class($e),
                         'path' => $request->fullUrl(),

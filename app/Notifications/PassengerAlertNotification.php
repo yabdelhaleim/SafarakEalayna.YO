@@ -4,7 +4,7 @@ namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use App\Models\Passenger;
+use App\Models\Flight\FlightPassenger as Passenger;
 
 class PassengerAlertNotification extends Notification
 {

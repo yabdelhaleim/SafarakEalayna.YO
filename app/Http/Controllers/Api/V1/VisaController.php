@@ -30,15 +30,28 @@ class VisaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $bookings = $this->service->paginate($request->only([
+        $filters = $request->only([
             'status', 'country', 'visa_type', 'from_date', 'to_date', 'search', 'per_page',
-        ]));
+        ]);
+        $filters['page'] = $request->get('page', 1);
 
-        return ApiResponse::paginated(
-            'تم جلب طلبات التأشيرات',
-            VisaBookingResource::collection($bookings),
-            $bookings
-        );
+        $cacheKey = 'visa_bookings_list_' . md5(serialize($filters));
+
+        $data = \App\Helpers\CacheHelper::tags(['visa_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+            $bookings = $this->service->paginate($filters);
+            return [
+                'items' => VisaBookingResource::collection($bookings)->resolve(),
+                'pagination' => [
+                    'total' => $bookings->total(),
+                    'per_page' => $bookings->perPage(),
+                    'current_page' => $bookings->currentPage(),
+                    'last_page' => $bookings->lastPage(),
+                    'has_more' => $bookings->hasMorePages(),
+                ],
+            ];
+        });
+
+        return ApiResponse::success('تم جلب طلبات التأشيرات', $data);
     }
 
     public function store(StoreVisaBookingRequest $request): JsonResponse

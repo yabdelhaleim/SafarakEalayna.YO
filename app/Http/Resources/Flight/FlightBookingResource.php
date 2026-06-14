@@ -21,7 +21,7 @@ class FlightBookingResource extends JsonResource
             : FlightSystemType::tryFrom($this->system_type) ?? FlightSystemType::Manual;
 
         $totalPaid = $this->whenLoaded('payments', fn () => $this->payments->sum('amount'), 0);
-        $remaining = $this->selling_price - $totalPaid;
+        $remaining = max(0, $this->selling_price - $totalPaid);
         $profitMargin = $this->selling_price > 0
             ? round(($this->profit / $this->selling_price) * 100, 2)
             : 0;
@@ -102,7 +102,7 @@ class FlightBookingResource extends JsonResource
                     'code' => $this->flightGroup->code,
                 ]
             ),
-            'passengers_count' => $this->passengers_count ?? $this->whenLoaded('passengers', fn () => $this->passengers->count(), 0),
+            'passengers_count' => $this->passenger_count ?? $this->whenLoaded('passengers', fn () => $this->passengers->count(), 0),
             'trip_details' => $this->trip_details,
             'purchase_price' => (float) $this->purchase_price,
             'selling_price' => (float) $this->selling_price,

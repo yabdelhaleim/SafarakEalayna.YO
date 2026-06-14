@@ -127,11 +127,6 @@
 
           <!-- TAB CONTENT: BOOKINGS & MODULE ACTIVITIES -->
           <div v-if="activeTab === 'bookings'" class="space-y-4">
-            <!-- Debug Info -->
-            <div class="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-lg text-xs text-yellow-400 font-mono">
-              DEBUG: Tab: {{ activeTab }} | Bookings Count: {{ allBookings.length }}
-              <pre class="max-h-40 overflow-y-auto mt-2 text-[10px]">{{ allBookings.map(b => ({ id: b.unique_id, module: b.module, raw_keys: Object.keys(b.raw || {}) }) ) }}</pre>
-            </div>
 
             <div v-if="allBookings.length === 0" class="text-center py-12 bg-white/[0.01] rounded-2xl border border-white/5">
               <Receipt class="w-12 h-12 text-muted mx-auto mb-3" />

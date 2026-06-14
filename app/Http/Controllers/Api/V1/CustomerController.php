@@ -39,13 +39,25 @@ class CustomerController extends Controller
     {
         try {
             $filters = $request->only(['search', 'type', 'is_active', 'per_page', 'module', 'customer_tier', 'balance_status']);
-            $paginator = $this->customerService->getAllCustomers($filters);
+            $filters['page'] = $request->get('page', 1);
 
-            return ApiResponse::paginated(
-                'Customers retrieved successfully.',
-                CustomerResource::collection($paginator),
-                $paginator
-            );
+            $cacheKey = 'customers_list_' . md5(serialize($filters));
+
+            $data = \App\Helpers\CacheHelper::tags(['customers'])->remember($cacheKey, 60, function () use ($filters) {
+                $paginator = $this->customerService->getAllCustomers($filters);
+                return [
+                    'items' => CustomerResource::collection($paginator)->resolve(),
+                    'pagination' => [
+                        'total' => $paginator->total(),
+                        'per_page' => $paginator->perPage(),
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'has_more' => $paginator->hasMorePages(),
+                    ],
+                ];
+            });
+
+            return ApiResponse::success('Customers retrieved successfully.', $data);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

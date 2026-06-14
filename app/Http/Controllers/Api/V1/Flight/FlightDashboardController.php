@@ -20,9 +20,13 @@ class FlightDashboardController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
-        // 1. Monthly Revenue
+        // 1. Monthly Revenue — exclude cancelled / refunded bookings
         $monthlyRevenue = FlightBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+            ->whereNotIn('status', [
+                \App\Enums\FlightBookingStatus::CANCELLED->value,
+                \App\Enums\FlightBookingStatus::REFUNDED->value,
+            ])
             ->sum('selling_price');
 
         // 2. Total Bookings
@@ -97,7 +101,11 @@ class FlightDashboardController extends Controller
 
         // 5. Recent Bookings (Limit 10)
         $recentBookings = FlightBooking::query()
-            ->with(['customer', 'flightSystem', 'flightCarrier'])
+            ->with([
+                'customer:id,full_name',
+                'flightSystem:id,name',
+                'flightCarrier:id,name',
+            ])
             ->latest()
             ->limit(10)
             ->get()
@@ -106,10 +114,15 @@ class FlightDashboardController extends Controller
                     'id' => $booking->id,
                     'booking_number' => $booking->booking_number,
                     'customer' => [
-                        'name' => trim((string) ($booking->customer?->full_name ?: $booking->customer?->name ?: '')) ?: 'غير محدد',
+                        'name' => trim((string) ($booking->customer?->full_name ?? '')) ?: '—',
                     ],
-                    'pnr' => $booking->pnr,
-                    'status' => $booking->status,
+                    'pnr'    => $booking->pnr,
+                    'status' => $booking->status instanceof \App\Enums\FlightBookingStatus
+                        ? $booking->status->value
+                        : $booking->status,
+                    'status_label' => $booking->status instanceof \App\Enums\FlightBookingStatus
+                        ? $booking->status->label()
+                        : $booking->status,
                     'pricing' => [
                         'sellingPrice' => $booking->selling_price,
                         'profit' => $booking->profit,

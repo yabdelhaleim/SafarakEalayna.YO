@@ -45,7 +45,16 @@ class SyncTreasuryBalancesFromLedgerCommand extends Command
         $changes = [];
 
         foreach ($accounts as $account) {
-            $ledger = round((float) ($ledgerNet[$account->id] ?? 0), 2);
+            $lastAfter = AccountEntry::query()
+                ->where('account_id', $account->id)
+                ->whereNotNull('balance_after')
+                ->orderByDesc('id')
+                ->value('balance_after');
+
+            $ledger = $lastAfter !== null
+                ? round((float) $lastAfter, 2)
+                : round((float) ($ledgerNet[$account->id] ?? 0), 2);
+
             $stored = round((float) $account->balance, 2);
             $diff = round($stored - $ledger, 2);
 

@@ -63,7 +63,11 @@ class BusDashboardController extends Controller
                 return [
                     'id' => $booking->id,
                     'booking_number' => $booking->booking_number,
-                    'customer' => ['name' => $booking->customer?->name ?? 'غير محدد'],
+                    'customer' => [
+                        'name' => $booking->customer?->full_name
+                                  ?? $booking->customer_name
+                                  ?? '—',
+                    ],
                     'status' => $booking->status,
                     'total_price' => $booking->total_price,
                     'paid_amount' => $booking->paid_amount,

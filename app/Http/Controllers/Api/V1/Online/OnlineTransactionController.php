@@ -38,14 +38,25 @@ class OnlineTransactionController extends Controller
                 'search',
                 'per_page',
             ]);
+            $filters['page'] = $request->get('page', 1);
 
-            $paginator = $this->service->getAll($filters);
+            $cacheKey = 'online_transactions_list_' . md5(serialize($filters));
 
-            return ApiResponse::paginated(
-                'تم جلب معاملات الخدمات الأونلاين بنجاح.',
-                OnlineTransactionResource::collection($paginator),
-                $paginator,
-            );
+            $data = \App\Helpers\CacheHelper::tags(['online_transactions'])->remember($cacheKey, 60, function () use ($filters) {
+                $paginator = $this->service->getAll($filters);
+                return [
+                    'items' => OnlineTransactionResource::collection($paginator)->resolve(),
+                    'pagination' => [
+                        'total' => $paginator->total(),
+                        'per_page' => $paginator->perPage(),
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'has_more' => $paginator->hasMorePages(),
+                    ],
+                ];
+            });
+
+            return ApiResponse::success('تم جلب معاملات الخدمات الأونلاين بنجاح.', $data);
         } catch (\Throwable $e) {
             return ApiResponse::error($e->getMessage(), null, 500);
         }

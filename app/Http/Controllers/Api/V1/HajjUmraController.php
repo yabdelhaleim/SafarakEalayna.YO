@@ -24,15 +24,28 @@ class HajjUmraController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $bookings = $this->service->paginate($request->only([
+        $filters = $request->only([
             'status', 'program_id', 'customer_id', 'from_date', 'to_date', 'search', 'per_page', 'program_type',
-        ]));
+        ]);
+        $filters['page'] = $request->get('page', 1);
 
-        return ApiResponse::paginated(
-            'تم جلب حجوزات الحج/العمرة',
-            HajjUmraBookingResource::collection($bookings),
-            $bookings
-        );
+        $cacheKey = 'hajj_umra_bookings_list_' . md5(serialize($filters));
+
+        $data = \App\Helpers\CacheHelper::tags(['hajj_umra_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+            $bookings = $this->service->paginate($filters);
+            return [
+                'items' => HajjUmraBookingResource::collection($bookings)->resolve(),
+                'pagination' => [
+                    'total' => $bookings->total(),
+                    'per_page' => $bookings->perPage(),
+                    'current_page' => $bookings->currentPage(),
+                    'last_page' => $bookings->lastPage(),
+                    'has_more' => $bookings->hasMorePages(),
+                ],
+            ];
+        });
+
+        return ApiResponse::success('تم جلب حجوزات الحج/العمرة', $data);
     }
 
     public function store(StoreHajjUmraBookingRequest $request): JsonResponse

@@ -5,8 +5,7 @@ namespace App\Services\Finance;
 use App\Enums\TransactionType;
 use App\Models\AccountEntry;
 use App\Models\Bus\BusBooking;
-use App\Models\Flight\FlightBooking as FlightBookingModel;
-use App\Models\FlightBooking;
+use App\Models\Flight\FlightBooking;
 use App\Models\HajjUmraBooking;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Transaction;
@@ -60,7 +59,7 @@ class LedgerEntryDescriptionResolver
         }
 
         return match (true) {
-            $related instanceof FlightBookingModel, $related instanceof FlightBooking => $this->flightBookingDetails($related),
+            $related instanceof FlightBooking => $this->flightBookingDetails($related),
             $related instanceof BusBooking => $this->busBookingDetails($related),
             $related instanceof VisaBooking => $this->visaBookingDetails($related),
             $related instanceof HajjUmraBooking => $this->hajjBookingDetails($related),
@@ -69,7 +68,7 @@ class LedgerEntryDescriptionResolver
         };
     }
 
-    public function forFlightBooking(FlightBookingModel|FlightBooking $booking, ?Transaction $transaction = null): string
+    public function forFlightBooking(FlightBooking $booking, ?Transaction $transaction = null): string
     {
         $line = $this->formatSlashLine(
             'حجز تذكرة طيران للعميل',
@@ -170,7 +169,7 @@ class LedgerEntryDescriptionResolver
         }
 
         return match (true) {
-            $related instanceof FlightBookingModel, $related instanceof FlightBooking => $this->forFlightBooking($related, $transaction),
+            $related instanceof FlightBooking => $this->forFlightBooking($related, $transaction),
             $related instanceof BusBooking => $this->forBusBooking($related, $transaction),
             $related instanceof VisaBooking => $this->forVisaBooking($related, $transaction),
             $related instanceof HajjUmraBooking => $this->forHajjUmraBooking($related, $transaction),
@@ -186,7 +185,7 @@ class LedgerEntryDescriptionResolver
     protected function defaultEagerLoads(string $relatedType): array
     {
         return match ($relatedType) {
-            FlightBookingModel::class, FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
+            FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
             BusBooking::class => ['customer', 'inventory'],
             VisaBooking::class => ['customer', 'visaDetail'],
             HajjUmraBooking::class => ['customer', 'program'],

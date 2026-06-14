@@ -46,12 +46,13 @@ class ApiResponse
     public static function paginated(
         string $message,
         mixed $resource,
-        LengthAwarePaginator $paginator
+        LengthAwarePaginator $paginator,
+        array $extra = []
     ): JsonResponse {
         return response()->json([
             'success' => true,
             'message' => $message,
-            'data' => [
+            'data' => array_merge([
                 'items' => $resource,
                 'pagination' => [
                     'total' => $paginator->total(),
@@ -60,7 +61,7 @@ class ApiResponse
                     'last_page' => $paginator->lastPage(),
                     'has_more' => $paginator->hasMorePages(),
                 ],
-            ],
+            ], $extra),
             'errors' => null,
         ]);
     }

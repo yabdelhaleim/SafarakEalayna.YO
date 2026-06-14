@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Passenger;
-use App\Models\FlightBooking;
+use App\Models\Flight\FlightPassenger as Passenger;
+use App\Models\Flight\FlightBooking;
 use App\Models\Customer;
 use App\Models\User;
 use App\Enums\FlightBookingStatus;
@@ -171,6 +171,24 @@ class PassengerDirectoryTest extends TestCase
         $this->user->refresh();
         $this->assertCount(1, $this->user->unreadNotifications);
 
+        // Run the command again - should not duplicate the notification
+        Artisan::call('app:generate-passenger-alerts');
+        $this->user->refresh();
+        $this->assertCount(1, $this->user->unreadNotifications);
+
+        // Update booking departure date to 2 days from now, and user settings to 2 days before
+        $booking->update([
+            'departure_date' => now()->addDays(2)->toDateString(),
+        ]);
+        $this->user->update([
+            'travel_alert_days_before' => 2,
+        ]);
+
+        // Run the command again - should create a new notification because the departure date/target date changed
+        Artisan::call('app:generate-passenger-alerts');
+        $this->user->refresh();
+        $this->assertCount(2, $this->user->unreadNotifications);
+
         $notification = $this->user->unreadNotifications->first();
         $this->assertEquals(PassengerAlertNotification::class, $notification->type);
         $this->assertEquals($passenger->id, $notification->data['passenger_id']);
@@ -178,12 +196,18 @@ class PassengerDirectoryTest extends TestCase
         // Check listing notifications API
         $response = $this->getJson('/api/v1/flight/passengers/notifications');
         $response->assertOk()
-            ->assertJsonCount(1, 'data.items')
-            ->assertJsonPath('data.items.0.id', $notification->id);
+            ->assertJsonCount(2, 'data.items');
 
-        // Mark as read
+        // Mark one as read
         $markResponse = $this->postJson("/api/v1/flight/passengers/notifications/{$notification->id}/mark-read");
         $markResponse->assertOk();
+
+        $this->user->refresh();
+        $this->assertCount(1, $this->user->unreadNotifications);
+
+        // Mark all as read
+        $markAllResponse = $this->postJson("/api/v1/flight/passengers/notifications/mark-all-read");
+        $markAllResponse->assertOk();
 
         $this->user->refresh();
         $this->assertCount(0, $this->user->unreadNotifications);

@@ -13,9 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'flight_booking_id',
     'passenger_type',
     'first_name',
+    'first_name_en',
     'last_name',
+    'last_name_en',
     'type',
     'date_of_birth',
+    'birth_date',
     'relation_to_customer',
     'responsible_adult_id',
     'passport_number',
@@ -31,6 +34,7 @@ class FlightPassenger extends Model
         return [
             'type'         => PassengerType::class,
             'date_of_birth' => 'date',
+            'birth_date'   => 'date',
         ];
     }
 
@@ -42,5 +46,10 @@ class FlightPassenger extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(FlightTicket::class, 'passenger_id');
+    }
+
+    public function responsibleAdult(): BelongsTo
+    {
+        return $this->belongsTo(FlightPassenger::class, 'responsible_adult_id');
     }
 }

@@ -168,7 +168,13 @@
                       <span class="font-mono text-sm font-black text-red-400">
                         {{ formatMoney(c.bus_remaining_debt) }}
                       </span>
-                      <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-400 border border-red-500/20">آجل</span>
+                      <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-400 border border-red-500/20">آجل (لينا)</span>
+                    </div>
+                    <div v-else-if="Number(c.bus_remaining_debt) < 0" class="flex items-center gap-2">
+                      <span class="font-mono text-sm font-black text-emerald-400">
+                        {{ formatMoney(Math.abs(c.bus_remaining_debt)) }}
+                      </span>
+                      <span class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-400 border border-emerald-500/20">دائن (علينا)</span>
                     </div>
                     <span v-else class="font-mono text-sm text-emerald-400/60">مسدّد ✓</span>
                   </td>
@@ -288,17 +294,18 @@
 
             <!-- Financial block -->
             <div class="mb-5 rounded-xl border p-4 space-y-1"
-              :class="Number(company.balance) < 0 ? 'border-red-500/15 bg-red-500/5' : 'border-emerald-500/15 bg-emerald-500/5'">
+              :class="Number(company.balance) < 0 ? 'border-red-500/15 bg-red-500/5' : (Number(company.balance) > 0 ? 'border-emerald-500/15 bg-emerald-500/5' : 'border-white/5 bg-white/[0.02]')">
               <div class="flex items-center justify-between">
                 <span class="text-[11px] font-bold uppercase tracking-wider"
-                  :class="Number(company.balance) < 0 ? 'text-red-400/70' : 'text-emerald-400/70'">
-                  {{ Number(company.balance) < 0 ? 'مديونية عليك (آجل)' : 'رصيد دائن' }}
+                  :class="Number(company.balance) < 0 ? 'text-red-400/70' : (Number(company.balance) > 0 ? 'text-emerald-400/70' : 'text-white/30')">
+                  {{ Number(company.balance) < 0 ? 'مديونية للشركة (علينا)' : (Number(company.balance) > 0 ? 'رصيد دائن للشركة (لينا)' : 'رصيد مسدد') }}
                 </span>
                 <TrendingDown v-if="Number(company.balance) < 0" class="h-4 w-4 text-red-400"/>
-                <CheckCircle v-else class="h-4 w-4 text-emerald-400"/>
+                <CheckCircle v-else-if="Number(company.balance) > 0" class="h-4 w-4 text-emerald-400"/>
+                <CheckCircle v-else class="h-4 w-4 text-white/25"/>
               </div>
               <p class="font-mono text-2xl font-black tabular-nums"
-                :class="Number(company.balance) < 0 ? 'text-red-400' : 'text-emerald-400'">
+                :class="Number(company.balance) < 0 ? 'text-red-400' : (Number(company.balance) > 0 ? 'text-emerald-400' : 'text-white/40')">
                 {{ formatMoney(Math.abs(Number(company.balance) || 0)) }}
               </p>
             </div>
@@ -505,6 +512,15 @@ const customerPageTo   = computed(() =>
   Math.min(customerCurrentPage.value * customerPerPage.value, customerTotalItems.value)
 );
 
+// ─── Server-side customer stats ───────────────────────────────────────────────
+const serverStats = ref({
+  total_receivable:      0,
+  total_payable:         0,
+  total_customers:       0,
+  customers_with_debt:   0,
+  customers_with_credit: 0,
+});
+
 const fetchCustomers = async (page = 1) => {
   customersLoading.value = true;
   try {
@@ -522,6 +538,7 @@ const fetchCustomers = async (page = 1) => {
     customerCurrentPage.value = d.current_page || page;
     customerTotalPages.value  = d.last_page     || 1;
     customerTotalItems.value  = d.total          || items.length;
+    if (res.data?.data?.stats) serverStats.value = res.data.data.stats;
   } catch (e) {
     console.error('fetchCustomers', e);
     customers.value = [];
@@ -537,18 +554,24 @@ const debouncedCustomerSearch = () => {
 const prevCustomerPage = () => { if (customerCurrentPage.value > 1) fetchCustomers(customerCurrentPage.value - 1); };
 const nextCustomerPage = () => { if (customerCurrentPage.value < customerTotalPages.value) fetchCustomers(customerCurrentPage.value + 1); };
 
-// ─── Customer stats cards ──────────────────────────────────────────────────
-const totalCustomerDebt = computed(() =>
-  customers.value.reduce((s, c) => s + Math.max(0, Number(c.bus_remaining_debt) || 0), 0)
-);
+// ─── Customer stats cards (from server) ─────────────────────────────────────────────
 const totalCustomerSales = computed(() =>
   customers.value.reduce((s, c) => s + (Number(c.total_bus_amount) || 0), 0)
 );
-const customersWithDebt = computed(() =>
-  customers.value.filter(c => Number(c.bus_remaining_debt) > 0).length
-);
 
 const customerStats = computed(() => [
+  {
+    label: 'ديون لنا (لينا)',
+    value: `${formatMoney(serverStats.value.total_receivable)} (${serverStats.value.customers_with_debt} عميل)`,
+    icon: AlertTriangle, iconBg: 'bg-red-500/15', iconColor: 'text-red-400',
+    valueColor: 'text-red-400', glow: 'bg-red-400',
+  },
+  {
+    label: 'أرصدة دائنة علينا',
+    value: `${formatMoney(serverStats.value.total_payable)} (${serverStats.value.customers_with_credit} عميل)`,
+    icon: CheckCircle, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400',
+    valueColor: 'text-emerald-400', glow: 'bg-emerald-400',
+  },
   {
     label: 'إجمالي العملاء',
     value: customerTotalItems.value,
@@ -556,61 +579,41 @@ const customerStats = computed(() => [
     valueColor: 'text-white', glow: 'bg-sky-400',
   },
   {
-    label: 'إجمالي المبيعات',
+    label: 'إجمالي المبيعات (الصفحة)',
     value: formatMoney(totalCustomerSales.value),
     icon: ListOrdered, iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400',
     valueColor: 'text-amber-400', glow: 'bg-amber-400',
   },
+]);
+
+// ─── Company state (from store.companyStats) ──────────────────────────────
+const totalCompanyDebt = computed(() => store.companyStats.total_payable);
+
+const companyStatsCards = computed(() => [
   {
-    label: 'عملاء عليهم ديون',
-    value: customersWithDebt.value,
+    label: 'مديونية علينا للشركات',
+    value: `${formatMoney(store.companyStats.total_payable)} (${store.companyStats.companies_with_debt} شركة)`,
     icon: AlertTriangle, iconBg: 'bg-red-500/15', iconColor: 'text-red-400',
     valueColor: 'text-red-400', glow: 'bg-red-400',
   },
   {
-    label: 'إجمالي الآجل',
-    value: formatMoney(totalCustomerDebt.value),
-    icon: TrendingDown, iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400',
-    valueColor: 'text-orange-400', glow: 'bg-orange-400',
-  },
-]);
-
-// ─── Company state ─────────────────────────────────────────────────────────
-const totalCompanyDebt = computed(() =>
-  store.companies.reduce((s, c) => {
-    const b = Number(c.balance || 0);
-    return b < 0 ? s + Math.abs(b) : s;
-  }, 0)
-);
-const activeCompaniesCount = computed(() =>
-  store.companies.filter(c => c.is_active).length
-);
-const totalCompanies = computed(() => store.companies.length);
-
-const companyStatsCards = computed(() => [
-  {
-    label: 'إجمالي الشركات', value: totalCompanies.value,
-    icon: Building2, iconBg: 'bg-sky-500/15', iconColor: 'text-sky-400',
-    valueColor: 'text-white', glow: 'bg-sky-400',
-  },
-  {
-    label: 'شركات نشطة', value: activeCompaniesCount.value,
+    label: 'أرصدة لنا لدى الشركات (لينا)',
+    value: `${formatMoney(store.companyStats.total_receivable)} (${store.companyStats.companies_with_credit} شركة)`,
     icon: CheckCircle, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400',
     valueColor: 'text-emerald-400', glow: 'bg-emerald-400',
   },
   {
-    label: 'شركات عليها ديون',
-    value: store.companies.filter(c => Number(c.balance) < 0).length,
-    icon: AlertTriangle, iconBg: 'bg-red-500/15', iconColor: 'text-red-400',
-    valueColor: 'text-red-400', glow: 'bg-red-400',
+    label: 'إجمالي الشركات', value: store.companyStats.total_companies || store.companies.length,
+    icon: Building2, iconBg: 'bg-sky-500/15', iconColor: 'text-sky-400',
+    valueColor: 'text-white', glow: 'bg-sky-400',
   },
   {
-    label: 'إجمالي المديونيات',
-    value: formatMoney(totalCompanyDebt.value),
-    icon: TrendingDown, iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400',
-    valueColor: 'text-orange-400', glow: 'bg-orange-400',
+    label: 'شركات نشطة', value: store.companies.filter(c => c.is_active).length,
+    icon: CheckCircle, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400',
+    valueColor: 'text-emerald-400', glow: 'bg-emerald-400',
   },
 ]);
+
 
 // ─── Payment modal ─────────────────────────────────────────────────────────
 const showPaymentModal  = ref(false);

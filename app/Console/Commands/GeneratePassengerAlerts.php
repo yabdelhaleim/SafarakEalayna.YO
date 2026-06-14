@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\User;
-use App\Models\Passenger;
+use App\Models\Flight\FlightPassenger as Passenger;
 use App\Notifications\PassengerAlertNotification;
 use App\Enums\FlightBookingStatus;
 use Carbon\Carbon;
@@ -59,6 +59,7 @@ class GeneratePassengerAlerts extends Command
                         ->where('type', PassengerAlertNotification::class)
                         ->where('data->passenger_id', $passenger->id)
                         ->where('data->days_before', $daysBefore)
+                        ->where('data->departure_date', $targetDate)
                         ->exists();
 
                     if (!$alreadyNotified) {

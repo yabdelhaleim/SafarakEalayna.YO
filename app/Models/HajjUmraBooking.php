@@ -10,10 +10,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\ClearsCache;
 
 class HajjUmraBooking extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, ClearsCache;
 
     protected $fillable = [
         'customer_id',
@@ -131,7 +132,7 @@ class HajjUmraBooking extends Model
 
     public function getRemainingAmountAttribute(): float
     {
-        return $this->total_selling_price - $this->paid_amount;
+        return max(0.0, $this->total_selling_price - $this->paid_amount);
     }
 
     public function getPaidAmountAttribute(): float

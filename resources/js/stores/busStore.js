@@ -18,6 +18,14 @@ export const useBusStore = defineStore('bus', {
 
     companies: [],
 
+    companyStats: {
+      total_payable: 0,
+      total_receivable: 0,
+      total_companies: 0,
+      companies_with_debt: 0,
+      companies_with_credit: 0,
+    },
+
     treasuryOverview: null,
 
     stats: {
@@ -303,6 +311,16 @@ export const useBusStore = defineStore('bus', {
         });
         const data = response.data?.data || response.data;
         this.companies = data.items || (Array.isArray(data) ? data : []);
+        // ── Capture DB-wide company stats ───────────────────────────────────
+        if (data.stats) {
+          this.companyStats = {
+            total_payable:         Number(data.stats.total_payable)         || 0,
+            total_receivable:      Number(data.stats.total_receivable)      || 0,
+            total_companies:       Number(data.stats.total_companies)       || 0,
+            companies_with_debt:   Number(data.stats.companies_with_debt)   || 0,
+            companies_with_credit: Number(data.stats.companies_with_credit) || 0,
+          };
+        }
       } catch (error) {
         if (axios.isCancel(error)) return;
         console.error('Failed to fetch companies:', error);

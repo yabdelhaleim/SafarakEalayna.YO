@@ -78,7 +78,7 @@
         <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt class="text-xs text-text-muted">الشركة</dt>
-            <dd class="mt-1 font-semibold">{{ booking.inventory?.bus_company?.name || '—' }}</dd>
+            <dd class="mt-1 font-semibold">{{ booking.company?.name || '—' }}</dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">المسار</dt>
@@ -236,7 +236,7 @@
           <div class="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div class="break-inside-avoid rounded-lg border border-slate-200 p-4">
               <div class="text-xs font-bold text-slate-500">شركة النقل</div>
-              <div class="mt-1 font-bold text-slate-900">{{ booking.inventory?.bus_company?.name || '—' }}</div>
+              <div class="mt-1 font-bold text-slate-900">{{ booking.company?.name || '—' }}</div>
             </div>
             <div class="break-inside-avoid rounded-lg border border-slate-200 p-4 sm:col-span-2">
               <div class="text-xs font-bold text-slate-500">المسار</div>

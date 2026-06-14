@@ -57,7 +57,7 @@ class FlightCarrier extends Model
 
     public function bookings(): HasMany
     {
-        return $this->hasMany(\App\Models\FlightBooking::class);
+        return $this->hasMany(\App\Models\Flight\FlightBooking::class);
     }
 
     public function transactions(): HasMany

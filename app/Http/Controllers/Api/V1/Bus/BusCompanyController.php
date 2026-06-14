@@ -26,18 +26,52 @@ class BusCompanyController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $filters = $request->only(['search', 'is_active', 'per_page']);
+            $filters   = $request->only(['search', 'is_active', 'per_page']);
             $paginator = $this->companyService->getAllCompanies($filters);
+
+            // ── DB-wide balance stats (from linked accounts) ──────────────────
+            $statsQuery = \App\Models\Bus\BusCompany::query()
+                ->whereNotNull('account_id')
+                ->join('accounts', 'bus_companies.account_id', '=', 'accounts.id')
+                ->whereNull('bus_companies.deleted_at');
+
+            // apply search filter
+            if (!empty($filters['search'])) {
+                $statsQuery->where('bus_companies.name', 'like', '%' . $filters['search'] . '%');
+            }
+            if (isset($filters['is_active'])) {
+                $statsQuery->where('bus_companies.is_active', (bool) $filters['is_active']);
+            }
+
+            $statsQuery->selectRaw('
+                COALESCE(SUM(CASE WHEN accounts.balance < 0 THEN ABS(accounts.balance) ELSE 0 END), 0) AS total_payable,
+                COALESCE(SUM(CASE WHEN accounts.balance > 0 THEN accounts.balance        ELSE 0 END), 0) AS total_receivable,
+                COUNT(*) AS total_companies,
+                SUM(CASE WHEN accounts.balance < 0 THEN 1 ELSE 0 END) AS companies_with_debt,
+                SUM(CASE WHEN accounts.balance > 0 THEN 1 ELSE 0 END) AS companies_with_credit
+            ');
+
+            $s = $statsQuery->first();
+
+            $stats = [
+                'total_payable'         => (float) ($s->total_payable         ?? 0),
+                'total_receivable'      => (float) ($s->total_receivable       ?? 0),
+                'total_companies'       => (int)   ($s->total_companies        ?? 0),
+                'companies_with_debt'   => (int)   ($s->companies_with_debt    ?? 0),
+                'companies_with_credit' => (int)   ($s->companies_with_credit  ?? 0),
+            ];
 
             return ApiResponse::paginated(
                 'Bus companies retrieved successfully.',
                 BusCompanyResource::collection($paginator),
-                $paginator
+                $paginator,
+                ['stats' => $stats]
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
 
     /**
      * Public booking widget: active companies only (no pagination).

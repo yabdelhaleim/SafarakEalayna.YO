@@ -111,13 +111,25 @@ class FlightController extends Controller
                 'departure_date_to',
                 'payment_status',
             ]);
-            $paginator = $this->bookingService->getAllBookings($filters);
+            $filters['page'] = $request->get('page', 1);
 
-            return ApiResponse::paginated(
-                'Flight bookings retrieved successfully.',
-                FlightBookingResource::collection($paginator),
-                $paginator
-            );
+            $cacheKey = 'flight_bookings_list_' . md5(serialize($filters));
+
+            $data = \App\Helpers\CacheHelper::tags(['flight_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+                $paginator = $this->bookingService->getAllBookings($filters);
+                return [
+                    'items' => FlightBookingResource::collection($paginator)->resolve(),
+                    'pagination' => [
+                        'total' => $paginator->total(),
+                        'per_page' => $paginator->perPage(),
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'has_more' => $paginator->hasMorePages(),
+                    ],
+                ];
+            });
+
+            return ApiResponse::success('Flight bookings retrieved successfully.', $data);
         } catch (QueryException $e) {
             report($e);
 
@@ -257,6 +269,7 @@ class FlightController extends Controller
                 'flightCarrier.system',
                 'flightGroup',
                 'passengers',
+                'tickets',
                 'segments',
                 'payments.transaction',
                 'payments.account',
@@ -291,6 +304,8 @@ class FlightController extends Controller
                 'flightCarrier.system',
                 'flightGroup',
                 'passengers',
+                'tickets',
+                'segments',
                 'payments.transaction',
                 'refund.transaction',
                 'createdBy',
