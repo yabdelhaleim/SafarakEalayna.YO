@@ -186,4 +186,20 @@ class FinancialReportController extends Controller
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
+    /**
+     * تقرير ميزان الحسابات (جرد لحظي لرأس المال)
+     */
+    public function trialBalance(Request $request): JsonResponse
+    {
+        try {
+            $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+            $report = $treasuryService->getTrialBalance();
+
+            return ApiResponse::success('Trial balance report generated successfully.', $report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
 }

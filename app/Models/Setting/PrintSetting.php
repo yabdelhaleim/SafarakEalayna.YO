@@ -14,6 +14,7 @@ class PrintSetting extends Model
         'finance_label',
         'show_amount_due',
         'modules',
+        'base_capital',
     ];
 
     protected function casts(): array
@@ -21,6 +22,7 @@ class PrintSetting extends Model
         return [
             'show_amount_due' => 'boolean',
             'modules' => 'array',
+            'base_capital' => 'float',
         ];
     }
 }

@@ -119,4 +119,37 @@ class CustomerDebtPaymentTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    public function test_customer_statement_returns_paginated_and_filtered_results(): void
+    {
+        $payload = [
+            'amount' => 1000.00,
+            'account_id' => $this->treasuryAccount->id,
+            'notes' => 'الدفعة الأولى للتجربة',
+        ];
+        $this->postJson("/api/v1/customers/{$this->customer->id}/pay-debt", $payload)->assertOk();
+
+        $response = $this->getJson("/api/v1/customers/{$this->customer->id}/statement");
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'customer',
+                    'stats' => ['opening_balance', 'period_credit', 'period_debit', 'closing_balance'],
+                    'items',
+                    'pagination' => ['total', 'per_page', 'current_page', 'last_page'],
+                ]
+            ]);
+
+        $this->assertCount(1, $response->json('data.items'));
+        $this->assertEquals(1000, $response->json('data.stats.period_debit'));
+
+        $responseMatch = $this->getJson("/api/v1/customers/{$this->customer->id}/statement?search=الأولى");
+        $responseMatch->assertOk();
+        $this->assertCount(1, $responseMatch->json('data.items'));
+
+        $responseMismatch = $this->getJson("/api/v1/customers/{$this->customer->id}/statement?search=مختلف");
+        $responseMismatch->assertOk();
+        $this->assertCount(0, $responseMismatch->json('data.items'));
+    }
 }

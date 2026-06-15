@@ -1,6 +1,18 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+const ensureArray = (val) => {
+  if (!val) return [];
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val);
+    } catch (e) {
+      return [];
+    }
+  }
+  return Array.isArray(val) ? val : Object.values(val);
+};
+
 export const useFlightStore = defineStore('flight', {
   state: () => ({
     bookings: [],
@@ -179,6 +191,10 @@ export const useFlightStore = defineStore('flight', {
 
     // Map a single booking from API snake_case to frontend camelCase
     mapBooking(b) {
+      const segmentsArr = ensureArray(b.segments);
+      const passengersArr = ensureArray(b.passengers);
+      const paymentsArr = ensureArray(b.payments);
+
       const mapped = {
         id: b.id,
         bookingNumber: b.booking_number || b.bookingNumber || '',
@@ -202,7 +218,7 @@ export const useFlightStore = defineStore('flight', {
           id: b.account.id,
           name: b.account.name || '',
         } : null,
-        segments: (b.segments || []).map(s => ({
+        segments: segmentsArr.length ? segmentsArr.map(s => ({
           id: s.id,
           airline: s.airline_name || s.airline || '',
           flightNumber: s.flight_number || '',
@@ -213,7 +229,7 @@ export const useFlightStore = defineStore('flight', {
           arrivalTime: s.arrival_time || '',
           baggage: s.baggage_allowance || s.baggage || '',
           flightClass: s.flight_class || 'economy',
-        })) || [{
+        })) : [{
           from: b.from_airport || '',
           to: b.to_airport || '',
           airline: b.airline_name || '',
@@ -221,7 +237,7 @@ export const useFlightStore = defineStore('flight', {
           departureTime: b.departure_time || '',
           arrivalTime: b.arrival_time || '',
         }],
-        passengers: (b.passengers || []).map(p => ({
+        passengers: passengersArr.map(p => ({
           id: p.id,
           firstName: p.first_name || '',
           lastName: p.last_name || '',
@@ -232,7 +248,7 @@ export const useFlightStore = defineStore('flight', {
           dateOfBirth: p.date_of_birth || '',
           baggageAllowanceKg: Number(p.baggage_allowance_kg) || 0,
         })),
-        payments: (b.payments || []).map(p => ({
+        payments: paymentsArr.map(p => ({
           id: p.id,
           amount: parseFloat(p.amount || 0),
           paymentMethod: p.payment_method || p.method || '',
@@ -283,7 +299,7 @@ export const useFlightStore = defineStore('flight', {
         baggage_allowance_kg: (() => {
           const fromBooking = Number(b.baggage_allowance_kg) || 0;
           if (fromBooking > 0) return fromBooking;
-          const passengers = b.passengers || [];
+          const passengers = passengersArr;
           return passengers.reduce(
             (sum, p) => sum + (Number(p.baggage_allowance_kg ?? p.baggageAllowanceKg) || 0),
             0
@@ -292,7 +308,7 @@ export const useFlightStore = defineStore('flight', {
         baggageAllowanceKg: (() => {
           const fromBooking = Number(b.baggage_allowance_kg) || 0;
           if (fromBooking > 0) return fromBooking;
-          const passengers = b.passengers || [];
+          const passengers = passengersArr;
           return passengers.reduce(
             (sum, p) => sum + (Number(p.baggage_allowance_kg ?? p.baggageAllowanceKg) || 0),
             0

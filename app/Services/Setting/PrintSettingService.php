@@ -51,6 +51,7 @@ class PrintSettingService
                 'finance_label' => 'المالية والمحاسب',
                 'show_amount_due' => true,
                 'modules' => $this->defaultModules(),
+                'base_capital' => 1000000.00,
             ]
         );
     }
@@ -66,6 +67,7 @@ class PrintSettingService
             'phones' => $setting->phones,
             'finance_label' => $setting->finance_label ?: 'المالية والمحاسب',
             'show_amount_due' => (bool) $setting->show_amount_due,
+            'base_capital' => (float) ($setting->base_capital ?? 1000000.00),
             'modules' => $this->normalizeModules($setting->modules),
             'module_options' => collect(self::MODULE_LABELS)->map(fn (string $label, string $key) => [
                 'key' => $key,
@@ -92,6 +94,7 @@ class PrintSettingService
                 'show_amount_due' => array_key_exists('show_amount_due', $data)
                     ? (bool) $data['show_amount_due']
                     : $setting->show_amount_due,
+                'base_capital' => isset($data['base_capital']) ? (float) $data['base_capital'] : $setting->base_capital,
                 'modules' => $this->normalizeModules($data['modules'] ?? $setting->modules),
             ]);
 

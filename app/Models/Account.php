@@ -178,12 +178,12 @@ class Account extends Model
 
     public function scopeTourism($query)
     {
-        return $query->where('module_type', 'tourism');
+        return $query->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::TOURISM);
     }
 
     public function scopeOffice($query)
     {
-        return $query->where('module_type', 'office');
+        return $query->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::OFFICE);
     }
 
     public function scopeModule($query, $module)

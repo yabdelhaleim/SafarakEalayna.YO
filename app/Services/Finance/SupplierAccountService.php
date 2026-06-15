@@ -156,7 +156,7 @@ class SupplierAccountService
     /**
      * كشف حساب مورد
      */
-    public function getSupplierStatement(Supplier $supplier, array $filters = []): \Illuminate\Pagination\LengthAwarePaginator
+    public function getSupplierStatement(Supplier $supplier, array $filters = []): array
     {
         if (!$supplier->account_id) {
             throw new \Exception('Supplier does not have an account linked.');

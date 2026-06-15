@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\Finance\AuditService;
 use App\Services\Finance\TreasuryService;
+use App\Services\Finance\TrialBalanceExportService;
 use Illuminate\Http\Request;
 
 class TreasuryController extends Controller
@@ -131,5 +132,22 @@ class TreasuryController extends Controller
         $accountService->deactivateAccount($treasury);
 
         return ApiResponse::success('تم تعطيل الخزينة بنجاح');
+    }
+
+    /**
+     * تصدير ميزان الحسابات (جرد لحظي) في ملف ميزان (1).xlsx
+     */
+    public function exportTrialBalance(TrialBalanceExportService $exportService)
+    {
+        $spreadsheet = $exportService->export();
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $fileName = 'ميزان (1).xlsx';
+
+        return response()->streamDownload(function() use ($writer) {
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'max-age=0',
+        ]);
     }
 }

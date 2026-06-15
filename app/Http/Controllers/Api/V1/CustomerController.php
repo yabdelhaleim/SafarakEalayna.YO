@@ -177,127 +177,14 @@ class CustomerController extends Controller
                 ]);
             }
 
-            // Get all entries for the customer account
-            $resolver = app(LedgerEntryDescriptionResolver::class);
-
-            $entries = AccountEntry::with([
-                'transaction.createdBy',
-                'transaction.fromAccount',
-                'transaction.toAccount',
-                'transaction.related' => function ($morph) {
-                    $morph->morphWith([
-                        FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
-                        \App\Models\Bus\BusBooking::class => ['customer', 'inventory.company'],
-                        \App\Models\Online\OnlineTransaction::class => ['serviceType', 'provider'],
-                        \App\Models\VisaBooking::class => ['customer', 'visaDetail'],
-                        \App\Models\HajjUmraBooking::class => ['customer', 'program'],
-                    ]);
-                },
-            ])
-                ->where('account_id', $customerAccount->id)
-                ->orderBy('created_at', 'asc')
-                ->get();
-
-            $items = [];
-            $totalDebit = 0.0;
-            $totalCredit = 0.0;
-
-            foreach ($entries as $entry) {
-                $tx = $entry->transaction;
-                if (! $tx) {
-                    continue;
-                }
-
-                $debit = (float) $entry->debit;
-                $credit = (float) $entry->credit;
-
-                $totalDebit += $debit;
-                $totalCredit += $credit;
-
-                $module = $tx->module instanceof TransactionModule ? $tx->module->value : $tx->module;
-
-                $items[] = [
-                    'id' => $entry->id,
-                    'transaction_id' => $tx->id,
-                    'created_at' => $entry->created_at->toDateTimeString(),
-                    'date_human' => $entry->created_at->format('Y-m-d H:i'),
-                    'user_name' => $tx->createdBy ? $tx->createdBy->name : 'النظام',
-                    'reference_id' => $tx->related_id ?: $tx->id,
-                    'entity_name' => $customer->full_name,
-                    'description' => $resolver->resolve($entry),
-                    'notes' => trim((string) ($entry->notes ?: ($tx->notes ?? ''))) ?: null,
-                    'process_type' => $debit > 0 ? 'سند قبض / سداد نقدية' : 'فاتورة مبيعات / مديونية',
-                    'module' => $module,
-                    'debit' => $debit,
-                    'credit' => $credit,
-                    'balance_after' => (float) $entry->balance_after,
-                    'booking_details' => $resolver->bookingDetails($tx),
-                ];
-            }
-
-            $customer->load([
-                'flightBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'flightBookings.passengers',
-                'flightBookings.createdBy',
-                'flightBookings.airlineAccount',
-                'flightBookings.fromAirport',
-                'flightBookings.toAirport',
-
-                'visaBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'visaBookings.visaDetail',
-                'visaBookings.visaDetail.agent',
-                'visaBookings.visaDetail.durationRow',
-                'visaBookings.createdBy',
-
-                'hajjUmraBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'hajjUmraBookings.program',
-                'hajjUmraBookings.supplier',
-                'hajjUmraBookings.createdBy',
-                'hajjUmraBookings.companion',
-
-                'busBookings' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'busBookings.inventory',
-                'busBookings.inventory.company',
-                'busBookings.createdBy',
-
-                'fawryTransactions' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'fawryTransactions.operationTypeRow',
-                'fawryTransactions.paymentMethodRow',
-                'fawryTransactions.machine',
-                'fawryTransactions.employee',
-
-                'onlineTransactions' => fn ($q) => $q->orderBy('created_at', 'desc'),
-                'onlineTransactions.serviceType',
-                'onlineTransactions.provider',
-                'onlineTransactions.paymentMethodRow',
-                'onlineTransactions.createdBy',
-            ]);
+            $accountService = app(\App\Services\Finance\AccountService::class);
+            $data = $accountService->getAccountStatement($customerAccount, $request->all());
 
             return ApiResponse::success('تم استدعاء كشف حساب العميل التفصيلي بنجاح.', [
                 'customer' => new CustomerResource($customer),
-                'stats' => [
-                    'opening_balance' => 0.0,
-                    'period_credit' => $totalCredit,
-                    'period_debit' => $totalDebit,
-                    'closing_balance' => (float) $customerAccount->balance,
-                ],
-                'bookings' => [
-                    'flight' => FlightBookingResource::collection($customer->flightBookings),
-                    'visa' => VisaBookingResource::collection($customer->visaBookings),
-                    'hajj_umra' => HajjUmraBookingResource::collection($customer->hajjUmraBookings),
-                    'bus' => BusBookingResource::collection($customer->busBookings),
-                    'fawry' => FawryTransactionResource::collection($customer->fawryTransactions),
-                    'online' => OnlineTransactionResource::collection($customer->onlineTransactions),
-                ],
-                'items' => array_reverse($items),
-                'pagination' => [
-                    'total' => count($items),
-                    'current_page' => 1,
-                    'last_page' => 1,
-                    'per_page' => max(count($items), 20),
-                    'from' => count($items) > 0 ? 1 : 0,
-                    'to' => count($items),
-                ],
+                'stats' => $data['stats'],
+                'items' => \App\Http\Resources\Finance\AccountEntryResource::collection($data['items']),
+                'pagination' => $data['pagination'],
             ]);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

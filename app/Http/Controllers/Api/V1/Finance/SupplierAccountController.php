@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\RechargeSupplierAccountRequest;
+use App\Http\Resources\Finance\AccountEntryResource;
 use App\Http\Resources\Finance\SupplierAccountResource;
 use App\Models\Supplier;
 use App\Services\Finance\SupplierAccountService;
@@ -43,20 +44,17 @@ class SupplierAccountController extends Controller
     public function statement(Request $request, Supplier $supplier): JsonResponse
     {
         try {
-            $statement = $this->supplierAccountService->getSupplierStatement(
+            $data = $this->supplierAccountService->getSupplierStatement(
                 $supplier,
                 $request->all()
             );
 
-            return \App\Helpers\ApiResponse::paginated(
-                'Supplier statement retrieved successfully.',
-                $statement->getCollection(),
-                $statement,
-                [
-                    'supplier' => new SupplierAccountResource($supplier),
-                    'current_balance' => $this->supplierAccountService->getSupplierBalance($supplier),
-                ]
-            );
+            return \App\Helpers\ApiResponse::success('Supplier statement retrieved successfully.', [
+                'items' => AccountEntryResource::collection($data['items']),
+                'pagination' => $data['pagination'],
+                'stats' => $data['stats'],
+                'supplier' => new SupplierAccountResource($supplier),
+            ]);
         } catch (\Exception $e) {
             return \App\Helpers\ApiResponse::error($e->getMessage(), null, 422);
         }

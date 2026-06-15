@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-8 animate-in fade-in pb-10 duration-700">
     <!-- Header Section -->
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 print:hidden">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-gold/90">النظام المالي والمحاسبي</p>
@@ -26,7 +26,7 @@
       </div>
 
       <!-- اختيار القسم -->
-      <div class="mt-10 flex justify-center">
+      <div class="mt-10 flex justify-center print:hidden">
         <div class="bg-white/5 border border-white/10 p-1.5 rounded-2xl flex items-center gap-1">
           <button
             v-for="cat in categories"
@@ -43,8 +43,10 @@
         </div>
       </div>
 
-      <!-- Quick Stats -->
-      <div class="mt-8 space-y-3">
+      <!-- Main Sections for Treasury Categories -->
+      <template v-if="selectedCategory !== 'trial_balance'">
+        <!-- Quick Stats -->
+        <div class="mt-8 space-y-3">
         <p class="text-xs text-text-muted text-center">
           {{ statsScopeLabel }}
         </p>
@@ -303,10 +305,245 @@
                 <td class="px-6 py-4 text-xs font-bold text-sky-400">{{ t.user }}</td>
                 <td class="px-6 py-4 text-xs text-text-muted max-w-[200px] truncate" :title="t.notes">{{ t.notes || '-' }}</td>
               </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </template>
+
+      <!-- ==================== TAB 3: TRIAL BALANCE ==================== -->
+      <template v-else-if="selectedCategory === 'trial_balance'">
+        <div class="space-y-8 animate-in fade-in duration-500">
+          
+          <!-- Professional Print Header (Visible only on print) -->
+          <div class="hidden print:block print:mb-8">
+            <div class="flex items-center justify-between border-b-2 border-black pb-4">
+              <div>
+                <h2 class="text-2xl font-black text-black">سفري علينا</h2>
+                <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
+              </div>
+              <div class="text-right">
+                <h1 class="text-xl font-black text-black">تقرير ميزان الحسابات (جرد لحظي لرأس المال)</h1>
+                <p class="text-[10px] font-bold text-black mt-1 font-mono">تاريخ الطباعة: {{ new Date().toLocaleString('ar-EG') }}</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Excel Download & Capital Status Banner -->
+          <div class="flight-panel p-6 border-l-4" :class="statusBorderColor(trialBalance.status)">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div>
+                <h3 class="text-lg font-black text-text-main flex items-center gap-2">
+                  <Scale class="w-5 h-5 text-gold" />
+                  حالة توازن رأس المال والعمليات المحاسبية
+                </h3>
+                <p class="text-xs text-text-muted mt-1">
+                  المقارنة والتدقيق بين رأس المال الفعلي (السيولة والأرصدة والديون) ورأس المال المفترض (الأساسي والأرباح)
+                </p>
+                
+                <!-- Status Badge -->
+                <div class="mt-4 flex items-center gap-3">
+                  <span class="text-xs font-bold text-gray-400">حالة المطابقة:</span>
+                  <span :class="statusBadgeClass(trialBalance.status)" class="px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 border">
+                    <span class="w-2 h-2 rounded-full animate-pulse" :class="statusDotColor(trialBalance.status)"></span>
+                    {{ trialBalance.status }}
+                  </span>
+                  <span v-if="trialBalance.variance !== 0" class="font-mono text-sm" :class="trialBalance.variance > 0 ? 'text-sky-400' : 'text-rose-400'">
+                    (الفرق: {{ formatCurrency(trialBalance.variance) }})
+                  </span>
+                </div>
+              </div>
+              <div class="shrink-0 flex items-center gap-3 print:hidden">
+                <button
+                  type="button"
+                  @click="printTrialBalance"
+                  class="flex items-center gap-2 px-6 py-3.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 hover:text-white hover:bg-rose-500/20 transition-all font-black text-sm"
+                  title="تصدير كملف PDF"
+                >
+                  <FileText class="w-5 h-5 text-rose-400" />
+                  تصدير PDF
+                </button>
+
+                <button
+                  type="button"
+                  @click="exportTrialBalanceExcel"
+                  class="btn-airline inline-flex items-center gap-2 px-6 py-3.5 text-sm font-black shadow-xl shadow-gold/10 hover:shadow-gold/20 transition-all duration-300"
+                >
+                  <Download class="w-5 h-5" />
+                  تحميل كشف ميزان الحسابات (ميزان (1).xlsx)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Capital Equation Cards (Visual Flow) -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- 1. Total Module Balances (إجمالي أرصدة الموديولات) -->
+            <div class="flight-panel p-6 border-t-4 border-t-amber-500 relative overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <span class="absolute top-2 left-2 text-[9px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">موجب (+)</span>
+                <p class="text-xs font-bold text-text-muted uppercase tracking-wider">1. إجمالي أرصدة الموديولات</p>
+                <p class="mt-3 font-mono text-2xl font-black text-text-main">{{ formatCurrency(trialBalance.total_balances) }}</p>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/5 text-xs text-text-muted space-y-2">
+                <div class="flex justify-between items-center">
+                  <span>طيران (أنظمة/ناقلين):</span>
+                  <span class="font-mono font-bold text-white">{{ formatCurrency(trialBalance.details?.flight_balances || 0) }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span>حج وعمرة (تأمين ودائع):</span>
+                  <span class="font-mono font-bold text-white">{{ formatCurrency(trialBalance.details?.hajj_umra_balances || 0) }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span>تأشيرات (عهد وكلاء):</span>
+                  <span class="font-mono font-bold text-white">{{ formatCurrency(trialBalance.details?.visa_balances || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Total Liquidity (إجمالي السيولة) -->
+            <div class="flight-panel p-6 border-t-4 border-t-sky-500 relative overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <span class="absolute top-2 left-2 text-[9px] font-bold text-sky-500 bg-sky-500/10 px-1.5 py-0.5 rounded">موجب (+)</span>
+                <p class="text-xs font-bold text-text-muted uppercase tracking-wider">2. إجمالي السيولة</p>
+                <p class="mt-3 font-mono text-2xl font-black text-text-main">{{ formatCurrency(trialBalance.total_liquidity) }}</p>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/5 text-xs text-text-muted leading-relaxed">
+                تجميع أرصدة البنوك، الخزن، والمحافظ الإلكترونية النشطة والمتاحة في موديولات قسم السياحة.
+              </div>
+            </div>
+
+            <!-- 3. Due to Us (المستحق لنا) -->
+            <div class="flight-panel p-6 border-t-4 border-t-emerald-500 relative overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <span class="absolute top-2 left-2 text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">موجب (+)</span>
+                <p class="text-xs font-bold text-text-muted uppercase tracking-wider">3. المستحق لنا (المدينون)</p>
+                <p class="mt-3 font-mono text-2xl font-black text-text-main">{{ formatCurrency(trialBalance.due_to_us) }}</p>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/5 text-xs text-text-muted leading-relaxed">
+                يشمل مديونيات العملاء والعهد الخارجية ومستحقات الموردين المدينة.
+              </div>
+            </div>
+
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- 4. Due from Us (المستحق علينا) -->
+            <div class="flight-panel p-6 border-t-4 border-t-rose-500 relative overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <span class="absolute top-2 left-2 text-[9px] font-bold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded">يُطرح (-)</span>
+                <p class="text-xs font-bold text-text-muted uppercase tracking-wider">4. المستحق علينا (الدائنون)</p>
+                <p class="mt-3 font-mono text-2xl font-black text-rose-400">-{{ formatCurrency(trialBalance.due_from_us) }}</p>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/5 text-xs text-text-muted leading-relaxed">
+                يشمل مستحقات الموردين المعلقة، والعهد الدائنة، ودفعات العملاء المقدمة.
+              </div>
+            </div>
+
+            <!-- 5. Current Capital (رأس المال الحالي) -->
+            <div class="flight-panel p-6 bg-gradient-to-br from-slate-900 to-amber-950/40 border border-amber-500/30 relative overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <span class="absolute top-2 left-2 text-[9px] font-bold text-gold bg-gold/10 px-1.5 py-0.5 rounded">الفعلي (=)</span>
+                <p class="text-xs font-bold text-gold uppercase tracking-wider">رأس المال الحالي</p>
+                <p class="mt-3 font-mono text-3xl font-black text-gold">{{ formatCurrency(trialBalance.current_capital) }}</p>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/5 text-xs text-text-muted leading-relaxed">
+                ناتج المعادلة: (أرصدة الموديولات + السيولة + المستحق لنا) - المستحق علينا.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Matching verification vs Base Capital + Profits -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Capital Settings & verification -->
+            <div class="flight-panel lg:col-span-2 space-y-6">
+              <h4 class="text-base font-bold text-white flex items-center gap-2">
+                <Scale class="w-5 h-5 text-emerald-400" />
+                مطابقة توازن رأس المال
+              </h4>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span class="text-xs text-text-muted">رأس المال الحالي (الفعلي)</span>
+                  <div class="mt-1.5 font-mono text-xl font-black text-white">{{ formatCurrency(trialBalance.current_capital) }}</div>
+                </div>
+                <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span class="text-xs text-text-muted">رأس المال المستهدف (الأساسي + الأرباح)</span>
+                  <div class="mt-1.5 font-mono text-xl font-black text-white">{{ formatCurrency(trialBalance.expected_capital) }}</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-white/5 pt-6">
+                <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span class="text-xs text-text-muted">رأس المال الأساسي (الافتتاحي)</span>
+                  <div class="mt-1.5 font-mono text-lg font-bold text-white">{{ formatCurrency(trialBalance.base_capital) }}</div>
+                </div>
+                <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span class="text-xs text-text-muted">إجمالي الأرباح المحققة</span>
+                  <div class="mt-1.5 font-mono text-lg font-bold text-emerald-400">{{ formatCurrency(trialBalance.profits) }}</div>
+                </div>
+              </div>
+
+              <!-- Base Capital Settings Form -->
+              <form @submit.prevent="updateBaseCapital" class="border-t border-white/5 pt-6 space-y-4 print:hidden">
+                <div>
+                  <h5 class="text-sm font-bold text-white mb-1">تعديل رأس المال الأساسي (الافتتاحي)</h5>
+                  <p class="text-xs text-text-muted">تحديد رأس مال الشركة الأساسي لمقارنة توازن الحسابات والقيود بناءً عليه</p>
+                </div>
+                <div class="flex gap-3">
+                  <div class="relative flex-1 group">
+                    <input
+                      v-model.number="baseCapitalInput"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      class="flight-input w-full font-mono font-bold text-white bg-black/40"
+                    />
+                    <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gold">EGP</div>
+                  </div>
+                  <button
+                    type="submit"
+                    :disabled="updatingCapital"
+                    class="btn-airline px-6 py-3 text-xs font-black shadow-lg flex items-center gap-2"
+                  >
+                    <span v-if="updatingCapital" class="w-3.5 h-3.5 border border-black/30 border-t-black animate-spin rounded-full"></span>
+                    {{ updatingCapital ? 'جاري الحفظ...' : 'تحديث رأس المال الافتتاحي' }}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Average Purchase Price card -->
+            <div class="flight-panel space-y-6">
+              <h4 class="text-base font-bold text-white flex items-center gap-2">
+                <RefreshCw class="w-5 h-5 text-gold animate-spin-slow" />
+                سعر شراء العملات الأجنبية
+              </h4>
+              <p class="text-xs text-text-muted leading-relaxed">
+                يُحسب متوسط سعر الشراء آلياً وبلحظته بناءً على تكاليف حجز الطيران الفعلية بالعملة الأجنبية مقابل الجنيه المصري في موديول الطيران.
+              </p>
+
+              <div class="space-y-3">
+                <div v-for="(rate, curr) in trialBalance.rates" :key="curr" class="p-3 bg-white/5 rounded-xl flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">{{ curr }} / EGP</span>
+                  <span class="font-mono text-sm font-black text-gold">{{ rate.toFixed(4) }}</span>
+                </div>
+              </div>
+              
+              <div class="text-[10px] text-text-muted bg-white/[0.02] border border-white/5 p-3 rounded-xl leading-relaxed">
+                ⚠️ في حال عدم وجود حجوزات للعملة، يتم الاعتماد على أحدث أسعار صرف مسجلة بنظام أسعار الصرف.
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </template>
     </div>
 
     <!-- Transfer Modal -->
@@ -495,7 +732,7 @@
 
 <script setup>
 import { ref, computed, onMounted, reactive, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import axios from 'axios';
 import {
   buildTransferApiPayload,
@@ -527,16 +764,22 @@ import {
   ChevronLeft,
   ChevronDown,
   PieChart,
-  Briefcase
+  Briefcase,
+  Landmark,
+  Scale,
+  Printer
 } from 'lucide-vue-next';
 
 const router = useRouter();
+const route = useRoute();
 const loading = ref(false);
 const submitting = ref(false);
 
 // State
 const overview = ref({});
 const recentTransfers = ref([]);
+const trialBalance = ref(null);
+const baseCapitalInput = ref(1000000.0);
 const statsByCategory = ref({
   office: {
     total_liquidity: 0,
@@ -576,6 +819,7 @@ const typeTabs = [
 const categories = [
   { id: 'office', label: 'المكتب العام', icon: Building2 },
   { id: 'tourism', label: 'السياحة والطيران', icon: Briefcase },
+  { id: 'trial_balance', label: 'ميزان الحسابات (جرد لحظي)', icon: Landmark },
 ];
 
 /** موديولات كل قسم — تُعرض في الشرح والكروت */
@@ -749,6 +993,7 @@ function categoryHasAccounts(categoryId) {
 }
 
 function autoSelectCategoryWithData() {
+  if (selectedCategory.value === 'trial_balance') return;
   if (categoryHasAccounts(selectedCategory.value)) return;
   if (categoryHasAccounts('tourism')) {
     selectedCategory.value = 'tourism';
@@ -813,6 +1058,11 @@ async function fetchOverview() {
       tourism: normalizeCategoryStats(byCat.tourism),
     };
 
+    if (data.trial_balance) {
+      trialBalance.value = data.trial_balance;
+      baseCapitalInput.value = data.trial_balance.base_capital;
+    }
+
     autoSelectCategoryWithData();
   } catch (err) {
     console.error('Failed to fetch treasury overview:', err);
@@ -820,6 +1070,71 @@ async function fetchOverview() {
   } finally {
     loading.value = false;
   }
+}
+
+async function updateBaseCapital() {
+  submitting.value = true;
+  try {
+    const response = await axios.put('/api/v1/settings/print', {
+      base_capital: baseCapitalInput.value,
+    });
+    if (window.addToast) {
+      window.addToast('تم تحديث رأس المال الأساسي بنجاح', 'success');
+    }
+    await fetchOverview();
+  } catch (err) {
+    console.error('Failed to update base capital:', err);
+    if (window.addToast) {
+      window.addToast('فشل في تحديث رأس المال الأساسي', 'error');
+    }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+const printTrialBalance = () => {
+  window.print();
+};
+
+async function exportTrialBalanceExcel() {
+  try {
+    const response = await axios.get('/api/v1/finance/treasuries/export-trial-balance', {
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'ميزان (1).xlsx');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (window.addToast) {
+      window.addToast('تم تحميل كشف ميزان الحسابات بنجاح', 'success');
+    }
+  } catch (err) {
+    console.error('Failed to export trial balance:', err);
+    if (window.addToast) {
+      window.addToast('فشل في تحميل كشف ميزان الحسابات', 'error');
+    }
+  }
+}
+
+function statusBorderColor(status) {
+  if (status === 'متساوية') return 'border-emerald-500 bg-emerald-500/5';
+  if (status === 'يوجد زيادة') return 'border-sky-500 bg-sky-500/5';
+  return 'border-rose-500 bg-rose-500/5'; // يوجد عجز
+}
+
+function statusBadgeClass(status) {
+  if (status === 'متساوية') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+  if (status === 'يوجد زيادة') return 'bg-sky-500/10 text-sky-400 border-sky-500/20';
+  return 'bg-rose-500/10 text-rose-400 border-rose-500/20'; // يوجد عجز
+}
+
+function statusDotColor(status) {
+  if (status === 'متساوية') return 'bg-emerald-400';
+  if (status === 'يوجد زيادة') return 'bg-sky-400';
+  return 'bg-rose-400';
 }
 
 function getModuleTotal(accounts) {
@@ -940,6 +1255,10 @@ watch(selectedCategory, () => {
 });
 
 onMounted(() => {
+  const queryCat = route.query.category || route.query.tab;
+  if (queryCat && ['office', 'tourism', 'trial_balance'].includes(queryCat)) {
+    selectedCategory.value = queryCat;
+  }
   fetchOverview();
 });
 </script>
@@ -1022,5 +1341,62 @@ onMounted(() => {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+</style>
+
+<style>
+@media print {
+  body, html, #app, .app-shell, .main-zone, .page-body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .sidebar, .top-bar, .toast-rack, .backdrop, .no-print, .print-hidden {
+    display: none !important;
+  }
+
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .flight-panel, 
+  .bg-card-bg {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border-radius: 12px !important;
+  }
+  
+  .flight-panel *, 
+  .bg-card-bg * {
+    color: #000000 !important;
+  }
+
+  .text-emerald-400 {
+    color: #166534 !important;
+  }
+  .text-rose-400 {
+    color: #991b1b !important;
+  }
+  .text-sky-400 {
+    color: #1e3a8a !important;
+  }
+  .text-gold {
+    color: #b45309 !important;
+  }
 }
 </style>

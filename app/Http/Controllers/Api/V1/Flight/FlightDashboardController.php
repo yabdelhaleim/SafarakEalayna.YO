@@ -95,9 +95,12 @@ class FlightDashboardController extends Controller
 
         usort($liquiditySummary, fn ($a, $b) => $a['currency'] === 'EGP' ? -1 : ($b['currency'] === 'EGP' ? 1 : strcmp($a['currency'], $b['currency'])));
 
-        // الإجمالي EGP فقط للبطاقة الرئيسية
-        $egpRow = collect($liquiditySummary)->firstWhere('currency', 'EGP');
-        $totalEgpActual = $egpRow['total_actual'] ?? 0;
+        // الإجمالي المحوّل للجنيه المصري بالكامل للبطاقة الرئيسية
+        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+        $totalEgpActual = collect($liquiditySummary)->sum(function ($row) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($row['currency']);
+            return (float) $row['total_actual'] * $rate;
+        });
 
         // 5. Recent Bookings (Limit 10)
         $recentBookings = FlightBooking::query()

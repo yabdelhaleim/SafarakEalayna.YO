@@ -86,6 +86,13 @@
         />
         <button 
           @click="printReport"
+          class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-rose-600/20 transition-all flex items-center justify-center gap-2 print:hidden"
+        >
+          <FileText class="w-4 h-4" />
+          تصدير PDF
+        </button>
+        <button 
+          @click="printReport"
           class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 print:hidden"
         >
           <Printer class="w-4 h-4" />
@@ -308,7 +315,8 @@ import {
   TrendingUp,
   TrendingDown,
   Scale,
-  Printer
+  Printer,
+  FileText
 } from 'lucide-vue-next';
 import axios from 'axios';
 import { useAsyncState } from '@/composables/useAsyncState';

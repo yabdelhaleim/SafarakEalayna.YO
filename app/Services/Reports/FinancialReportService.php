@@ -1038,13 +1038,7 @@ class FinancialReportService
         $carriers = FlightCarrier::where('currency', $currency)->sum('balance');
         
         $vaults = Account::tourism()
-            ->whereIn('type', [
-                \App\Enums\AccountType::Cashbox->value,
-                \App\Enums\AccountType::Bank->value,
-                \App\Enums\AccountType::Post->value,
-                \App\Enums\AccountType::Wallet->value,
-                \App\Enums\AccountType::Treasury->value,
-            ])
+            ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->where('currency', $currency)
             ->where('is_active', true)
             ->sum('balance');
@@ -1094,13 +1088,7 @@ class FinancialReportService
         $carriers = 0.0;
 
         $vaults = Account::office()
-            ->whereIn('type', [
-                \App\Enums\AccountType::Cashbox->value,
-                \App\Enums\AccountType::Bank->value,
-                \App\Enums\AccountType::Post->value,
-                \App\Enums\AccountType::Wallet->value,
-                \App\Enums\AccountType::Treasury->value,
-            ])
+            ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->where('currency', $currency)
             ->where('is_active', true)
             ->sum('balance');

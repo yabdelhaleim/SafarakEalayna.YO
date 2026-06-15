@@ -245,10 +245,10 @@
                 </p>
                 <p class="text-xs text-white/30 text-center mb-4">جنيه مصري — رصيد فعلي مشحون</p>
 
-                <!-- تفصيل حسب العملة إن وُجدت عملات أخرى -->
-                <div v-if="otherCurrencies.length" class="space-y-2 border-t border-white/10 pt-4">
-                  <p class="text-[10px] font-bold uppercase tracking-wider text-amber-400/70 mb-2">عملات أخرى (لا تُضاف لـ EGP)</p>
-                  <div v-for="row in otherCurrencies" :key="row.currency" class="flex items-center justify-between text-sm">
+                <!-- تفصيل حسب العملة -->
+                <div v-if="allCurrencies.length" class="space-y-2 border-t border-white/10 pt-4">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-amber-400/70 mb-2">تفاصيل السيولة حسب العملات</p>
+                  <div v-for="row in allCurrencies" :key="row.currency" class="flex items-center justify-between text-sm">
                     <div class="flex items-center gap-2">
                       <span class="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black text-white">{{ row.currency }}</span>
                       <span class="text-xs text-white/50">فعلي</span>
@@ -383,10 +383,10 @@ const lastUpdated = ref('—');
 
 const fmt = (v) => Number(v || 0).toLocaleString('ar-EG');
 
-// العملات غير EGP لعرضها منفصلة
-const otherCurrencies = computed(() => {
+// تفصيل كافة العملات
+const allCurrencies = computed(() => {
   const rows = data.value?.liquidity?.by_currency || [];
-  return rows.filter(r => r.currency !== 'EGP' && (r.total_actual > 0 || r.total_available > 0));
+  return rows.filter(r => r.total_actual > 0 || r.total_available > 0);
 });
 
 const formatDt = (iso) => {

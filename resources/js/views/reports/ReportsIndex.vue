@@ -147,7 +147,7 @@
         <Compass class="w-6 h-6 text-gold" />
         مداخل التقارير التفصيلية
       </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 print:hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 print:hidden">
         
         <!-- P&L Portal -->
         <router-link to="/finance/profit-loss" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
@@ -256,6 +256,25 @@
               <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-purple-200 transition-colors">الديون والمديونيات</h3>
               <p class="text-white/70 text-sm font-medium leading-relaxed">
                 متابعة أرصدة العملاء والموردين وشركات الطيران والباصات والوكلاء وتصفيتها.
+              </p>
+            </div>
+          </div>
+          <div class="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 group-hover:-translate-x-2 transition-all">
+            <ArrowLeft class="w-6 h-6 text-white" />
+          </div>
+        </router-link>
+
+        <!-- Trial Balance Portal -->
+        <router-link to="/finance/treasury?category=trial_balance" class="block relative group rounded-3xl overflow-hidden aspect-[4/3]">
+          <div class="absolute inset-0 bg-gradient-to-br from-amber-600/80 to-yellow-900/90 z-0"></div>
+          <div class="relative z-10 p-6 flex flex-col h-full justify-between">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform shadow-xl">
+              <Landmark class="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-amber-200 transition-colors">ميزان الحسابات ورأس المال</h3>
+              <p class="text-white/70 text-sm font-medium leading-relaxed">
+                جرد لحظي لمطابقة وتوازن رأس المال الفعلي مع الأرباح ورأس المال الافتتاحي وكشف العجز والزيادة.
               </p>
             </div>
           </div>

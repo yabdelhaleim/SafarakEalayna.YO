@@ -17,9 +17,31 @@
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent"></div>
       <div class="relative z-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div class="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-400 border border-amber-500/20 mb-3">
-            <span class="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse"></span>
-            لوحة القيادة الذكية الموحدة
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <div class="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-400 border border-amber-500/20">
+              <span class="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse"></span>
+              لوحة القيادة الذكية الموحدة
+            </div>
+
+            <!-- Capital matching status indicator -->
+            <button
+              v-if="trialBalance"
+              type="button"
+              @click="activeTab = 'treasury'; scrollToTrialBalance()"
+              :class="[
+                'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black border transition-all cursor-pointer hover:scale-105',
+                trialBalance.status === 'متساوية' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' :
+                trialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20 hover:bg-sky-500/20' :
+                'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+              ]"
+            >
+              <span :class="[
+                'h-2 w-2 rounded-full',
+                trialBalance.status === 'متساوية' ? 'bg-emerald-400 animate-ping' :
+                trialBalance.status === 'يوجد زيادة' ? 'bg-sky-400 animate-ping' : 'bg-rose-400 animate-ping'
+              ]"></span>
+              ميزان رأس المال: {{ trialBalance.status }}
+            </button>
           </div>
           <h1 class="text-xl font-black tracking-tight text-white sm:text-3xl lg:text-4xl">
             نظام المراقبة والتحكم المالي
@@ -542,6 +564,140 @@
 
     <!-- ==================== PILLAR 3: TREASURY ==================== -->
     <template v-if="activeTab === 'treasury'">
+      <!-- Trial Balance / Capital Matching Monitor -->
+      <div id="trial-balance-section" class="bg-card-bg border border-white/10 rounded-3xl p-6 space-y-6 relative overflow-hidden mb-6">
+        <!-- Decorative Glow based on status -->
+        <div :class="[
+          'absolute -right-32 -top-32 w-64 h-64 rounded-full blur-3xl opacity-20 transition-all duration-500',
+          trialBalance?.status === 'متساوية' ? 'bg-emerald-500' :
+          trialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500' : 'bg-rose-500'
+        ]"></div>
+
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'p-2.5 rounded-xl border transition-colors',
+              trialBalance?.status === 'متساوية' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+              trialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/20'
+            ]">
+              <TrendingUp v-if="trialBalance?.status === 'يوجد زيادة'" class="w-5 h-5" />
+              <TrendingDown v-else-if="trialBalance?.status === 'يوجد عجز'" class="w-5 h-5" />
+              <DollarSign v-else class="w-5 h-5" />
+            </div>
+            <div>
+              <h3 class="text-lg font-black text-white">ميزان الحسابات والجرد اللحظي لرأس المال</h3>
+              <p class="text-xs text-gray-400 mt-0.5">مطابقة رأس المال الفعلي مع رأس المال الدفتري والأرباح لضمان دقة النظام</p>
+            </div>
+          </div>
+          
+          <!-- Status Badge -->
+          <div class="flex items-center gap-2">
+            <span v-if="isLoadingTrialBalance" class="text-xs text-gray-400 animate-pulse">جاري الاحتساب...</span>
+            <div v-else-if="trialBalance" :class="[
+              'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black border shadow-lg backdrop-blur-md',
+              trialBalance.status === 'متساوية' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-emerald-500/5' :
+              trialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/30 shadow-sky-500/5' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-rose-500/5'
+            ]">
+              <span :class="[
+                'h-2.5 w-2.5 rounded-full animate-ping',
+                trialBalance.status === 'متساوية' ? 'bg-emerald-400' :
+                trialBalance.status === 'يوجد زيادة' ? 'bg-sky-400' : 'bg-rose-400'
+              ]"></span>
+              حالة الميزان: {{ trialBalance.status }}
+            </div>
+            <router-link
+              to="/finance/treasury"
+              class="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 border border-amber-500/20 rounded-xl px-3 py-1.5 bg-amber-500/5 hover:bg-amber-500/10 transition-all"
+            >
+              عرض التفاصيل
+              <span>←</span>
+            </router-link>
+          </div>
+        </div>
+
+        <div v-if="isLoadingTrialBalance && !trialBalance" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <KPICardSkeleton v-for="i in 4" :key="`tb-skeleton-${i}`" />
+        </div>
+        
+        <div v-else-if="trialBalance" class="space-y-6">
+          <!-- Main Equation Overview Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Total Balances -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-gray-400 mb-1">إجمالي أرصدة الموديولات (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(trialBalance.total_balances) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500 flex justify-between">
+                <span>طيران: {{ formatCompactNumber(trialBalance.details.flight_balances) }}</span>
+                <span>حج/عمرة: {{ formatCompactNumber(trialBalance.details.hajj_umra_balances) }}</span>
+              </div>
+            </div>
+
+            <!-- Total Liquidity -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-gray-400 mb-1">إجمالي السيولة النقدية (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(trialBalance.total_liquidity) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                الخزائن، البنوك والمحافظ
+              </div>
+            </div>
+
+            <!-- Receivables -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-emerald-400 mb-1">المستحق لنا (+)</div>
+              <div class="text-xl font-black text-emerald-400 font-mono">{{ formatCurrency(trialBalance.due_to_us) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                أرصدة العملاء والموردين المدينين
+              </div>
+            </div>
+
+            <!-- Payables -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-rose-400 mb-1">المستحق علينا (-)</div>
+              <div class="text-xl font-black text-rose-400 font-mono">{{ formatCurrency(trialBalance.due_from_us) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                أرصدة العملاء والموردين الدائنين
+              </div>
+            </div>
+          </div>
+
+          <!-- Capital Formula Match -->
+          <div class="bg-gradient-to-r from-slate-900 to-purple-950/40 border border-white/10 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
+            <div class="flex-1 space-y-2">
+              <div class="text-xs text-gray-400 font-bold">المعادلة المحاسبية لرأس المال الحالي:</div>
+              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
+                رأس المال الحالي ({{ formatCompactNumber(trialBalance.current_capital) }}) = (الأرصدة + السيولة + لنا) - علينا
+              </div>
+            </div>
+            
+            <!-- Comparison Details -->
+            <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
+              <div>
+                <div class="text-[10px] text-gray-400">رأس المال المستهدف (الأساسي + الأرباح)</div>
+                <div class="text-base font-black text-white font-mono">
+                  {{ formatCurrency(trialBalance.expected_capital) }}
+                  <span class="text-xs font-normal text-gray-500">
+                    ({{ formatCompactNumber(trialBalance.base_capital) }} + {{ formatCompactNumber(trialBalance.profits) }})
+                  </span>
+                </div>
+              </div>
+              <div class="border-r border-white/10 h-8 hidden md:block"></div>
+              <div>
+                <div class="text-[10px] text-gray-400">الفارق / الانحراف</div>
+                <div :class="[
+                  'text-lg font-black font-mono',
+                  trialBalance.variance === 0 ? 'text-emerald-400' :
+                  trialBalance.variance > 0 ? 'text-sky-400' : 'text-rose-400'
+                ]">
+                  {{ trialBalance.variance > 0 ? '+' : '' }}{{ formatCurrency(trialBalance.variance) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Live liquidity audit -->
       <div class="bg-card-bg border border-white/10 rounded-3xl p-6 space-y-6">
         <div>
@@ -735,6 +891,9 @@ const isRefreshing = computed(() => isLoading());
 // Active layout view mapping: 'tourism' | 'office' | 'treasury'
 const activeTab = ref('tourism');
 
+const trialBalance = ref(null);
+const isLoadingTrialBalance = ref(false);
+
 // Filters
 const filters = ref({
   date_from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -882,6 +1041,30 @@ const exportReport = () => {
   alert('جاري تجهيز تقرير المركز المالي والتشغيلي للطباعة...');
 };
 
+const fetchTrialBalance = async () => {
+  isLoadingTrialBalance.value = true;
+  try {
+    const response = await axios.get('/api/v1/reports/trial-balance');
+    trialBalance.value = response.data?.data || null;
+  } catch (err) {
+    if (axios.isCancel?.(err) || err?.code === 'ERR_CANCELED') {
+      return;
+    }
+    console.error('Failed to fetch trial balance:', err);
+  } finally {
+    isLoadingTrialBalance.value = false;
+  }
+};
+
+const scrollToTrialBalance = () => {
+  setTimeout(() => {
+    const el = document.getElementById('trial-balance-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, 100);
+};
+
 const fetchDashboardData = async () => {
   setLoading();
   try {
@@ -965,8 +1148,13 @@ const fetchDashboardData = async () => {
       bookings: parseAmount(item.bookings),
     }));
 
+    await fetchTrialBalance();
+
     setSuccess();
   } catch (error) {
+    if (axios.isCancel?.(error) || error?.code === 'ERR_CANCELED') {
+      return;
+    }
     console.error('Failed to fetch unified dashboard data:', error);
     setError(error);
   }

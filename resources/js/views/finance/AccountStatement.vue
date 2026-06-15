@@ -39,8 +39,8 @@
               <p><span class="font-bold">إجمالي السحب:</span> {{ formatCurrency(stats.period_debit, account?.currency) }}</p>
             </template>
             <template v-else>
-              <p><span class="font-bold">إجمالي المبيعات (عليه):</span> {{ formatCurrency(stats.period_debit) }}</p>
-              <p><span class="font-bold">إجمالي المسدد (له):</span> {{ formatCurrency(stats.period_credit) }}</p>
+              <p><span class="font-bold">إجمالي المبيعات (عليه):</span> {{ formatCurrency(stats.period_credit) }}</p>
+              <p><span class="font-bold">إجمالي المسدد (له):</span> {{ formatCurrency(stats.period_debit) }}</p>
               <p class="col-span-2 text-base mt-1"><span class="font-black">صافي الرصيد المستحق:</span> <strong :class="stats.closing_balance > 0 ? 'text-red-600' : 'text-green-600'">{{ formatCurrency(Math.abs(stats.closing_balance)) }} {{ stats.closing_balance > 0 ? 'عليه (مدين)' : (stats.closing_balance < 0 ? 'له (دائن)' : '') }}</strong></p>
             </template>
           </div>
@@ -75,10 +75,20 @@
         <div class="flex items-center gap-3 print:hidden">
           <button
             @click="printStatement"
-            class="p-3 rounded-xl border border-white/10 bg-white/5 text-text-muted hover:text-sky-400 transition-all hover:bg-white/10"
-            title="طباعة الكشف"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 hover:text-white hover:bg-rose-500/20 transition-all font-bold text-sm"
+            title="تصدير كشف الحساب بصيغة PDF"
           >
-            <Printer class="w-5 h-5" />
+            <FileText class="w-4 h-4 text-rose-400" />
+            تصدير PDF
+          </button>
+
+          <button
+            @click="printStatement"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-text-muted hover:text-white hover:bg-white/10 transition-all font-bold text-sm"
+            title="طباعة كشف الحساب"
+          >
+            <Printer class="w-4 h-4" />
+            طباعة
           </button>
           
           <button
@@ -208,12 +218,12 @@
             <!-- Period Debit (Sales) -->
             <div class="p-6 space-y-2 bg-white/[0.01]">
               <span class="text-[11px] font-black text-text-muted block">إجمالي المبيعات (عليه)</span>
-              <p class="font-mono text-2xl font-black text-error">{{ formatCurrency(stats.period_debit) }}</p>
+              <p class="font-mono text-2xl font-black text-error">{{ formatCurrency(stats.period_credit) }}</p>
             </div>
             <!-- Period Credit (Paid) -->
             <div class="p-6 space-y-2 bg-white/[0.01]">
               <span class="text-[11px] font-black text-text-muted block">إجمالي المسدد (له)</span>
-              <p class="font-mono text-2xl font-black text-success">{{ formatCurrency(stats.period_credit) }}</p>
+              <p class="font-mono text-2xl font-black text-success">{{ formatCurrency(stats.period_debit) }}</p>
             </div>
             <!-- Closing Balance (Net) -->
             <div class="p-6 space-y-2 bg-gold/[0.03]">
@@ -486,7 +496,7 @@
                   
                   <!-- Col 5: Debit (-) -->
                   <td class="px-6 py-4 font-mono text-left whitespace-nowrap">
-                    <span v-if="entry.debit > 0" class="text-lg font-black text-error">
+                    <span v-if="entry.debit > 0" :class="statementTargetType === 'customer' ? 'text-lg font-black text-success' : 'text-lg font-black text-error'">
                       {{ formatCurrency(entry.debit, account?.currency) }}
                     </span>
                     <span v-else class="text-text-muted/20">—</span>
@@ -494,7 +504,7 @@
                   
                   <!-- Col 6: Credit (+) -->
                   <td class="px-6 py-4 font-mono text-left whitespace-nowrap">
-                    <span v-if="entry.credit > 0" class="text-lg font-black text-success">
+                    <span v-if="entry.credit > 0" :class="statementTargetType === 'customer' ? 'text-lg font-black text-error' : 'text-lg font-black text-success'">
                       {{ formatCurrency(entry.credit, account?.currency) }}
                     </span>
                     <span v-else class="text-text-muted/20">—</span>
@@ -592,11 +602,11 @@
                 <td colspan="4" class="px-6 py-5 text-left text-xs uppercase tracking-widest text-text-muted whitespace-nowrap">
                   {{ statementTargetType === 'customer' ? 'إجماليات مبيعات ومسددات العميل' : 'إجمالي العمليات في الفترة' }}
                 </td>
-                <td class="px-6 py-5 text-left text-error font-black">
-                  {{ formatCurrency(stats.period_debit, account?.currency) }}
+                <td class="px-6 py-5 text-left font-black" :class="statementTargetType === 'customer' ? 'text-success' : 'text-error'">
+                  {{ statementTargetType === 'customer' ? '+' : '' }}{{ formatCurrency(stats.period_debit, account?.currency) }}
                 </td>
-                <td class="px-6 py-5 text-left text-success font-black">
-                  +{{ formatCurrency(stats.period_credit, account?.currency) }}
+                <td class="px-6 py-5 text-left font-black" :class="statementTargetType === 'customer' ? 'text-error' : 'text-success'">
+                  {{ statementTargetType === 'customer' ? '' : '+' }}{{ formatCurrency(stats.period_credit, account?.currency) }}
                 </td>
                 <td class="px-6 py-5 text-left text-xl font-black" :class="stats.closing_balance > 0 ? 'text-error' : (stats.closing_balance < 0 ? 'text-success' : 'text-white')">
                   {{ formatCurrency(Math.abs(stats.closing_balance), account?.currency) }}

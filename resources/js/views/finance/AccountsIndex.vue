@@ -881,6 +881,8 @@ async function fetchAccounts() {
 
     if (filters.value.is_active !== '') {
       params.is_active = filters.value.is_active
+    } else {
+      params.is_active = ''
     }
 
     await accountStore.fetchAccounts(params)

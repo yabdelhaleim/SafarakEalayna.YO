@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\Fawry\FawrySettingsController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTransactionController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTreasuryController;
 use App\Http\Controllers\Api\V1\Finance\AccountController;
+use App\Http\Controllers\Api\V1\Finance\SupplierAccountController;
 use App\Http\Controllers\Api\V1\Finance\ApprovalController;
 use App\Http\Controllers\Api\V1\Finance\AuditController;
 use App\Http\Controllers\Api\V1\Finance\CurrencyController;
@@ -135,6 +136,7 @@ Route::prefix('v1')->middleware([
         Route::middleware('admin')->group(function () {
             Route::apiResource('accounts', AccountController::class)->except(['index', 'destroy'])->names('finance_accounts');
             Route::get('treasuries/get-overview', [TreasuryController::class, 'getOverview']);
+            Route::get('treasuries/export-trial-balance', [TreasuryController::class, 'exportTrialBalance']);
             Route::get('treasuries/get-module-accounts/{module}', [TreasuryController::class, 'getModuleAccounts']);
             Route::apiResource('treasuries', TreasuryController::class)->names('finance_treasuries');
             Route::post('currencies/convert', [CurrencyController::class, 'convert']);
@@ -405,6 +407,7 @@ Route::prefix('v1')->middleware([
         Route::get('bank-ledger-reconciliation', [FinancialReportController::class, 'bankLedgerReconciliation']);
         Route::get('ledger-reconciliation/latest', [FinancialReportController::class, 'latestLedgerReconciliation']);
         Route::get('capital-analysis', [FinancialReportController::class, 'capitalAnalysis']);
+        Route::get('trial-balance', [FinancialReportController::class, 'trialBalance']);
         Route::get('flights/detailed', [FinancialReportController::class, 'detailedFlightReport']);
     });
 
@@ -477,6 +480,11 @@ Route::prefix('v1')->middleware([
 
     // Suppliers API
     Route::apiResource('suppliers', SupplierController::class);
+    Route::prefix('suppliers')->group(function () {
+        Route::match(['get', 'post'], '/{supplier}/account/recharge', [SupplierAccountController::class, 'recharge']);
+        Route::get('/{supplier}/account/statement', [SupplierAccountController::class, 'statement']);
+        Route::get('/{supplier}/account/balance', [SupplierAccountController::class, 'balance']);
+    });
 
     // Users Management API (Admin Only)
     Route::apiResource('users', UserController::class)->middleware('admin');
