@@ -7,6 +7,10 @@ use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Flight\AirlineAccount;
+use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightGroupTransaction;
+use App\Models\Flight\FlightSystemTransaction;
 use App\Models\Bus\BusCompany;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Flight\FlightGroup;
@@ -350,5 +354,106 @@ class FinancialReportTest extends TestCase
         $supplierResponse->assertOk();
         $this->assertCount(1, $supplierResponse->json('data.items'));
         $this->assertEquals('Discount Flights Group', $supplierResponse->json('data.items.0.name'));
+    }
+
+    public function test_detailed_flight_report_includes_group_booking_transactions(): void
+    {
+        $customer = Customer::factory()->create();
+
+        $group = FlightGroup::create([
+            'name' => 'مجموعة اختبار',
+            'code' => 'TST',
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $booking = FlightBooking::create([
+            'booking_reference' => 'FLT-REF-DET',
+            'booking_number' => 'FLT-DET-001',
+            'booking_channel_type' => 'manual',
+            'booking_channel_provider' => 'Direct',
+            'system_type' => 'manual',
+            'status' => 'CONFIRMED',
+            'customer_id' => $customer->id,
+            'flight_group_id' => $group->id,
+            'purchase_balance_source' => 'group',
+            'agent_name' => 'Test Agent',
+            'airline' => 'Test Air',
+            'airline_name' => 'Test Air',
+            'origin' => 'CAI',
+            'from_airport' => 'CAI',
+            'destination' => 'JED',
+            'to_airport' => 'JED',
+            'departure_date' => now()->addDays(5),
+            'departure_time' => now()->addDays(5)->setTime(10, 0),
+            'trip_type' => 'one_way',
+            'passenger_count' => 1,
+            'purchase_price' => 1000,
+            'purchase_price_egp' => 1000,
+            'selling_price' => 1500,
+            'profit' => 500,
+            'currency' => 'EGP',
+            'created_by' => $this->user->id,
+        ]);
+
+        FlightGroupTransaction::create([
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => $booking->id,
+            'type' => 'debt',
+            'amount' => 1000,
+            'notes' => 'شراء تذكرة طيران بالأجل — حجز #FLT-DET-001',
+            'created_by' => $this->user->id,
+        ]);
+
+        FlightGroupTransaction::create([
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => null,
+            'type' => 'payment',
+            'amount' => 1000,
+            'notes' => 'سند صرف — دفع لمجموعة طيران: مجموعة اختبار',
+            'created_by' => $this->user->id,
+        ]);
+
+        FlightSystemTransaction::create([
+            'flight_system_id' => \App\Models\Flight\FlightSystem::create([
+                'name' => 'Other System',
+                'code' => 'oth',
+                'type' => 'gds',
+                'currency' => 'EGP',
+                'balance' => 5000,
+                'is_active' => true,
+                'created_by' => $this->user->id,
+            ])->id,
+            'flight_booking_id' => null,
+            'type' => 'credit',
+            'amount' => 500,
+            'balance_before' => 4500,
+            'balance_after' => 5000,
+            'description' => 'شحن رصيد نظام',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/reports/flights/detailed');
+
+        $response->assertOk();
+        $items = $response->json('data.data');
+        $this->assertGreaterThanOrEqual(1, count($items));
+
+        $groupItem = collect($items)->firstWhere('source_type', 'group');
+        $this->assertNotNull($groupItem);
+        $this->assertEquals('FLT-DET-001', $groupItem['booking_number']);
+        $this->assertEquals(1000.0, (float) $groupItem['debit']);
+        $this->assertEquals('حجز', $groupItem['status_ar']);
+        $this->assertStringContainsString('مجموعة اختبار', $groupItem['system_name']);
+
+        $paymentItem = collect($items)->first(fn (array $row) => ($row['source_type'] ?? '') === 'group' && ($row['status_ar'] ?? '') === 'سداد');
+        $this->assertNotNull($paymentItem);
+        $this->assertEquals('FLT-DET-001', $paymentItem['booking_number']);
+        $this->assertEquals(1000.0, (float) $paymentItem['credit']);
+
+        $groupRows = collect($items)->where('group_key', $groupItem['group_key'])->values();
+        $this->assertCount(2, $groupRows);
+        $this->assertEquals('حجز', $groupRows[0]['status_ar']);
+        $this->assertEquals('سداد', $groupRows[1]['status_ar']);
     }
 }

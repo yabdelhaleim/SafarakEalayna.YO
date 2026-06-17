@@ -16,7 +16,7 @@ class UpdateFawryTransactionRequest extends FormRequest
     {
         return [
             'client_name' => ['sometimes', 'required', 'string', 'max:255'],
-            'operation_type' => ['sometimes', 'required', 'string', 'max:50', Rule::exists('fawry_operation_types', 'code')],
+            'operation_type' => ['sometimes', 'required', 'string', 'max:50'],
             'client_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
             'fawry_price' => ['sometimes', 'required', 'numeric', 'gt:0'],
             'selling_price' => ['sometimes', 'required', 'numeric', 'gt:0'],

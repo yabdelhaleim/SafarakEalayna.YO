@@ -141,6 +141,7 @@ class TreasuryController extends Controller
     {
         $spreadsheet = $exportService->export();
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->setPreCalculateFormulas(false);
         $fileName = 'ميزان (1).xlsx';
 
         return response()->streamDownload(function() use ($writer) {

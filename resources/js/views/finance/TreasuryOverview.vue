@@ -313,7 +313,15 @@
 
       <!-- ==================== TAB 3: TRIAL BALANCE ==================== -->
       <template v-else-if="selectedCategory === 'trial_balance'">
-        <div class="space-y-8 animate-in fade-in duration-500">
+        <div v-if="loading && !trialBalance" class="flight-panel py-20 text-center text-text-muted">
+          <RefreshCw class="w-8 h-8 mx-auto mb-4 animate-spin text-gold" />
+          <p class="text-sm font-bold">جاري تحميل ميزان الحسابات...</p>
+        </div>
+        <div v-else-if="!trialBalance" class="flight-panel py-20 text-center text-text-muted">
+          <p class="text-sm font-bold">تعذر تحميل بيانات ميزان الحسابات</p>
+          <button type="button" class="btn-airline mt-4 px-6 py-2 text-xs" @click="fetchOverview">إعادة المحاولة</button>
+        </div>
+        <div v-else class="space-y-8 animate-in fade-in duration-500">
           
           <!-- Professional Print Header (Visible only on print) -->
           <div class="hidden print:block print:mb-8">
@@ -508,11 +516,11 @@
                   </div>
                   <button
                     type="submit"
-                    :disabled="updatingCapital"
+                    :disabled="submitting"
                     class="btn-airline px-6 py-3 text-xs font-black shadow-lg flex items-center gap-2"
                   >
-                    <span v-if="updatingCapital" class="w-3.5 h-3.5 border border-black/30 border-t-black animate-spin rounded-full"></span>
-                    {{ updatingCapital ? 'جاري الحفظ...' : 'تحديث رأس المال الافتتاحي' }}
+                    <span v-if="submitting" class="w-3.5 h-3.5 border border-black/30 border-t-black animate-spin rounded-full"></span>
+                    {{ submitting ? 'جاري الحفظ...' : 'تحديث رأس المال الافتتاحي' }}
                   </button>
                 </div>
               </form>
@@ -734,6 +742,7 @@
 import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import axios from 'axios';
+import { isRequestCanceled } from '@/utils/api';
 import {
   buildTransferApiPayload,
   canExecuteCrossCurrencyTransfer,
@@ -1112,6 +1121,7 @@ async function exportTrialBalanceExcel() {
       window.addToast('تم تحميل كشف ميزان الحسابات بنجاح', 'success');
     }
   } catch (err) {
+    if (isRequestCanceled(err)) return;
     console.error('Failed to export trial balance:', err);
     if (window.addToast) {
       window.addToast('فشل في تحميل كشف ميزان الحسابات', 'error');
@@ -1120,18 +1130,21 @@ async function exportTrialBalanceExcel() {
 }
 
 function statusBorderColor(status) {
+  if (!status) return 'border-white/10';
   if (status === 'متساوية') return 'border-emerald-500 bg-emerald-500/5';
   if (status === 'يوجد زيادة') return 'border-sky-500 bg-sky-500/5';
   return 'border-rose-500 bg-rose-500/5'; // يوجد عجز
 }
 
 function statusBadgeClass(status) {
+  if (!status) return 'bg-white/5 text-text-muted border-white/10';
   if (status === 'متساوية') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
   if (status === 'يوجد زيادة') return 'bg-sky-500/10 text-sky-400 border-sky-500/20';
   return 'bg-rose-500/10 text-rose-400 border-rose-500/20'; // يوجد عجز
 }
 
 function statusDotColor(status) {
+  if (!status) return 'bg-text-muted';
   if (status === 'متساوية') return 'bg-emerald-400';
   if (status === 'يوجد زيادة') return 'bg-sky-400';
   return 'bg-rose-400';

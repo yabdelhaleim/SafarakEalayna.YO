@@ -11,7 +11,9 @@ use App\Models\Bank;
 use App\Models\Bus\BusCompany;
 use App\Models\Customer;
 use App\Models\Flight\AirlineAccount;
+use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightSystem;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Fawry\FawryMachine;
@@ -1432,18 +1434,84 @@ class FinancialReportService
             });
         }
 
-        // 3. Union them and paginate
-        $unionQuery = $airlineQuery->unionAll($systemQuery);
+        // 3. Build flight group transaction query (bookings on credit via groups)
+        $groupQuery = DB::table('flight_group_transactions')
+            ->join('flight_groups', 'flight_group_transactions.flight_group_id', '=', 'flight_groups.id')
+            ->select(
+                'flight_group_transactions.id',
+                'flight_group_transactions.created_at',
+                DB::raw("CASE WHEN flight_group_transactions.type = 'debt' THEN 'debit' WHEN flight_group_transactions.type = 'payment' THEN 'credit' ELSE flight_group_transactions.type END as type"),
+                'flight_group_transactions.amount',
+                DB::raw('NULL as balance_before'),
+                DB::raw('NULL as balance_after'),
+                'flight_group_transactions.notes as description',
+                'flight_group_transactions.created_by',
+                'flight_group_transactions.flight_booking_id',
+                'flight_groups.flight_carrier_id',
+                DB::raw('NULL as flight_system_id'),
+                DB::raw("'group' as source_type")
+            );
+
+        if ($fromDate) {
+            $groupQuery->where('flight_group_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+        }
+        if ($toDate) {
+            $groupQuery->where('flight_group_transactions.created_at', '<=', $toDate . ' 23:59:59');
+        }
+
+        if ($bookingSystem) {
+            if (str_starts_with($bookingSystem, 'carrier_')) {
+                $carrierId = (int) str_replace('carrier_', '', $bookingSystem);
+                $groupQuery->where('flight_groups.flight_carrier_id', $carrierId);
+            } elseif (str_starts_with($bookingSystem, 'system_')) {
+                $systemId = (int) str_replace('system_', '', $bookingSystem);
+                $groupCarrierIds = DB::table('flight_carriers')
+                    ->where('flight_system_id', $systemId)
+                    ->pluck('id')
+                    ->toArray();
+                if (empty($groupCarrierIds)) {
+                    $groupQuery->whereRaw('1 = 0');
+                } else {
+                    $groupQuery->whereIn('flight_groups.flight_carrier_id', $groupCarrierIds);
+                }
+            }
+        }
+
+        if ($search) {
+            $matchingBookingIds = DB::table('flight_bookings')
+                ->leftJoin('customers', 'flight_bookings.customer_id', '=', 'customers.id')
+                ->where('flight_bookings.booking_number', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.pnr', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.origin', 'like', "%{$search}%")
+                ->orWhere('flight_bookings.destination', 'like', "%{$search}%")
+                ->orWhere('customers.full_name', 'like', "%{$search}%")
+                ->orWhere('customers.affiliation', 'like', "%{$search}%")
+                ->pluck('flight_bookings.id')
+                ->toArray();
+
+            $groupQuery->where(function ($q) use ($matchingBookingIds, $search) {
+                if (! empty($matchingBookingIds)) {
+                    $q->whereIn('flight_group_transactions.flight_booking_id', $matchingBookingIds)
+                        ->orWhere('flight_group_transactions.notes', 'like', "%{$search}%");
+                } else {
+                    $q->where('flight_group_transactions.notes', 'like', "%{$search}%");
+                }
+            });
+        }
+
+        // 4. Union all sources and paginate
+        $unionQuery = $airlineQuery->unionAll($systemQuery)->unionAll($groupQuery);
 
         $paginator = DB::table(DB::raw("({$unionQuery->toSql()}) as union_table"))
             ->mergeBindings($unionQuery)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
-        // 4. Retrieve original models with relations for the current page
+        // 5. Retrieve original models with relations for the current page
         $items = collect($paginator->items());
         $carrierTxIds = $items->where('source_type', 'carrier')->pluck('id')->toArray();
         $systemTxIds = $items->where('source_type', 'system')->pluck('id')->toArray();
+        $groupTxIds = $items->where('source_type', 'group')->pluck('id')->toArray();
 
         $carrierTxs = \App\Models\Flight\AirlineTransaction::with([
             'flightCarrier',
@@ -1459,16 +1527,32 @@ class FinancialReportService
             'createdBy'
         ])->whereIn('id', $systemTxIds)->get()->keyBy('id');
 
-        // 5. Map back and format
-        $formattedItems = $items->map(function ($item) use ($carrierTxs, $systemTxs) {
+        $groupTxs = FlightGroupTransaction::with([
+            'group.carrier',
+            'group.account',
+            'booking.customer',
+            'booking.employee',
+            'createdBy',
+        ])->whereIn('id', $groupTxIds)->get()->keyBy('id');
+
+        // 6. Map back and format
+        $formattedItems = $items->map(function ($item) use ($carrierTxs, $systemTxs, $groupTxs) {
             if ($item->source_type === 'carrier') {
                 $tx = $carrierTxs->get($item->id);
                 $booking = $tx ? $tx->flightBooking : null;
                 $systemName = $tx && $tx->flightCarrier ? $tx->flightCarrier->name : 'N/A';
-            } else {
+            } elseif ($item->source_type === 'system') {
                 $tx = $systemTxs->get($item->id);
                 $booking = $tx ? $tx->flightBooking : null;
                 $systemName = $tx && $tx->system ? $tx->system->name : 'N/A';
+            } else {
+                $tx = $groupTxs->get($item->id);
+                $booking = $tx ? $this->resolveGroupTransactionBooking($tx) : null;
+                $group = $tx ? $tx->group : null;
+                $carrierName = $group && $group->carrier ? $group->carrier->name : null;
+                $systemName = $group
+                    ? trim($group->name . ($carrierName ? " — {$carrierName}" : ''))
+                    : 'N/A';
             }
 
             if (!$tx) {
@@ -1497,30 +1581,47 @@ class FinancialReportService
             }
 
             // Debit/Credit (خصم / ايداع)
-            $debit = ($tx->type === 'debit') ? $tx->amount : 0;
-            $credit = ($tx->type === 'credit' || $tx->type === 'refund') ? $tx->amount : 0;
-
-            // Status Arabic Translation
-            $statusAr = 'شحن';
-            if ($tx->type === 'debit') {
-                $statusAr = 'حجز';
-            } elseif ($tx->type === 'refund') {
-                $statusAr = 'استرجاع';
+            if ($item->source_type === 'group') {
+                [$txType, $statusAr] = $this->mapGroupTransactionPresentation($tx, (bool) $booking);
+            } else {
+                $txType = $tx->type;
+                $statusAr = match ($txType) {
+                    'debit' => 'حجز',
+                    'refund' => 'استرجاع',
+                    'credit' => 'شحن',
+                    default => 'شحن',
+                };
             }
+            $debit = ($txType === 'debit') ? $tx->amount : 0;
+            $credit = ($txType === 'credit' || $txType === 'refund') ? $tx->amount : 0;
+
+            $balanceAfter = (float) ($tx->balance_after ?? 0);
+            if ($item->source_type === 'group' && $tx->group?->account) {
+                $balanceAfter = (float) $tx->group->account->balance;
+            }
+
+            $groupKey = $this->detailedFlightReportGroupKey(
+                $booking ? ($booking->booking_number ?: $booking->booking_reference) : null,
+                $booking ? $booking->pnr : null,
+                $systemName,
+                $item->source_type,
+                $tx->id
+            );
 
             return [
                 'id' => $tx->id,
                 'source_type' => $item->source_type,
+                'group_key' => $groupKey,
                 'created_at' => $tx->created_at->toDateTimeString(),
                 'system_name' => $systemName,
-                'type' => $tx->type,
+                'type' => $txType,
                 'status_ar' => $statusAr,
                 'amount' => (float) $tx->amount,
                 'debit' => (float) $debit,
                 'credit' => (float) $credit,
-                'balance_before' => (float) $tx->balance_before,
-                'balance_after' => (float) $tx->balance_after,
-                'description' => $tx->description,
+                'balance_before' => (float) ($tx->balance_before ?? 0),
+                'balance_after' => $balanceAfter,
+                'description' => $item->source_type === 'group' ? ($tx->notes ?? '') : $tx->description,
                 'booking_number' => $booking ? ($booking->booking_number ?: $booking->booking_reference) : null,
                 'pnr' => $booking ? $booking->pnr : null,
                 'route' => $route,
@@ -1528,9 +1629,19 @@ class FinancialReportService
                 'customer_name' => $customerName,
                 'customer_type' => $customerType,
                 'employee_name' => $booking && $booking->employee ? ($booking->employee->full_name ?: $booking->employee->name) : ($tx->createdBy ? $tx->createdBy->name : '-'),
-                'payment_system' => $booking ? ($booking->purchase_balance_source ?: 'المحفظة') : 'شحن رصيد',
+                'payment_system' => $booking
+                    ? match ((string) ($booking->purchase_balance_source ?: '')) {
+                        'group' => 'مجموعة طيران',
+                        'system' => 'نظام حجز',
+                        'carrier' => 'ناقل جوي',
+                        '' => 'المحفظة',
+                        default => (string) $booking->purchase_balance_source,
+                    }
+                    : ($item->source_type === 'group' ? 'مجموعة طيران' : 'شحن رصيد'),
             ];
         })->filter()->values();
+
+        $formattedItems = $this->sortAndGroupDetailedFlightReportItems($formattedItems);
 
         return [
             'data' => $formattedItems,
@@ -1539,6 +1650,116 @@ class FinancialReportService
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
         ];
+    }
+
+    /**
+     * ترتيب حركات التقرير: تجميع الحجز مع سداده، والحجز قبل السداد زمنياً.
+     */
+    private function sortAndGroupDetailedFlightReportItems($items)
+    {
+        return $items
+            ->groupBy(fn (array $item) => $item['group_key'])
+            ->sortByDesc(fn ($group) => $group->max(fn (array $item) => strtotime($item['created_at'])))
+            ->flatMap(function ($group) {
+                return $group
+                    ->sortBy([
+                        fn (array $item) => $this->detailedFlightReportMovementPriority($item),
+                        fn (array $item) => strtotime($item['created_at']),
+                    ])
+                    ->values();
+            })
+            ->values();
+    }
+
+    private function detailedFlightReportGroupKey(
+        ?string $bookingNumber,
+        ?string $pnr,
+        string $systemName,
+        string $sourceType,
+        int $transactionId
+    ): string {
+        if ($bookingNumber) {
+            return 'booking:' . $bookingNumber . '|' . $systemName;
+        }
+
+        if ($pnr) {
+            return 'pnr:' . $pnr . '|' . $systemName;
+        }
+
+        return 'tx:' . $sourceType . ':' . $transactionId;
+    }
+
+    private function detailedFlightReportMovementPriority(array $item): int
+    {
+        if (($item['type'] ?? '') === 'debit') {
+            return 1;
+        }
+
+        if (($item['type'] ?? '') === 'credit' && ($item['status_ar'] ?? '') === 'سداد') {
+            return 2;
+        }
+
+        if (($item['type'] ?? '') === 'credit') {
+            return 3;
+        }
+
+        if (($item['type'] ?? '') === 'refund') {
+            return 4;
+        }
+
+        return 9;
+    }
+
+    /**
+     * ربط حركة مجموعة طيران بالحجز — مباشرة أو عبر سداد دين مرتبط بنفس المبلغ.
+     */
+    private function resolveGroupTransactionBooking(FlightGroupTransaction $tx): ?FlightBooking
+    {
+        if ($tx->relationLoaded('booking') && $tx->booking) {
+            return $tx->booking;
+        }
+
+        if ($tx->flight_booking_id) {
+            return $tx->booking()->with(['customer', 'employee'])->first();
+        }
+
+        if ($tx->type !== 'payment') {
+            return null;
+        }
+
+        $relatedDebt = FlightGroupTransaction::query()
+            ->where('flight_group_id', $tx->flight_group_id)
+            ->where('type', 'debt')
+            ->whereNotNull('flight_booking_id')
+            ->where('created_at', '<=', $tx->created_at)
+            ->where('amount', $tx->amount)
+            ->orderByDesc('created_at')
+            ->with(['booking.customer', 'booking.employee'])
+            ->first();
+
+        return $relatedDebt?->booking;
+    }
+
+    /**
+     * @return array{0: string, 1: string} [txType, statusAr]
+     */
+    private function mapGroupTransactionPresentation(FlightGroupTransaction $tx, bool $hasBooking): array
+    {
+        if ($tx->type === 'debt') {
+            return $hasBooking || $tx->flight_booking_id
+                ? ['debit', 'حجز']
+                : ['debit', 'تحصيل'];
+        }
+
+        if ($tx->type === 'payment') {
+            if (str_contains((string) ($tx->notes ?? ''), 'إلغاء')) {
+                return ['refund', 'استرجاع'];
+            }
+
+            return ['credit', 'سداد'];
+        }
+
+        return [(string) $tx->type, 'شحن'];
     }
 }
 

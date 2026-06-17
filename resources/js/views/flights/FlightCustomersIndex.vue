@@ -1139,6 +1139,7 @@ import {
 } from 'lucide-vue-next';
 import { useDebounceFn } from '@vueuse/core';
 import axios from 'axios';
+import { isRequestCanceled } from '@/utils/api';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import { formatLedgerBalance } from '@/composables/useLedgerBalance';
 
@@ -1420,6 +1421,7 @@ const fetchStats = async () => {
     });
     stats.totalDebt = debtSum;
   } catch (error) {
+    if (isRequestCanceled(error)) return;
     console.error('Failed to load stats', error);
   }
 };

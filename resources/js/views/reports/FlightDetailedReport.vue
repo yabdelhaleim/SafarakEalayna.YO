@@ -162,14 +162,14 @@
       <!-- Table Content -->
       <template v-else>
         <div class="overflow-x-auto">
-          <table class="w-full border-collapse text-right text-xs sm:text-sm">
+          <table class="w-full border-collapse text-right text-xs sm:text-sm report-table">
             <thead>
               <tr class="bg-white/5 text-[10px] sm:text-xs text-text-muted uppercase tracking-widest border-b border-white/10">
-                <th class="px-3 sm:px-4 py-4 font-bold text-right">التاريخ</th>
+                <th class="px-3 sm:px-4 py-4 font-bold text-right w-[9rem]">التاريخ</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">نظام الحجز</th>
-                <th class="px-3 sm:px-4 py-4 font-bold text-right">الحالة</th>
-                <th class="px-3 sm:px-4 py-4 font-bold text-right">خصم</th>
-                <th class="px-3 sm:px-4 py-4 font-bold text-right">إيداع</th>
+                <th class="px-3 sm:px-4 py-4 font-bold text-right w-[5.5rem]">الحالة</th>
+                <th class="px-3 sm:px-4 py-4 font-bold text-right w-[5.5rem]">خصم</th>
+                <th class="px-3 sm:px-4 py-4 font-bold text-right w-[5.5rem]">إيداع</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">رقم الحجز / PNR</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">الوجهة</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">تاريخ السفر</th>
@@ -177,98 +177,162 @@
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">نوع العميل</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">الموظف</th>
                 <th class="px-3 sm:px-4 py-4 font-bold text-right">نظام الدفع</th>
-                <th class="px-3 sm:px-4 py-4 font-bold text-right">رصيد المحفظة</th>
+                <th class="px-3 sm:px-4 py-4 font-bold text-right w-[6rem]">رصيد المحفظة</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-white/5">
-              <tr 
-                v-for="item in reportItems" 
-                :key="`${item.source_type}_${item.id}`"
-                class="hover:bg-white/[0.02] transition-colors group"
+
+            <template v-if="groupedReportItems.length > 0">
+              <tbody
+                v-for="group in groupedReportItems"
+                :key="group.key"
+                class="report-booking-group"
+                :class="group.isMulti ? 'report-booking-group--linked' : ''"
               >
-                <!-- Date -->
-                <td class="px-3 sm:px-4 py-4 whitespace-nowrap text-white/70">
-                  {{ formatDate(item.created_at) }}
-                </td>
+                <tr
+                  v-if="group.isMulti"
+                  class="report-group-banner"
+                >
+                  <td colspan="13" class="px-4 py-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="report-group-pill">عملية مرتبطة</span>
+                        <span class="font-bold text-white truncate">
+                          {{ group.primary.booking_number || group.primary.pnr || 'حركة مالية' }}
+                        </span>
+                        <span v-if="group.primary.route && group.primary.route !== '-'" class="text-white/50 text-[11px]">
+                          {{ group.primary.route }}
+                        </span>
+                      </div>
+                      <span class="text-[11px] font-mono text-gold/90">
+                        {{ groupTotalsLabel(group) }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
 
-                <!-- Booking System -->
-                <td class="px-3 sm:px-4 py-4 font-bold text-white group-hover:text-gold transition-colors">
-                  {{ item.system_name }}
-                </td>
+                <tr
+                  v-for="(item, index) in group.items"
+                  :key="`${item.source_type}_${item.id}`"
+                  class="report-movement-row hover:bg-white/[0.02] transition-colors"
+                  :class="{
+                    'report-movement-row--first': index === 0,
+                    'report-movement-row--last': index === group.items.length - 1,
+                    'report-movement-row--middle': group.isMulti && index > 0 && index < group.items.length - 1,
+                  }"
+                >
+                  <td class="px-3 sm:px-4 py-3 whitespace-nowrap text-white/70 align-top">
+                    <div class="flex items-start gap-2">
+                      <span
+                        v-if="group.isMulti"
+                        class="report-step-dot"
+                        :class="getStatusDotClass(item.type, item.status_ar)"
+                      />
+                      <span>{{ formatDate(item.created_at) }}</span>
+                    </div>
+                  </td>
 
-                <!-- Status -->
-                <td class="px-3 sm:px-4 py-4">
-                  <span 
-                    class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                    :class="getStatusClass(item.type)"
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 font-bold text-white align-top bg-white/[0.015]"
                   >
-                    {{ item.status_ar }}
-                  </span>
-                </td>
+                    {{ group.primary.system_name }}
+                  </td>
 
-                <!-- Debit -->
-                <td class="px-3 sm:px-4 py-4 font-mono font-bold" :class="item.debit > 0 ? 'text-rose-400' : 'text-white/30'">
-                  {{ item.debit > 0 ? formatNumber(item.debit) : '—' }}
-                </td>
+                  <td class="px-3 sm:px-4 py-3 align-top">
+                    <span
+                      class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                      :class="getStatusClass(item.type)"
+                    >
+                      {{ item.status_ar }}
+                    </span>
+                  </td>
 
-                <!-- Credit -->
-                <td class="px-3 sm:px-4 py-4 font-mono font-bold" :class="item.credit > 0 ? 'text-success' : 'text-white/30'">
-                  {{ item.credit > 0 ? formatNumber(item.credit) : '—' }}
-                </td>
+                  <td class="px-3 sm:px-4 py-3 font-mono font-bold align-top" :class="item.debit > 0 ? 'text-rose-400' : 'text-white/30'">
+                    {{ item.debit > 0 ? formatNumber(item.debit) : '—' }}
+                  </td>
 
-                <!-- PNR / Booking Number -->
-                <td class="px-3 sm:px-4 py-4 font-mono">
-                  <div class="flex flex-col">
-                    <span class="text-white font-bold">{{ item.pnr || '—' }}</span>
-                    <span v-if="item.booking_number" class="text-[10px] text-white/40">{{ item.booking_number }}</span>
-                  </div>
-                </td>
+                  <td class="px-3 sm:px-4 py-3 font-mono font-bold align-top" :class="item.credit > 0 ? 'text-success' : 'text-white/30'">
+                    {{ item.credit > 0 ? formatNumber(item.credit) : '—' }}
+                  </td>
 
-                <!-- Route -->
-                <td class="px-3 sm:px-4 py-4 text-white/80">
-                  {{ item.route }}
-                </td>
-
-                <!-- Departure Date -->
-                <td class="px-3 sm:px-4 py-4 text-white/70">
-                  {{ item.departure_date }}
-                </td>
-
-                <!-- Customer Name -->
-                <td class="px-3 sm:px-4 py-4 text-white font-semibold">
-                  {{ item.customer_name }}
-                </td>
-
-                <!-- Customer Type -->
-                <td class="px-3 sm:px-4 py-4">
-                  <span 
-                    v-if="item.customer_type !== '-'"
-                    class="px-2 py-0.5 rounded text-[10px] font-semibold border"
-                    :class="item.customer_type === 'شركات' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'"
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 font-mono align-top bg-white/[0.015]"
                   >
-                    {{ item.customer_type }}
-                  </span>
-                  <span v-else class="text-white/30">—</span>
-                </td>
+                    <div class="flex flex-col gap-1">
+                      <span class="text-white font-bold">{{ group.primary.pnr || '—' }}</span>
+                      <span v-if="group.primary.booking_number" class="text-[10px] text-gold/80">
+                        {{ group.primary.booking_number }}
+                      </span>
+                    </div>
+                  </td>
 
-                <!-- Employee -->
-                <td class="px-3 sm:px-4 py-4 text-white/70">
-                  {{ item.employee_name }}
-                </td>
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 text-white/80 align-top bg-white/[0.015]"
+                  >
+                    {{ group.primary.route }}
+                  </td>
 
-                <!-- Payment System -->
-                <td class="px-3 sm:px-4 py-4 text-white/70">
-                  {{ item.payment_system }}
-                </td>
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 text-white/70 align-top bg-white/[0.015]"
+                  >
+                    {{ group.primary.departure_date }}
+                  </td>
 
-                <!-- Wallet Balance -->
-                <td class="px-3 sm:px-4 py-4 font-mono font-bold text-cyan-400">
-                  {{ formatNumber(item.balance_after) }}
-                </td>
-              </tr>
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 text-white font-semibold align-top bg-white/[0.015]"
+                  >
+                    {{ group.primary.customer_name }}
+                  </td>
 
-              <!-- Empty State -->
-              <tr v-if="reportItems.length === 0">
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 align-top bg-white/[0.015]"
+                  >
+                    <span
+                      v-if="group.primary.customer_type !== '-'"
+                      class="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                      :class="group.primary.customer_type === 'شركات' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'"
+                    >
+                      {{ group.primary.customer_type }}
+                    </span>
+                    <span v-else class="text-white/30">—</span>
+                  </td>
+
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 text-white/70 align-top bg-white/[0.015]"
+                  >
+                    {{ group.primary.employee_name }}
+                  </td>
+
+                  <td
+                    v-if="index === 0"
+                    :rowspan="group.items.length"
+                    class="px-3 sm:px-4 py-3 text-white/70 align-top bg-white/[0.015]"
+                  >
+                    {{ group.primary.payment_system }}
+                  </td>
+
+                  <td class="px-3 sm:px-4 py-3 font-mono font-bold text-cyan-400 align-top">
+                    {{ formatNumber(item.balance_after) }}
+                  </td>
+                </tr>
+              </tbody>
+            </template>
+
+            <tbody v-else>
+              <tr>
                 <td colspan="13" class="px-6 py-20 text-center">
                   <div class="flex flex-col items-center justify-center gap-4">
                     <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-white/30">
@@ -324,7 +388,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 import {
@@ -362,6 +426,77 @@ const pagination = ref({
 
 let fetchController = null;
 let searchTimeout = null;
+
+const MOVEMENT_ORDER = { debit: 1, credit: 2, refund: 3 };
+
+const detailedFlightGroupKey = (item) => {
+  if (item.group_key) {
+    return item.group_key;
+  }
+  if (item.booking_number) {
+    return `booking:${item.booking_number}|${item.system_name || ''}`;
+  }
+  if (item.pnr) {
+    return `pnr:${item.pnr}|${item.system_name || ''}`;
+  }
+  return `tx:${item.source_type}_${item.id}`;
+};
+
+const movementSortKey = (item) => {
+  if (item.type === 'debit') return 1;
+  if (item.type === 'credit' && item.status_ar === 'سداد') return 2;
+  if (item.type === 'credit') return 3;
+  if (item.type === 'refund') return 4;
+  return 9;
+};
+
+const groupedReportItems = computed(() => {
+  const map = new Map();
+
+  for (const item of reportItems.value) {
+    const key = detailedFlightGroupKey(item);
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key).push(item);
+  }
+
+  return Array.from(map.entries())
+    .map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => {
+        const priorityDiff = movementSortKey(a) - movementSortKey(b);
+        if (priorityDiff !== 0) return priorityDiff;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      const latest = Math.max(...sorted.map((row) => new Date(row.created_at).getTime()));
+      const primary = sorted[0];
+      const totalDebit = sorted.reduce((sum, row) => sum + Number(row.debit || 0), 0);
+      const totalCredit = sorted.reduce((sum, row) => sum + Number(row.credit || 0), 0);
+
+      return {
+        key,
+        items: sorted,
+        primary,
+        isMulti: sorted.length > 1,
+        latest,
+        totalDebit,
+        totalCredit,
+      };
+    })
+    .sort((a, b) => b.latest - a.latest);
+});
+
+const groupTotalsLabel = (group) => {
+  const parts = [];
+  if (group.totalDebit > 0) {
+    parts.push(`خصم ${formatNumber(group.totalDebit)}`);
+  }
+  if (group.totalCredit > 0) {
+    parts.push(`إيداع ${formatNumber(group.totalCredit)}`);
+  }
+  return parts.join(' · ');
+};
 
 // Debounced Search
 const debouncedSearch = () => {
@@ -502,6 +637,13 @@ const getStatusClass = (type) => {
   }
 };
 
+const getStatusDotClass = (type, statusAr) => {
+  if (type === 'debit') return 'report-step-dot--debit';
+  if (type === 'refund') return 'report-step-dot--refund';
+  if (statusAr === 'سداد') return 'report-step-dot--payment';
+  return 'report-step-dot--credit';
+};
+
 // Dynamic labels for print page
 const getSystemLabel = (val) => {
   if (!val) return 'جميع الأنظمة والناقلين';
@@ -546,6 +688,64 @@ onBeforeUnmount(() => {
 }
 .font-mono {
   font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+
+.report-booking-group {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.report-booking-group--linked {
+  background: linear-gradient(90deg, rgba(212, 168, 67, 0.06) 0%, rgba(255, 255, 255, 0.01) 28%);
+  box-shadow: inset 3px 0 0 rgba(212, 168, 67, 0.55);
+}
+
+.report-group-banner {
+  background: rgba(212, 168, 67, 0.08);
+  border-bottom: 1px dashed rgba(212, 168, 67, 0.25);
+}
+
+.report-group-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #d4a843;
+  background: rgba(212, 168, 67, 0.12);
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  white-space: nowrap;
+}
+
+.report-movement-row--middle td,
+.report-movement-row--last td {
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.report-step-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  margin-top: 0.35rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
+}
+
+.report-step-dot--debit {
+  background: #fb7185;
+}
+
+.report-step-dot--payment {
+  background: #34d399;
+}
+
+.report-step-dot--credit {
+  background: #60a5fa;
+}
+
+.report-step-dot--refund {
+  background: #a78bfa;
 }
 </style>
 

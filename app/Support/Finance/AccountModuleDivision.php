@@ -36,7 +36,17 @@ final class AccountModuleDivision
             ->where('name', 'not like', '%إقفال%')
             ->where('name', 'not like', '%(نظام)%')
             ->where('name', 'not like', '%ذممة%')
-            ->where('name', 'not like', '%sad%');
+            ->where('name', 'not like', '%sad%')
+            ->where('name', 'not like', '%رصيد مسبق%');
+
+        $prepaidNames = array_values(array_filter(
+            config('accounting.clearing.prepaid', []),
+            fn ($name) => is_string($name) && $name !== ''
+        ));
+
+        if ($prepaidNames !== []) {
+            $query->whereNotIn('name', $prepaidNames);
+        }
     }
 
     public static function resolveModuleTypeKey(?string $moduleType, ?string $module = null): string

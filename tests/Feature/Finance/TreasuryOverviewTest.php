@@ -127,6 +127,37 @@ class TreasuryOverviewTest extends TestCase
         $this->assertSame(0, count($response->json('data.unified_by_category.office')));
     }
 
+    public function test_treasury_overview_excludes_prepaid_gl_accounts(): void
+    {
+        Account::query()->create([
+            'name' => config('accounting.clearing.prepaid.flight_system'),
+            'type' => AccountType::Cashbox,
+            'balance' => 0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+        ]);
+
+        Account::query()->create([
+            'name' => 'بنك طيران فعلي',
+            'type' => AccountType::Bank,
+            'balance' => 750,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/treasuries/get-overview');
+
+        $response->assertOk();
+        $this->assertSame(750.0, (float) $response->json('data.stats.by_category.tourism.total_liquidity'));
+        $this->assertSame(1, (int) $response->json('data.stats.by_category.tourism.accounts_count'));
+        $this->assertSame(0, (int) $response->json('data.stats.by_category.office.accounts_count'));
+        $this->assertArrayNotHasKey('office', $response->json('data.modules'));
+    }
+
     public function test_get_module_accounts_resolves_visa_aliases(): void
     {
         $account = Account::query()->create([

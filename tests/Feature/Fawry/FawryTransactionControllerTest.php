@@ -208,6 +208,33 @@ class FawryTransactionControllerTest extends TestCase
         ]);
     }
 
+    public function test_can_create_fawry_transaction_with_manual_operation_type(): void
+    {
+        $data = [
+            'client_name' => 'عميل تجريبي',
+            'operation_type' => 'دفع فاتورة كهرباء',
+            'client_amount' => 100.00,
+            'fawry_price' => 95.00,
+            'selling_price' => 100.00,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 100.00,
+            'account_id' => $this->account->id,
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/fawry/transactions', $data);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.operation_type', 'دفع فاتورة كهرباء')
+            ->assertJsonPath('data.operation_type_label', 'دفع فاتورة كهرباء');
+
+        $this->assertDatabaseHas('fawry_transactions', [
+            'client_name' => 'عميل تجريبي',
+            'operation_type' => 'دفع فاتورة كهرباء',
+        ]);
+    }
+
     public function test_create_transaction_creates_accounting_entries()
     {
         $data = [
@@ -423,16 +450,16 @@ class FawryTransactionControllerTest extends TestCase
     public function test_validation_on_create_transaction()
     {
         $data = [
-            'client_name' => '', // Invalid: required
-            'operation_type' => 'invalid_type', // Invalid: must exist
-            'selling_price' => 'not_a_number', // Invalid: must be numeric
+            'client_name' => '',
+            'operation_type' => '',
+            'selling_price' => 'not_a_number',
         ];
 
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/fawry/transactions', $data);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['client_name', 'selling_price']);
+            ->assertJsonValidationErrors(['client_name', 'operation_type', 'selling_price']);
     }
 
     public function test_profit_is_calculated_automatically_on_create()

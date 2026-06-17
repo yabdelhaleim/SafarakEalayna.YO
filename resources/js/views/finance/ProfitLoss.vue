@@ -316,7 +316,8 @@ import {
   TrendingDown,
   Scale,
   Printer,
-  FileText
+  FileText,
+  Coins
 } from 'lucide-vue-next';
 import axios from 'axios';
 import { useAsyncState } from '@/composables/useAsyncState';

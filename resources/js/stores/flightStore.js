@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { isRequestCanceled } from '@/utils/api';
 
 const ensureArray = (val) => {
   if (!val) return [];
@@ -181,6 +182,7 @@ export const useFlightStore = defineStore('flight', {
           perPage: rawData?.pagination?.per_page || response.data?.per_page || 15
         };
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch bookings', error);
         this.errors = { fetch: 'حدث خطأ أثناء تحميل الحجوزات، حاول مرة أخرى.' };
         this.bookings = [];
@@ -381,6 +383,7 @@ export const useFlightStore = defineStore('flight', {
         const mappedBooking = this.mapBooking(rawData);
         this.currentBooking = mappedBooking;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         if (import.meta.env.DEV) {
           console.error('Failed to fetch booking', error);
         }
@@ -417,6 +420,7 @@ export const useFlightStore = defineStore('flight', {
         }
         return bookingId ? { ...newBooking, id: bookingId } : newBooking;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = error.response?.data?.errors || { message: 'حدث خطأ، حاول مرة أخرى' };
         throw error;
       } finally {
@@ -463,6 +467,7 @@ export const useFlightStore = defineStore('flight', {
         }
         return updatedBooking;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = error.response?.data?.errors || { message: 'حدث خطأ، حاول مرة أخرى' };
         throw error;
       } finally {
@@ -495,6 +500,7 @@ export const useFlightStore = defineStore('flight', {
           this.bookings = this.bookings.filter(b => b.id !== id);
         }
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = { delete: 'حدث خطأ أثناء الحذف، حاول مرة أخرى' };
         throw error;
       } finally {
@@ -523,6 +529,7 @@ export const useFlightStore = defineStore('flight', {
         }
         return raw;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = error.response?.data?.errors || {
           message: error.response?.data?.message || 'فشل تنفيذ الاسترداد',
         };
@@ -552,6 +559,7 @@ export const useFlightStore = defineStore('flight', {
           latestTransactions: a.latest_transactions || [],
         }));
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         this.errors = { airlineAccounts: 'حدث خطأ أثناء تحميل حسابات شركات الطيران' };
         console.error('Failed to fetch airline accounts', error);
         this.airlineAccounts = [];
@@ -573,6 +581,7 @@ export const useFlightStore = defineStore('flight', {
         this.addToast('تم شحن الحساب بنجاح');
         return response.data?.data || response.data;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         const msg = error.response?.data?.message || 'حدث خطأ أثناء شحن الحساب';
         this.errors = { addCredit: msg };
         throw error;
@@ -598,6 +607,7 @@ export const useFlightStore = defineStore('flight', {
         this.addToast('تم إنشاء حساب شركة الطيران بنجاح');
         return response.data?.data || response.data;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         const msg =
           error.response?.data?.message ||
           (error.response?.data?.errors && Object.values(error.response.data.errors).flat().join(' ')) ||
@@ -625,6 +635,7 @@ export const useFlightStore = defineStore('flight', {
         this.addToast('تم تحديث الحساب بنجاح');
         return response.data?.data || response.data;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         const msg =
           error.response?.data?.message ||
           (error.response?.data?.errors && Object.values(error.response.data.errors).flat().join(' ')) ||
@@ -643,6 +654,7 @@ export const useFlightStore = defineStore('flight', {
         await axios.delete(`/api/v1/flight/airline-accounts/${id}`);
         this.addToast('تم حذف الحساب بنجاح');
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         const msg = error.response?.data?.message || 'فشل حذف الحساب';
         this.errors = { airlineAccountDelete: msg };
         throw error;
@@ -660,6 +672,7 @@ export const useFlightStore = defineStore('flight', {
         this.customers.push(newCustomer);
         return newCustomer;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = error.response?.data?.errors || { customer: 'حدث خطأ، حاول مرة أخرى' };
         throw error;
       }
@@ -676,6 +689,7 @@ export const useFlightStore = defineStore('flight', {
         }
         return updated;
       } catch (error) {
+        if (isRequestCanceled(error)) throw error;
         this.errors = error.response?.data?.errors || { customer: 'حدث خطأ، حاول مرة أخرى' };
         throw error;
       }
@@ -810,6 +824,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/aviation/next-number');
         return response.data.number;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to generate booking number, using client-side fallback', error);
         const year = new Date().getFullYear();
         const sequence = Math.floor(1000 + Math.random() * 9000);
@@ -823,6 +838,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/system-types', { params });
         this.systemTypes = response.data.data || response.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch system types', error);
         this.errors.systemTypes = 'فشل تحميل أنظمة الحجز';
       } finally {
@@ -836,6 +852,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/carriers', { params });
         this.carriers = response.data.data || response.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch carriers', error);
         this.errors.carriers = 'فشل تحميل شركات الطيران';
       } finally {
@@ -850,6 +867,7 @@ export const useFlightStore = defineStore('flight', {
         const d = response.data?.data;
         this.customers = d?.items || (Array.isArray(d) ? d : []) || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch customers', error);
         this.errors.customers = 'فشل تحميل العملاء';
       } finally {
@@ -869,6 +887,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/settings/trip-types');
         this.tripTypes = response.data?.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch trip types', error);
         this.errors.tripTypes = 'فشل تحميل أنواع الرحلات';
         this.tripTypes = [];
@@ -883,6 +902,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/settings/currencies');
         this.currencies = response.data?.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch currencies', error);
         this.errors.currencies = 'فشل تحميل العملات';
         this.currencies = [];
@@ -901,6 +921,7 @@ export const useFlightStore = defineStore('flight', {
         this.systemTypeEnumOptions = d.system_types || [];
         this.passengerTypes = d.passenger_types || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch flight booking reference', error);
         this.bookingStatuses = [];
         this.paymentFilterStatuses = [];
@@ -917,6 +938,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/systems', { params });
         this.systems = response.data?.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch flight systems', error);
         this.errors.systems = 'فشل تحميل أنظمة الطيران';
       } finally {
@@ -931,6 +953,7 @@ export const useFlightStore = defineStore('flight', {
         this.treasuryOverview = response.data?.data ?? null;
         return this.treasuryOverview;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch flight treasury overview', error);
         this.treasuryOverview = null;
         return null;
@@ -945,6 +968,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/dashboard');
         return response.data?.data ?? null;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch flight dashboard', error);
         return null;
       } finally {
@@ -1007,6 +1031,7 @@ export const useFlightStore = defineStore('flight', {
         this.groups = response.data?.data || [];
         return this.groups;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch groups', error);
         this.errors.groups = 'فشل تحميل المجموعات';
         this.groups = [];
@@ -1023,6 +1048,7 @@ export const useFlightStore = defineStore('flight', {
         this.groups = response.data?.data || [];
         return this.groups;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch groups', error);
         this.errors.groups = 'فشل تحميل المجموعات';
         this.groups = [];
@@ -1038,6 +1064,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/airports', { params });
         this.airports = response.data?.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch airports', error);
         this.errors.airports = 'فشل تحميل المطارات';
       } finally {
@@ -1052,6 +1079,7 @@ export const useFlightStore = defineStore('flight', {
         const response = await axios.get('/api/v1/flight/airports/search', { params });
         return response.data?.data || [];
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to search airports', error);
         return [];
       }
@@ -1063,6 +1091,7 @@ export const useFlightStore = defineStore('flight', {
         this.popularAirports = response.data?.data || [];
         return this.popularAirports;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch popular airports', error);
         return [];
       }
@@ -1077,6 +1106,7 @@ export const useFlightStore = defineStore('flight', {
         this.carriers = response.data?.data || [];
         return this.carriers;
       } catch (error) {
+        if (isRequestCanceled(error)) return;
         console.error('Failed to fetch carriers by system', error);
         this.errors.carriers = 'فشل تحميل شركات الطيران';
         this.carriers = [];

@@ -143,7 +143,7 @@ class TrialBalanceExportService
         // Current Capital Row (Formula)
         $sheet->setCellValue('A11', 'رأس المال الحالي (الفعلي)');
         $sheet->setCellValue('B11', '=(B7+B8+B9)-B10');
-        $sheet->setCellValue('C11', '=(أرصدة + سيولة + مستحق لنا) - مستحق علينا');
+        $sheet->setCellValue('C11', '(أرصدة + سيولة + مستحق لنا) - مستحق علينا');
         $sheet->getStyle('A11:D11')->getFont()->setBold(true)->setSize(11);
         $sheet->getStyle('A11:D11')->applyFromArray([
             'fill' => [
@@ -171,14 +171,14 @@ class TrialBalanceExportService
 
         $sheet->setCellValue('A16', 'رأس المال المستهدف (المفترض)');
         $sheet->setCellValue('B16', '=B14+B15');
-        $sheet->setCellValue('C16', '=الأساسي + الأرباح');
+        $sheet->setCellValue('C16', 'الأساسي + الأرباح');
         $sheet->getStyle('A16:C16')->getFont()->setBold(true);
         $sheet->getStyle('B16')->getNumberFormat()->setFormatCode('#,##0.00');
 
         // Required IF logical statement to compare Current Capital with Expected Capital
         $sheet->setCellValue('A17', 'حالة توازن الحسابات');
         $sheet->setCellValue('B17', '=IF(ROUND(B11-B16,2)=0,"متساوية",IF(B11-B16>0,"يوجد زيادة","يوجد عجز"))');
-        $sheet->setCellValue('C17', '=IF(الفعلي - المفترض = 0, "متساوية", ...)');
+        $sheet->setCellValue('C17', 'إذا كان الفعلي − المفترض = 0 → متساوية، وإلا زيادة أو عجز');
         $sheet->setCellValue('D17', '=B11-B16'); // الفرق بالأرقام
         $sheet->getStyle('A17:D17')->getFont()->setBold(true)->setSize(12);
         

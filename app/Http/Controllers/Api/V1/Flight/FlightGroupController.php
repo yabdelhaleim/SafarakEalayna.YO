@@ -148,10 +148,23 @@ class FlightGroupController extends Controller
                     return ApiResponse::error('لا يوجد رصيد مستحق على هذه المجموعة.', null, 422);
                 }
 
+                $linkedBookingId = null;
+                if (! $isReceiving) {
+                    $matchingDebts = $group->groupTransactions()
+                        ->where('type', 'debt')
+                        ->whereNotNull('flight_booking_id')
+                        ->where('amount', $request->amount)
+                        ->orderByDesc('created_at')
+                        ->get();
+                    if ($matchingDebts->count() === 1) {
+                        $linkedBookingId = $matchingDebts->first()->flight_booking_id;
+                    }
+                }
+
                 // 1. Create B2B group transaction record
                 $transaction = FlightGroupTransaction::create([
                     'flight_group_id' => $group->id,
-                    'flight_booking_id' => null,
+                    'flight_booking_id' => $linkedBookingId,
                     'type' => $isReceiving ? 'debt' : 'payment',
                     'amount' => $request->amount,
                     'notes' => $request->notes ?? ($isReceiving ? 'تحصيل دفعة من المجموعة' : 'تسديد دفعة للمجموعة'),

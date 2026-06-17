@@ -17,7 +17,7 @@ class StoreFawryTransactionRequest extends FormRequest
         return [
             'client_id' => ['nullable', 'exists:customers,id'],
             'client_name' => ['required_without:client_id', 'nullable', 'string', 'max:255'],
-            'operation_type' => ['required', 'string', 'max:50', Rule::exists('fawry_operation_types', 'code')],
+            'operation_type' => ['required', 'string', 'max:50'],
             'currency_id' => ['nullable', 'exists:currencies,id'],
             'client_amount' => ['required', 'numeric', 'min:0'],
             'fawry_price' => ['required', 'numeric', 'gt:0'],

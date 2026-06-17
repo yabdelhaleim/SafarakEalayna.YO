@@ -1,5 +1,8 @@
 import axios from 'axios';
+import { isRequestCanceled } from './utils/api.js';
+
 window.axios = axios;
+window.isRequestCanceled = isRequestCanceled;
 
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 axios.defaults.headers.common['Accept'] = 'application/json';
@@ -144,8 +147,8 @@ axios.interceptors.response.use(
             activeRequests = activeRequests.filter(c => c !== error.config.cancelTokenTracker);
         }
         
-        // Check if the request was cancelled
-        if (axios.isCancel(error)) {
+        // Check if the request was cancelled (AbortController / legacy cancel token)
+        if (isRequestCanceled(error)) {
             return Promise.reject(error);
         }
 

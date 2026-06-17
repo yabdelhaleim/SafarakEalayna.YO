@@ -43,6 +43,7 @@ final class AccountFormSchema
                 ->placeholder(match ($fixedType) {
                     AccountType::Bank => 'مثال: البنك الأهلي — جنيه، بنك مصر — دولار',
                     AccountType::Wallet => 'مثال: فودافون كاش، محفظة أورانج، محفظة إلكترونية — USD',
+                    AccountType::Expense => 'مثال: إيجار مكتب، رواتب، فواتير كهرباء، مصروفات تشغيل',
                     default => 'مثال: بنك CIB — الجنيه، خزينة الفرع الرئيسي',
                 }),
         ];
@@ -117,7 +118,8 @@ final class AccountFormSchema
         $definitionFields[] = Toggle::make('is_module_vault')
             ->label('خزنة الموديول الرسمية')
             ->helperText('فعّلها إذا كانت هذه هي الخزنة الأساسية التي يستلم منها هذا القسم أمواله.')
-            ->default(false);
+            ->default(false)
+            ->visible($fixedType !== AccountType::Expense);
 
         $isWalletContext = function ($get) use ($fixedType): bool {
             if ($fixedType === AccountType::Wallet) {
@@ -154,11 +156,13 @@ final class AccountFormSchema
                                 Section::make(match ($fixedType) {
                                     AccountType::Bank => 'بيانات الحساب البنكي',
                                     AccountType::Wallet => 'بيانات المحفظة الإلكترونية',
+                                    AccountType::Expense => 'بيانات بند المصروف',
                                     default => 'الاسم والنوع',
                                 })
                                     ->description(match ($fixedType) {
                                         AccountType::Bank => 'يُستخدم في واجهة Vue لاختيار الحساب البنكي الذي تدخل إليه أموال التذاكر والتحصيل.',
                                         AccountType::Wallet => 'أضف أكثر من محفظة؛ في التشغيل تختار أي محفظة تُسجَّل بها أموال التذاكر.',
+                                        AccountType::Expense => 'يظهر في شاشة المصروفات كتصنيف محاسبي عند تسجيل مصروف تشغيلي من الخزينة.',
                                         default => 'اختر نوعًا واضحًا: بنك، خزينة، محفظة… يظهر في التقارير والقيود.',
                                     })
                                     ->schema($definitionFields)
@@ -219,6 +223,7 @@ final class AccountFormSchema
                                             ->placeholder(match ($fixedType) {
                                                 AccountType::Bank => 'رقم IBAN، SWIFT، فرع البنك، جهة الاتصال…',
                                                 AccountType::Wallet => 'رقم المحفظة، مزود الخدمة، ملاحظات التحصيل…',
+                                                AccountType::Expense => 'تفاصيل إضافية عن البند، مركز التكلفة، ملاحظات المحاسبة…',
                                                 default => 'رقم IBAN، فرع البنك، جهة الاتصال…',
                                             }),
                                     ]),

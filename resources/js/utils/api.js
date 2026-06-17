@@ -1,5 +1,11 @@
 import axios from 'axios';
 
+export function isRequestCanceled(error) {
+    return axios.isCancel?.(error)
+        || error?.code === 'ERR_CANCELED'
+        || error?.name === 'CanceledError';
+}
+
 const api = axios.create();
 
 api.interceptors.request.use((config) => {
