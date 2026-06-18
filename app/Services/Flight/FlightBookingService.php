@@ -324,7 +324,14 @@ class FlightBookingService
                     );
                 }
 
-                if ($purchaseBalanceSource === 'group' && ! empty($data['flight_group_id']) && $purchasePriceEGP > 0) {
+                if ($purchaseBalanceSource === 'group' && $purchasePriceEGP > 0) {
+                    if (empty($data['flight_group_id'])) {
+                        // يمنع تسجيل الإيراد بدون COGS — يؤدي لتضخيم صافي الربح
+                        throw new \Exception(
+                            "مصدر التكلفة '{$booking->booking_number}' هو 'group' لكن لم يُحدَّد flight_group_id. ".
+                            'يجب اختيار مجموعة طيران أو تغيير مصدر التكلفة إلى system/carrier.'
+                        );
+                    }
                     $this->recordPurchaseFromGroup(
                         $booking,
                         (int) $data['flight_group_id'],
