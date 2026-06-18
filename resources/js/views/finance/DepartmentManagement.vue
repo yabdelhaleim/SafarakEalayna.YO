@@ -107,7 +107,8 @@
                 <tr>
                   <th>الموديول</th>
                   <th>إجمالي الإيرادات</th>
-                  <th>إجمالي المصروفات</th>
+                  <th>تكلفة الحجوزات</th>
+                  <th>مصروفات تشغيلية</th>
                   <th>صافي الربح</th>
                   <th>معدل الأداء</th>
                 </tr>
@@ -121,6 +122,7 @@
                     </div>
                   </td>
                   <td class="font-mono text-success font-bold">+{{ formatCurrency(m.income) }}</td>
+                  <td class="font-mono text-amber-300 font-bold">-{{ formatCurrency(m.cogs || 0) }}</td>
                   <td class="font-mono text-error font-bold">-{{ formatCurrency(m.expense) }}</td>
                   <td>
                     <span :class="['font-mono font-black', m.profit >= 0 ? 'text-success' : 'text-error']">
@@ -138,7 +140,7 @@
                   </td>
                 </tr>
                 <tr v-if="!moduleBreakdown.length">
-                  <td colspan="5" class="empty-row">لا تتوفر بيانات في الفترة الحالية</td>
+                  <td colspan="6" class="empty-row">لا تتوفر بيانات في الفترة الحالية</td>
                 </tr>
               </tbody>
             </table>
@@ -421,7 +423,10 @@ const fetchModuleStats = async (signal) => {
   const byModule = res.data?.data?.by_module || [];
   moduleBreakdown.value = filterModulesForDepartment(byModule);
   moduleStats.value.total_income = moduleBreakdown.value.reduce((s, m) => s + (m.income || 0), 0);
-  moduleStats.value.total_expense = moduleBreakdown.value.reduce((s, m) => s + (m.expense || 0), 0);
+  moduleStats.value.total_expense = moduleBreakdown.value.reduce(
+    (s, m) => s + (m.cogs || 0) + (m.expense || 0),
+    0,
+  );
 };
 
 const refreshAll = async () => {

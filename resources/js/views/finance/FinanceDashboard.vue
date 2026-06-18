@@ -161,12 +161,14 @@
             <!-- المصروفات -->
             <div class="rounded-xl border border-error/10 bg-error/5 p-4 flex flex-col justify-between min-h-[120px]">
               <div>
-                <div class="text-[10px] font-bold text-error mb-1">المصروفات والتكاليف</div>
+                <div class="text-[10px] font-bold text-error mb-1">مصروفات تشغيلية</div>
                 <div class="font-mono text-2xl font-black text-error tracking-tight">
                   {{ formatAmount(getCapitalValue('tourism', 'expense'), selectedCurrency) }}
                 </div>
               </div>
-              <div class="text-[9px] text-error/70 mt-2 font-medium">خلال الفترة المحددة</div>
+              <div class="text-[9px] text-error/70 mt-2 font-medium">
+                تكلفة حجوزات: {{ formatAmount(getCapitalValue('tourism', 'cogs'), selectedCurrency) }}
+              </div>
             </div>
           </div>
         </div>
@@ -221,12 +223,14 @@
             <!-- المصروفات -->
             <div class="rounded-xl border border-error/10 bg-error/5 p-4 flex flex-col justify-between min-h-[120px]">
               <div>
-                <div class="text-[10px] font-bold text-error mb-1">المصروفات والتكاليف</div>
+                <div class="text-[10px] font-bold text-error mb-1">مصروفات تشغيلية</div>
                 <div class="font-mono text-2xl font-black text-error tracking-tight">
                   {{ formatAmount(getCapitalValue('office', 'expense'), selectedCurrency) }}
                 </div>
               </div>
-              <div class="text-[9px] text-error/70 mt-2 font-medium">خلال الفترة المحددة</div>
+              <div class="text-[9px] text-error/70 mt-2 font-medium">
+                تكلفة حجوزات: {{ formatAmount(getCapitalValue('office', 'cogs'), selectedCurrency) }}
+              </div>
             </div>
           </div>
         </div>
@@ -735,7 +739,7 @@ const formatAmount = (value, currency = 'EGP') => {
 const getCapitalValue = (sector, key) => {
   const currencyData = capitalData.value[sector]?.[selectedCurrency.value];
   if (!currencyData) return 0;
-  if (key === 'profit' || key === 'expense' || key === 'revenue') {
+  if (key === 'profit' || key === 'expense' || key === 'revenue' || key === 'cogs') {
     return currencyData[key] || 0;
   }
   return currencyData.capital?.[key] || 0;

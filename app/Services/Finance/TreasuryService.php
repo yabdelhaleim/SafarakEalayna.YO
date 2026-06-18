@@ -433,40 +433,9 @@ class TreasuryService
 
         $totalLiquidity = $tourismLiquidityAccounts->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
-        // 4. Receivables (المستحق لنا)
-        $customerReceivables = DB::table('accounts')
-            ->where('type', 'customer')
-            ->where('is_active', true)
-            ->where('balance', '>', 0)
-            ->get()
-            ->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
-
-        $supplierReceivables = DB::table('accounts')
-            ->where('type', 'supplier')
-            ->where('is_active', true)
-            ->where('balance', '>', 0)
-            ->whereNotIn('module_type', ['hajj_umra', 'visas']) // Exclude what's already in module balances
-            ->get()
-            ->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
-
-        $dueToUs = $customerReceivables + $supplierReceivables;
-
-        // 5. Payables (المستحق علينا)
-        $customerPayables = DB::table('accounts')
-            ->where('type', 'customer')
-            ->where('is_active', true)
-            ->where('balance', '<', 0)
-            ->get()
-            ->sum(fn($acc) => abs((float) $acc->balance) * $this->getAveragePurchaseRate($acc->currency));
-
-        $supplierPayables = DB::table('accounts')
-            ->where('type', 'supplier')
-            ->where('is_active', true)
-            ->where('balance', '<', 0)
-            ->get()
-            ->sum(fn($acc) => abs((float) $acc->balance) * $this->getAveragePurchaseRate($acc->currency));
-
-        $dueFromUs = $customerPayables + $supplierPayables;
+        $receivablesPayables = $this->calculateReceivablesAndPayables();
+        $dueToUs = $receivablesPayables['due_to_us'];
+        $dueFromUs = $receivablesPayables['due_from_us'];
 
         // 6. Capital Equation Calculations
         $currentCapital = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
@@ -503,6 +472,40 @@ class TreasuryService
             'expected_capital' => $expectedCapital,
             'variance' => $variance,
             'status' => $status,
+        ];
+    }
+
+    /**
+     * المستحق لنا / علينا من تقرير الديون الموحد (عملاء، موردين، شركات، مجموعات…).
+     *
+     * @return array{due_to_us: float, due_from_us: float}
+     */
+    public function calculateReceivablesAndPayables(): array
+    {
+        $debtsReport = app(\App\Services\Reports\FinancialReportService::class)->getDebtsReport([]);
+        $dueToUs = 0.0;
+        $dueFromUs = 0.0;
+
+        foreach ($debtsReport['items'] as $item) {
+            $balance = (float) ($item['balance'] ?? 0);
+            if ($balance === 0.0) {
+                continue;
+            }
+
+            $currency = strtoupper((string) ($item['currency'] ?? 'EGP'));
+            $rate = $currency === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($currency);
+            $egp = abs($balance) * $rate;
+
+            if ($balance > 0) {
+                $dueToUs += $egp;
+            } else {
+                $dueFromUs += $egp;
+            }
+        }
+
+        return [
+            'due_to_us' => round($dueToUs, 2),
+            'due_from_us' => round($dueFromUs, 2),
         ];
     }
 }

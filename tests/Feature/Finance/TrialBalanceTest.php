@@ -183,7 +183,7 @@ class TrialBalanceTest extends TestCase
         ]);
 
         // 3. Receivables (Customer positive balances)
-        Account::query()->create([
+        $receivableAccount = Account::query()->create([
             'name' => 'عميل مدين',
             'type' => AccountType::Customer,
             'balance' => 20000.0,
@@ -193,17 +193,29 @@ class TrialBalanceTest extends TestCase
             'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
+        Customer::query()->create([
+            'account_id' => $receivableAccount->id,
+            'full_name' => 'مدين تجريبي',
+            'phone' => '01099998888',
+        ]);
 
         // 4. Payables (Supplier negative balances)
-        Account::query()->create([
+        $payableAccount = Account::query()->create([
             'name' => 'مورد دائن',
             'type' => AccountType::Supplier,
-            'balance' => -10000.0, // due from us is 10000
+            'balance' => -10000.0,
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'tourism',
             'created_by' => $this->user->id,
+        ]);
+        \App\Models\Supplier::query()->create([
+            'account_id' => $payableAccount->id,
+            'name' => 'مورد تجريبي',
+            'code' => 'SUP-TB-01',
+            'phone' => '01077776666',
+            'type' => 'bus_company',
         ]);
 
         // Let's check:
@@ -260,6 +272,30 @@ class TrialBalanceTest extends TestCase
                 'status',
             ]
         ]);
+    }
+
+    public function test_trial_balance_includes_customer_ledger_linked_via_observer_pattern(): void
+    {
+        $ledgerAccount = Account::query()->create([
+            'name' => 'ذممة عميل — أحمد علي · 01012345678',
+            'type' => AccountType::Treasury,
+            'balance' => 7500.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        Customer::query()->create([
+            'account_id' => $ledgerAccount->id,
+            'full_name' => 'أحمد علي',
+            'phone' => '01012345678',
+        ]);
+
+        $trialBalance = $this->treasuryService->getTrialBalance();
+
+        $this->assertEquals(7500.0, $trialBalance['due_to_us']);
     }
 
     public function test_api_export_trial_balance_endpoint(): void

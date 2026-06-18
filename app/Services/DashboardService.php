@@ -13,6 +13,7 @@ use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Invoice;
 use App\Models\Online\OnlineTransaction;
+use App\Services\Reports\ReportFinanceService;
 use App\Support\Finance\AccountModuleDivision;
 use Carbon\Carbon;
 use Closure;
@@ -51,19 +52,27 @@ class DashboardService
 
     public function getFinancialStats(string $from, string $to): array
     {
-        $transactions = DB::table('transactions')
-            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->get();
+        $summary = app(ReportFinanceService::class)->getFinancialSummary([
+            'from_date' => $from,
+            'to_date' => $to,
+        ]);
 
-        $income = (float) $transactions->where('type', 'income')->sum('amount');
-        $expense = (float) $transactions->where('type', 'expense')->sum('amount');
+        $income = (float) ($summary['total_income'] ?? 0);
+        $expense = (float) ($summary['total_expense'] ?? 0);
+        $netProfit = (float) ($summary['net_profit'] ?? 0);
+
+        $transactionsCount = (int) DB::table('transactions')
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->count();
 
         return [
-            'total_income' => $income,
-            'total_expense' => $expense,
-            'net_profit' => $income - $expense,
-            'profit_margin' => $income > 0 ? round((($income - $expense) / $income) * 100, 2) : 0,
-            'transactions_count' => $transactions->count(),
+            'total_income' => round($income, 2),
+            'total_cogs' => round((float) ($summary['total_cogs'] ?? 0), 2),
+            'total_operating_expenses' => round((float) ($summary['total_operating_expenses'] ?? 0), 2),
+            'total_expense' => round($expense, 2),
+            'net_profit' => round($netProfit, 2),
+            'profit_margin' => $income > 0 ? round(($netProfit / $income) * 100, 2) : 0,
+            'transactions_count' => $transactionsCount,
         ];
     }
 

@@ -233,6 +233,8 @@ export const useDashboardStore = defineStore('dashboard', {
             ...this.financial,
             ...data.financial,
             total_income: parseAmount(data.financial?.total_income),
+            total_cogs: parseAmount(data.financial?.total_cogs),
+            total_operating_expenses: parseAmount(data.financial?.total_operating_expenses),
             total_expense: parseAmount(data.financial?.total_expense),
             net_profit: parseAmount(data.financial?.net_profit),
             profit_margin: parseAmount(data.financial?.profit_margin),

@@ -201,7 +201,7 @@
           <div
             v-for="(perf, mod) in dbStats.performance"
             :key="mod"
-            v-show="(perf.profit !== 0 || perf.income !== 0) && availableModules.some(m => m.value === mod)"
+            v-show="(perf.profit !== 0 || perf.income !== 0 || perf.cogs || perf.expense) && availableModules.some(m => m.value === mod)"
             class="rounded-2xl border border-white/5 bg-white/[0.02] p-5"
           >
             <div class="mb-4 flex items-center justify-between gap-3">
@@ -221,13 +221,17 @@
                 {{ formatCurrency(perf.profit) }}
               </span>
             </div>
-            <div class="grid grid-cols-2 gap-3 border-t border-white/5 pt-4">
+            <div class="grid grid-cols-1 gap-3 border-t border-white/5 pt-4 sm:grid-cols-3">
               <div class="rounded-xl bg-success/10 p-3">
                 <p class="text-sm font-black text-success/80">المبيعات</p>
                 <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.income) }}</p>
               </div>
+              <div class="rounded-xl bg-amber-500/10 p-3">
+                <p class="text-sm font-black text-amber-300/90">تكلفة الحجوزات</p>
+                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.cogs) }}</p>
+              </div>
               <div class="rounded-xl bg-error/10 p-3">
-                <p class="text-sm font-black text-error/80">التكاليف</p>
+                <p class="text-sm font-black text-error/80">مصروفات تشغيلية</p>
                 <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.expense) }}</p>
               </div>
             </div>

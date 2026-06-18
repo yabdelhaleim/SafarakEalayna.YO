@@ -1004,25 +1004,28 @@ class FinancialReportService
         $maps = $clearingAccounts->moduleAccountMaps();
         $incomeClearing = $maps['income'];
         $expenseClearing = $maps['expense'];
+        $prepaidAccounts = $clearingAccounts->prepaidAccountIdMap();
 
         foreach ($currencies as $currency) {
             $tourismCapital = $this->calculateTourismCapital($currency);
-            $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing);
+            $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
 
             $tourismReport[$currency] = [
                 'capital' => $tourismCapital,
                 'profit' => $tourismPL['profit'],
                 'expense' => $tourismPL['expense'],
+                'cogs' => $tourismPL['cogs'],
                 'revenue' => $tourismPL['revenue'],
             ];
 
             $officeCapital = $this->calculateOfficeCapital($currency);
-            $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing);
+            $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
 
             $officeReport[$currency] = [
                 'capital' => $officeCapital,
                 'profit' => $officePL['profit'],
                 'expense' => $officePL['expense'],
+                'cogs' => $officePL['cogs'],
                 'revenue' => $officePL['revenue'],
             ];
         }
@@ -1138,7 +1141,8 @@ class FinancialReportService
         ?string $fromDate,
         ?string $toDate,
         array $incomeClearing,
-        array $expenseClearing
+        array $expenseClearing,
+        array $prepaidAccounts = []
     ): array {
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
@@ -1165,7 +1169,8 @@ class FinancialReportService
 
         $allClearingIds = array_values(array_unique(array_merge(
             array_keys($incomeClearing),
-            array_keys($expenseClearing)
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
         )));
 
         $query->where(function ($outer) use ($allClearingIds): void {
@@ -1214,7 +1219,7 @@ class FinancialReportService
                 continue;
             }
 
-            $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing);
+            $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
             }
@@ -1243,13 +1248,17 @@ class FinancialReportService
         $profit = round($totalRevenue - $totalCogs - $totalExpense, 2);
 
         return [
-            'revenue' => $totalRevenue,
-            'expense' => $totalCogs + $totalExpense,
-            'profit' => $profit,
+            'revenue'  => $totalRevenue,
+            // المصروفات والتكاليف = المصاريف التشغيلية الفعلية فقط (expense transactions)
+            // COGS (تكلفة الحجوزات من الأرصدة المسبقة) لا تُعرض هنا لأنها ليست مصاريف تشغيلية
+            // لكنها لا تزال تُطرح من الإيرادات في حسابة الربح أدناه
+            'expense'  => $totalExpense,
+            'cogs'     => $totalCogs,
+            'profit'   => $profit,
         ];
     }
 
-    private function classifyPL(object $tx, array $incomeClearing, array $expenseClearing): ?string
+    private function classifyPL(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
     {
         $type = (string) $tx->type;
         $fromId = (int) ($tx->from_account_id ?? 0);
@@ -1276,6 +1285,20 @@ class FinancialReportService
         $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
         $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
         $toExpense = $toId > 0 && isset($expenseClearing[$toId]);
+        $fromPrepaid = $fromId > 0 && isset($prepaidAccounts[$fromId]);
+        $toPrepaid = $toId > 0 && isset($prepaidAccounts[$toId]);
+
+        if ($toPrepaid && ! $fromPrepaid && ! $fromExpense && ! $fromIncome) {
+            return null;
+        }
+
+        if ($fromPrepaid && $toExpense && ! $toPrepaid) {
+            return 'cogs';
+        }
+
+        if ($toPrepaid && $fromExpense && ! $fromPrepaid) {
+            return 'cogs_reversal';
+        }
 
         if ($fromIncome && ! $toIncome) {
             return 'revenue';
@@ -1285,7 +1308,7 @@ class FinancialReportService
             return 'revenue_reversal';
         }
 
-        if ($toExpense && ! $fromExpense) {
+        if ($toExpense && ! $fromExpense && ! $fromPrepaid) {
             return 'cogs';
         }
 

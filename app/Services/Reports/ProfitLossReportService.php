@@ -175,6 +175,7 @@ class ProfitLossReportService
         $this->applyCategorySqlFilter($query, $filters, $incomeClearing, $expenseClearing);
 
         $incomeByModule = [];
+        $cogsByModule = [];
         $expenseByModule = [];
         $scanned = 0;
         $included = 0;
@@ -205,15 +206,18 @@ class ProfitLossReportService
                 $this->addBucket($incomeByModule, $module, $amount, $ignoredTotal);
             } elseif ($classification === 'revenue_reversal' || $classification === 'refund') {
                 $this->subtractBucket($incomeByModule, $module, $amount, $ignoredTotal);
-            } elseif (in_array($classification, ['cogs', 'operating_expense'], true)) {
-                $this->addBucket($expenseByModule, $module, $amount, $ignoredTotal);
+            } elseif ($classification === 'cogs') {
+                $this->addBucket($cogsByModule, $module, $amount, $ignoredTotal);
             } elseif ($classification === 'cogs_reversal') {
-                $this->subtractBucket($expenseByModule, $module, $amount, $ignoredTotal);
+                $this->subtractBucket($cogsByModule, $module, $amount, $ignoredTotal);
+            } elseif ($classification === 'operating_expense') {
+                $this->addBucket($expenseByModule, $module, $amount, $ignoredTotal);
             }
         }
 
         $allModules = array_unique(array_merge(
             array_keys($incomeByModule),
+            array_keys($cogsByModule),
             array_keys($expenseByModule),
             ['flight', 'bus', 'hajj_umra', 'visa', 'fawry', 'online', 'wallet', 'general']
         ));
@@ -221,15 +225,17 @@ class ProfitLossReportService
         $breakdown = [];
         foreach ($allModules as $mod) {
             $income = round(max(0, $incomeByModule[$mod] ?? 0.0), 2);
+            $cogs = round(max(0, $cogsByModule[$mod] ?? 0.0), 2);
             $expense = round(max(0, $expenseByModule[$mod] ?? 0.0), 2);
-            if ($income <= 0 && $expense <= 0) {
+            if ($income <= 0 && $cogs <= 0 && $expense <= 0) {
                 continue;
             }
             $breakdown[] = [
                 'module' => $mod,
                 'income' => $income,
+                'cogs' => $cogs,
                 'expense' => $expense,
-                'profit' => round($income - $expense, 2),
+                'profit' => round($income - $cogs - $expense, 2),
             ];
         }
 

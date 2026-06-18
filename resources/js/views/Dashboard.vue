@@ -785,8 +785,15 @@
               <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(overviewStats.financial?.total_income || 0) }}</div>
             </div>
             <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
-              <div class="text-xs text-rose-400 font-bold">إجمالي المصروفات الخارجة (Expenses)</div>
+              <div class="text-xs text-rose-400 font-bold">تكاليف ومصروفات (COGS + تشغيلي)</div>
               <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(overviewStats.financial?.total_expense || 0) }}</div>
+              <p
+                v-if="overviewStats.financial?.total_cogs || overviewStats.financial?.total_operating_expenses"
+                class="text-[10px] text-rose-300/70 mt-1 font-mono"
+              >
+                تكاليف: {{ formatCurrency(overviewStats.financial?.total_cogs || 0) }}
+                · تشغيل: {{ formatCurrency(overviewStats.financial?.total_operating_expenses || 0) }}
+              </p>
             </div>
           </div>
           <div class="p-3 bg-white/5 rounded-xl flex items-center justify-between text-xs font-bold">
@@ -983,6 +990,8 @@ const normalizeTreasurySummary = (raw = {}) => ({
 
 const normalizeFinancial = (raw = {}) => ({
   total_income: parseAmount(raw.total_income),
+  total_cogs: parseAmount(raw.total_cogs),
+  total_operating_expenses: parseAmount(raw.total_operating_expenses),
   total_expense: parseAmount(raw.total_expense),
   net_profit: parseAmount(raw.net_profit),
   profit_margin: parseAmount(raw.profit_margin),

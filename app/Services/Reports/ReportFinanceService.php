@@ -40,16 +40,22 @@ class ReportFinanceService
             ]);
 
             $totalIncome = 0.0;
-            $totalExpense = 0.0;
+            $totalCogs = 0.0;
+            $totalOperating = 0.0;
             foreach ($breakdown['by_module'] as $row) {
                 if ($this->moduleMatchesFilter($row['module'], $moduleFilter)) {
                     $totalIncome += (float) $row['income'];
-                    $totalExpense += (float) $row['expense'];
+                    $totalCogs += (float) ($row['cogs'] ?? 0);
+                    $totalOperating += (float) $row['expense'];
                 }
             }
 
+            $totalExpense = $totalCogs + $totalOperating;
+
             return [
                 'total_income' => round($totalIncome, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'total_operating_expenses' => round($totalOperating, 2),
                 'total_expense' => round($totalExpense, 2),
                 'total_refunds' => 0.0,
                 'total_transfers' => 0.0,

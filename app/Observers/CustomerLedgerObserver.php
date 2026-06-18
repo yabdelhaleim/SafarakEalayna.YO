@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Observers;
-
 use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\Customer;
@@ -21,7 +20,7 @@ class CustomerLedgerObserver
 
         $account = Account::create([
             'name' => 'ذممة عميل — '.$customer->full_name.' · '.$customer->phone,
-            'type' => AccountType::Treasury->value,
+            'type' => AccountType::Customer->value,
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,

@@ -55,6 +55,7 @@ class AccountController extends Controller
             foreach ($moduleBreakdown['by_module'] as $row) {
                 $performance[$row['module']] = [
                     'income' => (float) $row['income'],
+                    'cogs' => (float) ($row['cogs'] ?? 0),
                     'expense' => (float) $row['expense'],
                     'profit' => (float) $row['profit'],
                 ];

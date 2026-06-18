@@ -244,7 +244,8 @@ class ProfitLossReportTest extends TestCase
         $fawry = collect($breakdown['by_module'])->firstWhere('module', 'fawry');
         $this->assertNotNull($fawry);
         $this->assertSame(5000.0, $fawry['income']);
-        $this->assertSame(2000.0, $fawry['expense']);
+        $this->assertSame(2000.0, $fawry['cogs']);
+        $this->assertSame(0.0, $fawry['expense']);
         $this->assertSame(3000.0, $fawry['profit']);
         $this->assertTrue($breakdown['meta']['live']);
     }

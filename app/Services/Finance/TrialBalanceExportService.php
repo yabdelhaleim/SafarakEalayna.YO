@@ -239,48 +239,21 @@ class TrialBalanceExportService
         $sheet->setCellValue('A30', 'المستحقات لنا (المدينون):');
         $sheet->getStyle('A30')->getFont()->setBold(true);
 
-        $custRec = DB::table('accounts')
-            ->where('type', 'customer')
-            ->where('is_active', true)
-            ->where('balance', '>', 0)
-            ->get()
-            ->sum(fn($acc) => (float)$acc->balance * $this->treasuryService->getAveragePurchaseRate($acc->currency));
+        $receivablesPayables = $this->treasuryService->calculateReceivablesAndPayables();
 
-        $supRec = DB::table('accounts')
-            ->where('type', 'supplier')
-            ->where('is_active', true)
-            ->where('balance', '>', 0)
-            ->whereNotIn('module_type', ['hajj_umra', 'visas'])
-            ->get()
-            ->sum(fn($acc) => (float)$acc->balance * $this->treasuryService->getAveragePurchaseRate($acc->currency));
-
-        $sheet->setCellValue('A31', 'مديونيات العملاء (أرصدة مدينة)');
-        $sheet->setCellValue('B31', $custRec);
-        $sheet->setCellValue('A32', 'أرصدة الموردين والشركات المدينة (سداد مقدم)');
-        $sheet->setCellValue('B32', $supRec);
+        $sheet->setCellValue('A31', 'إجمالي المستحق لنا (مدينون)');
+        $sheet->setCellValue('B31', $receivablesPayables['due_to_us']);
+        $sheet->setCellValue('A32', '—');
+        $sheet->setCellValue('B32', 0);
 
         // D. Payables details
         $sheet->setCellValue('A34', 'الالتزامات علينا (الدائنون):');
         $sheet->getStyle('A34')->getFont()->setBold(true);
 
-        $custPay = DB::table('accounts')
-            ->where('type', 'customer')
-            ->where('is_active', true)
-            ->where('balance', '<', 0)
-            ->get()
-            ->sum(fn($acc) => abs((float)$acc->balance) * $this->treasuryService->getAveragePurchaseRate($acc->currency));
-
-        $supPay = DB::table('accounts')
-            ->where('type', 'supplier')
-            ->where('is_active', true)
-            ->where('balance', '<', 0)
-            ->get()
-            ->sum(fn($acc) => abs((float)$acc->balance) * $this->treasuryService->getAveragePurchaseRate($acc->currency));
-
-        $sheet->setCellValue('A35', 'أرصدة الموردين والشركات الدائنة (مستحقات معلقة)');
-        $sheet->setCellValue('B35', $supPay);
-        $sheet->setCellValue('A36', 'التزامات العملاء الدائنة (دفعات مقدمة لم تبدأ)');
-        $sheet->setCellValue('B36', $custPay);
+        $sheet->setCellValue('A35', 'إجمالي المستحق علينا (دائنون)');
+        $sheet->setCellValue('B35', $receivablesPayables['due_from_us']);
+        $sheet->setCellValue('A36', '—');
+        $sheet->setCellValue('B36', 0);
 
         // Apply number formatting to all balance columns
         foreach (range(7, 36) as $row) {
