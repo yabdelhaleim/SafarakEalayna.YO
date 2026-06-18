@@ -114,9 +114,9 @@
             </div>
           </div>
           <div class="relative z-10">
-            <div class="text-sm text-white/50 uppercase tracking-widest mb-1 font-bold">تكاليف ومصروفات (COGS + OpEx)</div>
+            <div class="text-sm text-white/50 uppercase tracking-widest mb-1 font-bold">مصروفات تشغيلية (OpEx)</div>
             <div class="text-3xl font-bold font-mono text-white group-hover:text-rose-400 transition-colors">
-              {{ formatCurrency(finData.total_expense) }}
+              {{ formatCurrency(finData.total_operating_expenses) }}
             </div>
             <p v-if="finData.total_cogs" class="text-[11px] text-white/40 mt-2 font-mono">
               تكاليف: {{ formatCurrency(finData.total_cogs) }} · تشغيل: {{ formatCurrency(finData.total_operating_expenses) }}

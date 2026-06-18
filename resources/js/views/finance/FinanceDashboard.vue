@@ -531,8 +531,8 @@
 
               <div>
                 <div class="mb-2 flex items-center justify-between">
-                  <span class="text-sm text-text-muted">تكاليف ومصروفات</span>
-                  <span class="text-sm font-bold text-error">{{ formatCurrency(stats.total_expense) }}</span>
+                  <span class="text-sm text-text-muted">مصروفات تشغيلية (OpEx)</span>
+                  <span class="text-sm font-bold text-error">{{ formatCurrency(stats.total_operating_expenses) }}</span>
                 </div>
                 <div class="h-2.5 overflow-hidden rounded-full bg-white/10">
                   <div
@@ -668,13 +668,13 @@ const walletAccounts = computed(() => {
 });
 
 const incomePercentage = computed(() => {
-  const total = stats.value.total_income + stats.value.total_expense;
+  const total = stats.value.total_income + stats.value.total_operating_expenses;
   return total > 0 ? ((stats.value.total_income / total) * 100).toFixed(0) : 0;
 });
 
 const expensePercentage = computed(() => {
-  const total = stats.value.total_income + stats.value.total_expense;
-  return total > 0 ? ((stats.value.total_expense / total) * 100).toFixed(0) : 0;
+  const total = stats.value.total_income + stats.value.total_operating_expenses;
+  return total > 0 ? ((stats.value.total_operating_expenses / total) * 100).toFixed(0) : 0;
 });
 
 const topAccounts = computed(() => {

@@ -390,6 +390,8 @@ export const useFinanceStore = defineStore('finance', {
       this.stats = {
         total_balance: 0,
         total_income: 0,
+        total_cogs: 0,
+        total_operating_expenses: 0,
         total_expense: 0,
         net_profit: 0,
         accounts_count: 0,
@@ -426,7 +428,13 @@ export const useFinanceStore = defineStore('finance', {
         this.stats = {
           total_balance: Number(bal.grand_total ?? 0),
           total_income: Number(data.total_income) || 0,
+          // COGS = تكلفة المبيعات (prepaid → expense clearing transfers)
+          total_cogs: Number(data.total_cogs) || 0,
+          // OpEx = مصروفات تشغيلية (type='expense' فقط)
+          total_operating_expenses: Number(data.total_operating_expenses) || 0,
+          // total_expense = total_cogs + total_operating_expenses
           total_expense: Number(data.total_expense) || 0,
+          // net_profit = total_income - total_cogs - total_operating_expenses
           net_profit: Number(data.net_profit) || 0,
           accounts_count: this.accounts.length,
           transactions_count: this.transactions.length,
@@ -436,24 +444,25 @@ export const useFinanceStore = defineStore('finance', {
           return;
         }
         console.error('Failed to fetch stats:', error);
-        // Calculate from local data
+        // Fallback: calculate from locally-cached transactions.
+        // NOTE: COGS (prepaid → clearing transfers) cannot be computed locally,
+        // so net_profit here = income - opex only (تقريبي — بدون COGS).
+        const localIncome = Array.isArray(this.transactions)
+          ? this.transactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + (t.amount || 0), 0)
+          : 0;
+        const localOpex = Array.isArray(this.transactions)
+          ? this.transactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + (t.amount || 0), 0)
+          : 0;
         this.stats = {
           total_balance: Array.isArray(this.accounts) ? this.accounts.reduce((sum, a) => sum + (a.balance || 0), 0) : 0,
-          total_income: Array.isArray(this.transactions)
-            ? this.transactions
-                .filter((t) => t.type === 'income')
-                .reduce((sum, t) => sum + (t.amount || 0), 0)
-            : 0,
-          total_expense: Array.isArray(this.transactions)
-            ? this.transactions
-                .filter((t) => t.type === 'expense')
-                .reduce((sum, t) => sum + (t.amount || 0), 0)
-            : 0,
-          net_profit: 0,
+          total_income: localIncome,
+          total_cogs: 0, // لا يمكن حسابه محلياً بدون API
+          total_operating_expenses: localOpex,
+          total_expense: localOpex, // تقريبي (بدون COGS)
+          net_profit: localIncome - localOpex, // تقريبي (بدون COGS)
           accounts_count: Array.isArray(this.accounts) ? this.accounts.length : 0,
           transactions_count: Array.isArray(this.transactions) ? this.transactions.length : 0,
         };
-        this.stats.net_profit = this.stats.total_income - this.stats.total_expense;
       } finally {
         if (this.fetchStatsController === controller) {
           this.loading.stats = false;

@@ -785,8 +785,8 @@
               <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(overviewStats.financial?.total_income || 0) }}</div>
             </div>
             <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
-              <div class="text-xs text-rose-400 font-bold">تكاليف ومصروفات (COGS + تشغيلي)</div>
-              <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(overviewStats.financial?.total_expense || 0) }}</div>
+              <div class="text-xs text-rose-400 font-bold">مصروفات تشغيلية (OpEx)</div>
+              <div class="text-2xl font-black text-white mt-1 font-mono">{{ formatCurrency(overviewStats.financial?.total_operating_expenses || 0) }}</div>
               <p
                 v-if="overviewStats.financial?.total_cogs || overviewStats.financial?.total_operating_expenses"
                 class="text-[10px] text-rose-300/70 mt-1 font-mono"

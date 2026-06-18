@@ -10,6 +10,7 @@ export const useReportStore = defineStore('report', {
     financialReports: {
       revenue: [],
       expenses: [],
+      cogs: [],
       profit: [],
       byModule: [],
       byAccount: [],
@@ -83,14 +84,24 @@ export const useReportStore = defineStore('report', {
       return state.financialReports.revenue.reduce((sum, r) => sum + (r.amount || 0), 0);
     },
 
-    // Total expenses
+    // Total operating expenses (مصاريف تشغيلية — type='expense' فقط)
     totalExpenses: (state) => {
       return state.financialReports.expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     },
 
-    // Net profit
+    // Total COGS (تكلفة المبيعات — prepaid → expense clearing)
+    totalCogs: (state) => {
+      return state.financialReports.cogs.reduce((sum, c) => sum + (c.amount || 0), 0);
+    },
+
+    // Net profit = الإيرادات − تكلفة المبيعات − المصروفات التشغيلية
     netProfit() {
-      return this.totalRevenue - this.totalExpenses;
+      return this.totalRevenue - this.totalCogs - this.totalExpenses;
+    },
+
+    // Gross profit = الإيرادات − تكلفة المبيعات
+    grossProfit() {
+      return this.totalRevenue - this.totalCogs;
     },
 
     // Profit margin
@@ -146,6 +157,7 @@ export const useReportStore = defineStore('report', {
         this.financialReports = {
           revenue: [],
           expenses: [],
+          cogs: [],
           profit: [],
           byModule: [],
           byAccount: [],
