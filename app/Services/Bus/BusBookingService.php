@@ -214,21 +214,27 @@ class BusBookingService
                     $companyAccount = $companyService->ensureCompanyAccount($company);
                     $company->account_id = $companyAccount->id;
 
-                    $totalCost       = $costPerTicket * $data['quantity'];
+                    $totalCost         = $costPerTicket * $data['quantity'];
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
-                    if ($clearingAccountId) {
-                        $this->transactionService->recordJournalTransfer([
-                            'amount'             => $totalCost,
-                            'from_account_id'    => $company->account_id,
-                            'to_account_id'      => $clearingAccountId,
-                            'module'             => TransactionModule::Bus->value,
-                            'related_type'       => BusBooking::class,
-                            'related_id'         => $booking->id,
-                            'notes'              => 'تكلفة حجز باص #' . $booking->id . ' — ' . $inventory->route,
-                            'allow_from_negative'=> true,
-                        ]);
+                    // يمنع تسجيل الإيراد بدون COGS — يؤدي لتضخيم صافي الربح
+                    if (! $clearingAccountId) {
+                        throw new \Exception(
+                            'لم يُعيَّن حساب إقفال تكاليف الباص في إعدادات الحسابات. '.
+                            'يرجى إعداد حساب expense clearing لموديول الباص قبل تسجيل الحجز.'
+                        );
                     }
+
+                    $this->transactionService->recordJournalTransfer([
+                        'amount'             => $totalCost,
+                        'from_account_id'    => $company->account_id,
+                        'to_account_id'      => $clearingAccountId,
+                        'module'             => TransactionModule::Bus->value,
+                        'related_type'       => BusBooking::class,
+                        'related_id'         => $booking->id,
+                        'notes'              => 'تكلفة حجز باص #' . $booking->id . ' — ' . $inventory->route,
+                        'allow_from_negative'=> true,
+                    ]);
                 }
 
                 // ✅ Record sale on customer ledger (Debt / مديونية)
