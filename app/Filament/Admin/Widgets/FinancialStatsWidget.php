@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Widgets;
 
+use App\Services\Reports\ReportFinanceService;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
@@ -28,43 +29,38 @@ class FinancialStatsWidget extends BaseWidget
 
         $now = now();
         $currentMonth = $now->month;
-        $currentYear = $now->year;
+        $currentYear  = $now->year;
 
         $previousMonth = $now->copy()->subMonth();
-        $prevMonth = $previousMonth->month;
-        $prevYear = $previousMonth->year;
+        $prevMonth     = $previousMonth->month;
+        $prevYear      = $previousMonth->year;
 
-        $income = DB::table('transactions')
-            ->where('type', 'income')
-            ->whereMonth('created_at', $currentMonth)
-            ->whereYear('created_at', $currentYear)
-            ->sum('amount') ?? 0;
+        // Use the double-entry P&L service so flight bookings (type=transfer)
+        // are correctly counted as revenue / net profit.
+        $service = app(ReportFinanceService::class);
 
-        $expense = DB::table('transactions')
-            ->where('type', 'expense')
-            ->whereMonth('created_at', $currentMonth)
-            ->whereYear('created_at', $currentYear)
-            ->sum('amount') ?? 0;
+        $currentSummary = $service->getFinancialSummary([
+            'from_date' => $now->copy()->startOfMonth()->toDateString(),
+            'to_date'   => $now->copy()->endOfMonth()->toDateString(),
+        ]);
 
-        $profit = $income - $expense;
+        $prevSummary = $service->getFinancialSummary([
+            'from_date' => $previousMonth->copy()->startOfMonth()->toDateString(),
+            'to_date'   => $previousMonth->copy()->endOfMonth()->toDateString(),
+        ]);
 
-        $previousMonthIncome = DB::table('transactions')
-            ->where('type', 'income')
-            ->whereMonth('created_at', $prevMonth)
-            ->whereYear('created_at', $prevYear)
-            ->sum('amount') ?? 0;
+        $income  = (float) ($currentSummary['total_income'] ?? 0);
+        $expense = (float) ($currentSummary['total_expense'] ?? 0);
+        $profit  = (float) ($currentSummary['net_profit'] ?? 0);
 
+        $previousMonthIncome = (float) ($prevSummary['total_income'] ?? 0);
         $incomeGrowth = $previousMonthIncome > 0
             ? (($income - $previousMonthIncome) / $previousMonthIncome) * 100
             : 0;
 
-        $monthlyIncome = $this->monthlyTransactionTotals('income');
-        $monthlyExpense = $this->monthlyTransactionTotals('expense');
-        $monthlyProfit = array_map(
-            fn (float $incomeValue, float $expenseValue): float => $incomeValue - $expenseValue,
-            $monthlyIncome,
-            $monthlyExpense
-        );
+        $monthlyIncome  = $this->monthlyFinancialTotals('total_income');
+        $monthlyExpense = $this->monthlyFinancialTotals('total_expense');
+        $monthlyProfit  = $this->monthlyFinancialTotals('net_profit');
 
         return [
             Stat::make('إجمالي الدخل', number_format($income, 2).' ج.م')
@@ -97,19 +93,24 @@ class FinancialStatsWidget extends BaseWidget
     }
 
     /**
+     * Returns 7-month chart data for a P&L summary key (total_income, total_expense, net_profit).
+     *
      * @return array<int, float>
      */
-    private function monthlyTransactionTotals(string $type, int $months = 7): array
+    private function monthlyFinancialTotals(string $key, int $months = 7): array
     {
+        $service = app(ReportFinanceService::class);
+
         return collect(range($months - 1, 0))
-            ->map(function (int $monthsAgo) use ($type): float {
+            ->map(function (int $monthsAgo) use ($service, $key): float {
                 $date = now()->subMonths($monthsAgo);
 
-                return (float) (DB::table('transactions')
-                    ->where('type', $type)
-                    ->whereMonth('created_at', $date->month)
-                    ->whereYear('created_at', $date->year)
-                    ->sum('amount') ?? 0);
+                $summary = $service->getFinancialSummary([
+                    'from_date' => $date->copy()->startOfMonth()->toDateString(),
+                    'to_date'   => $date->copy()->endOfMonth()->toDateString(),
+                ]);
+
+                return (float) ($summary[$key] ?? 0);
             })
             ->all();
     }

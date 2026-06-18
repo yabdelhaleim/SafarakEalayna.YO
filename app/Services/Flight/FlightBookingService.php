@@ -1555,6 +1555,9 @@ class FlightBookingService
 
                 $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
 
+                // تحصيل الدفعة من حساب العميل (تخفيض المديونية) إلى الخزينة
+                // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
+                // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
                 $transaction = $this->transactionService->recordIncome([
                     'amount' => $amount,
                     'to_account_id' => $accountId,

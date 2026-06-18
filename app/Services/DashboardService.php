@@ -14,6 +14,7 @@ use App\Models\Flight\FlightSystem;
 use App\Models\Invoice;
 use App\Models\Online\OnlineTransaction;
 use App\Services\Reports\ReportFinanceService;
+use App\Services\Reports\ProfitLossReportService;
 use App\Support\Finance\AccountModuleDivision;
 use Carbon\Carbon;
 use Closure;
@@ -259,41 +260,45 @@ class DashboardService
         $airline = $this->buildAirlineOperationsDashboard($from, $to, $carrierId, $systemType);
         $busOps = $this->buildBusOperationsDashboard($from, $to);
 
-        // Hajj Stats
+        // Per-module P&L from the double-entry ledger (covers flight transfers correctly)
+        $plBreakdown = resolve(ProfitLossReportService::class)->moduleBreakdown([
+            'from_date' => $from,
+            'to_date'   => $to,
+        ]);
+        $plByModule = collect($plBreakdown['by_module'])->keyBy('module');
+
+        // Hajj Stats — booking counts from model, profit from ledger
         $hajjStats = \App\Models\HajjUmraBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("
-                COUNT(*) as count,
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
             ->first();
-        $hajjCount = (int) $hajjStats->count;
-        $hajjRevenue = (float) $hajjStats->revenue;
-        $hajjProfit = (float) $hajjStats->profit;
+        $hajjCount   = (int) $hajjStats->count;
+        $hajjRevenue = (float) ($plByModule->get('hajj_umra')['income'] ?? $hajjStats->revenue);
+        $hajjProfit  = (float) ($plByModule->get('hajj_umra')['profit'] ?? 0);
 
         // Online Stats
         $onlineStats = \App\Models\Online\OnlineTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("
-                COUNT(*) as count,
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
             ->first();
-        $onlineCount = (int) $onlineStats->count;
-        $onlineRevenue = (float) $onlineStats->revenue;
-        $onlineProfit = (float) $onlineStats->profit;
+        $onlineCount   = (int) $onlineStats->count;
+        $onlineRevenue = (float) ($plByModule->get('online')['income'] ?? $onlineStats->revenue);
+        $onlineProfit  = (float) ($plByModule->get('online')['profit'] ?? 0);
 
         // Fawry Stats
         $fawryStats = \App\Models\Fawry\FawryTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("
-                COUNT(*) as count,
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
             ->first();
-        $fawryCount = (int) $fawryStats->count;
-        $fawryRevenue = (float) $fawryStats->revenue;
-        $fawryProfit = (float) $fawryStats->profit;
+        $fawryCount   = (int) $fawryStats->count;
+        $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
+        $fawryProfit  = (float) ($plByModule->get('fawry')['profit'] ?? 0);
+
+        // Flight profit from ledger (flight bookings are type=transfer, not type=income)
+        $flightLedgerProfit  = (float) ($plByModule->get('flight')['profit'] ?? 0);
+        $flightLedgerRevenue = (float) ($plByModule->get('flight')['income'] ?? 0);
+
+        // Bus profit from ledger
+        $busLedgerProfit  = (float) ($plByModule->get('bus')['profit'] ?? 0);
+        $busLedgerRevenue = (float) ($plByModule->get('bus')['income'] ?? 0);
+
 
         // Treasury: liquidity accounts only (exclude customer/supplier ledgers)
         $liquidityQuery = Account::query()->where('is_active', true);
@@ -323,39 +328,39 @@ class DashboardService
 
         $tourismSummary = [
             'flights' => [
-                'count' => $airline['kpis']['total_bookings'] ?? 0,
-                'revenue' => $airline['kpis']['revenue'] ?? 0,
-                'profit' => $airline['kpis']['net_profit'] ?? 0,
+                'count'   => $airline['kpis']['total_bookings'] ?? 0,
+                'revenue' => $flightLedgerRevenue ?: ($airline['kpis']['revenue'] ?? 0),
+                'profit'  => $flightLedgerProfit,
             ],
             'hajj' => [
-                'count' => $hajjCount,
+                'count'   => $hajjCount,
                 'revenue' => $hajjRevenue,
-                'profit' => $hajjProfit,
+                'profit'  => $hajjProfit,
             ],
-            'total_count' => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount,
-            'total_revenue' => ($airline['kpis']['revenue'] ?? 0) + $hajjRevenue,
-            'total_profit' => ($airline['kpis']['net_profit'] ?? 0) + $hajjProfit,
+            'total_count'   => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount,
+            'total_revenue' => ($flightLedgerRevenue ?: ($airline['kpis']['revenue'] ?? 0)) + $hajjRevenue,
+            'total_profit'  => $flightLedgerProfit + $hajjProfit,
         ];
 
         $officeSummary = [
             'bus' => [
-                'count' => $busOps['bus_kpis']['total_bookings'] ?? 0,
-                'revenue' => $busOps['bus_kpis']['revenue'] ?? 0,
-                'profit' => $busOps['bus_kpis']['net_profit'] ?? 0,
+                'count'   => $busOps['bus_kpis']['total_bookings'] ?? 0,
+                'revenue' => $busLedgerRevenue ?: ($busOps['bus_kpis']['revenue'] ?? 0),
+                'profit'  => $busLedgerProfit,
             ],
             'fawry' => [
-                'count' => $fawryCount,
+                'count'   => $fawryCount,
                 'revenue' => $fawryRevenue,
-                'profit' => $fawryProfit,
+                'profit'  => $fawryProfit,
             ],
             'online' => [
-                'count' => $onlineCount,
+                'count'   => $onlineCount,
                 'revenue' => $onlineRevenue,
-                'profit' => $onlineProfit,
+                'profit'  => $onlineProfit,
             ],
-            'total_count' => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount,
-            'total_revenue' => ($busOps['bus_kpis']['revenue'] ?? 0) + $fawryRevenue + $onlineRevenue,
-            'total_profit' => ($busOps['bus_kpis']['net_profit'] ?? 0) + $fawryProfit + $onlineProfit,
+            'total_count'   => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount,
+            'total_revenue' => ($busLedgerRevenue ?: ($busOps['bus_kpis']['revenue'] ?? 0)) + $fawryRevenue + $onlineRevenue,
+            'total_profit'  => $busLedgerProfit + $fawryProfit + $onlineProfit,
         ];
 
         $extra = [

@@ -206,47 +206,56 @@ class FinancialReportService
     }
 
     /**
-     * ملخص مالي شامل
+     * ملخص مالي شامل — يعتمد على القيد المزدوج عبر ProfitLossReportService
+     * ليشمل إيرادات حجوزات الطيران المسجّلة كتحويلات (type=transfer).
      */
     public function getFinancialSummary(array $filters = []): array
     {
         $fromDate = $filters['from_date'] ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $filters['to_date'] ?? now()->endOfDay()->format('Y-m-d');
 
-        $totalIncome = Transaction::whereBetween('created_at', [$fromDate, $toDate])
-            ->where('type', TransactionType::Income->value)
-            ->sum('amount');
+        // Delegate to the double-entry P&L service so that transfer-type transactions
+        // (e.g. flight bookings) are correctly classified as revenue.
+        $report = resolve(ProfitLossReportService::class)->report([
+            'from_date' => $fromDate,
+            'to_date'   => $toDate,
+        ]);
 
-        $totalExpense = Transaction::whereBetween('created_at', [$fromDate, $toDate])
-            ->where('type', TransactionType::Expense->value)
-            ->sum('amount');
+        $totalIncome  = (float) $report['totalRevenues'];
+        $totalCogs    = (float) $report['totalCogs'];
+        $totalOpex    = (float) $report['totalExpenses'];
+        $totalExpense = round($totalCogs + $totalOpex, 2);
+        $totalRefunds = (float) $report['totalRefunds'];
+        $profit       = (float) $report['netProfit'];
 
+        // Keep a raw transfer total for callers that still need it (informational only)
         $totalTransfers = Transaction::whereBetween('created_at', [$fromDate, $toDate])
             ->where('type', TransactionType::Transfer->value)
             ->sum('amount');
 
-        $totalRefunds = Transaction::whereBetween('created_at', [$fromDate, $toDate])
-            ->where('type', TransactionType::Refund->value)
-            ->sum('amount');
-
         $tourismAccountsBalance = Account::tourism()->sum('balance');
-        $officeAccountsBalance = Account::office()->sum('balance');
-        $totalAccountsBalance = Account::sum('balance');
-
-        $profit = $totalIncome - $totalExpense;
+        $officeAccountsBalance  = Account::office()->sum('balance');
+        $totalAccountsBalance   = Account::sum('balance');
 
         return [
-            'from_date' => $fromDate,
-            'to_date' => $toDate,
-            'income' => $totalIncome,
-            'expense' => $totalExpense,
-            'transfers' => $totalTransfers,
-            'refunds' => $totalRefunds,
-            'profit' => $profit,
-            'profit_margin' => $totalIncome > 0 ? ($profit / $totalIncome) * 100 : 0,
+            'from_date'                => $fromDate,
+            'to_date'                  => $toDate,
+            'income'                   => $totalIncome,
+            'expense'                  => $totalExpense,
+            'transfers'                => (float) $totalTransfers,
+            'refunds'                  => $totalRefunds,
+            'profit'                   => $profit,
+            // Extended keys aligned with ReportFinanceService
+            'total_income'             => $totalIncome,
+            'total_cogs'               => $totalCogs,
+            'total_operating_expenses' => $totalOpex,
+            'total_expense'            => $totalExpense,
+            'total_refunds'            => $totalRefunds,
+            'net_profit'               => $profit,
+            'profit_margin'            => $totalIncome > 0 ? round(($profit / $totalIncome) * 100, 2) : 0,
             'tourism_accounts_balance' => $tourismAccountsBalance,
-            'office_accounts_balance' => $officeAccountsBalance,
-            'total_accounts_balance' => $totalAccountsBalance,
+            'office_accounts_balance'  => $officeAccountsBalance,
+            'total_accounts_balance'   => $totalAccountsBalance,
         ];
     }
 
