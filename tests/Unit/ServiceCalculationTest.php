@@ -177,4 +177,71 @@ class ServiceCalculationTest extends TestCase
         $this->assertSame(250.0, (float) $report['summary']['total_recharges']);
         $this->assertSame(1, (int) $report['summary']['count_recharges']);
     }
+
+    public function test_finance_operations_report_summary_with_multi_currency(): void
+    {
+        $fromAccount = Account::query()->create([
+            'name' => 'USD Vault',
+            'type' => AccountType::Cashbox->value,
+            'currency' => 'USD',
+            'balance' => 1000,
+            'is_active' => true,
+            'module_type' => 'flight',
+            'created_by' => $this->user->id,
+        ]);
+
+        $toAccount = Account::query()->create([
+            'name' => 'EGP Vault',
+            'type' => AccountType::Cashbox->value,
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        $tx = Transaction::query()->create([
+            'type' => TransactionType::Transfer->value,
+            'module' => TransactionModule::General->value,
+            'amount' => 100.0, // 100 USD
+            'from_account_id' => $fromAccount->id,
+            'to_account_id' => $toAccount->id,
+            'created_at' => now(),
+            'created_by' => $this->user->id,
+            'notes' => 'تحويل عملة مع شحن',
+        ]);
+
+        \App\Models\Transfer::create([
+            'from_account_id' => $fromAccount->id,
+            'to_account_id' => $toAccount->id,
+            'amount' => 100.0,
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'exchange_rate' => 50.0,
+            'converted_amount' => 5000.0, // 5000 EGP
+            'transaction_id' => $tx->id,
+            'created_by' => $this->user->id,
+        ]);
+
+        $report = app(FinanceOperationsReportService::class)->report([
+            'from_date' => now()->subDay()->toDateString(),
+            'to_date' => now()->addDay()->toDateString(),
+        ]);
+
+        // The summary totals should aggregate EGP consolidated amounts
+        $this->assertEquals(5000.0, (float) $report['summary']['total_module_transfers']);
+        $this->assertEquals(1, (int) $report['summary']['count_module_transfers']);
+
+        // Check formatRow item attributes
+        $this->assertCount(1, $report['items']);
+        
+        // Find our transfer item
+        $item = collect($report['items'])->firstWhere('id', $tx->id);
+        $this->assertNotNull($item);
+        $this->assertEquals(100.0, $item['amount']);
+        $this->assertEquals('USD', $item['currency']);
+        $this->assertNotNull($item['transfer']);
+        $this->assertEquals(5000.0, $item['transfer']['converted_amount']);
+        $this->assertEquals(50.0, $item['transfer']['exchange_rate']);
+    }
 }

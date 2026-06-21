@@ -20,6 +20,8 @@ class TransferHistoryResource extends JsonResource
             'date' => $this->created_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'amount' => (float) $this->amount,
+            'exchange_rate' => $this->relationLoaded('transfer') && $this->transfer ? (float) $this->transfer->exchange_rate : null,
+            'converted_amount' => $this->relationLoaded('transfer') && $this->transfer ? (float) $this->transfer->converted_amount : null,
             'module' => $this->module instanceof \BackedEnum ? $this->module->value : $this->module,
             'from_account_id' => $this->from_account_id,
             'to_account_id' => $this->to_account_id,

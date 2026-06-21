@@ -165,6 +165,163 @@ class OperationsLedgerTest extends TestCase
             ->assertJsonPath('data.items.0.flow_kind', 'inflow');
     }
 
+    public function test_transaction_report_returns_multi_currency_details(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'USD Flight Vault',
+            'type' => 'cashbox',
+            'currency' => 'USD',
+            'balance' => 1000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flight',
+            'created_by' => $this->user->id,
+        ]);
+
+        $egpAccount = Account::create([
+            'name' => 'EGP Fawry Vault',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        $tx = Transaction::query()->create([
+            'type' => 'transfer',
+            'amount' => 100.0,
+            'module' => 'flight',
+            'from_account_id' => $usdAccount->id,
+            'to_account_id' => $egpAccount->id,
+            'created_by' => $this->user->id,
+            'notes' => 'تحويل عملة طيران',
+        ]);
+
+        \App\Models\Transfer::create([
+            'from_account_id' => $usdAccount->id,
+            'to_account_id' => $egpAccount->id,
+            'amount' => 100.0,
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'exchange_rate' => 50.0,
+            'converted_amount' => 5000.0,
+            'transaction_id' => $tx->id,
+            'created_by' => $this->user->id,
+        ]);
+
+        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+            'module' => 'flight',
+        ]);
+
+        $items = $paginator->items();
+        $this->assertCount(1, $items);
+        $item = $items[0];
+
+        $this->assertEquals(100.0, (float) $item->amount);
+        $this->assertEquals('USD', $item->from_account_currency);
+        $this->assertEquals('EGP', $item->to_account_currency);
+        $this->assertEquals('USD', $item->transfer_from_currency);
+        $this->assertEquals('EGP', $item->transfer_to_currency);
+        $this->assertEquals(50.0, (float) $item->transfer_exchange_rate);
+        $this->assertEquals(5000.0, (float) $item->transfer_converted_amount);
+    }
+
+    public function test_transaction_report_dynamically_translates_non_transfer_foreign_currency_transactions(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'USD Flight Vault',
+            'type' => 'cashbox',
+            'currency' => 'USD',
+            'balance' => 1000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flight',
+            'created_by' => $this->user->id,
+        ]);
+
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'rate' => 50.0,
+            'effective_date' => now(),
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $tx = Transaction::query()->create([
+            'type' => 'income',
+            'amount' => 10.0, // 10 USD
+            'currency' => 'USD',
+            'module' => 'flight',
+            'to_account_id' => $usdAccount->id,
+            'created_by' => $this->user->id,
+            'notes' => 'إيداع دولاري بدون تحويل',
+        ]);
+
+        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+            'module' => 'flight',
+        ]);
+
+        $items = $paginator->items();
+        $item = collect($items)->firstWhere('id', $tx->id);
+        $this->assertNotNull($item);
+        $this->assertEquals(10.0, (float) $item->amount);
+        $this->assertEquals('USD', $item->transaction_currency);
+        $this->assertEquals('USD', $item->transfer_from_currency);
+        $this->assertEquals('EGP', $item->transfer_to_currency);
+        $this->assertEquals(50.0, (float) $item->transfer_exchange_rate);
+        $this->assertEquals(500.0, (float) $item->transfer_converted_amount);
+    }
+
+    public function test_transaction_report_office_dynamically_translates_non_transfer_foreign_currency_transactions(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'USD Fawry Vault',
+            'type' => 'cashbox',
+            'currency' => 'USD',
+            'balance' => 1000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'rate' => 50.0,
+            'effective_date' => now(),
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $tx = Transaction::query()->create([
+            'type' => 'expense',
+            'amount' => 20.0, // 20 USD
+            'currency' => 'USD',
+            'module' => 'fawry',
+            'from_account_id' => $usdAccount->id,
+            'created_by' => $this->user->id,
+            'notes' => 'مصروف دولاري بدون تحويل من فوري',
+        ]);
+
+        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+            'module' => 'fawry',
+        ]);
+
+        $items = $paginator->items();
+        $item = collect($items)->firstWhere('id', $tx->id);
+        $this->assertNotNull($item);
+        $this->assertEquals(20.0, (float) $item->amount);
+        $this->assertEquals('USD', $item->transaction_currency);
+        $this->assertEquals('USD', $item->transfer_from_currency);
+        $this->assertEquals('EGP', $item->transfer_to_currency);
+        $this->assertEquals(50.0, (float) $item->transfer_exchange_rate);
+        $this->assertEquals(1000.0, (float) $item->transfer_converted_amount);
+    }
+
     private function createTransfer(
         int $fromId,
         int $toId,

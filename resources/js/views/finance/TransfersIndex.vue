@@ -42,9 +42,9 @@
           <span class="text-sm text-text-muted">إجمالي المبلغ المحول</span>
         </div>
         <p class="text-2xl font-bold font-mono text-gold">
-          {{ totalTransferred?.toLocaleString() || 0 }}
+          {{ formatCurrency(totalTransferred, 'EGP') }}
         </p>
-        <p class="text-xs text-text-muted mt-1">جنيه</p>
+        <p class="text-xs text-text-muted mt-1">معادل بالجنيه</p>
       </div>
 
       <div class="p-6 bg-card-bg border border-white/10 rounded-2xl">
@@ -116,9 +116,15 @@
                   </div>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="font-mono font-bold text-blue-500 text-sm">
-                    {{ transfer.amount?.toLocaleString() || 0 }}
-                  </span>
+                  <div class="flex flex-col font-mono text-sm">
+                    <span class="font-bold text-blue-500">
+                      {{ formatCurrency(transfer.amount, transfer.from_account?.currency) }}
+                    </span>
+                    <span v-if="transfer.from_account?.currency !== transfer.to_account?.currency && transfer.converted_amount" class="text-xs text-text-muted mt-0.5">
+                      = {{ formatCurrency(transfer.converted_amount, transfer.to_account?.currency) }}
+                      (سعر الصرف: {{ transfer.exchange_rate }})
+                    </span>
+                  </div>
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm text-text-muted">{{ transfer.description || transfer.notes || '-' }}</span>
@@ -216,6 +222,13 @@ const formatDate = (dateString) => {
     day: 'numeric',
   });
 };
+
+function formatCurrency(amount, currency = 'EGP') {
+  return new Intl.NumberFormat('ar-EG', {
+    style: 'currency',
+    currency: currency || 'EGP',
+  }).format(amount || 0);
+}
 
 function changePage(page) {
   if (page < 1 || page > store.pagination.last_page) return;

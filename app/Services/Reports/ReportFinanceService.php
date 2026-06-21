@@ -265,10 +265,12 @@ class ReportFinanceService
             ->leftJoin('users', 'transactions.created_by', '=', 'users.id')
             ->leftJoin('accounts as from_account', 'transactions.from_account_id', '=', 'from_account.id')
             ->leftJoin('accounts as to_account', 'transactions.to_account_id', '=', 'to_account.id')
+            ->leftJoin('transfers as tr', 'transactions.id', '=', 'tr.transaction_id')
             ->select(
                 'transactions.id',
                 'transactions.type',
                 'transactions.amount',
+                'transactions.currency as transaction_currency',
                 'transactions.module',
                 'transactions.notes',
                 'transactions.created_at',
@@ -277,8 +279,14 @@ class ReportFinanceService
                 'users.name as created_by_name',
                 'from_account.name as from_account_name',
                 'from_account.type as from_account_type',
+                'from_account.currency as from_account_currency',
                 'to_account.name as to_account_name',
-                'to_account.type as to_account_type'
+                'to_account.type as to_account_type',
+                'to_account.currency as to_account_currency',
+                'tr.from_currency as transfer_from_currency',
+                'tr.to_currency as transfer_to_currency',
+                'tr.exchange_rate as transfer_exchange_rate',
+                'tr.converted_amount as transfer_converted_amount'
             );
 
         if (! empty($filters['type'])) {
@@ -344,6 +352,29 @@ class ReportFinanceService
         $paginator->setCollection(
             collect($paginator->items())->map(function ($row) use ($maps) {
                 $row->flow_kind = $this->classifyTransactionFlow($row, $maps);
+
+                $currency = $row->transaction_currency ?: ($row->from_account_currency ?: ($row->to_account_currency ?: 'EGP'));
+                if ($currency !== 'EGP' && empty($row->transfer_from_currency)) {
+                    try {
+                        $converted = app(\App\Services\Finance\CurrencyService::class)->convert((float) $row->amount, $currency, 'EGP');
+                        $row->transfer_from_currency = $currency;
+                        $row->transfer_to_currency = 'EGP';
+                        $row->transfer_exchange_rate = (float) $converted['rate'];
+                        $row->transfer_converted_amount = (float) $converted['to_amount'];
+                    } catch (\Exception $e) {
+                        $rate = \App\Models\ExchangeRate::where('from_currency', $currency)
+                            ->where('to_currency', 'EGP')
+                            ->where('is_active', true)
+                            ->orderBy('effective_date', 'desc')
+                            ->first();
+                        if ($rate && $rate->rate > 0) {
+                            $row->transfer_from_currency = $currency;
+                            $row->transfer_to_currency = 'EGP';
+                            $row->transfer_exchange_rate = (float) $rate->rate;
+                            $row->transfer_converted_amount = (float) $row->amount * (float) $rate->rate;
+                        }
+                    }
+                }
 
                 return $row;
             })

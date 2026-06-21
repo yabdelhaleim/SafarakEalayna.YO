@@ -39,6 +39,7 @@ class ProfitLossReportService
 
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
             ->select([
                 't.id',
                 't.type',
@@ -48,6 +49,9 @@ class ProfitLossReportService
                 't.to_account_id',
                 'to_acc.type as to_account_type',
                 'to_acc.name as to_account_name',
+                'tr.converted_amount',
+                'tr.from_currency',
+                'tr.to_currency',
             ]);
 
         $this->applyDateFilters($query, $filters);
@@ -79,7 +83,7 @@ class ProfitLossReportService
                 continue;
             }
 
-            $amount = (float) $tx->amount;
+            $amount = $this->resolveAmountEGP($tx);
             if ($amount <= 0) {
                 continue;
             }
@@ -159,6 +163,7 @@ class ProfitLossReportService
 
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
             ->select([
                 't.id',
                 't.type',
@@ -168,6 +173,9 @@ class ProfitLossReportService
                 't.to_account_id',
                 'to_acc.type as to_account_type',
                 'to_acc.name as to_account_name',
+                'tr.converted_amount',
+                'tr.from_currency',
+                'tr.to_currency',
             ]);
 
         $this->applyDateFilters($query, $filters);
@@ -193,7 +201,7 @@ class ProfitLossReportService
                 continue;
             }
 
-            $amount = (float) $tx->amount;
+            $amount = $this->resolveAmountEGP($tx);
             if ($amount <= 0) {
                 continue;
             }
@@ -461,6 +469,22 @@ class ProfitLossReportService
             'wallet_transfer', 'wallets', 'wallet' => 'wallet',
             default => $module,
         };
+    }
+
+    private function resolveAmountEGP(object $tx): float
+    {
+        $amount = (float) $tx->amount;
+        if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
+            $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
+            $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
+            if ($toCurrency === 'EGP') {
+                $amount = (float) $tx->converted_amount;
+            } elseif ($fromCurrency === 'EGP') {
+                $amount = (float) $tx->amount;
+            }
+        }
+
+        return $amount;
     }
 
     /**

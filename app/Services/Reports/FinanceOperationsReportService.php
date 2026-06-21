@@ -49,6 +49,7 @@ class FinanceOperationsReportService
                 'fromAccount:id,name,type,currency,module_type',
                 'toAccount:id,name,type,currency,module_type',
                 'createdBy:id,name',
+                'transfer',
             ])
             ->where(function (Builder $outer) use ($prepaidIds, $relatedTypes): void {
                 $outer->whereIn('related_type', $relatedTypes);
@@ -133,7 +134,7 @@ class FinanceOperationsReportService
             if (! empty($filters['operation_type']) && $filters['operation_type'] !== 'all' && $type !== $filters['operation_type']) {
                 continue;
             }
-            $amt = (float) $tx->amount;
+            $amt = $this->resolveAmountEGP($tx);
             if ($type === 'recharge') {
                 $fullSummary['total_recharges'] += $amt;
                 $fullSummary['count_recharges']++;
@@ -182,9 +183,12 @@ class FinanceOperationsReportService
             return 'cogs';
         }
 
-        if ($tx->type === 'transfer' && $tx->fromAccount && $tx->toAccount) {
-            $fromLiq = in_array($tx->fromAccount->type, AccountModuleDivision::LIQUIDITY_TYPES, true);
-            $toLiq = in_array($tx->toAccount->type, AccountModuleDivision::LIQUIDITY_TYPES, true);
+        $txType = $tx->type instanceof \BackedEnum ? $tx->type->value : $tx->type;
+        if ($txType === 'transfer' && $tx->fromAccount && $tx->toAccount) {
+            $fromType = $tx->fromAccount->type instanceof \BackedEnum ? $tx->fromAccount->type->value : $tx->fromAccount->type;
+            $toType = $tx->toAccount->type instanceof \BackedEnum ? $tx->toAccount->type->value : $tx->toAccount->type;
+            $fromLiq = in_array($fromType, AccountModuleDivision::LIQUIDITY_TYPES, true);
+            $toLiq = in_array($toType, AccountModuleDivision::LIQUIDITY_TYPES, true);
             if ($fromLiq && $toLiq && $fromId !== $toId) {
                 $fromModule = (string) ($tx->fromAccount->module_type ?? '');
                 $toModule = (string) ($tx->toAccount->module_type ?? '');
@@ -222,6 +226,13 @@ class FinanceOperationsReportService
             'related_type' => $tx->related_type,
             'related_id' => $tx->related_id,
             'prepaid_key' => $prepaidMap[$toId] ?? $prepaidMap[$fromId] ?? null,
+            'currency' => $tx->transfer->from_currency ?? $tx->fromAccount->currency ?? $tx->toAccount->currency ?? 'EGP',
+            'transfer' => $tx->transfer ? [
+                'from_currency' => $tx->transfer->from_currency,
+                'to_currency' => $tx->transfer->to_currency,
+                'exchange_rate' => round((float) $tx->transfer->exchange_rate, 4),
+                'converted_amount' => round((float) $tx->transfer->converted_amount, 2),
+            ] : null,
             'from_account' => $tx->fromAccount ? [
                 'id' => $tx->fromAccount->id,
                 'name' => $tx->fromAccount->name,
@@ -241,6 +252,21 @@ class FinanceOperationsReportService
                 'name' => $tx->createdBy->name,
             ] : null,
         ];
+    }
+
+    private function resolveAmountEGP(Transaction $tx): float
+    {
+        $amount = (float) $tx->amount;
+        if ($tx->transfer) {
+            $fromCurrency = strtoupper((string) ($tx->transfer->from_currency ?? ''));
+            $toCurrency = strtoupper((string) ($tx->transfer->to_currency ?? ''));
+            if ($toCurrency === 'EGP' && (float) $tx->transfer->converted_amount > 0) {
+                $amount = (float) $tx->transfer->converted_amount;
+            } elseif ($fromCurrency === 'EGP') {
+                $amount = (float) $tx->amount;
+            }
+        }
+        return $amount;
     }
 
     private function operationLabel(string $type): string

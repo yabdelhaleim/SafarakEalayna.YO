@@ -1046,9 +1046,15 @@ class FinancialReportService
             }
         }
 
+        // Convert to EGP and add to each item
+        foreach ($results as &$item) {
+            $item['balance_egp'] = round($this->convertToEgp((float) $item['balance'], $item['currency'] ?? 'EGP'), 2);
+        }
+        unset($item);
+
         // Sort items by absolute balance value descending
         usort($results, function ($a, $b) {
-            return abs($b['balance']) <=> abs($a['balance']);
+            return abs($b['balance_egp']) <=> abs($a['balance_egp']);
         });
 
         // Calculate totals
@@ -1056,19 +1062,54 @@ class FinancialReportService
         $totalPayables = 0.0;
 
         foreach ($results as $item) {
-            if ($item['balance'] > 0) {
-                $totalReceivables += $item['balance'];
+            if ($item['balance_egp'] > 0) {
+                $totalReceivables += $item['balance_egp'];
             } else {
-                $totalPayables += abs($item['balance']);
+                $totalPayables += abs($item['balance_egp']);
             }
         }
 
         return [
-            'total_receivables' => $totalReceivables,
-            'total_payables' => $totalPayables,
-            'net_balance' => $totalReceivables - $totalPayables,
+            'total_receivables' => round($totalReceivables, 2),
+            'total_payables' => round($totalPayables, 2),
+            'net_balance' => round($totalReceivables - $totalPayables, 2),
             'items' => $results,
         ];
+    }
+
+    private function convertToEgp(float $amount, string $currency): float
+    {
+        $currency = strtoupper($currency);
+        if ($currency === 'EGP' || $amount == 0.0) {
+            return $amount;
+        }
+
+        try {
+            $converted = app(\App\Services\Finance\CurrencyService::class)->convert($amount, $currency, 'EGP');
+            return (float) $converted['to_amount'];
+        } catch (\Exception $e) {
+            $rate = \App\Models\ExchangeRate::where('from_currency', $currency)
+                ->where('to_currency', 'EGP')
+                ->where('is_active', true)
+                ->orderBy('effective_date', 'desc')
+                ->first();
+
+            if ($rate && $rate->rate > 0) {
+                return $amount * (float) $rate->rate;
+            }
+
+            $inverseRate = \App\Models\ExchangeRate::where('from_currency', 'EGP')
+                ->where('to_currency', $currency)
+                ->where('is_active', true)
+                ->orderBy('effective_date', 'desc')
+                ->first();
+
+            if ($inverseRate && $inverseRate->rate > 0) {
+                return $amount / (float) $inverseRate->rate;
+            }
+
+            return $amount;
+        }
     }
 
     private function getModuleLabel(string $module): string

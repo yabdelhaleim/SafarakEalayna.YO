@@ -291,4 +291,36 @@ class ProfitLossReportTest extends TestCase
             'notes' => $notes,
         ]);
     }
+
+    public function test_multi_currency_operating_expense_is_converted_to_egp_in_pl_report(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'خزينة دولار',
+            'type' => 'cashbox',
+            'currency' => 'USD',
+            'balance' => 1000.0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'general',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $usdAccount->id,
+            'to_account_id' => $this->expenseAccount->id,
+            'amount' => 100.0,
+            'converted_amount' => 5000.0,
+            'exchange_rate' => 50.0,
+            'type' => 'expense',
+            'module' => 'general',
+            'notes' => 'دفع إيجار بالدولار',
+        ]);
+        $response->assertCreated();
+
+        $report = app(ProfitLossReportService::class)->report([]);
+
+        $this->assertEquals(5000.0, (float) $report['totalExpenses']);
+        $this->assertEquals(-5000.0, (float) $report['netProfit']);
+    }
 }
+

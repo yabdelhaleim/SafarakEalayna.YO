@@ -459,4 +459,94 @@ class FinancialReportTest extends TestCase
         $this->assertEquals('حجز', $groupRows[0]['status_ar']);
         $this->assertEquals('سداد', $groupRows[1]['status_ar']);
     }
+
+    public function test_debts_report_converts_multi_currency(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'USD Customer Account',
+            'type' => 'customer',
+            'currency' => 'USD',
+            'balance' => 100.0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'tourism',
+            'created_by' => $this->user->id,
+        ]);
+
+        $customer = Customer::create([
+            'account_id' => $usdAccount->id,
+            'full_name' => 'USD Customer',
+            'phone' => '01299999999',
+        ]);
+
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'rate' => 50.0,
+            'effective_date' => now(),
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/reports/debts?department=tourism&entity_type=customer');
+
+        $response->assertOk();
+        $data = $response->json('data');
+
+        // Check that USD customer is present and correctly converted
+        $item = collect($data['items'])->firstWhere('id', $customer->id);
+        $this->assertNotNull($item);
+        $this->assertEquals(100.0, $item['balance']);
+        $this->assertEquals('USD', $item['currency']);
+        $this->assertEquals(5000.0, $item['balance_egp']);
+
+        // Check aggregated totals
+        $this->assertEquals(5000.0, (float) $data['total_receivables']);
+    }
+
+    public function test_debts_report_office_converts_multi_currency(): void
+    {
+        $usdAccount = Account::create([
+            'name' => 'USD Supplier Account',
+            'type' => 'supplier',
+            'currency' => 'USD',
+            'balance' => -100.0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'created_by' => $this->user->id,
+        ]);
+
+        $supplier = Supplier::create([
+            'account_id' => $usdAccount->id,
+            'name' => 'USD Bus Company',
+            'code' => 'SUPP-USD-BUS',
+            'phone' => '01288888888',
+            'type' => 'bus_company',
+        ]);
+
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'USD',
+            'to_currency' => 'EGP',
+            'rate' => 50.0,
+            'effective_date' => now(),
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/reports/debts?department=office&entity_type=supplier');
+
+        $response->assertOk();
+        $data = $response->json('data');
+
+        // Check that USD supplier is present and correctly converted
+        $item = collect($data['items'])->firstWhere('id', $supplier->id);
+        $this->assertNotNull($item);
+        $this->assertEquals(-100.0, $item['balance']);
+        $this->assertEquals('USD', $item['currency']);
+        $this->assertEquals(-5000.0, $item['balance_egp']);
+
+        // Check aggregated totals
+        $this->assertEquals(5000.0, (float) $data['total_payables']);
+    }
 }

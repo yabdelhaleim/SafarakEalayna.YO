@@ -45,18 +45,26 @@ class StoreTransferRequest extends FormRequest
                 return;
             }
 
+            $isExpense = ($this->input('type') === 'expense' || $to->type?->value === 'expense' || $to->type === 'expense');
+
             foreach (['from' => $from, 'to' => $to] as $label => $account) {
                 $type = $account->type?->value ?? $account->type;
-                if (! in_array($type, AccountModuleDivision::LIQUIDITY_TYPES, true)) {
+                $allowedTypes = ($label === 'to' && $isExpense)
+                    ? ['expense']
+                    : AccountModuleDivision::LIQUIDITY_TYPES;
+
+                if (! in_array($type, $allowedTypes, true)) {
                     $validator->errors()->add(
                         $label === 'from' ? 'from_account_id' : 'to_account_id',
-                        'يُسمح بالتحويل بين حسابات السيولة فقط (خزينة، بنك، محفظة).'
+                        $label === 'from'
+                            ? 'يُسمح بالسحب من حسابات السيولة فقط (خزينة، بنك، محفظة).'
+                            : 'يُسمح بالتحويل لحسابات السيولة أو تصنيف مصروف صالح.'
                     );
                 }
                 if (! $account->is_active) {
                     $validator->errors()->add(
                         $label === 'from' ? 'from_account_id' : 'to_account_id',
-                        'الحساب غير نشط ولا يمكن استخدامه في التحويل.'
+                        'الحساب غير نشط ولا يمكن استخدامه.'
                     );
                 }
             }

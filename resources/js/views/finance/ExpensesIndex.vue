@@ -108,7 +108,7 @@
                   </span>
                 </td>
                 <td class="p-4 font-bold text-white">
-                  {{ formatCurrency(expense.amount) }}
+                  {{ formatCurrency(expense.amount, expense.from_account_currency || 'EGP') }}
                 </td>
                 <td class="p-4 text-text-muted max-w-xs truncate" :title="expense.notes">
                   {{ expense.notes || '---' }}
@@ -228,7 +228,7 @@
                 :label="group.label"
               >
                 <option v-for="acc in group.accounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} — {{ formatAccountType(acc.type) }} ({{ formatCurrency(acc.balance) }})
+                  {{ acc.name }} — {{ formatAccountType(acc.type) }} ({{ formatCurrency(acc.balance, acc.currency) }})
                 </option>
               </optgroup>
             </select>
@@ -272,8 +272,29 @@
                 class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 pr-12 focus:outline-none focus:border-rose-500 transition-colors"
                 placeholder="أدخل المبلغ..."
               />
-              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted font-bold">EGP</span>
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted font-bold">{{ fromAccount?.currency || 'EGP' }}</span>
             </div>
+          </div>
+
+          <div v-if="fromAccount && toAccount && fromAccount.currency !== toAccount.currency">
+            <label for="expense-exchange-rate" class="block text-sm font-medium text-white mb-2">سعر الصرف</label>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-text-muted">1 {{ fromAccount.currency }} =</span>
+              <input
+                id="expense-exchange-rate"
+                name="expense_exchange_rate"
+                v-model.number="form.exchange_rate"
+                type="number"
+                step="0.000001"
+                min="0.000001"
+                required
+                class="flex-1 bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-rose-500 transition-colors"
+              />
+              <span class="text-sm text-text-muted">{{ toAccount.currency }}</span>
+            </div>
+            <p class="mt-2 text-xs text-rose-300/85">
+              المبلغ المعادل في بند المصروف: {{ formatCurrency(convertedAmount, toAccount.currency) }}
+            </p>
           </div>
 
           <div>
@@ -363,7 +384,24 @@ const form = ref({
   amount: '',
   notes: '',
   category: 'general',
-  module: 'general'
+  module: 'general',
+  exchange_rate: 1.0
+});
+
+const fromAccount = computed(() => {
+  return treasuryAccounts.value.find((acc) => acc.id === form.value.from_account_id) || null;
+});
+
+const toAccount = computed(() => {
+  return expenseAccounts.value.find((acc) => acc.id === form.value.expense_account_id) || null;
+});
+
+const convertedAmount = computed(() => {
+  if (!fromAccount.value || !toAccount.value) return 0;
+  if (fromAccount.value.currency === toAccount.value.currency) {
+    return form.value.amount;
+  }
+  return form.value.amount * (form.value.exchange_rate || 1.0);
 });
 
 const preferredTreasuryModuleKeys = computed(() => {
@@ -404,6 +442,7 @@ const updateModuleSelection = () => {
   }
   form.value.expense_account_id = '';
   form.value.from_account_id = '';
+  form.value.exchange_rate = 1.0;
 };
 
 const moduleTypeForForm = computed(() => {
@@ -444,13 +483,25 @@ watch(
   () => {
     form.value.expense_account_id = '';
     form.value.from_account_id = '';
+    form.value.exchange_rate = 1.0;
+  }
+);
+
+watch(
+  [() => form.value.from_account_id, () => form.value.expense_account_id],
+  () => {
+    if (fromAccount.value && toAccount.value) {
+      if (fromAccount.value.currency === toAccount.value.currency) {
+        form.value.exchange_rate = 1.0;
+      }
+    }
   }
 );
 
 // No attachment needed anymore
 
 const openExpenseModal = () => {
-  form.value = { expense_account_id: '', from_account_id: '', amount: '', notes: '', category: 'general', module: 'general' };
+  form.value = { expense_account_id: '', from_account_id: '', amount: '', notes: '', category: 'general', module: 'general', exchange_rate: 1.0 };
   isModalOpen.value = true;
 };
 
@@ -459,9 +510,9 @@ const closeExpenseModal = () => {
 };
 
 // Formatting utilities
-const formatCurrency = (val) => {
-  if (!val && val !== 0) return '0.00 EGP';
-  return parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
+const formatCurrency = (val, currency = 'EGP') => {
+  if (!val && val !== 0) return `0.00 ${currency}`;
+  return parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ` ${currency}`;
 };
 
 const formatDate = (dateStr) => {
@@ -601,6 +652,11 @@ const submitExpense = async () => {
       type: 'expense',
       module: form.value.module,
     };
+
+    if (fromAccount.value && toAccount.value && fromAccount.value.currency !== toAccount.value.currency) {
+      payload.exchange_rate = form.value.exchange_rate;
+      payload.converted_amount = convertedAmount.value;
+    }
 
     await axios.post('/api/v1/finance/transfers', payload);
 

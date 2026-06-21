@@ -133,7 +133,17 @@
               </td>
               <td class="px-5 py-4 text-sm">{{ row.from_account?.name || '—' }}</td>
               <td class="px-5 py-4 text-sm">{{ row.to_account?.name || '—' }}</td>
-              <td class="px-5 py-4 font-mono font-bold">{{ formatCurrency(row.amount) }}</td>
+              <td class="px-5 py-4">
+                <div class="flex flex-col font-mono text-sm">
+                  <span class="font-bold text-text-main">
+                    {{ formatCurrency(row.amount, row.currency) }}
+                  </span>
+                  <span v-if="row.transfer && row.transfer.from_currency !== row.transfer.to_currency" class="text-[11px] text-text-muted mt-0.5">
+                    = {{ formatCurrency(row.transfer.converted_amount, row.transfer.to_currency) }}
+                    (سعر الصرف: {{ row.transfer.exchange_rate }})
+                  </span>
+                </div>
+              </td>
               <td class="px-5 py-4 text-sm">{{ row.module || '—' }}</td>
               <td class="px-5 py-4 text-sm text-text-muted max-w-xs truncate" :title="row.notes">{{ row.notes || '—' }}</td>
               <td class="px-5 py-4 text-sm">{{ row.created_by?.name || '—' }}</td>
@@ -196,9 +206,9 @@ const filters = ref({
 
 let debounceTimer = null;
 
-const formatCurrency = (val) => {
+const formatCurrency = (val, currency = 'EGP') => {
   const n = Number(val) || 0;
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (currency || 'EGP');
 };
 
 const formatDate = (iso) => {

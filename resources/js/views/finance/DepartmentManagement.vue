@@ -198,7 +198,12 @@
                   </td>
                   <td class="font-mono text-xs text-muted">{{ item.phone || '—' }}</td>
                   <td>
-                    <span class="font-black text-error text-lg font-mono">{{ formatMoney(Math.abs(item.balance), item.currency) }}</span>
+                    <div class="flex flex-col">
+                      <span class="font-black text-error text-lg font-mono">{{ formatMoney(Math.abs(item.balance), item.currency) }}</span>
+                      <span v-if="item.currency !== 'EGP'" class="text-[11px] text-slate-400 font-semibold mt-0.5">
+                        (= {{ formatMoney(Math.abs(item.balance_egp), 'EGP') }})
+                      </span>
+                    </div>
                   </td>
                   <td>
                     <router-link v-if="item.statement_url" :to="item.statement_url"
@@ -279,7 +284,12 @@
                   </td>
                   <td class="font-mono text-xs text-muted">{{ item.phone || '—' }}</td>
                   <td>
-                    <span class="font-black text-success text-lg font-mono">{{ formatMoney(item.balance, item.currency) }}</span>
+                    <div class="flex flex-col">
+                      <span class="font-black text-success text-lg font-mono">{{ formatMoney(item.balance, item.currency) }}</span>
+                      <span v-if="item.currency !== 'EGP'" class="text-[11px] text-slate-400 font-semibold mt-0.5">
+                        (= {{ formatMoney(Math.abs(item.balance_egp), 'EGP') }})
+                      </span>
+                    </div>
                   </td>
                   <td>
                     <router-link v-if="item.statement_url" :to="item.statement_url"

@@ -195,7 +195,7 @@ class AccountController extends Controller
      */
     public function transferHistory(Request $request): JsonResponse
     {
-        $query = Transaction::with(['createdBy', 'fromAccount', 'toAccount'])
+        $query = Transaction::with(['createdBy', 'fromAccount', 'toAccount', 'transfer'])
             ->where('type', TransactionType::Transfer->value)
             ->whereNotNull('from_account_id')
             ->whereNotNull('to_account_id')

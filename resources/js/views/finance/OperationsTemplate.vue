@@ -198,10 +198,14 @@
                       flowKindClass(transaction)
                     ]"
                   >
-                    {{ flowKindPrefix(transaction) }}
-                    {{ formatNumber(transaction.amount) }}
+                    {{ flowKindPrefix(transaction) }}{{ formatNumber(transaction.amount) }}
+                    <span class="text-xs font-bold text-text-muted mr-1">{{ transaction.from_account_currency || transaction.to_account_currency || 'EGP' }}</span>
                   </span>
-                  <span class="text-[10px] font-bold text-text-muted">{{ flowKindLabel(transaction) }}</span>
+                  <span v-if="transaction.transfer_from_currency && transaction.transfer_from_currency !== transaction.transfer_to_currency" class="text-[10px] text-text-muted mt-0.5">
+                    = {{ formatNumber(transaction.transfer_converted_amount) }} {{ transaction.transfer_to_currency }}
+                    (سعر الصرف: {{ transaction.transfer_exchange_rate }})
+                  </span>
+                  <span class="text-[10px] font-bold text-text-muted mt-0.5">{{ flowKindLabel(transaction) }}</span>
                 </div>
               </td>
               <td class="px-6 py-4 text-left">
