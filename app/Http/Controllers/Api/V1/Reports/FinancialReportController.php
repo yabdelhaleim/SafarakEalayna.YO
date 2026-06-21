@@ -202,4 +202,17 @@ class FinancialReportController extends Controller
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
+
+    public function officeTrialBalance(Request $request): JsonResponse
+    {
+        try {
+            $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+            $report = $treasuryService->getOfficeTrialBalance();
+
+            return ApiResponse::success('Office trial balance report generated successfully.', $report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
 }

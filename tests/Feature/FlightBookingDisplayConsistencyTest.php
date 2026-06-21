@@ -88,13 +88,14 @@ class FlightBookingDisplayConsistencyTest extends TestCase
             'payment_method' => 'cash',
         ]);
 
-        $this->assertSame(9800.0, (float) $booking->selling_price);
+        $this->assertSame(132300.0, (float) $booking->selling_price);
         $this->assertSame('SAR', $booking->currency);
 
         $response = $this->getJson("/api/v1/flight/bookings/{$booking->id}");
 
         $response->assertOk()
-            ->assertJsonPath('data.selling_price', 9800)
+            ->assertJsonPath('data.selling_price', 132300)
+            ->assertJsonPath('data.original_amount', 9800)
             ->assertJsonPath('data.purchase_currency', 'SAR')
             ->assertJsonPath('data.selling_currency', 'EGP')
             ->assertJsonPath('data.from_airport', 'CAI')

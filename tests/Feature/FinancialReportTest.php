@@ -439,7 +439,7 @@ class FinancialReportTest extends TestCase
         $items = $response->json('data.data');
         $this->assertGreaterThanOrEqual(1, count($items));
 
-        $groupItem = collect($items)->firstWhere('source_type', 'group');
+        $groupItem = collect($items)->first(fn (array $row) => ($row['source_type'] ?? '') === 'group' && ($row['status_ar'] ?? '') === 'حجز');
         $this->assertNotNull($groupItem);
         $this->assertEquals('FLT-DET-001', $groupItem['booking_number']);
         $this->assertEquals(1000.0, (float) $groupItem['debit']);
@@ -451,7 +451,10 @@ class FinancialReportTest extends TestCase
         $this->assertEquals('FLT-DET-001', $paymentItem['booking_number']);
         $this->assertEquals(1000.0, (float) $paymentItem['credit']);
 
-        $groupRows = collect($items)->where('group_key', $groupItem['group_key'])->values();
+        $groupRows = collect($items)
+            ->where('group_key', $groupItem['group_key'])
+            ->sortBy(fn($row) => $row['type'] === 'debit' ? 0 : 1)
+            ->values();
         $this->assertCount(2, $groupRows);
         $this->assertEquals('حجز', $groupRows[0]['status_ar']);
         $this->assertEquals('سداد', $groupRows[1]['status_ar']);

@@ -59,7 +59,7 @@ class TransactionService
                 'amount' => $amount,
                 'from_account_id' => $fromId,
                 'to_account_id' => $resolvedContra,
-                'allow_from_negative' => false,
+                'allow_from_negative' => $data['allow_from_negative'] ?? $this->ledgerClearingAccounts->isPrepaidAccountId($fromId),
                 'module' => $moduleValue,
                 'related_type' => $data['related_type'] ?? null,
                 'related_id' => $data['related_id'] ?? null,
@@ -324,7 +324,6 @@ class TransactionService
             $fromCurrency = strtoupper((string) $fromAccount->currency);
             $toCurrency = strtoupper((string) $toAccount->currency);
             $sameCurrency = $fromCurrency === $toCurrency;
-
             $creditAmount = $sameCurrency
                 ? $debitAmount
                 : (float) ((isset($data['converted_amount']) && is_numeric($data['converted_amount']) && (float) $data['converted_amount'] > 0)
@@ -533,6 +532,27 @@ class TransactionService
                 ]);
             }
 
+            $fromCurrency = strtoupper((string) $fromAccount->currency);
+            $toCurrency = strtoupper((string) $toAccount->currency);
+            $sameCurrency = $fromCurrency === $toCurrency;
+
+            $toAmount = $sameCurrency
+                ? $amount
+                : (float) ($data['converted_amount'] ?? 0.0);
+
+            if (! $sameCurrency && $toAmount <= 0) {
+                $rate = (float) ($data['exchange_rate'] ?? 1.0);
+                if ($rate > 0) {
+                    if ($fromCurrency === 'EGP') {
+                        $toAmount = $amount / $rate;
+                    } else {
+                        $toAmount = $amount * $rate;
+                    }
+                } else {
+                    $toAmount = $amount;
+                }
+            }
+
             $fromAccount->balance = (float) $fromAccount->balance - $amount;
             $fromAccount->save();
 
@@ -544,14 +564,14 @@ class TransactionService
                 'balance_after' => $fromAccount->balance,
             ]);
 
-            $toAccount->balance = (float) $toAccount->balance + $amount;
+            $toAccount->balance = (float) $toAccount->balance + $toAmount;
             $toAccount->save();
 
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
                 'debit' => 0.00,
-                'credit' => $amount,
+                'credit' => $toAmount,
                 'balance_after' => $toAccount->balance,
             ]);
 

@@ -222,7 +222,7 @@ class FlightBookingFlowTest extends TestCase
             'currency' => 'USD',
             'purchase_price_foreign' => 500,
             'exchange_rate' => 50,
-            'selling_price' => 30000,
+            'selling_price' => 600,
             'flight_carrier_id' => $usdCarrier->id,
             'account_id' => $this->treasuryAccount->id,
             'passengers' => [

@@ -216,16 +216,18 @@ class FlightBookingService
                 $currency = $data['currency'] ?? 'EGP';
                 $purchasePriceEGP = 0;
                 $sellingPrice = (float) ($data['selling_price'] ?? 0);
+                $exchangeRate = (float) ($data['exchange_rate'] ?? 1.0);
 
                 if ($currency === 'EGP') {
                     $purchasePriceEGP = (float) ($data['purchase_price'] ?? 0);
+                    $sellingPriceEGP = $sellingPrice;
                 } else {
                     $purchasePriceForeign = (float) ($data['purchase_price_foreign'] ?? 0);
-                    $exchangeRate = (float) ($data['exchange_rate'] ?? 1.0);
                     $purchasePriceEGP = $purchasePriceForeign * $exchangeRate;
+                    $sellingPriceEGP = $sellingPrice * $exchangeRate;
                 }
 
-                $profit = $sellingPrice - $purchasePriceEGP;
+                $profit = $sellingPriceEGP - $purchasePriceEGP;
 
                 $purchaseBalanceSource = $this->resolvePurchaseBalanceSource($data);
                 $settlementSnapshot = $this->persistedSettlementSnapshot($data, $currency, $purchasePriceEGP, $purchaseBalanceSource);
@@ -268,12 +270,12 @@ class FlightBookingService
                     'baggage_allowance_kg' => $data['baggage_allowance_kg'] ?? 0,
                     'trip_details' => $data['trip_details'] ?? null,
                     'purchase_price' => $purchasePriceEGP,
-                    'selling_price' => $sellingPrice,
+                    'selling_price' => $sellingPriceEGP,
                     'profit' => $profit,
                     'currency' => $currency,
-                    'foreign_currency' => $data['foreign_currency'] ?? null,
-                    'purchase_price_foreign' => $data['purchase_price_foreign'] ?? null,
-                    'exchange_rate' => $data['exchange_rate'] ?? 1.0,
+                    'foreign_currency' => $currency !== 'EGP' ? $currency : ($data['foreign_currency'] ?? null),
+                    'purchase_price_foreign' => $currency !== 'EGP' ? ($data['purchase_price_foreign'] ?? null) : null,
+                    'exchange_rate' => $exchangeRate,
                     'currency_used' => $settlementSnapshot['currency_used'],
                     'balance_currency_used' => $settlementSnapshot['balance_currency_used'],
                     'exchange_rate_used' => $settlementSnapshot['exchange_rate_used'],
@@ -288,6 +290,10 @@ class FlightBookingService
                     'agent_name' => $data['agent_name'] ?? 'Office',
                     'notes' => $data['notes'] ?? null,
                     'created_by' => $userId,
+                    'original_currency' => $currency,
+                    'original_amount' => $sellingPrice,
+                    'booking_exchange_rate' => $exchangeRate,
+                    'base_currency_amount' => $sellingPriceEGP,
                 ]);
 
                 Log::info('Flight booking created', [
@@ -349,7 +355,7 @@ class FlightBookingService
                 $this->recordSaleToCustomer(
                     $booking,
                     (int) $data['customer_id'],
-                    $sellingPrice,
+                    $sellingPriceEGP,
                     $userId,
                     $data['passengers'] ?? []
                 );
@@ -824,7 +830,7 @@ class FlightBookingService
         $this->prepaidLedgerService->consumeCogs(
             prepaidKey: 'flight_carrier',
             module: TransactionModule::Flight,
-            amount: $debitAmount,
+            amount: $purchasePriceEGP,
             notes: sprintf('تكلفة حجز %s — ناقل %s', $booking->booking_number, $carrier->name),
             relatedType: FlightBooking::class,
             relatedId: $booking->id,
@@ -876,7 +882,7 @@ class FlightBookingService
         $this->prepaidLedgerService->consumeCogs(
             prepaidKey: 'flight_system',
             module: TransactionModule::Flight,
-            amount: $debitAmount,
+            amount: $purchasePriceEGP,
             notes: sprintf('تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
             relatedType: FlightBooking::class,
             relatedId: $booking->id,
@@ -1717,16 +1723,31 @@ class FlightBookingService
                     }
                 }
 
-                // Step 3: Reverse GL sale (only when no recorded payments; mixed cases need manual review)
+                // Step 3: Reverse GL sale
                 if ($booking->sale_gl_transaction_id) {
-                    if ((float) $totalPaid > 0.01) {
-                        Log::warning('Flight booking cancel: sale_gl_transaction present with payments; GL reversal skipped', [
-                            'flight_booking_id' => $booking->id,
-                            'total_paid' => $totalPaid,
-                        ]);
-                    } else {
-                        $this->reverseFlightBookingSaleLedger($booking, $userId);
+                    $totalPenalties = $airlinePenalty + $officePenalty;
+                    $saleReversalAmount = max(0.0, (float) $booking->selling_price - $totalPenalties);
+
+                    if ($saleReversalAmount > 0.001) {
+                        $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                        if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                            $clearingId = (int) $orig->from_account_id;
+                            $customerAccountId = (int) $orig->to_account_id;
+
+                            $this->transactionService->recordJournalTransfer([
+                                'amount' => $saleReversalAmount,
+                                'from_account_id' => $customerAccountId,
+                                'to_account_id' => $clearingId,
+                                'allow_from_negative' => true,
+                                'module' => TransactionModule::Flight->value,
+                                'related_type' => FlightBooking::class,
+                                'related_id' => $booking->id,
+                                'notes' => 'عكس مبيعات حجز طيران ملغي (مخصوماً منه الغرامات) — حجز #'.$booking->booking_number,
+                                'created_by' => $userId,
+                            ]);
+                        }
                     }
+                    $booking->forceFill(['sale_gl_transaction_id' => null])->save();
                 }
 
                 if ($refundAmount > 0 && empty($data['account_id'])) {
@@ -1832,6 +1853,15 @@ class FlightBookingService
             'penalty' => $airlinePenalty,
             'balance_after' => $carrier->fresh()->available_balance,
         ]);
+
+        $this->prepaidLedgerService->refundCogs(
+            prepaidKey: 'flight_carrier',
+            module: TransactionModule::Flight,
+            amount: $netEgp,
+            notes: sprintf('إلغاء تكلفة حجز %s — ناقل %s', $booking->booking_number, $carrier->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
+        );
     }
 
     /**
@@ -1877,6 +1907,15 @@ class FlightBookingService
             'penalty' => $airlinePenalty,
             'balance_after' => $system->fresh()->available_balance,
         ]);
+
+        $this->prepaidLedgerService->refundCogs(
+            prepaidKey: 'flight_system',
+            module: TransactionModule::Flight,
+            amount: $netEgp,
+            notes: sprintf('إلغاء تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
+        );
     }
 
     /**
@@ -1889,13 +1928,18 @@ class FlightBookingService
         int $userId
     ): Transaction {
         try {
-            $transaction = $this->transactionService->recordExpense([
+            $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+
+            $transaction = $this->transactionService->recordJournalTransfer([
                 'amount' => $refundAmount,
                 'from_account_id' => $accountId,
+                'to_account_id' => $customerAccount->id,
+                'allow_from_negative' => false,
                 'module' => TransactionModule::Flight->value,
                 'related_type' => FlightBooking::class,
                 'related_id' => $booking->id,
                 'notes' => "استرداد حجز تذكرة - {$booking->booking_number}",
+                'created_by' => $userId,
             ]);
 
             TreasuryLedgerMirror::mirrorFlightOutboundFromCash(

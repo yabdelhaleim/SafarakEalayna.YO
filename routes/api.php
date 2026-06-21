@@ -408,6 +408,7 @@ Route::prefix('v1')->middleware([
         Route::get('ledger-reconciliation/latest', [FinancialReportController::class, 'latestLedgerReconciliation']);
         Route::get('capital-analysis', [FinancialReportController::class, 'capitalAnalysis']);
         Route::get('trial-balance', [FinancialReportController::class, 'trialBalance']);
+        Route::get('office-trial-balance', [FinancialReportController::class, 'officeTrialBalance']);
         Route::get('flights/detailed', [FinancialReportController::class, 'detailedFlightReport']);
     });
 

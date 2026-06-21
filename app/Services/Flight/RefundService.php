@@ -6,12 +6,23 @@ use App\Enums\FlightBookingStatus;
 use App\Models\Flight\AirlineCredit;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\RefundRequest;
+use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightSystem;
 use App\Models\Treasury;
+use App\Models\Account;
+use App\Enums\AccountType;
+use App\Enums\TransactionModule;
+use App\Services\Finance\TransactionService;
+use App\Services\Finance\LedgerClearingAccounts;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class RefundService
 {
+    public function __construct(
+        protected TransactionService $transactionService,
+        protected LedgerClearingAccounts $clearingAccounts,
+    ) {}
     /**
      * إنشاء طلب استرجاع جديد للتذكرة.
      */
@@ -151,6 +162,99 @@ class RefundService
                     'treasury_id' => $treasury->id,
                     'amount' => $refundRequest->refund_amount,
                 ]);
+
+                // 1. Resolve corresponding Account for the Treasury
+                $account = Account::where('name', $treasury->name)->first();
+                if (! $account) {
+                    $account = Account::where('type', AccountType::Cashbox->value)
+                        ->where('currency', $refundRequest->refund_currency)
+                        ->whereIn('module_type', ['flights', 'tourism'])
+                        ->first();
+                }
+                if (! $account) {
+                    // Fallback to flights module vault
+                    $account = Account::getModuleVault('flights');
+                }
+                if (! $account) {
+                    // Create new Cashbox Account if none exists
+                    $account = Account::create([
+                        'name' => $treasury->name,
+                        'type' => AccountType::Cashbox,
+                        'currency' => $refundRequest->refund_currency,
+                        'is_active' => true,
+                        'owner_type' => 'office',
+                        'module_type' => 'flights',
+                        'created_by' => $userId,
+                    ]);
+                }
+
+                // 2. Resolve source prepaid account and decrement balance in GDS/carrier sub-ledger
+                $prepaidKey = 'flight_system';
+                $debitSubLedgerAmount = $refundRequest->refund_amount;
+                if ($booking->purchase_balance_source === 'carrier') {
+                    $prepaidKey = 'flight_carrier';
+                    if ($booking->flight_carrier_id) {
+                        $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
+                        if ($carrier) {
+                            if (strtoupper($carrier->currency) === 'EGP') {
+                                $debitSubLedgerAmount = $refundRequest->base_currency_refund;
+                            }
+                            $carrier->debit($debitSubLedgerAmount, $booking->id, $userId);
+                        }
+                    }
+                } else {
+                    if ($booking->flight_system_id) {
+                        $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
+                        if ($system) {
+                            if (strtoupper($system->currency) === 'EGP') {
+                                $debitSubLedgerAmount = $refundRequest->base_currency_refund;
+                            }
+                            $system->debit($debitSubLedgerAmount, $booking->id, $userId);
+                        }
+                    }
+                }
+                $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
+
+                // 3. Record GL journal entry transfer
+                if ($fromAccountId && $account && $fromAccountId !== $account->id) {
+                    $transferAmount = $refundRequest->refund_amount;
+                    $fromAccount = Account::find($fromAccountId);
+                    if (($fromAccount && $fromAccount->currency === 'EGP') || ($account->currency === 'EGP')) {
+                        $transferAmount = $refundRequest->base_currency_refund ?? $refundRequest->refund_amount;
+                    }
+                    $convertedAmount = null;
+                    $exchangeRate = null;
+                    if ($fromAccount && $fromAccount->currency !== $account->currency) {
+                        if ($fromAccount->currency === 'EGP') {
+                            $convertedAmount = $refundRequest->refund_amount;
+                            $exchangeRate = $refundRequest->refund_exchange_rate;
+                        } else {
+                            $convertedAmount = $refundRequest->base_currency_refund;
+                            $exchangeRate = $refundRequest->refund_exchange_rate;
+                        }
+                    }
+
+                    $this->transactionService->recordJournalTransfer([
+                        'amount' => $transferAmount,
+                        'from_account_id' => $fromAccountId,
+                        'to_account_id' => $account->id,
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => "إيداع استرجاع تذكرة حجز طيران — حجز #{$booking->booking_number}",
+                        'created_by' => $userId,
+                        'converted_amount' => $convertedAmount,
+                        'exchange_rate' => $exchangeRate,
+                    ]);
+
+                    Log::info('تم تسجيل القيد المحاسبي المزدوج للاسترداد بنجاح', [
+                        'refund_request_id' => $refundRequest->id,
+                        'from_account_id' => $fromAccountId,
+                        'to_account_id' => $account->id,
+                        'amount' => $transferAmount,
+                    ]);
+                }
             }
 
             // تحديث حالة الحجز إلى مسترد أو مسترد جزئياً

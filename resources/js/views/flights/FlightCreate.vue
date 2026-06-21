@@ -1578,15 +1578,15 @@
                   </div>
 
                   <!-- Payment/Debt Summary -->
-                  <div class="p-6 rounded-xl space-y-4" :class="(form.initial_payment || 0) >= form.selling_price ? 'bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'">
-                    <h4 class="font-bold flex items-center gap-2" :class="(form.initial_payment || 0) >= form.selling_price ? 'text-success' : 'text-warning'">
+                  <div class="p-6 rounded-xl space-y-4" :class="(form.initial_payment || 0) >= sellingPriceEgp ? 'bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'">
+                    <h4 class="font-bold flex items-center gap-2" :class="(form.initial_payment || 0) >= sellingPriceEgp ? 'text-success' : 'text-warning'">
                       <CreditCard class="w-5 h-5" />
-                      {{ (form.initial_payment || 0) <= 0 ? 'حجز بالآجل (مديونية كاملة)' : ((form.initial_payment || 0) < form.selling_price ? 'دفع جزئي' : 'دفع كامل') }}
+                      {{ (form.initial_payment || 0) <= 0 ? 'حجز بالآجل (مديونية كاملة)' : ((form.initial_payment || 0) < sellingPriceEgp ? 'دفع جزئي' : 'دفع كامل') }}
                     </h4>
                     <div class="space-y-2">
                       <div class="flex items-center justify-between text-sm">
-                        <span class="text-gray-300">إجمالي المطلوب:</span>
-                        <span class="text-white font-bold">{{ formatCurrency(form.selling_price) }}</span>
+                        <span class="text-gray-300">إجمالي المطلوب EGP:</span>
+                        <span class="text-white font-bold">{{ formatCurrency(sellingPriceEgp) }}</span>
                       </div>
                       <div v-if="form.initial_payment > 0" class="flex items-center justify-between text-sm">
                         <span class="text-gray-300">المبلغ المدفوع الآن:</span>
@@ -1596,7 +1596,7 @@
                         <span class="text-gray-300">
                           {{ form.customer_type === 'counter' ? 'المتبقي (مديونية على الشركة):' : 'المتبقي (مديونية على العميل):' }}
                         </span>
-                        <span class="text-error font-black text-lg">{{ formatCurrency(form.selling_price - (form.initial_payment || 0)) }}</span>
+                        <span class="text-error font-black text-lg">{{ formatCurrency(sellingPriceEgp - (form.initial_payment || 0)) }}</span>
                       </div>
                     </div>
                   </div>
@@ -1944,7 +1944,7 @@
                 </div>
 
                 <div
-                  v-if="customerCollectionStatus && form.selling_price > 0"
+                  v-if="customerCollectionStatus && sellingPriceEgp > 0"
                   class="rounded-xl border p-3 text-xs"
                   :class="{
                     'border-success/30 bg-success/10 text-success': customerCollectionStatus.variant === 'success',
@@ -1978,7 +1978,7 @@
 
                 <!-- Pricing live (sidebar) -->
                 <div
-                  v-if="form.purchase_price_egp > 0 || form.selling_price > 0"
+                  v-if="form.purchase_price_egp > 0 || sellingPriceEgp > 0"
                   class="space-y-3 rounded-xl border border-success/20 bg-success/10 p-4"
                 >
                   <p class="text-[10px] font-semibold uppercase tracking-wider text-success/90">حساب لحظي</p>
@@ -2000,7 +2000,7 @@
                   </div>
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-300">بيع EGP</span>
-                    <span class="font-bold tabular-nums text-white">{{ formatCurrency(form.selling_price) }}</span>
+                    <span class="font-bold tabular-nums text-white">{{ formatCurrency(sellingPriceEgp) }}</span>
                   </div>
                   <div class="h-px bg-success/20"></div>
                   <div class="flex items-center justify-between text-sm">
@@ -2013,7 +2013,7 @@
                     </span>
                   </div>
                   <div
-                    v-if="profitMarginOnSale != null && form.selling_price > 0"
+                    v-if="profitMarginOnSale != null && sellingPriceEgp > 0"
                     class="flex justify-between text-[11px] text-gray-400"
                   >
                     <span>هامش / البيع</span>
@@ -2032,7 +2032,7 @@
                   </div>
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-300">المتبقي:</span>
-                    <span class="font-bold text-white">{{ formatCurrency(form.selling_price - form.initial_payment) }}</span>
+                    <span class="font-bold text-white">{{ formatCurrency(sellingPriceEgp - form.initial_payment) }}</span>
                   </div>
                 </div>
                 <div
@@ -2046,7 +2046,7 @@
                   </div>
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-300">المتبقي:</span>
-                    <span class="font-bold text-white">{{ formatCurrency(Math.max(0, form.selling_price - editTotalPaid)) }}</span>
+                    <span class="font-bold text-white">{{ formatCurrency(Math.max(0, sellingPriceEgp - editTotalPaid)) }}</span>
                   </div>
                 </div>
               </div>
@@ -2259,7 +2259,7 @@ const customerProjectedLedger = computed(() =>
   formatLedgerBalance(
     projectedLedgerBalance(
       form.value.customer?.balance ?? 0,
-      form.value.selling_price ?? 0,
+      sellingPriceEgp.value,
       form.value.initial_payment ?? 0
     ),
     'customer'
@@ -2272,7 +2272,7 @@ const counterCurrentLedger = computed(() =>
 
 const counterProjectedLedger = computed(() =>
   formatLedgerBalance(
-    projectedLedgerBalance(form.value.customer?.balance ?? 0, form.value.selling_price ?? 0, 0),
+    projectedLedgerBalance(form.value.customer?.balance ?? 0, sellingPriceEgp.value, 0),
     'customer'
   )
 );
@@ -2701,8 +2701,17 @@ const pricingCurrencyOptions = computed(() => {
   return Array.isArray(list) && list.length > 0 ? list : PRICING_CURRENCY_FALLBACK;
 });
 
-const calculatedProfit = computed(() => {
+const sellingPriceEgp = computed(() => {
   const sell = Number(form.value.selling_price) || 0;
+  if (form.value.currency === 'EGP') {
+    return sell;
+  }
+  const rate = Number(form.value.exchange_rate) || 1.0;
+  return sell * rate;
+});
+
+const calculatedProfit = computed(() => {
+  const sell = sellingPriceEgp.value;
   const buy = Number(form.value.purchase_price_egp) || 0;
   return sell - buy;
 });
@@ -2720,7 +2729,7 @@ const profitMarginOnCost = computed(() => {
 });
 
 const profitMarginOnSale = computed(() => {
-  const s = Number(form.value.selling_price) || 0;
+  const s = sellingPriceEgp.value;
   if (s <= 0) return null;
   return (calculatedProfit.value / s) * 100;
 });
@@ -2899,7 +2908,7 @@ const isBookingStepComplete = (step) => {
     case 4:
       return getStep4MissingFields().length === 0;
     case 5:
-      return Number(form.value.purchase_price_egp) > 0 && Number(form.value.selling_price) > 0;
+      return Number(form.value.purchase_price_egp) > 0 && sellingPriceEgp.value > 0;
     case 6: {
       const pMethod = String(form.value.payment_method || '').trim();
       if (Number(form.value.initial_payment) <= 0) return true;
@@ -3111,7 +3120,7 @@ const settlementBalancePreview = computed(() => {
 });
 
 const customerCollectionStatus = computed(() => {
-  const sell = Number(form.value.selling_price) || 0;
+  const sell = sellingPriceEgp.value;
   const paid = isEditMode.value
     ? Number(editTotalPaid.value) || 0
     : Number(form.value.initial_payment) || 0;
@@ -3500,7 +3509,7 @@ const hydrateForEdit = async (id) => {
     form.value.purchase_price_egp = parseFloat(raw.purchase_price_egp ?? raw.purchase_price ?? 0) || 0;
     form.value.purchase_price_foreign = parseFloat(raw.purchase_price_foreign ?? 0) || 0;
     form.value.exchange_rate = parseFloat(raw.exchange_rate ?? 0) || 0;
-    form.value.selling_price = parseFloat(raw.selling_price ?? 0) || 0;
+    form.value.selling_price = parseFloat(raw.original_amount ?? raw.selling_price ?? 0) || 0;
     form.value.initial_payment = 0;
     form.value.account_id = raw.account_id != null ? Number(raw.account_id) : null;
     form.value.flight_system_id = raw.flight_system_id || null;

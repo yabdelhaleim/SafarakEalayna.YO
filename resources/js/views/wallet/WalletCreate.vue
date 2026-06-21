@@ -101,17 +101,17 @@
           <label class="block text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
             المحافظ المتاحة (رقم المحفظة والرصيد) <span class="text-error">*</span>
           </label>
-          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400 space-y-1">
-            <p>⚠️ لا توجد محافظ مسجلة في Filament (المحافظ والتحويلات) لهذا النوع.</p>
+          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400 space-y-1.5 leading-relaxed">
+            <p>⚠️ لا توجد محافظ مسجلة للوكالة في النظام لهذا النوع.</p>
             <p v-if="walletAccounts.length > 0">
-              يوجد {{ walletAccounts.length }} محفظة في القسم لكن «نوع المحفظة» في Filament لا يطابق
+              يوجد {{ walletAccounts.length }} محفظة مسجلة ولكن نوع المحفظة لا يطابق
               <strong class="text-gold">{{ selectedWalletType?.name }}</strong>
-              (المطلوب: <code class="font-mono">{{ selectedWalletType?.code }}</code>).
+              (المطلوب كود مقدم الخدمة: <code class="font-mono">{{ selectedWalletType?.code }}</code>).
             </p>
             <p v-else>
-              أنشئ محفظة من
-              <span class="text-gold">/admin/transfer-accounts/transfer-wallets</span>
-              واختر نوع المحفظة (مثل فودافون كاش) مع رقم المحفظة.
+              يمكنك إضافة محفظة جديدة مباشرة من صفحة 
+              <router-link to="/finance/accounts" class="text-gold underline hover:text-gold/80 font-bold">إدارة الحسابات والخزائن</router-link>. 
+              تأكد من اختيار نوع الحساب «محفظة»، واختيار نوع مقدم الخدمة الصحيح (مثل Vodafone Cash)، وتحديد الموديول المختص كـ «المحافظ والتحويلات».
             </p>
           </div>
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -326,7 +326,7 @@
             </select>
             <p v-if="errors.wallet_account_id" class="text-error text-xs mt-1">{{ errors.wallet_account_id }}</p>
             <p v-if="filteredWalletAccounts.length === 0 && walletAccounts.length > 0" class="text-amber-400 text-xs mt-1">
-              أنواع مسجلة في Filament: {{ unmatchedWalletProviders.join('، ') }}
+              أنواع مسجلة في الحسابات: {{ unmatchedWalletProviders.join('، ') }}
             </p>
           </div>
           <div>
@@ -341,8 +341,10 @@
               <option value="">— اختر الحساب —</option>
               <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
             </select>
-            <p v-if="cashAccounts.length === 0" class="text-amber-400 text-xs mt-1">
-              أنشئ خزينة أو بنك من Filament: المحافظ والتحويلات → الخزائن أو البنوك.
+            <p v-if="cashAccounts.length === 0" class="text-amber-400 text-xs mt-1 leading-relaxed">
+              لا توجد حسابات نقدية. يمكنك إضافة خزينة أو بنك جديد مباشرة من صفحة 
+              <router-link to="/finance/accounts" class="text-gold underline hover:text-gold/80 font-bold">إدارة الحسابات والخزائن</router-link>. 
+              تأكد من تحديد الموديول المختص كـ «المحافظ والتحويلات».
             </p>
             <p v-if="errors.cash_account_id" class="text-error text-xs mt-1">{{ errors.cash_account_id }}</p>
           </div>

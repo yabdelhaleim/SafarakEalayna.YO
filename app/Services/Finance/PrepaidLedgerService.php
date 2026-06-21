@@ -102,4 +102,47 @@ class PrepaidLedgerService
 
         return $transaction;
     }
+
+    /**
+     * إرجاع تكلفة استهلاك: إقفال تكاليف (COGS) → رصيد مسبق.
+     */
+    public function refundCogs(
+        string $prepaidKey,
+        TransactionModule $module,
+        float $amount,
+        ?string $notes = null,
+        ?string $relatedType = null,
+        ?int $relatedId = null,
+    ): ?Transaction {
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $prepaidId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
+        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule($module);
+
+        if ($expenseContraId === null || $prepaidId === $expenseContraId) {
+            throw new \RuntimeException('تعذر تحديد حسابات استرجاع تكلفة الرصيد المسبق للموديول «'.$module->value.'».');
+        }
+
+        $transaction = $this->transactionService->recordJournalTransfer([
+            'amount' => $amount,
+            'from_account_id' => $expenseContraId,
+            'to_account_id' => $prepaidId,
+            'allow_from_negative' => true,
+            'module' => $module->value,
+            'related_type' => $relatedType,
+            'related_id' => $relatedId,
+            'notes' => ($notes ?? 'إرجاع استهلاك رصيد مسبق').' [COGS Reversal]',
+            'created_by' => Auth::id() ?? 1,
+        ]);
+
+        Log::info('Prepaid COGS refund recorded', [
+            'prepaid_key' => $prepaidKey,
+            'amount' => $amount,
+            'transaction_id' => $transaction->id,
+        ]);
+
+        return $transaction;
+    }
 }

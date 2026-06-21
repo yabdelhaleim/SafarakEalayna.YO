@@ -143,17 +143,23 @@ class FawryTransactionService
                 }
 
                 $expenseTransactionId = null;
-                if (! $machine && (float) $data['fawry_price'] > 0) {
-                    $expenseTransaction = $this->transactionService->recordExpense([
-                        'amount' => $data['fawry_price'],
-                        'from_account_id' => $data['account_id'],
-                        'module' => TransactionModule::Fawry->value,
-                        'related_type' => FawryTransaction::class,
-                        'related_id' => $fawryTransaction->id,
-                        'notes' => "تكلفة عملية فوري - {$operationLabel}: {$clientName}",
-                        'created_by' => $createdBy,
-                    ]);
-                    $expenseTransactionId = $expenseTransaction->id;
+                if ((float) $data['fawry_price'] > 0) {
+                    $expenseAccountId = $machine 
+                        ? app(\App\Services\Finance\LedgerClearingAccounts::class)->prepaidAccountId('fawry')
+                        : $data['account_id'];
+
+                    if ($expenseAccountId) {
+                        $expenseTransaction = $this->transactionService->recordExpense([
+                            'amount' => $data['fawry_price'],
+                            'from_account_id' => $expenseAccountId,
+                            'module' => TransactionModule::Fawry->value,
+                            'related_type' => FawryTransaction::class,
+                            'related_id' => $fawryTransaction->id,
+                            'notes' => "تكلفة عملية فوري - {$operationLabel}: {$clientName}",
+                            'created_by' => $createdBy,
+                        ]);
+                        $expenseTransactionId = $expenseTransaction->id;
+                    }
                 }
 
                 $incomeTransactionId = null;

@@ -17,6 +17,10 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UserSeeder::class,
+            FawrySettingsSeeder::class,
+            OnlineSettingsSeeder::class,
+            HajjUmraSettingsSeeder::class,
+            WalletSettingsSeeder::class,
         ]);
 
         $this->command->info('═══════════════════════════════════════');

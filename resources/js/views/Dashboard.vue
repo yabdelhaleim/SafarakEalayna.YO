@@ -698,6 +698,128 @@
         </div>
       </div>
 
+      <!-- ميزان حسابات قسم المكتب -->
+      <div id="office-trial-balance-section" class="bg-card-bg border border-white/10 rounded-3xl p-6 space-y-6 relative overflow-hidden mb-6">
+        <!-- Decorative Glow -->
+        <div :class="[
+          'absolute -right-32 -top-32 w-64 h-64 rounded-full blur-3xl opacity-20 transition-all duration-500',
+          officeTrialBalance?.status === 'متساوية' ? 'bg-amber-500' :
+          officeTrialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500' : 'bg-rose-500'
+        ]"></div>
+
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'p-2.5 rounded-xl border transition-colors',
+              officeTrialBalance?.status === 'متساوية' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+              officeTrialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/20'
+            ]">
+              <TrendingUp v-if="officeTrialBalance?.status === 'يوجد زيادة'" class="w-5 h-5" />
+              <TrendingDown v-else-if="officeTrialBalance?.status === 'يوجد عجز'" class="w-5 h-5" />
+              <DollarSign v-else class="w-5 h-5" />
+            </div>
+            <div>
+              <h3 class="text-lg font-black text-white">ميزان حسابات قسم المكتب</h3>
+              <p class="text-xs text-gray-400 mt-0.5">مطابقة السيولة والأرباح لموديولات الباص وفوري والخدمات الإلكترونية</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span v-if="isLoadingOfficeTrialBalance" class="text-xs text-gray-400 animate-pulse">جاري الاحتساب...</span>
+            <div v-else-if="officeTrialBalance" :class="[
+              'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black border shadow-lg backdrop-blur-md',
+              officeTrialBalance.status === 'متساوية' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+              officeTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/30' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/30'
+            ]">
+              <span :class="[
+                'h-2.5 w-2.5 rounded-full animate-ping',
+                officeTrialBalance.status === 'متساوية' ? 'bg-amber-400' :
+                officeTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-400' : 'bg-rose-400'
+              ]"></span>
+              حالة الميزان: {{ officeTrialBalance.status }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="isLoadingOfficeTrialBalance && !officeTrialBalance" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <KPICardSkeleton v-for="i in 4" :key="`otb-skeleton-${i}`" />
+        </div>
+
+        <div v-else-if="officeTrialBalance" class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- أصول شركات الباص -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-gray-400 mb-1">أرصدة شركات الباص (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(officeTrialBalance.total_balances) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                شركات: {{ formatCompactNumber(officeTrialBalance.details.bus_company_balances) }}
+              </div>
+            </div>
+
+            <!-- السيولة النقدية للمكتب -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-gray-400 mb-1">السيولة النقدية (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(officeTrialBalance.total_liquidity) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                خزائن وصناديق المكتب
+              </div>
+            </div>
+
+            <!-- المستحق لنا -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-emerald-400 mb-1">المستحق لنا (+)</div>
+              <div class="text-xl font-black text-emerald-400 font-mono">{{ formatCurrency(officeTrialBalance.due_to_us) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                ذمم عملاء المكتب
+              </div>
+            </div>
+
+            <!-- المستحق علينا -->
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+              <div class="text-xs font-bold text-rose-400 mb-1">المستحق علينا (-)</div>
+              <div class="text-xl font-black text-rose-400 font-mono">{{ formatCurrency(officeTrialBalance.due_from_us) }}</div>
+              <div class="mt-2 text-[10px] text-gray-500">
+                ذمم دائنة للمكتب
+              </div>
+            </div>
+          </div>
+
+          <!-- المعادلة المحاسبية -->
+          <div class="bg-gradient-to-r from-slate-900 to-amber-950/30 border border-white/10 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
+            <div class="flex-1 space-y-2">
+              <div class="text-xs text-gray-400 font-bold">المعادلة المحاسبية لرأس مال المكتب:</div>
+              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
+                رأس المال الحالي ({{ formatCompactNumber(officeTrialBalance.current_capital) }}) = (أرصدة + سيولة + لنا) - علينا
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
+              <div>
+                <div class="text-[10px] text-gray-400">الأرباح المتراكمة (الباص + فوري + أونلاين)</div>
+                <div class="text-base font-black text-white font-mono">
+                  {{ formatCurrency(officeTrialBalance.expected_capital) }}
+                  <span class="text-xs font-normal text-gray-500">
+                    ({{ formatCompactNumber(officeTrialBalance.base_capital) }} + {{ formatCompactNumber(officeTrialBalance.profits) }})
+                  </span>
+                </div>
+              </div>
+              <div class="border-r border-white/10 h-8 hidden md:block"></div>
+              <div>
+                <div class="text-[10px] text-gray-400">الفارق / الانحراف</div>
+                <div :class="[
+                  'text-lg font-black font-mono',
+                  officeTrialBalance.variance === 0 ? 'text-amber-400' :
+                  officeTrialBalance.variance > 0 ? 'text-sky-400' : 'text-rose-400'
+                ]">
+                  {{ officeTrialBalance.variance > 0 ? '+' : '' }}{{ formatCurrency(officeTrialBalance.variance) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Live liquidity audit -->
       <div class="bg-card-bg border border-white/10 rounded-3xl p-6 space-y-6">
         <div>
@@ -900,6 +1022,8 @@ const activeTab = ref('tourism');
 
 const trialBalance = ref(null);
 const isLoadingTrialBalance = ref(false);
+const officeTrialBalance = ref(null);
+const isLoadingOfficeTrialBalance = ref(false);
 
 // Filters
 const filters = ref({
@@ -1065,6 +1189,21 @@ const fetchTrialBalance = async () => {
   }
 };
 
+const fetchOfficeTrialBalance = async () => {
+  isLoadingOfficeTrialBalance.value = true;
+  try {
+    const response = await axios.get('/api/v1/reports/office-trial-balance');
+    officeTrialBalance.value = response.data?.data || null;
+  } catch (err) {
+    if (axios.isCancel?.(err) || err?.code === 'ERR_CANCELED') {
+      return;
+    }
+    console.error('Failed to fetch office trial balance:', err);
+  } finally {
+    isLoadingOfficeTrialBalance.value = false;
+  }
+};
+
 const scrollToTrialBalance = () => {
   setTimeout(() => {
     const el = document.getElementById('trial-balance-section');
@@ -1157,7 +1296,7 @@ const fetchDashboardData = async () => {
       bookings: parseAmount(item.bookings),
     }));
 
-    await fetchTrialBalance();
+    await Promise.all([fetchTrialBalance(), fetchOfficeTrialBalance()]);
 
     setSuccess();
   } catch (error) {

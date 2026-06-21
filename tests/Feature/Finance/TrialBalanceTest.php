@@ -158,7 +158,7 @@ class TrialBalanceTest extends TestCase
             'passenger_count' => 1,
             'purchase_price' => 100.0,
             'selling_price' => 120.0,
-            'profit' => 100.0,
+            'profit' => 5000.0,
             'foreign_currency' => 'USD',
             'currency' => 'USD',
             'purchase_price_foreign' => 10.0,
@@ -283,7 +283,7 @@ class TrialBalanceTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'office',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 
@@ -357,7 +357,7 @@ class TrialBalanceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $profits = $this->treasuryService->calculateDynamicProfits();
+        $profits = $this->treasuryService->calculateDynamicProfits('office');
 
         // 300 (online) + 100 (fawry) = 400.00
         $this->assertEquals(400.00, $profits);

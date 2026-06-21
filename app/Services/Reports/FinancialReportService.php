@@ -420,22 +420,52 @@ class FinancialReportService
             if ($module) {
                 switch ($module) {
                     case 'flight':
-                        $customerQuery->whereHas('flightBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('flightBookings')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'flights');
+                                });
+                        });
                         break;
                     case 'bus':
-                        $customerQuery->whereHas('busBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('busBookings')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'bus');
+                                });
+                        });
                         break;
                     case 'hajj_umra':
-                        $customerQuery->whereHas('hajjUmraBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('hajjUmraBookings')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'hajj_umra');
+                                });
+                        });
                         break;
                     case 'visa':
-                        $customerQuery->whereHas('visaBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('visaBookings')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'visas');
+                                });
+                        });
                         break;
                     case 'fawry':
-                        $customerQuery->whereHas('fawryTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('fawryTransactions')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'fawry');
+                                });
+                        });
                         break;
                     case 'online':
-                        $customerQuery->whereHas('onlineTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('onlineTransactions')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'online');
+                                });
+                        });
                         break;
                     case 'general':
                         $customerQuery->whereDoesntHave('flightBookings')
@@ -444,10 +474,18 @@ class FinancialReportService
                             ->whereDoesntHave('visaBookings')
                             ->whereDoesntHave('fawryTransactions')
                             ->whereDoesntHave('onlineTransactions')
-                            ->whereDoesntHave('walletTransactions');
+                            ->whereDoesntHave('walletTransactions')
+                            ->whereDoesntHave('ledgerAccount', function ($sub) {
+                                $sub->whereIn('module_type', ['flights', 'bus', 'hajj_umra', 'visas', 'fawry', 'online', 'wallet']);
+                            });
                         break;
                     case 'wallet':
-                        $customerQuery->whereHas('walletTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('walletTransactions')
+                                ->orWhereHas('ledgerAccount', function ($sub) {
+                                    $sub->where('module_type', 'wallet');
+                                });
+                        });
                         break;
                 }
             } elseif ($department) {
@@ -455,7 +493,10 @@ class FinancialReportService
                     $customerQuery->where(function ($q) {
                         $q->whereHas('hajjUmraBookings')
                             ->orWhereHas('visaBookings')
-                            ->orWhereHas('flightBookings');
+                            ->orWhereHas('flightBookings')
+                            ->orWhereHas('ledgerAccount', function ($sub) {
+                                $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
+                            });
                     });
                 } elseif ($department === 'office') {
                     $customerQuery->where(function ($q) {
@@ -463,10 +504,16 @@ class FinancialReportService
                             ->orWhereHas('fawryTransactions')
                             ->orWhereHas('onlineTransactions')
                             ->orWhereHas('walletTransactions')
+                            ->orWhereHas('ledgerAccount', function ($sub) {
+                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet']);
+                            })
                             ->orWhere(function ($sub) {
                                 $sub->whereDoesntHave('hajjUmraBookings')
                                     ->whereDoesntHave('visaBookings')
-                                    ->whereDoesntHave('flightBookings');
+                                    ->whereDoesntHave('flightBookings')
+                                    ->whereDoesntHave('ledgerAccount', function ($sub2) {
+                                        $sub2->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
+                                    });
                             });
                     });
                 }
@@ -491,6 +538,18 @@ class FinancialReportService
                 // Deduce customer active department and module
                 $custDept = 'office';
                 $custMod = 'general';
+
+                if ($c->ledgerAccount) {
+                    $accModule = $c->ledgerAccount->module_type;
+                    if (in_array($accModule, ['tourism', 'flights', 'hajj_umra', 'visas'])) {
+                        $custDept = 'tourism';
+                        $custMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : $accModule);
+                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet'])) {
+                        $custDept = 'office';
+                        $custMod = $accModule === 'office' ? 'general' : $accModule;
+                    }
+                }
+
                 if ($c->flight_bookings_count > 0 || $c->hajj_umra_bookings_count > 0 || $c->visa_bookings_count > 0) {
                     $custDept = 'tourism';
                     if ($c->flight_bookings_count > 0) {
@@ -502,12 +561,16 @@ class FinancialReportService
                     }
                 } else {
                     if ($c->bus_bookings_count > 0) {
+                        $custDept = 'office';
                         $custMod = 'bus';
                     } elseif ($c->fawry_transactions_count > 0) {
+                        $custDept = 'office';
                         $custMod = 'fawry';
                     } elseif ($c->online_transactions_count > 0) {
+                        $custDept = 'office';
                         $custMod = 'online';
                     } elseif ($c->wallet_transactions_count > 0) {
+                        $custDept = 'office';
                         $custMod = 'wallet';
                     }
                 }
@@ -580,11 +643,25 @@ class FinancialReportService
             }
 
             if ($module || $department) {
-                if (! empty($targetSupplierTypes)) {
-                    $supplierQuery->whereIn('type', $targetSupplierTypes);
-                } else {
-                    $supplierQuery->whereRaw('1=0');
-                }
+                $supplierQuery->where(function ($q) use ($targetSupplierTypes, $department, $module) {
+                    if (! empty($targetSupplierTypes)) {
+                        $q->whereIn('type', $targetSupplierTypes);
+                    }
+                    if ($department) {
+                        $q->orWhereHas('account', function ($sub) use ($department) {
+                            if ($department === 'tourism') {
+                                $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
+                            } else {
+                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet']);
+                            }
+                        });
+                    } elseif ($module) {
+                        $q->orWhereHas('account', function ($sub) use ($module) {
+                            $mapped = $module === 'flight' ? 'flights' : ($module === 'visa' ? 'visas' : $module);
+                            $sub->where('module_type', $mapped);
+                        });
+                    }
+                });
             }
 
             $suppliers = $supplierQuery->get();
@@ -603,34 +680,58 @@ class FinancialReportService
                     continue;
                 }
 
-                $typeVal = $s->type instanceof SupplierType ? $s->type->value : (string) $s->type;
-
                 // Deduce supplier module and department
                 $supMod = 'general';
                 $supDept = 'office';
 
-                if ($typeVal === 'airline') {
-                    $supMod = 'flight';
-                    $supDept = 'tourism';
-                } elseif ($typeVal === 'bus_company') {
-                    $supMod = 'bus';
-                    $supDept = 'office';
-                } elseif ($typeVal === 'hotel') {
-                    $supMod = 'hajj_umra';
-                    $supDept = 'tourism';
-                } elseif ($typeVal === 'visa_provider') {
-                    $supMod = 'visa';
-                    $supDept = 'tourism';
-                } else { // service_provider or other
-                    if ($module) {
-                        $supMod = $module;
-                        $supDept = in_array($module, ['flight', 'hajj_umra', 'visa']) ? 'tourism' : 'office';
-                    } elseif ($department) {
-                        $supDept = $department;
-                        $supMod = $department === 'tourism' ? 'hajj_umra' : 'online';
-                    } else {
-                        $supMod = 'online';
+                if ($s->account && $s->account->module_type !== null) {
+                    $accModule = $s->account->module_type;
+                    if (in_array($accModule, ['tourism', 'flights', 'hajj_umra', 'visas'])) {
+                        $supDept = 'tourism';
+                        $supMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : ($accModule === 'visas' ? 'visa' : $accModule));
+                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet'])) {
                         $supDept = 'office';
+                        $supMod = $accModule === 'office' ? 'general' : $accModule;
+                    }
+                } else {
+                    $typeVal = $s->type instanceof SupplierType ? $s->type->value : (string) $s->type;
+                    if ($typeVal === 'airline') {
+                        $supMod = 'flight';
+                        $supDept = 'tourism';
+                    } elseif ($typeVal === 'bus_company') {
+                        $supMod = 'bus';
+                        $supDept = 'office';
+                    } elseif ($typeVal === 'hotel') {
+                        $supMod = 'hajj_umra';
+                        $supDept = 'tourism';
+                    } elseif ($typeVal === 'visa_provider') {
+                        $supMod = 'visa';
+                        $supDept = 'tourism';
+                    } else { // service_provider or other
+                        if ($module) {
+                            $supMod = $module;
+                            $supDept = in_array($module, ['flight', 'hajj_umra', 'visa']) ? 'tourism' : 'office';
+                        } elseif ($department) {
+                            $supDept = $department;
+                            $supMod = $department === 'tourism' ? 'hajj_umra' : 'online';
+                        } else {
+                            $supMod = 'online';
+                            $supDept = 'office';
+                        }
+                    }
+                }
+
+                // Refine generic module if supplier has a specific type, without changing the department
+                if ($supMod === 'general') {
+                    $typeVal = $s->type instanceof SupplierType ? $s->type->value : (string) $s->type;
+                    if ($typeVal === 'airline') {
+                        $supMod = 'flight';
+                    } elseif ($typeVal === 'bus_company') {
+                        $supMod = 'bus';
+                    } elseif ($typeVal === 'hotel') {
+                        $supMod = 'hajj_umra';
+                    } elseif ($typeVal === 'visa_provider') {
+                        $supMod = 'visa';
                     }
                 }
 
