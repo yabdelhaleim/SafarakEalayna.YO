@@ -319,6 +319,16 @@ class TreasuryService
             return (float) $latestRate;
         }
 
+        // Fallback to currencies table managed in admin settings
+        $dbCurrency = DB::table('currencies')
+            ->where('is_active', true)
+            ->whereRaw('upper(code) = ?', [$currency])
+            ->first();
+
+        if ($dbCurrency && (float) $dbCurrency->exchange_rate > 0) {
+            return (float) $dbCurrency->exchange_rate;
+        }
+
         return 1.0;
     }
 

@@ -70,6 +70,29 @@ class CurrencyService
             ];
         }
 
+        // 2.5 Try currencies table (base settings)
+        if ($fromCurrency === 'EGP' || $toCurrency === 'EGP') {
+            $foreign = $fromCurrency === 'EGP' ? $toCurrency : $fromCurrency;
+            $dbCurrency = DB::table('currencies')
+                ->where('is_active', true)
+                ->whereRaw('upper(code) = ?', [$foreign])
+                ->first();
+
+            if ($dbCurrency && (float) $dbCurrency->exchange_rate > 0) {
+                $rateValue = $fromCurrency === 'EGP' ? (1.0 / (float) $dbCurrency->exchange_rate) : (float) $dbCurrency->exchange_rate;
+                $convertedAmount = $amount * $rateValue;
+
+                return [
+                    'from_amount' => $amount,
+                    'from_currency' => $fromCurrency,
+                    'to_amount' => $convertedAmount,
+                    'to_currency' => $toCurrency,
+                    'rate' => $rateValue,
+                    'rate_date' => now()->toDateString(),
+                ];
+            }
+        }
+
         // 3. Fallback: try converting through EGP if both currencies are foreign and direct rate doesn't exist
         if ($fromCurrency !== 'EGP' && $toCurrency !== 'EGP') {
             try {
