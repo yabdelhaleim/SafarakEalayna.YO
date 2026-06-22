@@ -15,6 +15,7 @@ class PrintSetting extends Model
         'show_amount_due',
         'modules',
         'base_capital',
+        'office_base_capital',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class PrintSetting extends Model
             'show_amount_due' => 'boolean',
             'modules' => 'array',
             'base_capital' => 'float',
+            'office_base_capital' => 'float',
         ];
     }
 }

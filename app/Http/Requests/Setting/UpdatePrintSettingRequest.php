@@ -25,6 +25,7 @@ class UpdatePrintSettingRequest extends FormRequest
             'modules.*.ticket' => ['nullable', 'boolean'],
             'modules.*.invoice' => ['nullable', 'boolean'],
             'base_capital' => ['nullable', 'numeric', 'min:0'],
+            'office_base_capital' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }

@@ -629,8 +629,15 @@ class TreasuryService
         $dueFromUs = $receivablesPayables['due_from_us'];
 
         // 5. المعادلة المحاسبية
+        $currencies = ['USD', 'SAR', 'KWD', 'EUR'];
+        $rates = [];
+        foreach ($currencies as $curr) {
+            $rates[$curr] = $this->getAveragePurchaseRate($curr);
+        }
+
         $currentCapital  = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
-        $baseCapital     = 0.0; // المكتب يبدأ برأس مال صفر (يعمل من السيولة التشغيلية)
+        $printSettingService = app(\App\Services\Setting\PrintSettingService::class);
+        $baseCapital     = (float) ($printSettingService->get()->office_base_capital ?? 0.00);
         $expectedCapital = $baseCapital + $profits;
         $variance        = $currentCapital - $expectedCapital;
 
@@ -642,6 +649,7 @@ class TreasuryService
         }
 
         return [
+            'rates' => $rates,
             'details' => [
                 'bus_company_balances' => $busCompanyTotal,
                 'fawry_machine_balances' => $fawryMachinesTotal,

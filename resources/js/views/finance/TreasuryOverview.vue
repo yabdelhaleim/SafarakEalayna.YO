@@ -44,7 +44,7 @@
       </div>
 
       <!-- Main Sections for Treasury Categories -->
-      <template v-if="selectedCategory !== 'trial_balance'">
+      <template v-if="selectedCategory !== 'trial_balance' && selectedCategory !== 'office_trial_balance'">
         <!-- Quick Stats -->
         <div class="mt-8 space-y-3">
         <p class="text-xs text-text-muted text-center">
@@ -738,6 +738,35 @@
                   <div class="mt-1.5 font-mono text-lg font-bold text-emerald-400">{{ formatCurrency(officeTrialBalance.profits) }}</div>
                 </div>
               </div>
+
+              <!-- Base Capital Settings Form -->
+              <form @submit.prevent="updateOfficeBaseCapital" class="border-t border-white/5 pt-6 space-y-4 print:hidden">
+                <div>
+                  <h5 class="text-sm font-bold text-white mb-1">تعديل رأس المال الأساسي للمكتب (الافتتاحي)</h5>
+                  <p class="text-xs text-text-muted">تحديد رأس مال المكتب الأساسي لمقارنة توازن الحسابات والقيود بناءً عليه</p>
+                </div>
+                <div class="flex gap-3">
+                  <div class="relative flex-1 group">
+                    <input
+                      v-model.number="officeBaseCapitalInput"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      class="flight-input w-full font-mono font-bold text-white bg-black/40"
+                    />
+                    <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gold">EGP</div>
+                  </div>
+                  <button
+                    type="submit"
+                    :disabled="submitting"
+                    class="btn-airline px-6 py-3 text-xs font-black shadow-lg flex items-center gap-2"
+                  >
+                    <span v-if="submitting" class="w-3.5 h-3.5 border border-black/30 border-t-black animate-spin rounded-full"></span>
+                    {{ submitting ? 'جاري الحفظ...' : 'تحديث رأس المال الافتتاحي' }}
+                  </button>
+                </div>
+              </form>
             </div>
 
             <!-- Average Purchase Price card -->
@@ -755,6 +784,10 @@
                   <span class="text-xs font-bold text-white">{{ curr }} / EGP</span>
                   <span class="font-mono text-sm font-black text-gold">{{ rate.toFixed(4) }}</span>
                 </div>
+              </div>
+
+              <div class="text-[10px] text-text-muted bg-white/[0.02] border border-white/5 p-3 rounded-xl leading-relaxed">
+                ⚠️ في حال عدم وجود حجوزات للعملة، يتم الاعتماد على أحدث أسعار صرف مسجلة بنظام أسعار الصرف.
               </div>
             </div>
 
@@ -1000,6 +1033,7 @@ const recentTransfers = ref([]);
 const trialBalance = ref(null);
 const officeTrialBalance = ref(null);
 const baseCapitalInput = ref(1000000.0);
+const officeBaseCapitalInput = ref(0.0);
 const statsByCategory = ref({
   office: {
     total_liquidity: 0,
@@ -1285,6 +1319,7 @@ async function fetchOverview() {
     }
     if (data.office_trial_balance) {
       officeTrialBalance.value = data.office_trial_balance;
+      officeBaseCapitalInput.value = data.office_trial_balance.base_capital;
     }
 
     autoSelectCategoryWithData();
@@ -1310,6 +1345,26 @@ async function updateBaseCapital() {
     console.error('Failed to update base capital:', err);
     if (window.addToast) {
       window.addToast('فشل في تحديث رأس المال الأساسي', 'error');
+    }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function updateOfficeBaseCapital() {
+  submitting.value = true;
+  try {
+    const response = await axios.put('/api/v1/settings/print', {
+      office_base_capital: officeBaseCapitalInput.value,
+    });
+    if (window.addToast) {
+      window.addToast('تم تحديث رأس المال الأساسي للمكتب بنجاح', 'success');
+    }
+    await fetchOverview();
+  } catch (err) {
+    console.error('Failed to update office base capital:', err);
+    if (window.addToast) {
+      window.addToast('فشل في تحديث رأس المال الأساسي للمكتب', 'error');
     }
   } finally {
     submitting.value = false;
