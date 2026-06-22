@@ -43,6 +43,8 @@ class FlightTreasuryForm
                                 'EGP' => 'جنيه مصري (EGP)',
                                 'SAR' => 'ريال سعودي (SAR)',
                                 'USD' => 'دولار أمريكي (USD)',
+                                'AED' => 'درهم إماراتي (AED)',
+                                'KWD' => 'دينار كويتي (KWD)',
                             ])
                             ->default('EGP')
                             ->required()
