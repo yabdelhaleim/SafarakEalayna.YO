@@ -362,4 +362,77 @@ class TrialBalanceTest extends TestCase
         // 300 (online) + 100 (fawry) = 400.00
         $this->assertEquals(400.00, $profits);
     }
+
+    public function test_office_trial_balance_balances_with_operating_expenses(): void
+    {
+        // 1. Create office cashbox account
+        $cashbox = Account::query()->create([
+            'name' => 'خزينة المكتب العامة',
+            'type' => AccountType::Cashbox,
+            'balance' => 10000.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        // 2. Create an expense account
+        $expenseAccount = Account::query()->create([
+            'name' => 'إيجار المكاتب العامة',
+            'type' => 'expense',
+            'currency' => 'EGP',
+            'balance' => 0.0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        // Initial trial balance before expense
+        $tbBefore = $this->treasuryService->getOfficeTrialBalance();
+        $this->assertEquals(10000.0, $tbBefore['total_liquidity']);
+        $this->assertEquals(0.0, $tbBefore['profits']);
+        $this->assertEquals(10000.0, $tbBefore['variance']); // expected = 0, current = 10000
+
+        // 3. Record an operating expense transfer
+        $transactionService = app(\App\Services\Finance\TransactionService::class);
+        $transactionService->recordTransfer([
+            'from_account_id' => $cashbox->id,
+            'to_account_id' => $expenseAccount->id,
+            'amount' => 500.0,
+            'type' => 'expense',
+            'module' => 'office',
+            'notes' => 'دفع إيجار الفرع الرئيسي للمكتب',
+            'created_by' => $this->user->id,
+        ]);
+
+        // Trial balance after expense
+        $tbAfter = $this->treasuryService->getOfficeTrialBalance();
+        
+        $this->assertEquals(9500.0, $tbAfter['total_liquidity']); // Decreased by 500
+        $this->assertEquals(-500.0, $tbAfter['profits']); // Net profits decreased by 500
+        $this->assertEquals(10000.0, $tbAfter['variance']); // Variance remains EXACTLY the same (10000.0)!
+    }
+
+    public function test_consolidated_trial_balance_returns_correct_data(): void
+    {
+        $response = $this->getJson('/api/v1/reports/consolidated-trial-balance');
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'total_balances',
+                    'total_liquidity',
+                    'due_to_us',
+                    'due_from_us',
+                    'current_capital',
+                    'base_capital',
+                    'profits',
+                    'expected_capital',
+                    'variance',
+                    'status',
+                ]
+            ]);
+    }
 }

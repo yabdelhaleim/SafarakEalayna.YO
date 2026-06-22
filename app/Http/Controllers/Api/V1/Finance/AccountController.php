@@ -183,6 +183,34 @@ class AccountController extends Controller
                 $data['attachment_path'] = $request->file('attachment')->store('transactions/attachments', 'public');
             }
 
+            if (empty($data['to_account_id']) && !empty($data['to_account_name'])) {
+                $fromAccount = Account::findOrFail($data['from_account_id']);
+                $module = $data['module'] ?? 'general';
+                $moduleType = \App\Support\Finance\AccountModuleDivision::resolveModuleTypeKey(null, $module);
+
+                $toAccount = Account::where('type', \App\Enums\AccountType::Expense->value)
+                    ->where('name', trim($data['to_account_name']))
+                    ->where('module_type', $moduleType)
+                    ->first();
+
+                if (!$toAccount) {
+                    $toAccount = Account::create([
+                        'name' => trim($data['to_account_name']),
+                        'type' => \App\Enums\AccountType::Expense->value,
+                        'currency' => $fromAccount->currency,
+                        'balance' => 0.00,
+                        'is_active' => true,
+                        'module_type' => $moduleType,
+                        'module' => $module,
+                        'owner_type' => Account::OWNER_TYPE_OWNER,
+                        'notes' => 'حساب مصروف مضاف تلقائياً عند تسجيل المصروف.',
+                        'created_by' => auth()->id() ?? 1,
+                    ]);
+                }
+
+                $data['to_account_id'] = $toAccount->id;
+            }
+
             $transfer = $this->transactionService->recordTransfer($data);
 
             return ApiResponse::success('Transfer completed successfully.', new TransferResource($transfer), 201);

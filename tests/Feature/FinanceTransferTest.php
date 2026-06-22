@@ -178,5 +178,53 @@ class FinanceTransferTest extends TestCase
         $this->assertSame(900.0, (float) $usdAccount->balance);
         $this->assertSame(5000.0, (float) $expenseAccount->balance);
     }
+
+    public function test_successful_expense_transfer_with_dynamically_created_expense_account(): void
+    {
+        $customName = 'مصروف نظافة وصيانة طارئ';
+
+        // 1. Submit transfer with custom account name
+        $response = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $this->fromAccount->id,
+            'to_account_name' => $customName,
+            'amount' => 1200.0,
+            'type' => 'expense',
+            'module' => 'general',
+            'notes' => 'تنظيف المكاتب وصيانة التكييف',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('success', true);
+
+        // Verify account creation in DB
+        $createdAccount = Account::where('name', $customName)->first();
+        $this->assertNotNull($createdAccount);
+        $this->assertEquals('expense', $createdAccount->type->value);
+        $this->assertEquals('EGP', $createdAccount->currency);
+        $this->assertEquals(1200.0, (float) $createdAccount->balance);
+
+        // Verify source balance deduction
+        $this->fromAccount->refresh();
+        $this->assertEquals(48800.0, (float) $this->fromAccount->balance);
+
+        // 2. Submit another transfer to the same custom name to verify reuse
+        $response2 = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $this->fromAccount->id,
+            'to_account_name' => $customName,
+            'amount' => 800.0,
+            'type' => 'expense',
+            'module' => 'general',
+            'notes' => 'صيانة إضافية',
+        ]);
+
+        $response2->assertStatus(201);
+        
+        $createdAccount->refresh();
+        $this->assertEquals(2000.0, (float) $createdAccount->balance); // 1200 + 800
+
+        // Ensure only one account exists with this name
+        $count = Account::where('name', $customName)->count();
+        $this->assertEquals(1, $count);
+    }
 }
 

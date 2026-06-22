@@ -398,6 +398,42 @@ class TreasuryService
     }
 
     /**
+     * حساب إجمالي المصروفات التشغيلية للقسم (EGP)
+     */
+    public function calculateOperatingExpenses(string $division = 'tourism'): float
+    {
+        $modules = $division === 'tourism'
+            ? ['flight', 'hajj_umra', 'visa', 'tourism']
+            : ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+
+        $query = DB::table('transactions as t')
+            ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
+            ->where(function ($q) {
+                $q->where('t.type', 'expense')
+                  ->orWhere('to_acc.type', 'expense');
+            })
+            ->whereIn('t.module', $modules);
+
+        $total = 0.0;
+        foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency'])->cursor() as $tx) {
+            $amount = (float) $tx->amount;
+            if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
+                $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
+                $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
+                if ($toCurrency === 'EGP') {
+                    $amount = (float) $tx->converted_amount;
+                } elseif ($fromCurrency === 'EGP') {
+                    $amount = (float) $tx->amount;
+                }
+            }
+            $total += $amount;
+        }
+
+        return $total;
+    }
+
+    /**
      * الحصول على ميزان الحسابات (جرد لحظي) وتحليل رأس المال
      */
     public function getTrialBalance(): array
@@ -466,7 +502,9 @@ class TreasuryService
         $baseCapital = (float) ($printSettingService->get()->base_capital ?? 1000000.00);
 
         // تمرير 'tourism' صراحةً لضمان عدم احتساب أرباح المكتب في ميزان السياحة
-        $profits = $this->calculateDynamicProfits('tourism');
+        $grossProfits = $this->calculateDynamicProfits('tourism');
+        $operatingExpenses = $this->calculateOperatingExpenses('tourism');
+        $profits = $grossProfits - $operatingExpenses;
 
         $expectedCapital = $baseCapital + $profits;
         $variance = $currentCapital - $expectedCapital;
@@ -579,8 +617,10 @@ class TreasuryService
 
         $totalBalances = $busCompanyTotal + $fawryMachinesTotal;
 
-        // 3. الأرباح — المكتب فقط (باص + فوري + أونلاين + محافظ)
-        $profits = $this->calculateDynamicProfits('office');
+        // 3. الأرباح — المكتب فقط مطروحاً منها المصروفات التشغيلية للمكتب
+        $grossProfits = $this->calculateDynamicProfits('office');
+        $operatingExpenses = $this->calculateOperatingExpenses('office');
+        $profits = $grossProfits - $operatingExpenses;
 
         // 4. الذمم المدينة والدائنة — المكتب فقط
         $receivablesPayables = $this->calculateReceivablesAndPayables('office');
@@ -615,6 +655,55 @@ class TreasuryService
             'expected_capital'=> round($expectedCapital, 2),
             'variance'        => round($variance, 2),
             'status'          => $status,
+        ];
+    }
+
+    /**
+     * ميزان الحسابات الموحد للشركة ككل (السياحة + المكتب)
+     */
+    public function getConsolidatedTrialBalance(): array
+    {
+        $tourism = $this->getTrialBalance();
+        $office = $this->getOfficeTrialBalance();
+
+        $totalBalances = (float) $tourism['total_balances'] + (float) $office['total_balances'];
+        $totalLiquidity = (float) $tourism['total_liquidity'] + (float) $office['total_liquidity'];
+        $dueToUs = (float) $tourism['due_to_us'] + (float) $office['due_to_us'];
+        $dueFromUs = (float) $tourism['due_from_us'] + (float) $office['due_from_us'];
+
+        $currentCapital = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
+        $baseCapital = (float) $tourism['base_capital'] + (float) $office['base_capital'];
+        $profits = (float) $tourism['profits'] + (float) $office['profits'];
+        $expectedCapital = $baseCapital + $profits;
+
+        $variance = $currentCapital - $expectedCapital;
+
+        $status = 'متساوية';
+        if ($variance > 0.01) {
+            $status = 'يوجد زيادة';
+        } elseif ($variance < -0.01) {
+            $status = 'يوجد عجز';
+        }
+
+        return [
+            'rates' => $tourism['rates'] ?? [],
+            'details' => [
+                'flight_balances' => $tourism['details']['flight_balances'] ?? 0.0,
+                'hajj_umra_balances' => $tourism['details']['hajj_umra_balances'] ?? 0.0,
+                'visa_balances' => $tourism['details']['visa_balances'] ?? 0.0,
+                'bus_company_balances' => $office['details']['bus_company_balances'] ?? 0.0,
+                'fawry_machine_balances' => $office['details']['fawry_machine_balances'] ?? 0.0,
+            ],
+            'total_balances' => round($totalBalances, 2),
+            'total_liquidity' => round($totalLiquidity, 2),
+            'due_to_us' => round($dueToUs, 2),
+            'due_from_us' => round($dueFromUs, 2),
+            'current_capital' => round($currentCapital, 2),
+            'base_capital' => round($baseCapital, 2),
+            'profits' => round($profits, 2),
+            'expected_capital' => round($expectedCapital, 2),
+            'variance' => round($variance, 2),
+            'status' => $status,
         ];
     }
 }

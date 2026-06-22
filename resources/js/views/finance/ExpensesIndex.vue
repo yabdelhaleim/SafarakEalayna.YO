@@ -189,7 +189,7 @@
             </select>
             <p class="text-xs text-text-muted mt-2 text-rose-300/70">أولاً، حدد القسم الذي تريد تحميل هذا المصروف عليه في تقرير الأرباح والخسائر.</p>
           </div>
-
+        
           <div v-if="form.category !== 'general'">
             <label for="expense-module" class="block text-sm font-medium text-white mb-2">2. تحديد الموديول الفرعي</label>
             <select
@@ -200,11 +200,13 @@
               class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-rose-500 transition-colors shadow-inner"
             >
               <template v-if="form.category === 'tourism'">
+                <option value="tourism">عام (سياحة بصفة عامة)</option>
                 <option value="flight">قسم الطيران</option>
                 <option value="hajj_umra">قسم الحج والعمرة</option>
                 <option value="visa">قسم التأشيرات</option>
               </template>
               <template v-else-if="form.category === 'office'">
+                <option value="office">عام (مكتب بصفة عامة)</option>
                 <option value="bus">قسم الباص</option>
                 <option value="fawry">قسم فوري</option>
                 <option value="online">الخدمات الإلكترونية</option>
@@ -238,24 +240,45 @@
           </div>
 
           <div>
-            <label for="expense-account" class="block text-sm font-medium text-white mb-2">{{ form.category === 'general' ? '3' : '4' }}. تصنيف المصروف المحاسبي (بند المصروف)</label>
-            <select
-              id="expense-account"
-              name="expense_account"
-              v-model="form.expense_account_id"
-              required
-              class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-rose-500 transition-colors"
-            >
-              <option value="" disabled>اختر التصنيف (مثل: رواتب، إيجار، تسويق)</option>
-              <option v-for="acc in selectableExpenseAccounts" :key="acc.id" :value="acc.id">
-                {{ acc.name }}
-              </option>
-            </select>
-            <p v-if="selectableExpenseAccounts.length === 0" class="text-xs text-rose-400 mt-2 font-bold">
-              ⚠️ لا توجد بنود مصروفات! أضفها من لوحة Filament:
-              <a href="/admin/expense-accounts/create" target="_blank" class="underline text-rose-300 hover:text-rose-200">بنود المصروفات</a>
-              (مثل: رواتب، إيجار، تسويق).
-            </p>
+            <div class="flex justify-between items-center mb-2">
+              <label for="expense-account" class="text-sm font-medium text-white">{{ form.category === 'general' ? '3' : '4' }}. تصنيف المصروف المحاسبي (بند المصروف)</label>
+              <button
+                type="button"
+                @click="toggleCustomExpenseAccount"
+                class="text-xs text-rose-400 hover:text-rose-300 underline font-bold"
+              >
+                {{ form.is_custom ? '✍️ اختيار من القائمة' : '➕ كتابة بند جديد يدويًا' }}
+              </button>
+            </div>
+
+            <div v-if="form.is_custom">
+              <input
+                id="expense-account-name"
+                name="expense_account_name"
+                type="text"
+                v-model="form.expense_account_name"
+                required
+                class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-rose-500 transition-colors"
+                placeholder="اكتب نوع المصروف الجديد (مثال: إيجار، فاتورة كهرباء، صيانة...)"
+              />
+            </div>
+            <div v-else>
+              <select
+                id="expense-account"
+                name="expense_account"
+                v-model="form.expense_account_id"
+                required
+                class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-rose-500 transition-colors"
+              >
+                <option value="" disabled>اختر التصنيف (مثل: رواتب، إيجار، تسويق)</option>
+                <option v-for="acc in selectableExpenseAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
+              <p v-if="selectableExpenseAccounts.length === 0" class="text-xs text-rose-400 mt-2 font-bold">
+                ⚠️ لا توجد بنود مصروفات! أضفها من لوحة Filament أو اضغط على زر "كتابة بند جديد يدويًا" بالأعلى لكتابتها الآن.
+              </p>
+            </div>
           </div>
 
           <div>
@@ -385,7 +408,9 @@ const form = ref({
   notes: '',
   category: 'general',
   module: 'general',
-  exchange_rate: 1.0
+  exchange_rate: 1.0,
+  is_custom: false,
+  expense_account_name: ''
 });
 
 const fromAccount = computed(() => {
@@ -397,6 +422,7 @@ const toAccount = computed(() => {
 });
 
 const convertedAmount = computed(() => {
+  if (form.value.is_custom) return form.value.amount;
   if (!fromAccount.value || !toAccount.value) return 0;
   if (fromAccount.value.currency === toAccount.value.currency) {
     return form.value.amount;
@@ -413,6 +439,7 @@ const preferredTreasuryModuleKeys = computed(() => {
       flight: ['flights', 'tourism'],
       hajj_umra: ['hajj_umra'],
       visa: ['visas'],
+      tourism: ['tourism']
     };
     return map[form.value.module] || [];
   }
@@ -421,6 +448,7 @@ const preferredTreasuryModuleKeys = computed(() => {
       bus: ['bus'],
       fawry: ['fawry'],
       online: ['online'],
+      office: ['office']
     };
     return map[form.value.module] || [];
   }
@@ -436,13 +464,15 @@ const updateModuleSelection = () => {
   if (form.value.category === 'general') {
     form.value.module = 'general';
   } else if (form.value.category === 'tourism') {
-    form.value.module = 'flight';
+    form.value.module = 'tourism';
   } else if (form.value.category === 'office') {
-    form.value.module = 'bus';
+    form.value.module = 'office';
   }
   form.value.expense_account_id = '';
   form.value.from_account_id = '';
   form.value.exchange_rate = 1.0;
+  form.value.is_custom = false;
+  form.value.expense_account_name = '';
 };
 
 const moduleTypeForForm = computed(() => {
@@ -450,12 +480,12 @@ const moduleTypeForForm = computed(() => {
     return 'general';
   }
   if (form.value.category === 'tourism') {
-    const map = { flight: 'flights', hajj_umra: 'hajj_umra', visa: 'visas' };
-    return map[form.value.module] || null;
+    const map = { flight: 'flights', hajj_umra: 'hajj_umra', visa: 'visas', tourism: 'tourism' };
+    return map[form.value.module] || 'tourism';
   }
   if (form.value.category === 'office') {
-    const map = { bus: 'bus', fawry: 'fawry', online: 'online' };
-    return map[form.value.module] || null;
+    const map = { bus: 'bus', fawry: 'fawry', online: 'online', office: 'office' };
+    return map[form.value.module] || 'office';
   }
   return null;
 });
@@ -478,12 +508,23 @@ const filteredExpenses = computed(() => {
   return expenses.value;
 });
 
+const toggleCustomExpenseAccount = () => {
+  form.value.is_custom = !form.value.is_custom;
+  if (form.value.is_custom) {
+    form.value.expense_account_id = '';
+  } else {
+    form.value.expense_account_name = '';
+  }
+};
+
 watch(
   () => form.value.module,
   () => {
     form.value.expense_account_id = '';
     form.value.from_account_id = '';
     form.value.exchange_rate = 1.0;
+    form.value.is_custom = false;
+    form.value.expense_account_name = '';
   }
 );
 
@@ -501,7 +542,17 @@ watch(
 // No attachment needed anymore
 
 const openExpenseModal = () => {
-  form.value = { expense_account_id: '', from_account_id: '', amount: '', notes: '', category: 'general', module: 'general', exchange_rate: 1.0 };
+  form.value = {
+    expense_account_id: '',
+    from_account_id: '',
+    amount: '',
+    notes: '',
+    category: 'general',
+    module: 'general',
+    exchange_rate: 1.0,
+    is_custom: false,
+    expense_account_name: ''
+  };
   isModalOpen.value = true;
 };
 
@@ -528,6 +579,8 @@ const formatTime = (dateStr) => {
 const formatModule = (mod) => {
   const map = {
     'general': 'مصروفات عامة',
+    'tourism': 'عام السياحة',
+    'office': 'عام المكتب',
     'flight': 'قسم الطيران',
     'hajj_umra': 'قسم الحج والعمرة',
     'visa': 'التأشيرات',
@@ -646,14 +699,19 @@ const submitExpense = async () => {
   try {
     const payload = {
       from_account_id: form.value.from_account_id,
-      to_account_id: form.value.expense_account_id,
       amount: form.value.amount,
       notes: form.value.notes,
       type: 'expense',
       module: form.value.module,
     };
 
-    if (fromAccount.value && toAccount.value && fromAccount.value.currency !== toAccount.value.currency) {
+    if (form.value.is_custom) {
+      payload.to_account_name = form.value.expense_account_name;
+    } else {
+      payload.to_account_id = form.value.expense_account_id;
+    }
+
+    if (!form.value.is_custom && fromAccount.value && toAccount.value && fromAccount.value.currency !== toAccount.value.currency) {
       payload.exchange_rate = form.value.exchange_rate;
       payload.converted_amount = convertedAmount.value;
     }
@@ -663,6 +721,7 @@ const submitExpense = async () => {
     successMessage.value = 'تم تسجيل المصروف والخصم من الخزينة بنجاح';
     globalError.value = '';
     closeExpenseModal();
+    await fetchAccounts();
     fetchTransactions(1);
   } catch (error) {
     const msg = error.response?.data?.message || 'حدث خطأ أثناء التسجيل';

@@ -13,10 +13,10 @@ use Illuminate\Support\Facades\DB;
 class ProfitLossReportService
 {
     /** @var array<string, list<string>> */
-    private const TOURISM_MODULES = ['flight', 'hajj_umra', 'visa'];
+    private const TOURISM_MODULES = ['flight', 'hajj_umra', 'visa', 'tourism'];
 
     /** @var array<string, list<string>> */
-    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service'];
+    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
 
     public function __construct(
         protected LedgerClearingAccounts $clearingAccounts
@@ -578,10 +578,12 @@ class ProfitLossReportService
             'flight' => 'وحدة الطيران',
             'hajj_umra' => 'الحج والعمرة',
             'visa' => 'التأشيرات',
+            'tourism' => 'السياحة عامة',
             'bus' => 'وحدة الباص',
             'fawry' => 'فوري',
             'online' => 'الخدمات الإلكترونية',
             'wallet', 'wallet_transfer' => 'المحافظ والتحويلات',
+            'office' => 'المكتب عامة',
             'service' => 'الخدمات',
             'general' => 'عام',
             default => 'أخرى ('.$module.')',

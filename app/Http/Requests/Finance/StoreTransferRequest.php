@@ -21,7 +21,13 @@ class StoreTransferRequest extends FormRequest
     {
         return [
             'from_account_id' => 'required|exists:accounts,id',
-            'to_account_id' => 'required|exists:accounts,id|different:from_account_id',
+            'to_account_id' => [
+                'required_without:to_account_name',
+                'nullable',
+                'different:from_account_id',
+                Rule::exists('accounts', 'id'),
+            ],
+            'to_account_name' => 'required_without:to_account_id|nullable|string|max:255',
             'amount' => 'required|numeric|min:0.01',
             'converted_amount' => 'nullable|numeric|min:0.01',
             'exchange_rate' => 'nullable|numeric|min:0.000001',
@@ -40,44 +46,65 @@ class StoreTransferRequest extends FormRequest
             }
 
             $from = Account::query()->find($this->input('from_account_id'));
-            $to = Account::query()->find($this->input('to_account_id'));
-            if (! $from || ! $to) {
+            if (! $from) {
                 return;
             }
 
-            $isExpense = ($this->input('type') === 'expense' || $to->type?->value === 'expense' || $to->type === 'expense');
+            $to = null;
+            if ($this->filled('to_account_id')) {
+                $to = Account::query()->find($this->input('to_account_id'));
+            } elseif ($this->filled('to_account_name')) {
+                $module = $this->input('module') ?? 'general';
+                $moduleType = AccountModuleDivision::resolveModuleTypeKey(null, $module);
+                $to = Account::query()
+                    ->where('type', 'expense')
+                    ->where('name', trim($this->input('to_account_name')))
+                    ->where('module_type', $moduleType)
+                    ->first();
+            }
 
-            foreach (['from' => $from, 'to' => $to] as $label => $account) {
-                $type = $account->type?->value ?? $account->type;
-                $allowedTypes = ($label === 'to' && $isExpense)
-                    ? ['expense']
-                    : AccountModuleDivision::LIQUIDITY_TYPES;
+            $isExpense = ($this->input('type') === 'expense' || ($to && ($to->type?->value === 'expense' || $to->type === 'expense')) || !$to);
 
-                if (! in_array($type, $allowedTypes, true)) {
+            $fromType = $from->type?->value ?? $from->type;
+            if (! in_array($fromType, AccountModuleDivision::LIQUIDITY_TYPES, true)) {
+                $validator->errors()->add(
+                    'from_account_id',
+                    'يُسمح بالسحب من حسابات السيولة فقط (خزينة، بنك، محفظة).'
+                );
+            }
+            if (! $from->is_active) {
+                $validator->errors()->add('from_account_id', 'الحساب غير نشط ولا يمكن استخدامه.');
+            }
+
+            if ($to) {
+                $toType = $to->type?->value ?? $to->type;
+                $allowedTypes = $isExpense ? ['expense'] : AccountModuleDivision::LIQUIDITY_TYPES;
+
+                if (! in_array($toType, $allowedTypes, true)) {
                     $validator->errors()->add(
-                        $label === 'from' ? 'from_account_id' : 'to_account_id',
-                        $label === 'from'
-                            ? 'يُسمح بالسحب من حسابات السيولة فقط (خزينة، بنك، محفظة).'
-                            : 'يُسمح بالتحويل لحسابات السيولة أو تصنيف مصروف صالح.'
+                        'to_account_id',
+                        $isExpense
+                            ? 'يُسمح بالتحويل لحساب تصنيف مصروف صالح.'
+                            : 'يُسمح بالتحويل لحسابات السيولة.'
                     );
                 }
-                if (! $account->is_active) {
-                    $validator->errors()->add(
-                        $label === 'from' ? 'from_account_id' : 'to_account_id',
-                        'الحساب غير نشط ولا يمكن استخدامه.'
-                    );
+                if (! $to->is_active) {
+                    $validator->errors()->add('to_account_id', 'الحساب غير نشط ولا يمكن استخدامه.');
                 }
             }
 
-            if (! $this->filled('type') && $to->type?->value === 'expense') {
+            if (! $this->filled('type') && ($to && $to->type?->value === 'expense')) {
                 $this->merge(['type' => TransactionType::Expense->value]);
             }
 
-            $same = strtoupper((string) $from->currency) === strtoupper((string) $to->currency);
+            $same = true;
+            if ($to) {
+                $same = strtoupper((string) $from->currency) === strtoupper((string) $to->currency);
+            }
             if (! $same && ! $this->filled('converted_amount')) {
                 $validator->errors()->add(
                     'converted_amount',
-                    'مطلوب عند اختلاف العملة بين الحسابين: أدخل المبلغ بعملة الحساب المستلم (مثال: 100 د.ك في خزنة الدينار عند الدفع 17,500 ج.م من خزنة الجنيه).'
+                    'مطلوب عند اختلاف العملة بين الحسابين: أدخل المبلغ بعملة الحساب المستلم.'
                 );
             }
         });

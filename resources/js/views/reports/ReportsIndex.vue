@@ -272,9 +272,9 @@
               <Landmark class="w-7 h-7 text-white" />
             </div>
             <div>
-              <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-amber-200 transition-colors">ميزان الحسابات ورأس المال</h3>
+              <h3 class="text-2xl font-extrabold text-white mb-2 group-hover:text-amber-200 transition-colors">ميزان حسابات قسم السياحة</h3>
               <p class="text-white/70 text-sm font-medium leading-relaxed">
-                جرد لحظي لمطابقة وتوازن رأس المال الفعلي مع الأرباح ورأس المال الافتتاحي وكشف العجز والزيادة.
+                جرد لحظي لمطابقة وتوازن رأس المال الفعلي مع الأرباح ورأس المال الافتتاحي وكشف العجز والزيادة لقطاع السياحة.
               </p>
             </div>
           </div>

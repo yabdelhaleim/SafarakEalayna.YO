@@ -25,22 +25,22 @@
 
             <!-- Capital matching status indicator -->
             <button
-              v-if="trialBalance"
+              v-if="consolidatedTrialBalance"
               type="button"
               @click="activeTab = 'treasury'; scrollToTrialBalance()"
               :class="[
                 'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black border transition-all cursor-pointer hover:scale-105',
-                trialBalance.status === 'متساوية' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' :
-                trialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20 hover:bg-sky-500/20' :
+                consolidatedTrialBalance.status === 'متساوية' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' :
+                consolidatedTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20 hover:bg-sky-500/20' :
                 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
               ]"
             >
               <span :class="[
-                'h-2 w-2 rounded-full',
-                trialBalance.status === 'متساوية' ? 'bg-emerald-400 animate-ping' :
-                trialBalance.status === 'يوجد زيادة' ? 'bg-sky-400 animate-ping' : 'bg-rose-400 animate-ping'
+                'h-2.5 w-2.5 rounded-full',
+                consolidatedTrialBalance.status === 'متساوية' ? 'bg-emerald-400 animate-ping' :
+                consolidatedTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-400 animate-ping' : 'bg-rose-400 animate-ping'
               ]"></span>
-              ميزان رأس المال: {{ trialBalance.status }}
+              ميزان رأس المال الموحد: {{ consolidatedTrialBalance.status }}
             </button>
           </div>
           <h1 class="text-xl font-black tracking-tight text-white sm:text-3xl lg:text-4xl">
@@ -564,6 +564,161 @@
 
     <!-- ==================== PILLAR 3: TREASURY ==================== -->
     <template v-if="activeTab === 'treasury'">
+      <!-- Consolidated Trial Balance Section -->
+      <div id="consolidated-trial-balance-section" class="bg-gradient-to-br from-indigo-950/40 via-slate-900 to-purple-950/30 border border-indigo-500/30 rounded-3xl p-6 space-y-6 relative overflow-hidden mb-8 shadow-xl shadow-indigo-950/20">
+        <!-- Decorative Glow based on status -->
+        <div :class="[
+          'absolute -right-32 -top-32 w-64 h-64 rounded-full blur-3xl opacity-30 transition-all duration-500',
+          consolidatedTrialBalance?.status === 'متساوية' ? 'bg-indigo-500' :
+          consolidatedTrialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500' : 'bg-rose-500'
+        ]"></div>
+
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-500/20 pb-4">
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'p-2.5 rounded-xl border transition-colors',
+              consolidatedTrialBalance?.status === 'متساوية' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' :
+              consolidatedTrialBalance?.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/20'
+            ]">
+              <Layers class="w-5 h-5" />
+            </div>
+            <div>
+              <h3 class="text-lg font-black text-white flex items-center gap-2">
+                ميزان الحسابات ورأس المال الموحد
+                <span class="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-md px-1.5 py-0.5 font-sans">الشركة ككل</span>
+              </h3>
+              <p class="text-xs text-gray-400 mt-0.5">مطابقة رأس المال الفعلي مع الأرباح ورأس المال الدفتري المجمع لكافة القطاعات</p>
+            </div>
+          </div>
+          
+          <!-- Status Badge -->
+          <div class="flex items-center gap-2">
+            <span v-if="isLoadingConsolidatedTrialBalance" class="text-xs text-gray-400 animate-pulse">جاري الاحتساب...</span>
+            <div v-else-if="consolidatedTrialBalance" :class="[
+              'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black border shadow-lg backdrop-blur-md',
+              consolidatedTrialBalance.status === 'متساوية' ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30 shadow-indigo-500/5' :
+              consolidatedTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-500/10 text-sky-400 border-sky-500/30 shadow-sky-500/5' :
+              'bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-rose-500/5'
+            ]">
+              <span :class="[
+                'h-2.5 w-2.5 rounded-full animate-ping',
+                consolidatedTrialBalance.status === 'متساوية' ? 'bg-indigo-400' :
+                consolidatedTrialBalance.status === 'يوجد زيادة' ? 'bg-sky-400' : 'bg-rose-400'
+              ]"></span>
+              حالة الميزان الموحد: {{ consolidatedTrialBalance.status }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="isLoadingConsolidatedTrialBalance && !consolidatedTrialBalance" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <KPICardSkeleton v-for="i in 4" :key="`ctb-skeleton-${i}`" />
+        </div>
+        
+        <div v-else-if="consolidatedTrialBalance" class="space-y-6">
+          <!-- Main Equation Overview Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Total Balances -->
+            <div class="bg-indigo-950/10 border border-indigo-500/10 rounded-2xl p-4 relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
+              <div class="text-xs font-bold text-gray-400 mb-1">إجمالي أرصدة الموديولات الموحد (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(consolidatedTrialBalance.total_balances) }}</div>
+              <div class="mt-2.5 pt-2 border-t border-white/5 text-[10px] text-gray-500 flex flex-col gap-0.5">
+                <div class="flex justify-between">
+                  <span>قطاع السياحة:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(trialBalance?.total_balances || 0) }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>قطاع المكتب:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(officeTrialBalance?.total_balances || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Total Liquidity -->
+            <div class="bg-indigo-950/10 border border-indigo-500/10 rounded-2xl p-4 relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
+              <div class="text-xs font-bold text-gray-400 mb-1">إجمالي السيولة النقدية الموحدة (+)</div>
+              <div class="text-xl font-black text-white font-mono">{{ formatCurrency(consolidatedTrialBalance.total_liquidity) }}</div>
+              <div class="mt-2.5 pt-2 border-t border-white/5 text-[10px] text-gray-500 flex flex-col gap-0.5">
+                <div class="flex justify-between">
+                  <span>سيولة السياحة:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(trialBalance?.total_liquidity || 0) }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>سيولة المكتب:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(officeTrialBalance?.total_liquidity || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Receivables -->
+            <div class="bg-indigo-950/10 border border-indigo-500/10 rounded-2xl p-4 relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
+              <div class="text-xs font-bold text-emerald-400 mb-1">المستحق لنا الموحد (+)</div>
+              <div class="text-xl font-black text-emerald-400 font-mono">{{ formatCurrency(consolidatedTrialBalance.due_to_us) }}</div>
+              <div class="mt-2.5 pt-2 border-t border-white/5 text-[10px] text-gray-500 flex flex-col gap-0.5">
+                <div class="flex justify-between">
+                  <span>ذمم السياحة:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(trialBalance?.due_to_us || 0) }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>ذمم المكتب:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(officeTrialBalance?.due_to_us || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Payables -->
+            <div class="bg-indigo-950/10 border border-indigo-500/10 rounded-2xl p-4 relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
+              <div class="text-xs font-bold text-rose-400 mb-1">المستحق علينا الموحد (-)</div>
+              <div class="text-xl font-black text-rose-400 font-mono">{{ formatCurrency(consolidatedTrialBalance.due_from_us) }}</div>
+              <div class="mt-2.5 pt-2 border-t border-white/5 text-[10px] text-gray-500 flex flex-col gap-0.5">
+                <div class="flex justify-between">
+                  <span>التزامات السياحة:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(trialBalance?.due_from_us || 0) }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>التزامات المكتب:</span>
+                  <span class="font-mono text-gray-400">{{ formatCurrency(officeTrialBalance?.due_from_us || 0) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Capital Formula Match -->
+          <div class="bg-gradient-to-r from-indigo-950/60 to-purple-950/50 border border-indigo-500/20 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
+            <div class="flex-1 space-y-2">
+              <div class="text-xs text-indigo-300 font-bold">المعادلة المحاسبية الموحدة لرأس المال الفعلي الحالي:</div>
+              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-indigo-500/10">
+                رأس المال الحالي ({{ formatCompactNumber(consolidatedTrialBalance.current_capital) }}) = (الأرصدة المشتركة + السيولة المشتركة + ذمم مدينين) - ذمم دائنين
+              </div>
+            </div>
+            
+            <!-- Comparison Details -->
+            <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
+              <div>
+                <div class="text-[10px] text-indigo-300">رأس المال المستهدف (الأساسي + الأرباح الكلية)</div>
+                <div class="text-base font-black text-white font-mono">
+                  {{ formatCurrency(consolidatedTrialBalance.expected_capital) }}
+                  <span class="text-xs font-normal text-gray-500">
+                    ({{ formatCompactNumber(consolidatedTrialBalance.base_capital) }} أساسي + {{ formatCompactNumber(consolidatedTrialBalance.profits) }} أرباح)
+                  </span>
+                </div>
+              </div>
+              <div class="border-r border-indigo-500/20 h-8 hidden md:block"></div>
+              <div>
+                <div class="text-[10px] text-indigo-300">الانحراف المالي الموحد</div>
+                <div :class="[
+                  'text-lg font-black font-mono',
+                  consolidatedTrialBalance.variance === 0 ? 'text-emerald-400' :
+                  consolidatedTrialBalance.variance > 0 ? 'text-sky-400' : 'text-rose-400'
+                ]">
+                  {{ consolidatedTrialBalance.variance > 0 ? '+' : '' }}{{ formatCurrency(consolidatedTrialBalance.variance) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Trial Balance / Capital Matching Monitor -->
       <div id="trial-balance-section" class="bg-card-bg border border-white/10 rounded-3xl p-6 space-y-6 relative overflow-hidden mb-6">
         <!-- Decorative Glow based on status -->
@@ -586,8 +741,8 @@
               <DollarSign v-else class="w-5 h-5" />
             </div>
             <div>
-              <h3 class="text-lg font-black text-white">ميزان الحسابات والجرد اللحظي لرأس المال</h3>
-              <p class="text-xs text-gray-400 mt-0.5">مطابقة رأس المال الفعلي مع رأس المال الدفتري والأرباح لضمان دقة النظام</p>
+              <h3 class="text-lg font-black text-white">ميزان حسابات قسم السياحة (الجرد اللحظي لرأس المال)</h3>
+              <p class="text-xs text-gray-400 mt-0.5">مطابقة رأس المال الفعلي مع رأس المال الدفتري والأرباح لقطاع السياحة</p>
             </div>
           </div>
           
@@ -720,8 +875,8 @@
               <DollarSign v-else class="w-5 h-5" />
             </div>
             <div>
-              <h3 class="text-lg font-black text-white">ميزان حسابات قسم المكتب</h3>
-              <p class="text-xs text-gray-400 mt-0.5">مطابقة السيولة والأرباح لموديولات الباص وفوري والخدمات الإلكترونية</p>
+              <h3 class="text-lg font-black text-white">ميزان حسابات قسم المكتب (الجرد اللحظي لرأس المال)</h3>
+              <p class="text-xs text-gray-400 mt-0.5">مطابقة رأس المال الفعلي مع رأس المال الدفتري والأرباح لقطاع المكتب</p>
             </div>
           </div>
 
@@ -1011,6 +1166,7 @@ import {
   MapPin,
   Clock,
   Users,
+  Layers,
 } from 'lucide-vue-next';
 
 const flightStore = useFlightStore();
@@ -1024,6 +1180,8 @@ const trialBalance = ref(null);
 const isLoadingTrialBalance = ref(false);
 const officeTrialBalance = ref(null);
 const isLoadingOfficeTrialBalance = ref(false);
+const consolidatedTrialBalance = ref(null);
+const isLoadingConsolidatedTrialBalance = ref(false);
 
 // Filters
 const filters = ref({
@@ -1204,9 +1362,24 @@ const fetchOfficeTrialBalance = async () => {
   }
 };
 
+const fetchConsolidatedTrialBalance = async () => {
+  isLoadingConsolidatedTrialBalance.value = true;
+  try {
+    const response = await axios.get('/api/v1/reports/consolidated-trial-balance');
+    consolidatedTrialBalance.value = response.data?.data || null;
+  } catch (err) {
+    if (axios.isCancel?.(err) || err?.code === 'ERR_CANCELED') {
+      return;
+    }
+    console.error('Failed to fetch consolidated trial balance:', err);
+  } finally {
+    isLoadingConsolidatedTrialBalance.value = false;
+  }
+};
+
 const scrollToTrialBalance = () => {
   setTimeout(() => {
-    const el = document.getElementById('trial-balance-section');
+    const el = document.getElementById('consolidated-trial-balance-section') || document.getElementById('trial-balance-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
     }
@@ -1296,7 +1469,11 @@ const fetchDashboardData = async () => {
       bookings: parseAmount(item.bookings),
     }));
 
-    await Promise.all([fetchTrialBalance(), fetchOfficeTrialBalance()]);
+    await Promise.all([
+      fetchTrialBalance(),
+      fetchOfficeTrialBalance(),
+      fetchConsolidatedTrialBalance()
+    ]);
 
     setSuccess();
   } catch (error) {

@@ -336,7 +336,7 @@
                 <p class="text-xs font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
               </div>
               <div class="text-right">
-                <h1 class="text-xl font-black text-black">تقرير ميزان الحسابات (جرد لحظي لرأس المال)</h1>
+                <h1 class="text-xl font-black text-black">تقرير ميزان حسابات قسم السياحة (جرد لحظي لرأس المال)</h1>
                 <p class="text-[10px] font-bold text-black mt-1 font-mono">تاريخ الطباعة: {{ new Date().toLocaleString('ar-EG') }}</p>
               </div>
             </div>
@@ -833,7 +833,7 @@ const typeTabs = [
 const categories = [
   { id: 'office', label: 'المكتب العام', icon: Building2 },
   { id: 'tourism', label: 'السياحة والطيران', icon: Briefcase },
-  { id: 'trial_balance', label: 'ميزان الحسابات (جرد لحظي)', icon: Landmark },
+  { id: 'trial_balance', label: 'ميزان حسابات قسم السياحة (جرد لحظي)', icon: Landmark },
 ];
 
 /** موديولات كل قسم — تُعرض في الشرح والكروت */
