@@ -17,9 +17,16 @@ class TrialBalanceExportService
     /**
      * إنشاء ملف إكسيل ميزان الحسابات
      */
-    public function export(): Spreadsheet
+    /**
+     * إنشاء ملف إكسيل ميزان الحسابات
+     */
+    public function export(string $division = 'tourism'): Spreadsheet
     {
-        $data = $this->treasuryService->getTrialBalance();
+        if ($division === 'office') {
+            $data = $this->treasuryService->getOfficeTrialBalance();
+        } else {
+            $data = $this->treasuryService->getTrialBalance();
+        }
 
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -95,7 +102,11 @@ class TrialBalanceExportService
 
         // 1. Title Block
         $sheet->mergeCells('A1:D2');
-        $sheet->setCellValue('A1', 'ميزان الحسابات الموحد (جرد لحظي لرأس المال)');
+        if ($division === 'office') {
+            $sheet->setCellValue('A1', 'ميزان حسابات قسم المكتب (جرد لحظي لرأس المال)');
+        } else {
+            $sheet->setCellValue('A1', 'تقرير ميزان حسابات قسم السياحة (جرد لحظي لرأس المال)');
+        }
         $sheet->getStyle('A1:D2')->applyFromArray($titleStyle);
         $sheet->getRowDimension(1)->setRowHeight(30);
         $sheet->getRowDimension(2)->setRowHeight(20);
@@ -107,7 +118,11 @@ class TrialBalanceExportService
 
         // 2. Equation Summary Card (Section)
         $sheet->mergeCells('A5:D5');
-        $sheet->setCellValue('A5', ' أولاً: المعادلة المحاسبية لرأس المال الحالي');
+        if ($division === 'office') {
+            $sheet->setCellValue('A5', ' أولاً: المعادلة المحاسبية لرأس مال المكتب');
+        } else {
+            $sheet->setCellValue('A5', ' أولاً: المعادلة المحاسبية لرأس المال الحالي (السياحة)');
+        }
         $sheet->getStyle('A5:D5')->applyFromArray($sectionHeaderStyle);
         $sheet->getRowDimension(5)->setRowHeight(28);
 
@@ -120,25 +135,47 @@ class TrialBalanceExportService
         $sheet->getRowDimension(6)->setRowHeight(25);
 
         // Equation rows
-        $sheet->setCellValue('A7', 'إجمالي أرصدة الموديولات (طيران + حج/عمرة + تأشيرات)');
-        $sheet->setCellValue('B7', $data['total_balances']);
-        $sheet->setCellValue('C7', '=SUM(B19:B21)');
-        $sheet->setCellValue('D7', 'تجمع أرصدة الموديولات التشغيلية (سيستم + عهد) بالمتوسط');
+        if ($division === 'office') {
+            $sheet->setCellValue('A7', 'إجمالي أرصدة موديولات المكتب (باص + فوري)');
+            $sheet->setCellValue('B7', $data['total_balances']);
+            $sheet->setCellValue('C7', '=SUM(B19:B20)');
+            $sheet->setCellValue('D7', 'تجمع أرصدة الموديولات التشغيلية (شركات الباص + فوري) بالمتوسط');
 
-        $sheet->setCellValue('A8', 'إجمالي السيولة المتاحة (خزن + بنوك + محافظ)');
-        $sheet->setCellValue('B8', $data['total_liquidity']);
-        $sheet->setCellValue('C8', '=SUM(B24:B28)');
-        $sheet->setCellValue('D8', 'تجمع كافة أرصدة النقدية والسيولة بقسم السياحة');
+            $sheet->setCellValue('A8', 'إجمالي السيولة المتاحة للمكتب (خزن + بنوك + محافظ)');
+            $sheet->setCellValue('B8', $data['total_liquidity']);
+            $sheet->setCellValue('C8', '=SUM(B24:B28)');
+            $sheet->setCellValue('D8', 'تجمع كافة أرصدة النقدية والسيولة بقسم المكتب');
 
-        $sheet->setCellValue('A9', 'المستحق لنا (Receivables)');
-        $sheet->setCellValue('B9', $data['due_to_us']);
-        $sheet->setCellValue('C9', '=B31+B32');
-        $sheet->setCellValue('D9', 'إجمالي مديونيات العملاء والعهد المدينة');
+            $sheet->setCellValue('A9', 'المستحق لنا (ذمم المكتب)');
+            $sheet->setCellValue('B9', $data['due_to_us']);
+            $sheet->setCellValue('C9', '=B31+B32');
+            $sheet->setCellValue('D9', 'إجمالي مديونيات عملاء المكتب');
 
-        $sheet->setCellValue('A10', 'المستحق علينا (Payables) - يُطرح');
-        $sheet->setCellValue('B10', $data['due_from_us']);
-        $sheet->setCellValue('C10', '=B35+B36');
-        $sheet->setCellValue('D10', 'إجمالي ديون الموردين والعهد الدائنة');
+            $sheet->setCellValue('A10', 'المستحق علينا (التزامات المكتب) - يُطرح');
+            $sheet->setCellValue('B10', $data['due_from_us']);
+            $sheet->setCellValue('C10', '=B35+B36');
+            $sheet->setCellValue('D10', 'إجمالي التزامات المكتب لشركات الباص والموردين');
+        } else {
+            $sheet->setCellValue('A7', 'إجمالي أرصدة موديولات السياحة (طيران + حج/عمرة + تأشيرات)');
+            $sheet->setCellValue('B7', $data['total_balances']);
+            $sheet->setCellValue('C7', '=SUM(B19:B21)');
+            $sheet->setCellValue('D7', 'تجمع أرصدة الموديولات التشغيلية (سيستم + عهد) بالمتوسط');
+
+            $sheet->setCellValue('A8', 'إجمالي السيولة المتاحة للسياحة (خزن + بنوك + محافظ)');
+            $sheet->setCellValue('B8', $data['total_liquidity']);
+            $sheet->setCellValue('C8', '=SUM(B24:B28)');
+            $sheet->setCellValue('D8', 'تجمع كافة أرصدة النقدية والسيولة بقسم السياحة');
+
+            $sheet->setCellValue('A9', 'المستحق لنا (Receivables)');
+            $sheet->setCellValue('B9', $data['due_to_us']);
+            $sheet->setCellValue('C9', '=B31+B32');
+            $sheet->setCellValue('D9', 'إجمالي مديونيات العملاء والعهد المدينة');
+
+            $sheet->setCellValue('A10', 'المستحق علينا (Payables) - يُطرح');
+            $sheet->setCellValue('B10', $data['due_from_us']);
+            $sheet->setCellValue('C10', '=B35+B36');
+            $sheet->setCellValue('D10', 'إجمالي ديون الموردين والعهد الدائنة');
+        }
 
         // Current Capital Row (Formula)
         $sheet->setCellValue('A11', 'رأس المال الحالي (الفعلي)');
@@ -161,13 +198,19 @@ class TrialBalanceExportService
         $sheet->getStyle('A13:D13')->applyFromArray($sectionHeaderStyle);
         $sheet->getRowDimension(13)->setRowHeight(28);
 
-        $sheet->setCellValue('A14', 'رأس المال الأساسي (الافتتاحي)');
-        $sheet->setCellValue('B14', $data['base_capital']);
-        $sheet->setCellValue('C14', 'مُدخل من الإعدادات العامة');
+        if ($division === 'office') {
+            $sheet->setCellValue('A14', 'رأس المال الأساسي (المكتب)');
+            $sheet->setCellValue('B14', 0.0);
+            $sheet->setCellValue('C14', 'رأس مال افتتاحي صفر لقطاع المكتب');
+        } else {
+            $sheet->setCellValue('A14', 'رأس المال الأساسي (الافتتاحي)');
+            $sheet->setCellValue('B14', $data['base_capital']);
+            $sheet->setCellValue('C14', 'مُدخل من الإعدادات العامة');
+        }
 
         $sheet->setCellValue('A15', 'إجمالي الأرباح التشغيلية المحققة');
         $sheet->setCellValue('B15', $data['profits']);
-        $sheet->setCellValue('C15', 'تجمع أرباح الحجوزات والبرامج المكتملة');
+        $sheet->setCellValue('C15', $division === 'office' ? 'تجمع أرباح المكتب بعد خصم المصروفات' : 'تجمع أرباح الحجوزات والبرامج المكتملة');
 
         $sheet->setCellValue('A16', 'رأس المال المستهدف (المفترض)');
         $sheet->setCellValue('B16', '=B14+B15');
@@ -203,26 +246,44 @@ class TrialBalanceExportService
         $sheet->getRowDimension(18)->setRowHeight(28);
 
         // A. Module Balances details
-        $sheet->setCellValue('A19', 'أرصدة موديول الطيران (سيستم + ائتمان + حسابات)');
-        $sheet->setCellValue('B19', $data['details']['flight_balances']);
-        $sheet->setCellValue('A20', 'أرصدة موديول الحج والعمرة (تأمين ودائع موردين)');
-        $sheet->setCellValue('B20', $data['details']['hajj_umra_balances']);
-        $sheet->setCellValue('A21', 'أرصدة موديول التأشيرات (عهد وكلاء)');
-        $sheet->setCellValue('B21', $data['details']['visa_balances']);
+        if ($division === 'office') {
+            $sheet->setCellValue('A19', 'أرصدة شركات الباص (النقل)');
+            $sheet->setCellValue('B19', $data['details']['bus_company_balances']);
+            $sheet->setCellValue('A20', 'أرصدة ماكينات فوري النشطة');
+            $sheet->setCellValue('B20', $data['details']['fawry_machine_balances']);
+            $sheet->setCellValue('A21', '—');
+            $sheet->setCellValue('B21', 0.0);
+        } else {
+            $sheet->setCellValue('A19', 'أرصدة موديول الطيران (سيستم + ائتمان + حسابات)');
+            $sheet->setCellValue('B19', $data['details']['flight_balances']);
+            $sheet->setCellValue('A20', 'أرصدة موديول الحج والعمرة (تأمين ودائع موردين)');
+            $sheet->setCellValue('B20', $data['details']['hajj_umra_balances']);
+            $sheet->setCellValue('A21', 'أرصدة موديول التأشيرات (عهد وكلاء)');
+            $sheet->setCellValue('B21', $data['details']['visa_balances']);
+        }
         $sheet->getStyle('A19:B21')->applyFromArray($borderThin);
 
         // Spacer
         $sheet->mergeCells('A22:D22');
 
         // B. Liquidity details
-        $sheet->setCellValue('A23', 'حسابات السيولة بقسم السياحة:');
-        $sheet->getStyle('A23')->getFont()->setBold(true);
+        if ($division === 'office') {
+            $sheet->setCellValue('A23', 'حسابات السيولة بقسم المكتب:');
+            $sheet->getStyle('A23')->getFont()->setBold(true);
 
-        // Let's query dynamic liquidity accounts for display
-        $accounts = \App\Models\Account::tourism()
-            ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
-            ->where('is_active', true)
-            ->get();
+            $accounts = \App\Models\Account::whereIn('module_type', \App\Support\Finance\AccountModuleDivision::OFFICE)
+                ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
+                ->where('is_active', true)
+                ->get();
+        } else {
+            $sheet->setCellValue('A23', 'حسابات السيولة بقسم السياحة:');
+            $sheet->getStyle('A23')->getFont()->setBold(true);
+
+            $accounts = \App\Models\Account::tourism()
+                ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
+                ->where('is_active', true)
+                ->get();
+        }
 
         $rowIdx = 24;
         foreach ($accounts as $acc) {
@@ -239,7 +300,7 @@ class TrialBalanceExportService
         $sheet->setCellValue('A30', 'المستحقات لنا (المدينون):');
         $sheet->getStyle('A30')->getFont()->setBold(true);
 
-        $receivablesPayables = $this->treasuryService->calculateReceivablesAndPayables();
+        $receivablesPayables = $this->treasuryService->calculateReceivablesAndPayables($division);
 
         $sheet->setCellValue('A31', 'إجمالي المستحق لنا (مدينون)');
         $sheet->setCellValue('B31', $receivablesPayables['due_to_us']);
@@ -271,16 +332,19 @@ class TrialBalanceExportService
         $sheet->setCellValue('C39', 'طريقة الاحتساب');
         $sheet->getStyle('A39:C39')->applyFromArray($tableHeaderStyle);
 
+        // Fetch rates from the active tourism dataset
+        $ratesData = $division === 'office' ? $this->treasuryService->getTrialBalance() : $data;
+
         $sheet->setCellValue('A40', 'USD / EGP');
-        $sheet->setCellValue('B40', $data['rates']['USD']);
+        $sheet->setCellValue('B40', $ratesData['rates']['USD'] ?? 0.0);
         $sheet->setCellValue('C40', 'متوسط تكلفة حجوزات الطيران بالدولار مقابل الجنيه المصري');
 
         $sheet->setCellValue('A41', 'SAR / EGP');
-        $sheet->setCellValue('B41', $data['rates']['SAR']);
+        $sheet->setCellValue('B41', $ratesData['rates']['SAR'] ?? 0.0);
         $sheet->setCellValue('C41', 'متوسط تكلفة حجوزات الطيران بالريال مقابل الجنيه المصري');
 
         $sheet->setCellValue('A42', 'KWD / EGP');
-        $sheet->setCellValue('B42', $data['rates']['KWD']);
+        $sheet->setCellValue('B42', $ratesData['rates']['KWD'] ?? 0.0);
         $sheet->setCellValue('C42', 'متوسط تكلفة حجوزات الطيران بالدينار مقابل الجنيه المصري');
 
         $sheet->getStyle('A40:C42')->applyFromArray($borderThin);

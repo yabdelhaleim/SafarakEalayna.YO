@@ -895,6 +895,13 @@
               ]"></span>
               حالة الميزان: {{ officeTrialBalance.status }}
             </div>
+            <router-link
+              to="/finance/treasury?category=office_trial_balance"
+              class="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 border border-amber-500/20 rounded-xl px-3 py-1.5 bg-amber-500/5 hover:bg-amber-500/10 transition-all"
+            >
+              عرض التفاصيل
+              <span>←</span>
+            </router-link>
           </div>
         </div>
 

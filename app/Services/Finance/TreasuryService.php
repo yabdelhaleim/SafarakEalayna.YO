@@ -104,6 +104,7 @@ class TreasuryService
                 'by_category' => $statsByCategory,
             ],
             'trial_balance' => $this->getTrialBalance(),
+            'office_trial_balance' => $this->getOfficeTrialBalance(),
         ];
     }
 

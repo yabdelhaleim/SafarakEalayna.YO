@@ -137,12 +137,13 @@ class TreasuryController extends Controller
     /**
      * تصدير ميزان الحسابات (جرد لحظي) في ملف ميزان (1).xlsx
      */
-    public function exportTrialBalance(TrialBalanceExportService $exportService)
+    public function exportTrialBalance(Request $request, TrialBalanceExportService $exportService)
     {
-        $spreadsheet = $exportService->export();
+        $division = $request->query('division', 'tourism');
+        $spreadsheet = $exportService->export($division);
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
         $writer->setPreCalculateFormulas(false);
-        $fileName = 'ميزان (1).xlsx';
+        $fileName = $division === 'office' ? 'ميزان_المكتب.xlsx' : 'ميزان_السياحة.xlsx';
 
         return response()->streamDownload(function() use ($writer) {
             $writer->save('php://output');
