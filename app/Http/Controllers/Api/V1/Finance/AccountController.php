@@ -61,12 +61,13 @@ class AccountController extends Controller
                 ];
             }
 
+            $treasuryService = app(\App\Services\Finance\TreasuryService::class);
             $liquidity = [
-                'cashbox' => (float) $liquidityAccounts->where('type', AccountType::Cashbox)->sum('balance'),
-                'bank' => (float) $liquidityAccounts->where('type', AccountType::Bank)->sum('balance'),
-                'wallet' => (float) $liquidityAccounts->where('type', AccountType::Wallet)->sum('balance'),
-                'treasury' => (float) $liquidityAccounts->where('type', AccountType::Treasury)->sum('balance'),
-                'post' => (float) $liquidityAccounts->where('type', AccountType::Post)->sum('balance'),
+                'cashbox' => (float) $liquidityAccounts->where('type', AccountType::Cashbox)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
+                'bank' => (float) $liquidityAccounts->where('type', AccountType::Bank)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
+                'wallet' => (float) $liquidityAccounts->where('type', AccountType::Wallet)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
+                'treasury' => (float) $liquidityAccounts->where('type', AccountType::Treasury)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
+                'post' => (float) $liquidityAccounts->where('type', AccountType::Post)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
             ];
 
             $reportFinance = app(ReportFinanceService::class);
@@ -111,7 +112,7 @@ class AccountController extends Controller
 
             if ($request->user() && ($request->user()->role === 'admin' || $request->user()->role === 'owner')) {
                 $resData['stats'] = [
-                    'total_balance' => (float) $liquidityAccounts->sum('balance'),
+                    'total_balance' => (float) $liquidityAccounts->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
                     'active_count' => $liquidityAccounts->where('is_active', true)->count(),
                     'tourism_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::TOURISM)->count(),
                     'office_count' => $liquidityAccounts->whereIn('module_type', AccountModuleDivision::OFFICE)->count(),

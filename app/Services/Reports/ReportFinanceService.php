@@ -126,29 +126,72 @@ class ReportFinanceService
 
         $accounts = $query
             ->orderBy('name')
-            ->get(['id', 'name', 'type', 'currency', 'balance'])
-            ->map(fn (Account $account) => [
+            ->get(['id', 'name', 'type', 'currency', 'balance']);
+
+        $totalCashbox = 0.0;
+        $totalWallet = 0.0;
+        $totalBank = 0.0;
+        $totalTreasury = 0.0;
+        $totalPost = 0.0;
+        $grandTotal = 0.0;
+
+        $mappedAccounts = $accounts->map(function (Account $account) use (
+            &$totalCashbox,
+            &$totalWallet,
+            &$totalBank,
+            &$totalTreasury,
+            &$totalPost,
+            &$grandTotal
+        ) {
+            $balance = (float) $account->balance;
+            $currency = strtoupper((string) ($account->currency ?: 'EGP'));
+            
+            $balanceEgp = $balance;
+            if ($currency !== 'EGP' && $balance != 0.0) {
+                try {
+                    $converted = app(\App\Services\Finance\CurrencyService::class)->convert($balance, $currency, 'EGP');
+                    $balanceEgp = (float) $converted['to_amount'];
+                } catch (\Exception $e) {
+                    $rate = \App\Models\ExchangeRate::where('from_currency', $currency)
+                        ->where('to_currency', 'EGP')
+                        ->where('is_active', true)
+                        ->orderBy('effective_date', 'desc')
+                        ->first();
+                    if ($rate && $rate->rate > 0) {
+                        $balanceEgp = $balance * (float) $rate->rate;
+                    }
+                }
+            }
+
+            $type = $account->type instanceof AccountType ? $account->type->value : (string) $account->type;
+            
+            $grandTotal += $balanceEgp;
+            match ($type) {
+                'cashbox' => $totalCashbox += $balanceEgp,
+                'wallet' => $totalWallet += $balanceEgp,
+                'bank' => $totalBank += $balanceEgp,
+                'treasury' => $totalTreasury += $balanceEgp,
+                'post' => $totalPost += $balanceEgp,
+                default => null,
+            };
+
+            return [
                 'id' => $account->id,
                 'name' => $account->name,
-                'type' => $account->type instanceof AccountType ? $account->type->value : (string) $account->type,
+                'type' => $type,
                 'currency' => $account->currency,
-                'balance' => round((float) $account->balance, 2),
-            ]);
-
-        $totalCashbox = (float) $accounts->where('type', 'cashbox')->sum('balance');
-        $totalWallet = (float) $accounts->where('type', 'wallet')->sum('balance');
-        $totalBank = (float) $accounts->where('type', 'bank')->sum('balance');
-        $totalTreasury = (float) $accounts->where('type', 'treasury')->sum('balance');
-        $totalPost = (float) $accounts->where('type', 'post')->sum('balance');
+                'balance' => round($balance, 2),
+            ];
+        });
 
         return [
-            'accounts' => $accounts->values(),
+            'accounts' => $mappedAccounts->values(),
             'total_cashbox' => round($totalCashbox, 2),
             'total_wallet' => round($totalWallet, 2),
             'total_bank' => round($totalBank, 2),
             'total_treasury' => round($totalTreasury, 2),
             'total_post' => round($totalPost, 2),
-            'grand_total' => round((float) $accounts->sum('balance'), 2),
+            'grand_total' => round($grandTotal, 2),
         ];
     }
 

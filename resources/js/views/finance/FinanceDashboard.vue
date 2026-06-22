@@ -330,8 +330,11 @@
                     </div>
                   </div>
                   <div class="text-right">
-                    <div class="font-mono text-xl font-bold text-text-main">{{ formatCurrency(account.balance) }}</div>
-                    <div class="text-xs text-text-muted">{{ account.currency }}</div>
+                    <div class="font-mono text-xl font-bold text-text-main block">{{ formatAmount(account.balance, account.currency) }}</div>
+                    <div v-if="account.currency && account.currency !== 'EGP'" class="text-[10px] text-text-muted mt-0.5 font-bold block">
+                      (= {{ formatCurrency(account.balance_egp) }})
+                    </div>
+                    <div v-else class="text-xs text-text-muted block">{{ account.currency }}</div>
                   </div>
                 </div>
 
@@ -353,8 +356,11 @@
                     </div>
                   </div>
                   <div class="text-right">
-                    <div class="font-mono text-xl font-bold text-text-main">{{ formatCurrency(account.balance) }}</div>
-                    <div class="text-xs text-text-muted">{{ account.currency }}</div>
+                    <div class="font-mono text-xl font-bold text-text-main block">{{ formatAmount(account.balance, account.currency) }}</div>
+                    <div v-if="account.currency && account.currency !== 'EGP'" class="text-[10px] text-text-muted mt-0.5 font-bold block">
+                      (= {{ formatCurrency(account.balance_egp) }})
+                    </div>
+                    <div v-else class="text-xs text-text-muted block">{{ account.currency }}</div>
                   </div>
                 </div>
 
@@ -571,8 +577,11 @@
                   </div>
                 </div>
                 <div class="text-right">
-                  <div class="font-mono text-sm font-bold text-text-main">{{ formatCurrency(account.balance) }}</div>
-                  <div class="text-xs text-text-muted">رصيد حالي</div>
+                  <div class="font-mono text-sm font-bold text-text-main block">{{ formatAmount(account.balance, account.currency) }}</div>
+                  <div v-if="account.currency && account.currency !== 'EGP'" class="text-[10px] text-text-muted mt-0.5 font-bold block">
+                    (= {{ formatCurrency(account.balance_egp) }})
+                  </div>
+                  <div v-else class="text-xs text-text-muted block">رصيد حالي</div>
                 </div>
               </div>
             </div>
@@ -945,7 +954,7 @@ const fetchData = async () => {
     const liquidityTotal =
       accountsPayload?.stats?.total_balance ??
       balRes.data?.data?.grand_total ??
-      accounts.value.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0);
+      accounts.value.reduce((sum, acc) => sum + (Number(acc.balance_egp) || 0), 0);
 
     const { pagination: todayPag } = unwrapPaginatedItems(todayTxRes.data);
     todayTransactionsTotal.value = Number(todayPag.total) || 0;

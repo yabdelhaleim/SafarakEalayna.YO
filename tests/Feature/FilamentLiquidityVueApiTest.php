@@ -223,6 +223,58 @@ class FilamentLiquidityVueApiTest extends TestCase
         $this->assertContains($wallet->id, $ids);
     }
 
+    public function test_accounts_api_returns_converted_egp_balances_and_stats(): void
+    {
+        // 1. Seed KWD exchange rate
+        \Illuminate\Support\Facades\DB::table('exchange_rates')->insert([
+            'from_currency' => 'KWD',
+            'to_currency' => 'EGP',
+            'rate' => 160.0,
+            'effective_date' => now()->toDateString(),
+            'is_active' => true,
+            'created_by' => $this->admin->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 2. Create bank account in KWD (Dinar)
+        $kwdAccount = $this->createLiquidityAccount([
+            'name' => 'بنك بالدينار',
+            'type' => AccountType::Bank,
+            'balance' => 100.0, // 100 Dinar
+            'currency' => 'KWD',
+        ]);
+
+        // 3. Create EGP bank account
+        $egpAccount = $this->createLiquidityAccount([
+            'name' => 'بنك بالجنيه',
+            'type' => AccountType::Bank,
+            'balance' => 100000.0, // 100,000 EGP
+            'currency' => 'EGP',
+        ]);
+
+        $response = $this->getJson('/api/v1/finance/accounts?per_page=100');
+
+        $response->assertOk();
+        $items = collect($response->json('data.items'));
+
+        // Check individual items have balance_egp
+        $kwdData = $items->firstWhere('id', $kwdAccount->id);
+        $this->assertEquals(100.0, (float) $kwdData['balance']);
+        $this->assertEquals(16000.0, (float) $kwdData['balance_egp']);
+        $this->assertEquals('KWD', $kwdData['currency']);
+
+        $egpData = $items->firstWhere('id', $egpAccount->id);
+        $this->assertEquals(100000.0, (float) $egpData['balance']);
+        $this->assertEquals(100000.0, (float) $egpData['balance_egp']);
+        $this->assertEquals('EGP', $egpData['currency']);
+
+        // Check stats totals are EGP converted:
+        // 100,000 + 16,000 = 116,000 EGP
+        $response->assertJsonPath('data.stats.total_balance', 116000);
+        $response->assertJsonPath('data.stats.liquidity.bank', 116000);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */

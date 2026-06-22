@@ -320,6 +320,9 @@
                       {{ debtBalanceView(item.balance).direction === 'debit' ? 'لنا (مدين)' : debtBalanceView(item.balance).direction === 'credit' ? 'له (دائن)' : 'مستوفى' }}
                     </span>
                   </div>
+                  <div v-if="item.currency && item.currency !== 'EGP'" class="text-[10px] text-text-muted mt-1 font-bold">
+                    = {{ formatCurrency(Math.abs(item.balance_egp)) }}
+                  </div>
                   
                   <!-- Actions -->
                   <div class="mt-2 flex flex-wrap items-center gap-2 print:hidden">

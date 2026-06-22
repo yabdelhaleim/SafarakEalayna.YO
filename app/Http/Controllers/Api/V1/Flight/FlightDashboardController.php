@@ -38,19 +38,30 @@ class FlightDashboardController extends Controller
             ->where('module_type', 'flights')
             ->get(['type', 'balance', 'currency']);
 
+        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+
         // Safe enum comparison
         $cashboxes = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Cashbox->value, AccountType::Treasury->value], true));
         $banks = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Bank->value, AccountType::Post->value], true));
         $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
         $cashboxCount = $cashboxes->count();
-        $cashboxBalance = $cashboxes->sum('balance');
+        $cashboxBalance = $cashboxes->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
 
         $bankCount = $banks->count();
-        $bankBalance = $banks->sum('balance');
+        $bankBalance = $banks->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
 
         $walletCount = $wallets->count();
-        $walletBalance = $wallets->sum('balance');
+        $walletBalance = $wallets->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
 
         // 4. System & Carrier Liquidity — مقسّم حسب العملة (balance الفعلي فقط، بدون credit_limit)
         $systems = FlightSystem::query()->where('is_active', true)->get(['currency', 'balance', 'credit_limit']);
@@ -96,7 +107,6 @@ class FlightDashboardController extends Controller
         usort($liquiditySummary, fn ($a, $b) => $a['currency'] === 'EGP' ? -1 : ($b['currency'] === 'EGP' ? 1 : strcmp($a['currency'], $b['currency'])));
 
         // الإجمالي المحوّل للجنيه المصري بالكامل للبطاقة الرئيسية
-        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
         $totalEgpActual = collect($liquiditySummary)->sum(function ($row) use ($treasuryService) {
             $rate = $treasuryService->getAveragePurchaseRate($row['currency']);
             return (float) $row['total_actual'] * $rate;

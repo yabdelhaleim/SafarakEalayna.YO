@@ -127,6 +127,7 @@ class FlightDashboardTest extends TestCase
 
         $data = $response->json('data');
         $this->assertEquals(30000.0, $data['liquidity']['total']);
+        $this->assertEquals(20000.0, (float) $data['stats']['cashboxes']['balance']);
 
         // Check currency breakdown
         $byCurrency = collect($data['liquidity']['by_currency']);

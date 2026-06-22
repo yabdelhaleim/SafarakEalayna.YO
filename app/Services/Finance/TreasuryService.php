@@ -54,12 +54,17 @@ class TreasuryService
                 ];
             }
 
+            $balance = (float) $account->balance;
+            $rate = $this->getAveragePurchaseRate($account->currency);
+            $balanceEgp = $balance * $rate;
+
             $modules[$moduleKey]['accounts'][] = [
                 'id' => $account->id,
                 'name' => $account->name,
                 'type' => $account->type->value,
                 'type_label' => $account->type->label(),
-                'balance' => (float) $account->balance,
+                'balance' => $balance,
+                'balance_egp' => round($balanceEgp, 2),
                 'currency' => $account->currency,
                 'module_type' => $account->module_type,
                 'is_vault' => $account->is_module_vault,
@@ -157,16 +162,18 @@ class TreasuryService
                 ? $account->type->value
                 : (string) $account->type;
             $balance = (float) $account->balance;
+            $rate = $this->getAveragePurchaseRate($account->currency);
+            $balanceEgp = $balance * $rate;
 
-            $categories[$category]['total_liquidity'] += $balance;
+            $categories[$category]['total_liquidity'] += $balanceEgp;
             $categories[$category]['accounts_count']++;
 
             match ($type) {
-                'bank' => $categories[$category]['total_banks'] += $balance,
-                'cashbox' => $categories[$category]['total_cashbox'] += $balance,
-                'wallet' => $categories[$category]['total_wallets'] += $balance,
-                'post' => $categories[$category]['total_post'] += $balance,
-                'treasury' => $categories[$category]['total_treasury'] += $balance,
+                'bank' => $categories[$category]['total_banks'] += $balanceEgp,
+                'cashbox' => $categories[$category]['total_cashbox'] += $balanceEgp,
+                'wallet' => $categories[$category]['total_wallets'] += $balanceEgp,
+                'post' => $categories[$category]['total_post'] += $balanceEgp,
+                'treasury' => $categories[$category]['total_treasury'] += $balanceEgp,
                 default => null,
             };
         }
@@ -544,8 +551,8 @@ class TreasuryService
             ->where('name', 'not like', '%رصيد مسبق%')
             ->get();
 
-        // حسابات المكتب بالجنيه المصري فقط في الغالب — لا حاجة لتحويل عملة
-        $totalLiquidity = $officeLiquidityAccounts->sum(fn ($acc) => (float) $acc->balance);
+        // حسابات المكتب بالجنيه المصري فقط في الغالب — مع توفير تحويل العملة احتياطياً
+        $totalLiquidity = $officeLiquidityAccounts->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
         // 2. الأصول — حسابات شركات الباص (رصيد موجب) + أرصدة ماكينات فوري النشطة
         $busCompanyTotal = (float) DB::table('accounts')

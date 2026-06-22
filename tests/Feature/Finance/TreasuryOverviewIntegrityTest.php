@@ -31,6 +31,59 @@ class TreasuryOverviewIntegrityTest extends TestCase
         $this->assertModulesMatchCategory($overview['modules'], $stats);
     }
 
+    public function test_overview_stats_handle_multi_currency_correctly(): void
+    {
+        $user = User::query()->create([
+            'name' => 'Exchange Rate Creator',
+            'email' => 'rate-creator@example.com',
+            'password' => Hash::make('password'),
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('exchange_rates')->insert([
+            'from_currency' => 'KWD',
+            'to_currency' => 'EGP',
+            'rate' => 160.0,
+            'effective_date' => now()->toDateString(),
+            'is_active' => true,
+            'created_by' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 1. Create a bank account in KWD (Dinar)
+        Account::query()->create([
+            'name' => 'بنك بالدينار',
+            'type' => AccountType::Bank,
+            'balance' => 100, // 100 Dinar
+            'currency' => 'KWD',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+        ]);
+
+        // 2. Create a bank account in EGP
+        Account::query()->create([
+            'name' => 'بنك بالجنيه',
+            'type' => AccountType::Bank,
+            'balance' => 100000, // 100,000 EGP
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+        ]);
+
+        // 3. Call service
+        $overview = app(TreasuryService::class)->getTreasuryOverview();
+        $stats = $overview['stats']['by_category']['tourism'];
+
+        // KWD exchange rate is 160.0. So 100 * 160 = 16,000 EGP.
+        // Total liquidity should be 100,000 + 16,000 = 116,000 EGP.
+        $this->assertEquals(116000.0, (float) $stats['total_liquidity']);
+        $this->assertEquals(116000.0, (float) $stats['total_banks']);
+    }
+
     public function test_api_overview_passes_integrity_checks(): void
     {
         $user = User::query()->create([

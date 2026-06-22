@@ -194,12 +194,33 @@ final class UnifiedLiquidityGrouper
      */
     private static function serializeAccount(Account $account, string $moduleKey): array
     {
+        $balance = (float) $account->balance;
+        $currency = strtoupper((string) ($account->currency ?: 'EGP'));
+        $balanceEgp = $balance;
+
+        if ($currency !== 'EGP' && $balance != 0.0) {
+            try {
+                $converted = app(\App\Services\Finance\CurrencyService::class)->convert($balance, $currency, 'EGP');
+                $balanceEgp = (float) $converted['to_amount'];
+            } catch (\Exception $e) {
+                $rate = \App\Models\ExchangeRate::where('from_currency', $currency)
+                    ->where('to_currency', 'EGP')
+                    ->where('is_active', true)
+                    ->orderBy('effective_date', 'desc')
+                    ->first();
+                if ($rate && $rate->rate > 0) {
+                    $balanceEgp = $balance * (float) $rate->rate;
+                }
+            }
+        }
+
         return [
             'id' => $account->id,
             'name' => $account->name,
             'type' => self::typeValue($account),
             'type_label' => self::typeLabel($account),
-            'balance' => (float) $account->balance,
+            'balance' => $balance,
+            'balance_egp' => round($balanceEgp, 2),
             'currency' => $account->currency,
             'module_type' => $moduleKey,
             'module_label' => AccountModuleDivision::moduleLabel($moduleKey),

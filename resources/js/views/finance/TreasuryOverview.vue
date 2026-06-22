@@ -195,8 +195,13 @@
                       <p class="font-bold text-sm text-white truncate">{{ acc.name }}</p>
                       <p class="text-[10px] text-text-muted">{{ acc.type_label }}</p>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      <span class="font-mono text-sm font-bold text-success">{{ formatCurrency(acc.balance, acc.currency) }}</span>
+                    <div class="flex items-center gap-3 shrink-0">
+                      <div class="text-right">
+                        <span class="font-mono text-sm font-bold text-success block">{{ formatCurrency(acc.balance, acc.currency) }}</span>
+                        <span v-if="acc.currency && acc.currency !== 'EGP'" class="text-[10px] text-text-muted block mt-0.5 font-bold">
+                          (= {{ formatCurrency(acc.balance_egp, 'EGP') }})
+                        </span>
+                      </div>
                       <button
                         type="button"
                         class="p-1.5 rounded-lg bg-white/5 text-text-muted hover:text-sky-400"
@@ -893,7 +898,7 @@ const categoryModuleChips = computed(() => {
   return keys.map((key) => {
     const mod = modules[key];
     const accounts = mod?.category === selectedCategory.value ? (mod.accounts || []) : [];
-    const balance = accounts.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0);
+    const balance = accounts.reduce((sum, acc) => sum + (Number(acc.balance_egp) || 0), 0);
 
     return {
       key,
@@ -1152,7 +1157,7 @@ function statusDotColor(status) {
 
 function getModuleTotal(accounts) {
   if (!Array.isArray(accounts)) return 0;
-  return accounts.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0);
+  return accounts.reduce((sum, acc) => sum + (Number(acc.balance_egp) || 0), 0);
 }
 
 function getModulePercentage(accounts) {

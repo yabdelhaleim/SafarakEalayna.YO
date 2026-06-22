@@ -17,6 +17,10 @@ class AccountResource extends JsonResource
                 $request->user()?->isAdmin() || $request->user()?->role === 'owner',
                 (float) $this->balance
             ),
+            'balance_egp' => $this->when(
+                $request->user()?->isAdmin() || $request->user()?->role === 'owner',
+                round((float) ($this->balance * app(\App\Services\Finance\TreasuryService::class)->getAveragePurchaseRate($this->currency ?: 'EGP')), 2)
+            ),
             'currency' => $this->currency,
             'is_active' => (bool) $this->is_active,
             'wallet_provider' => $this->wallet_provider instanceof \BackedEnum
