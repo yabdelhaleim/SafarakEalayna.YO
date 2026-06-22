@@ -2125,12 +2125,43 @@ class FlightBookingService
             $booking->exchange_rate
         );
 
-        FlightGroupTransaction::create([
+        if ($group->account_id === null) {
+            $account = Account::create([
+                'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),
+                'type' => \App\Enums\AccountType::Supplier->value,
+                'currency' => $groupCurrency,
+                'balance' => 0.00,
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'flights',
+                'notes' => 'حساب مجموعة تلقائي مضاف من النظام.',
+                'created_by' => $userId,
+            ]);
+            $group->account_id = $account->id;
+            $group->save();
+        }
+
+        $groupTx = FlightGroupTransaction::create([
             'flight_group_id' => $group->id,
             'flight_booking_id' => $booking->id,
             'type' => 'debt',
             'amount' => $debitAmount,
             'notes' => 'شراء تذكرة طيران بالأجل — حجز #'.$booking->booking_number,
+            'created_by' => $userId,
+        ]);
+
+        $expenseContraId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $debitAmount,
+            'converted_amount' => $purchasePriceEGP,
+            'from_account_id' => $group->account_id,
+            'to_account_id' => $expenseContraId,
+            'allow_from_negative' => true,
+            'module' => TransactionModule::Flight->value,
+            'related_type' => FlightGroupTransaction::class,
+            'related_id' => $groupTx->id,
+            'notes' => 'تكلفة شراء بالأجل — حجز #' . $booking->booking_number . ' — مجموعة: ' . $group->name,
             'created_by' => $userId,
         ]);
 
@@ -2180,12 +2211,43 @@ class FlightBookingService
             return;
         }
 
-        FlightGroupTransaction::create([
+        if ($group->account_id === null) {
+            $account = Account::create([
+                'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),
+                'type' => \App\Enums\AccountType::Supplier->value,
+                'currency' => $groupCurrency,
+                'balance' => 0.00,
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'flights',
+                'notes' => 'حساب مجموعة تلقائي مضاف من النظام.',
+                'created_by' => $userId,
+            ]);
+            $group->account_id = $account->id;
+            $group->save();
+        }
+
+        $groupTx = FlightGroupTransaction::create([
             'flight_group_id' => $group->id,
             'flight_booking_id' => $booking->id,
             'type' => 'payment',
             'amount' => $netReversal,
             'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #'.$booking->booking_number.' (غرامة: '.$airlinePenalty.')',
+            'created_by' => $userId,
+        ]);
+
+        $expenseContraId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $netReversalEgp,
+            'converted_amount' => $netReversal,
+            'from_account_id' => $expenseContraId,
+            'to_account_id' => $group->account_id,
+            'allow_from_negative' => true,
+            'module' => TransactionModule::Flight->value,
+            'related_type' => FlightGroupTransaction::class,
+            'related_id' => $groupTx->id,
+            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #'.$booking->booking_number.' — مجموعة: ' . $group->name,
             'created_by' => $userId,
         ]);
 

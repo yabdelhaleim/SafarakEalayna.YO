@@ -6,6 +6,10 @@ use App\Models\Account;
 use App\Models\Employee;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Customer;
+use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightCarrier;
+use App\Services\Flight\FlightBookingService;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -321,6 +325,108 @@ class ProfitLossReportTest extends TestCase
 
         $this->assertEquals(5000.0, (float) $report['totalExpenses']);
         $this->assertEquals(-5000.0, (float) $report['netProfit']);
+    }
+
+    public function test_group_booking_records_cogs_and_reduces_profit_in_pl_report(): void
+    {
+        // 1. Create a customer
+        $customer = Customer::create([
+            'full_name' => 'Ahmed Customer',
+            'phone' => '01000000000',
+            'customer_tier' => 'STANDARD',
+        ]);
+
+        // 2. Create system and carrier
+        $system = \App\Models\Flight\FlightSystem::create([
+            'name' => 'Test System',
+            'code' => 'SYS',
+            'type' => 'gds',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $carrier = FlightCarrier::create([
+            'name' => 'Test Carrier',
+            'code' => 'CR',
+            'flight_system_id' => $system->id,
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        // 3. Create a FlightGroup
+        $group = FlightGroup::create([
+            'name' => 'فوياج',
+            'code' => 'VOY',
+            'flight_carrier_id' => $carrier->id,
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        // Verify observer automatically created the account
+        $this->assertNotNull($group->account_id);
+        $account = Account::find($group->account_id);
+        $this->assertNotNull($account);
+        $this->assertEquals('حساب مجموعة طيران: فوياج', $account->name);
+        $this->assertEquals(0.0, (float) $account->balance);
+
+        // 4. Create a group booking using FlightBookingService
+        $bookingData = [
+            'customer_id' => $customer->id,
+            'airline_name' => 'Test Carrier',
+            'from_airport' => 'CAI',
+            'to_airport' => 'JED',
+            'departure_date' => now()->addDays(7)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'EGP',
+            'purchase_price' => 20000,
+            'selling_price' => 22000,
+            'purchase_balance_source' => 'group',
+            'flight_group_id' => $group->id,
+            'account_id' => $this->treasury->id,
+            'passengers' => [
+                [
+                    'name' => 'Passenger 1',
+                    'type' => 'adult',
+                ]
+            ],
+        ];
+
+        $booking = app(FlightBookingService::class)->createBooking($bookingData);
+
+        // 5. Assert database records and ledger balance
+        $this->assertDatabaseHas('flight_group_transactions', [
+            'flight_group_id' => $group->id,
+            'flight_booking_id' => $booking->id,
+            'type' => 'debt',
+            'amount' => 20000.0,
+        ]);
+
+        // Voyage Account should be -20,000 (we owe them 20,000 EGP)
+        $account->refresh();
+        $this->assertEquals(-20000.0, (float) $account->balance);
+
+        // 6. Check P&L report
+        $report = app(ProfitLossReportService::class)->report([]);
+
+        $this->assertEquals(22000.0, $report['totalRevenues']);
+        $this->assertEquals(20000.0, $report['totalCogs']);
+        $this->assertEquals(2000.0, $report['grossProfit']);
+        $this->assertEquals(2000.0, $report['netProfit']);
+
+        // 7. Verify cancellation logic reverses everything
+        app(FlightBookingService::class)->cancelBooking($booking, ['airline_penalty' => 0, 'office_penalty' => 0]);
+
+        $account->refresh();
+        $this->assertEquals(0.0, (float) $account->balance);
+
+        $reportAfterCancel = app(ProfitLossReportService::class)->report([]);
+        $this->assertEquals(0.0, $reportAfterCancel['totalRevenues']);
+        $this->assertEquals(0.0, $reportAfterCancel['totalCogs']);
+        $this->assertEquals(0.0, $reportAfterCancel['netProfit']);
     }
 }
 

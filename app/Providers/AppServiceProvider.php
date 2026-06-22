@@ -8,10 +8,12 @@ use App\Models\Customer;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmra\VisaAgent;
+use App\Models\Flight\FlightGroup;
 use App\Observers\CustomerLedgerObserver;
 use App\Observers\HajjUmraExecutingCompanyObserver;
 use App\Observers\UmrahSupplierObserver;
 use App\Observers\VisaAgentObserver;
+use App\Observers\FlightGroupObserver;
 use App\Support\Finance\PostingContextRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -69,6 +71,7 @@ class AppServiceProvider extends ServiceProvider
         VisaAgent::observe(VisaAgentObserver::class);
         UmrahSupplier::observe(UmrahSupplierObserver::class);
         HajjUmraExecutingCompany::observe(HajjUmraExecutingCompanyObserver::class);
+        FlightGroup::observe(FlightGroupObserver::class);
 
         Event::listen(
             TicketModified::class,
