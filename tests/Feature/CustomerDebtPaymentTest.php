@@ -152,4 +152,59 @@ class CustomerDebtPaymentTest extends TestCase
         $responseMismatch->assertOk();
         $this->assertCount(0, $responseMismatch->json('data.items'));
     }
+
+    public function test_customer_can_pay_outstanding_debt_in_foreign_currency(): void
+    {
+        // Create a foreign currency bank account (KWD)
+        $kwdBankAccount = Account::query()->create([
+            'name' => 'بنك الكويت الوطني - دينار',
+            'type' => 'bank',
+            'currency' => 'KWD',
+            'balance' => 100.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $payload = [
+            'amount' => 105.00, // 105 KWD paid
+            'account_id' => $kwdBankAccount->id,
+            'exchange_rate' => 159.00,
+            'converted_amount' => 16695.00, // 105 * 159 = 16695 EGP
+            'notes' => 'تحصيل بالدينار',
+            'type' => 'receipt',
+        ];
+
+        $response = $this->postJson("/api/v1/customers/{$this->customer->id}/pay-debt", $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true);
+
+        // Assert customer account balance updated in DB (5000 EGP debt - 16695 EGP equivalent paid = -11695 EGP)
+        $this->assertEquals(-11695.00, $this->customerAccount->fresh()->balance);
+
+        // Assert kwd account balance increased in DB (100 KWD + 105 KWD = 205 KWD)
+        $this->assertEquals(205.00, $kwdBankAccount->fresh()->balance);
+
+        // Assert transaction was recorded with EGP amount (amount deducted from Customer)
+        $this->assertDatabaseHas('transactions', [
+            'from_account_id' => $this->customerAccount->id,
+            'to_account_id' => $kwdBankAccount->id,
+            'amount' => 16695.00,
+            'module' => 'flight',
+        ]);
+
+        // Assert accounting entries are correct
+        $this->assertDatabaseHas('account_entries', [
+            'account_id' => $this->customerAccount->id,
+            'debit' => 16695.00,
+            'credit' => 0.00,
+        ]);
+
+        $this->assertDatabaseHas('account_entries', [
+            'account_id' => $kwdBankAccount->id,
+            'debit' => 0.00,
+            'credit' => 105.00,
+        ]);
+    }
 }

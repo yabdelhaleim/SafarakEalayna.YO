@@ -1088,7 +1088,7 @@
             <label class="form-label">المبلغ *</label>
             <div class="relative">
               <input v-model="payDebtForm.amount" type="number" step="0.01" min="0.01" required class="form-input font-mono font-bold text-xl" placeholder="0.00" />
-              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted bg-white/5 px-2 py-1 rounded">ج.م</span>
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted bg-white/5 px-2 py-1 rounded">{{ selectedAccountCurrencySymbol }}</span>
             </div>
             <div v-if="payDebtForm.booking_id && payDebtForm.amount" class="flex justify-between text-xs font-bold mt-1">
               <span class="text-muted">المتبقي بعد السداد:</span>
@@ -1104,10 +1104,28 @@
             </label>
             <select v-model="payDebtForm.account_id" required class="form-input">
               <option value="" disabled>اختر الحساب المالي...</option>
-              <option v-for="account in activeAccounts.filter(acc => acc.currency === payDebtCurrency)" :key="account.id" :value="account.id">
+              <option v-for="account in activeAccounts" :key="account.id" :value="account.id">
                 {{ account.name }} — الرصيد: {{ formatMoney(account.balance, account.currency) }}
               </option>
             </select>
+          </div>
+          <!-- Exchange Rate & Conversion Fields -->
+          <div v-if="showConversionFields" class="grid grid-cols-2 gap-4 animate-in fade-in duration-200">
+            <div class="form-field">
+              <label class="form-label">سعر الصرف *</label>
+              <input v-model="payDebtForm.exchange_rate" type="number" step="0.000001" min="0.000001" required class="form-input font-mono font-bold" placeholder="1.00" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">المعادل بالجنيه (EGP) *</label>
+              <div class="relative">
+                <input v-model="payDebtForm.converted_amount" type="number" step="0.01" min="0.01" required class="form-input font-mono font-bold" placeholder="0.00" />
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted bg-white/5 px-2 py-1 rounded">ج.م</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="showConversionFields && payDebtForm.amount && payDebtForm.exchange_rate" class="p-3 bg-white/5 rounded-xl border border-white/5 text-xs text-muted flex justify-between">
+            <span>الحسبة التلقائية:</span>
+            <span class="font-mono text-gold">{{ payDebtForm.amount }} {{ selectedAccount?.currency }} × {{ payDebtForm.exchange_rate }} = {{ payDebtForm.converted_amount }} EGP</span>
           </div>
           <!-- Notes -->
           <div class="form-field">
@@ -1130,7 +1148,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, nextTick } from 'vue';
+import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue';
 import { useCustomerStore } from '@/stores/customerStore';
 import {
   Search, Users, Plus, Pen, Trash2, Building2, MapPin, Globe2,
@@ -1180,7 +1198,69 @@ const payDebtLoading = ref(false);
 const selectedCustomerForPayment = ref(null);
 const activeAccounts = ref([]);
 const payDebtCurrency = ref('EGP');
-const payDebtForm = reactive({ amount: '', account_id: '', notes: '', booking_id: null, booking_number: null, booking_remaining: null, type: 'receipt' });
+const payDebtForm = reactive({
+  amount: '',
+  account_id: '',
+  notes: '',
+  booking_id: null,
+  booking_number: null,
+  booking_remaining: null,
+  type: 'receipt',
+  exchange_rate: 1.0,
+  converted_amount: ''
+});
+
+const currencyRates = ref({});
+const fetchCurrencyRates = async () => {
+  try {
+    const { data } = await axios.get('/api/v1/settings/currencies');
+    if (data && data.success && Array.isArray(data.data)) {
+      const rates = {};
+      data.data.forEach(c => {
+        rates[c.code] = parseFloat(c.exchangeRate) || 1.0;
+      });
+      currencyRates.value = rates;
+    }
+  } catch (e) {
+    console.error('Failed to load currency rates', e);
+  }
+};
+
+const selectedAccount = computed(() => {
+  return activeAccounts.value.find(acc => acc.id === payDebtForm.account_id);
+});
+
+const selectedAccountCurrencySymbol = computed(() => {
+  const symbolMap = { EGP: 'ج.م', KWD: 'د.ك', SAR: 'ر.س', USD: '$', EUR: '€' };
+  const currency = selectedAccount.value?.currency || 'EGP';
+  return symbolMap[currency] || currency;
+});
+
+const showConversionFields = computed(() => {
+  return selectedAccount.value && selectedAccount.value.currency !== 'EGP';
+});
+
+// Watchers for Currency Conversion
+watch(() => payDebtForm.account_id, (newAccountId) => {
+  const account = activeAccounts.value.find(acc => acc.id === newAccountId);
+  if (account && account.currency !== 'EGP') {
+    const defaultRate = currencyRates.value[account.currency] || 1.0;
+    payDebtForm.exchange_rate = defaultRate;
+    const amt = parseFloat(payDebtForm.amount) || 0;
+    payDebtForm.converted_amount = (amt * defaultRate).toFixed(2);
+  } else {
+    payDebtForm.exchange_rate = 1.0;
+    payDebtForm.converted_amount = '';
+  }
+});
+
+watch(() => [payDebtForm.amount, payDebtForm.exchange_rate], ([newAmount, newRate]) => {
+  if (showConversionFields.value) {
+    const amt = parseFloat(newAmount) || 0;
+    const rate = parseFloat(newRate) || 0;
+    payDebtForm.converted_amount = (amt * rate).toFixed(2);
+  }
+});
 
 // Data
 const customers = ref([]);
@@ -1672,6 +1752,7 @@ const openPayDebtModal = (customerRef, booking = null) => {
   payDebtForm.account_id = '';
   showPayDebtModal.value = true;
   fetchActiveAccounts();
+  fetchCurrencyRates();
 };
 
 const handleTypeChange = () => {
@@ -1692,7 +1773,17 @@ const handleTypeChange = () => {
 const closePayDebtModal = () => {
   showPayDebtModal.value = false;
   selectedCustomerForPayment.value = null;
-  Object.assign(payDebtForm, { amount: '', account_id: '', notes: '', type: 'receipt', booking_id: null, booking_number: null, booking_remaining: null });
+  Object.assign(payDebtForm, {
+    amount: '',
+    account_id: '',
+    notes: '',
+    type: 'receipt',
+    booking_id: null,
+    booking_number: null,
+    booking_remaining: null,
+    exchange_rate: 1.0,
+    converted_amount: ''
+  });
 };
 
 const submitPayDebt = async () => {
@@ -1727,8 +1818,12 @@ const submitPayDebt = async () => {
       });
     } else {
       response = await axios.post(`/api/v1/customers/${id}/pay-debt`, {
-        amount: parseFloat(payDebtForm.amount), account_id: payDebtForm.account_id, notes: payDebtForm.notes,
-        type: payDebtForm.type
+        amount: parseFloat(payDebtForm.amount),
+        account_id: payDebtForm.account_id,
+        notes: payDebtForm.notes,
+        type: payDebtForm.type,
+        exchange_rate: showConversionFields.value ? parseFloat(payDebtForm.exchange_rate) : null,
+        converted_amount: showConversionFields.value ? parseFloat(payDebtForm.converted_amount) : null
       });
     }
 

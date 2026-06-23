@@ -202,6 +202,8 @@ class CustomerController extends Controller
             'notes' => 'nullable|string|max:500',
             'type' => 'nullable|string|in:receipt,payment',
             'module' => 'nullable|string',
+            'exchange_rate' => 'nullable|numeric|min:0.000001',
+            'converted_amount' => 'nullable|numeric|min:0.01',
         ]);
 
         try {
@@ -237,16 +239,61 @@ class CustomerController extends Controller
 
                 $moduleLabel = $moduleEnum->label();
 
+                $fromCurrency = strtoupper((string) $fromAccount->currency);
+                $toCurrency = strtoupper((string) $toAccount->currency);
+
+                $hasConversion = ($fromCurrency !== $toCurrency);
+
+                $journalAmount = (float) $validated['amount'];
+                $journalConverted = null;
+
+                if ($hasConversion) {
+                    $exchangeRate = (float) ($validated['exchange_rate'] ?? 1.0);
+                    $convertedAmount = (float) ($validated['converted_amount'] ?? ($journalAmount * $exchangeRate));
+
+                    if ($type === 'receipt') {
+                        // Customer (EGP) transfers money to Bank (foreign currency, e.g. KWD)
+                        // amount deducted from Customer is $convertedAmount (EGP value)
+                        // amount added to Bank is $journalAmount (KWD value)
+                        $journalAmount = $convertedAmount;
+                        $journalConverted = (float) $validated['amount'];
+                    } else {
+                        // Bank (foreign currency, e.g. KWD) transfers money to Customer (EGP)
+                        // amount deducted from Bank is $journalAmount (KWD value)
+                        // amount added to Customer is $convertedAmount (EGP value)
+                        $journalConverted = $convertedAmount;
+                    }
+                }
+
+                $notes = $validated['notes'] ?? ($type === 'payment'
+                    ? ('سند صرف - دفع للعميل: '.$customer->full_name)
+                    : ("سند قبض - تسديد مديونية عميل {$moduleLabel}: ".$customer->full_name));
+
+                if ($hasConversion) {
+                    $foreignCurrency = $fromCurrency === 'EGP' ? $toCurrency : $fromCurrency;
+                    $foreignAmount = $type === 'payment' ? $journalAmount : $journalConverted;
+                    $egpAmount = $type === 'payment' ? $journalConverted : $journalAmount;
+                    $rateStr = number_format($exchangeRate ?? 1.0, 4);
+                    
+                    $conversionNote = sprintf(" (سعر الصرف: %s - المبلغ: %.2f %s = %.2f EGP)", 
+                        $rateStr, 
+                        $foreignAmount, 
+                        $foreignCurrency, 
+                        $egpAmount
+                    );
+                    $notes .= $conversionNote;
+                }
+
                 $transactionService = app(TransactionService::class);
                 $transaction = $transactionService->recordJournalTransfer([
-                    'amount' => (float) $validated['amount'],
+                    'amount' => $journalAmount,
+                    'converted_amount' => $journalConverted,
+                    'exchange_rate' => $validated['exchange_rate'] ?? null,
                     'from_account_id' => $fromId,
                     'to_account_id' => $toId,
                     'allow_from_negative' => true, // Customer debt can go negative (i.e. they pay extra, becoming in credit)
                     'module' => $moduleEnum->value,
-                    'notes' => $validated['notes'] ?? ($type === 'payment'
-                        ? ('سند صرف - دفع للعميل: '.$customer->full_name)
-                        : ("سند قبض - تسديد مديونية عميل {$moduleLabel}: ".$customer->full_name)),
+                    'notes' => $notes,
                     'created_by' => Auth::id() ?? 1,
                 ]);
 
