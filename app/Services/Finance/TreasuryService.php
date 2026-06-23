@@ -6,6 +6,7 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Transaction;
+use App\Services\Reports\ProfitLossReportService;
 use App\Support\Finance\AccountModuleDivision;
 use App\Support\Finance\UnifiedLiquidityGrouper;
 use Illuminate\Support\Facades\Auth;
@@ -376,14 +377,14 @@ class TreasuryService
             return (float) ($flightProfits + $hajjUmraProfits + $visaProfits);
         }
 
-        // Office: باص + فوري + أونلاين + محافظ
+        // Office: باص + فوري + أونلاين + محافظ — نفس منطق السياحة: نحسب كل العمليات النشطة وليس الملغاة فقط
         $busProfits = DB::table('bus_bookings')
-            ->whereIn('status', ['paid', 'confirmed', 'completed'])
+            ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
             ->whereNull('deleted_at')
             ->sum('profit');
 
         $onlineProfits = DB::table('online_transactions')
-            ->where('status', 'completed')
+            ->whereNotIn('status', ['cancelled', 'failed'])
             ->whereNull('deleted_at')
             ->sum('profit');
 
@@ -396,6 +397,29 @@ class TreasuryService
             ->sum('service_fee');
 
         return (float) ($busProfits + $onlineProfits + $fawryProfits + $walletProfits);
+    }
+
+    /**
+     * صافي أرباح القسم لميزان المراجعة: إيرادات العمليات − المصروفات التشغيلية.
+     * السياحة: جداول الحجوزات + مصروفات الدفتر.
+     * المكتب: القيد المزدوج (P&L) عند وجود حركات دفترية، وإلا جداول العمليات كاحتياط.
+     */
+    public function calculateDivisionNetProfits(string $division): float
+    {
+        if ($division === 'office') {
+            $report = app(ProfitLossReportService::class)->report([
+                'category' => 'office',
+            ]);
+
+            if (($report['meta']['transactions_included'] ?? 0) > 0) {
+                return round((float) $report['netProfit'], 2);
+            }
+        }
+
+        $grossProfits = $this->calculateDynamicProfits($division);
+        $operatingExpenses = $this->calculateOperatingExpenses($division);
+
+        return round($grossProfits - $operatingExpenses, 2);
     }
 
     /**
@@ -503,9 +527,7 @@ class TreasuryService
         $baseCapital = (float) ($printSettingService->get()->base_capital ?? 1000000.00);
 
         // تمرير 'tourism' صراحةً لضمان عدم احتساب أرباح المكتب في ميزان السياحة
-        $grossProfits = $this->calculateDynamicProfits('tourism');
-        $operatingExpenses = $this->calculateOperatingExpenses('tourism');
-        $profits = $grossProfits - $operatingExpenses;
+        $profits = $this->calculateDivisionNetProfits('tourism');
 
         $expectedCapital = $baseCapital + $profits;
         $variance = $currentCapital - $expectedCapital;
@@ -618,10 +640,8 @@ class TreasuryService
 
         $totalBalances = $busCompanyTotal + $fawryMachinesTotal;
 
-        // 3. الأرباح — المكتب فقط مطروحاً منها المصروفات التشغيلية للمكتب
-        $grossProfits = $this->calculateDynamicProfits('office');
-        $operatingExpenses = $this->calculateOperatingExpenses('office');
-        $profits = $grossProfits - $operatingExpenses;
+        // 3. الأرباح — نفس منطق السياحة عبر calculateDivisionNetProfits (مع أولوية القيد المزدوج للمكتب)
+        $profits = $this->calculateDivisionNetProfits('office');
 
         // 4. الذمم المدينة والدائنة — المكتب فقط
         $receivablesPayables = $this->calculateReceivablesAndPayables('office');

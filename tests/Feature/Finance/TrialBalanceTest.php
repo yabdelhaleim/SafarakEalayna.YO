@@ -415,6 +415,57 @@ class TrialBalanceTest extends TestCase
         $this->assertEquals(10000.0, $tbAfter['variance']); // Variance remains EXACTLY the same (10000.0)!
     }
 
+    public function test_office_trial_balance_uses_ledger_profits_for_variance(): void
+    {
+        $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $incomeId = $clearing->incomeContraIdForModule('fawry');
+        $expenseId = $clearing->expenseContraIdForModule('fawry');
+        $this->assertNotNull($incomeId);
+        $this->assertNotNull($expenseId);
+
+        $cashbox = Account::query()->create([
+            'name' => 'خزينة المكتب',
+            'type' => AccountType::Cashbox,
+            'balance' => 15000.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $printSetting = \App\Models\Setting\PrintSetting::query()->first()
+            ?? new \App\Models\Setting\PrintSetting();
+        $printSetting->office_base_capital = 15000.0;
+        $printSetting->save();
+
+        $transactionService = app(\App\Services\Finance\TransactionService::class);
+        $transactionService->recordJournalTransfer([
+            'amount' => 1600.0,
+            'from_account_id' => $incomeId,
+            'to_account_id' => $cashbox->id,
+            'module' => 'fawry',
+            'notes' => 'بيع فوري',
+            'created_by' => $this->user->id,
+            'allow_from_negative' => true,
+        ]);
+        $transactionService->recordJournalTransfer([
+            'amount' => 1000.0,
+            'from_account_id' => $cashbox->id,
+            'to_account_id' => $expenseId,
+            'module' => 'fawry',
+            'notes' => 'تكلفة فوري',
+            'created_by' => $this->user->id,
+        ]);
+
+        $tb = $this->treasuryService->getOfficeTrialBalance();
+
+        $this->assertEquals(600.0, $tb['profits']);
+        $this->assertEquals(15600.0, $tb['expected_capital']);
+        $this->assertEqualsWithDelta(0.0, $tb['variance'], 0.01);
+        $this->assertSame('متساوية', $tb['status']);
+    }
+
     public function test_consolidated_trial_balance_returns_correct_data(): void
     {
         $response = $this->getJson('/api/v1/reports/consolidated-trial-balance');
