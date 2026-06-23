@@ -200,8 +200,8 @@ class TrialBalanceExportService
 
         if ($division === 'office') {
             $sheet->setCellValue('A14', 'رأس المال الأساسي (المكتب)');
-            $sheet->setCellValue('B14', 0.0);
-            $sheet->setCellValue('C14', 'رأس مال افتتاحي صفر لقطاع المكتب');
+            $sheet->setCellValue('B14', $data['base_capital']);
+            $sheet->setCellValue('C14', 'مُدخل من الإعدادات العامة للمكتب');
         } else {
             $sheet->setCellValue('A14', 'رأس المال الأساسي (الافتتاحي)');
             $sheet->setCellValue('B14', $data['base_capital']);

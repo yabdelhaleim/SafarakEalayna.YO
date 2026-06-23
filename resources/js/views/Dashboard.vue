@@ -958,7 +958,7 @@
             </div>
             <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
               <div>
-                <div class="text-[10px] text-gray-400">الأرباح المتراكمة (الباص + فوري + أونلاين)</div>
+                <div class="text-[10px] text-gray-400">رأس المال المستهدف (الأساسي + الأرباح)</div>
                 <div class="text-base font-black text-white font-mono">
                   {{ formatCurrency(officeTrialBalance.expected_capital) }}
                   <span class="text-xs font-normal text-gray-500">
@@ -1308,11 +1308,13 @@ const formatCurrency = (amount) => {
 
 const formatCompactNumber = (amount) => {
   const val = parseAmount(amount);
-  if (val >= 1000000) {
-    return (val / 1000000).toFixed(1) + 'M';
+  const absVal = Math.abs(val);
+  const sign = val < 0 ? '-' : '';
+  if (absVal >= 1000000) {
+    return sign + (absVal / 1000000).toFixed(1) + 'M';
   }
-  if (val >= 1000) {
-    return (val / 1000).toFixed(1) + 'K';
+  if (absVal >= 1000) {
+    return sign + (absVal / 1000).toFixed(1) + 'K';
   }
   return val.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 };
