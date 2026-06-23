@@ -1229,7 +1229,7 @@
                             placeholder="0.00"
                             class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-14 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
                           />
-                          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">ج.م</span>
+                          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">{{ settlementAccountCurrencySymbol }}</span>
                         </div>
                       </div>
 
@@ -1272,13 +1272,13 @@
                         <div class="flex justify-between items-center pt-3">
                           <span class="text-xs text-text-muted">قيمة هذا الحجز:</span>
                           <span class="font-mono text-sm font-bold text-gold">
-                            {{ Number(form.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                            {{ Number(sellingPriceEgp || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
                           </span>
                         </div>
                         <div v-if="form.initial_payment > 0" class="flex justify-between items-center pt-3">
                           <span class="text-xs text-text-muted">الدفع المبدئي:</span>
                           <span class="font-mono text-sm font-bold text-success">
-                            − {{ Number(form.initial_payment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
+                            − {{ Number(initialPaymentEgp || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ج.م
                           </span>
                         </div>
                         <div class="flex justify-between items-center border-t border-white/10 pt-3">
@@ -1578,10 +1578,10 @@
                   </div>
 
                   <!-- Payment/Debt Summary -->
-                  <div class="p-6 rounded-xl space-y-4" :class="(form.initial_payment || 0) >= sellingPriceEgp ? 'bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'">
-                    <h4 class="font-bold flex items-center gap-2" :class="(form.initial_payment || 0) >= sellingPriceEgp ? 'text-success' : 'text-warning'">
+                  <div class="p-6 rounded-xl space-y-4" :class="(initialPaymentEgp || 0) >= sellingPriceEgp ? 'bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'">
+                    <h4 class="font-bold flex items-center gap-2" :class="(initialPaymentEgp || 0) >= sellingPriceEgp ? 'text-success' : 'text-warning'">
                       <CreditCard class="w-5 h-5" />
-                      {{ (form.initial_payment || 0) <= 0 ? 'حجز بالآجل (مديونية كاملة)' : ((form.initial_payment || 0) < sellingPriceEgp ? 'دفع جزئي' : 'دفع كامل') }}
+                      {{ (initialPaymentEgp || 0) <= 0 ? 'حجز بالآجل (مديونية كاملة)' : ((initialPaymentEgp || 0) < sellingPriceEgp ? 'دفع جزئي' : 'دفع كامل') }}
                     </h4>
                     <div class="space-y-2">
                       <div class="flex items-center justify-between text-sm">
@@ -1590,13 +1590,23 @@
                       </div>
                       <div v-if="form.initial_payment > 0" class="flex items-center justify-between text-sm">
                         <span class="text-gray-300">المبلغ المدفوع الآن:</span>
-                        <span class="text-success font-bold">{{ formatCurrency(form.initial_payment) }}</span>
+                        <span class="text-success font-bold">
+                          {{ formatCurrency(initialPaymentEgp) }}
+                          <span v-if="selectedSettlementAccount && selectedSettlementAccount.currency !== 'EGP'" class="text-xs text-gray-400">
+                            ({{ Number(form.initial_payment).toFixed(2) }} {{ selectedSettlementAccount.currency }})
+                          </span>
+                        </span>
                       </div>
                       <div class="flex items-center justify-between text-sm pt-2 border-t border-white/5">
                         <span class="text-gray-300">
                           {{ form.customer_type === 'counter' ? 'المتبقي (مديونية على الشركة):' : 'المتبقي (مديونية على العميل):' }}
                         </span>
-                        <span class="text-error font-black text-lg">{{ formatCurrency(sellingPriceEgp - (form.initial_payment || 0)) }}</span>
+                        <span class="text-error font-black text-lg">
+                          {{ formatCurrency(sellingPriceEgp - (initialPaymentEgp || 0)) }}
+                          <span v-if="selectedSettlementAccount && selectedSettlementAccount.currency !== 'EGP'" class="text-xs text-gray-400">
+                            ({{ (Number(form.selling_price) - Number(form.initial_payment)).toFixed(2) }} {{ selectedSettlementAccount.currency }})
+                          </span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -2028,11 +2038,21 @@
                 >
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-300">المدفوع:</span>
-                    <span class="font-bold text-info">{{ formatCurrency(form.initial_payment) }}</span>
+                    <span class="font-bold text-info">
+                      {{ formatCurrency(initialPaymentEgp) }}
+                      <span v-if="selectedSettlementAccount && selectedSettlementAccount.currency !== 'EGP'" class="text-[11px] text-gray-400">
+                        ({{ Number(form.initial_payment).toFixed(2) }} {{ selectedSettlementAccount.currency }})
+                      </span>
+                    </span>
                   </div>
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-300">المتبقي:</span>
-                    <span class="font-bold text-white">{{ formatCurrency(sellingPriceEgp - form.initial_payment) }}</span>
+                    <span class="font-bold text-white">
+                      {{ formatCurrency(sellingPriceEgp - initialPaymentEgp) }}
+                      <span v-if="selectedSettlementAccount && selectedSettlementAccount.currency !== 'EGP'" class="text-[11px] text-gray-400">
+                        ({{ (Number(form.selling_price) - Number(form.initial_payment)).toFixed(2) }} {{ selectedSettlementAccount.currency }})
+                      </span>
+                    </span>
                   </div>
                 </div>
                 <div
@@ -2251,6 +2271,26 @@ function createDefaultForm() {
 // Form data
 const form = ref(createDefaultForm());
 
+const settlementAccountCurrencySymbol = computed(() => {
+  const symbolMap = { EGP: 'ج.م', KWD: 'د.ك', SAR: 'ر.س', USD: '$', EUR: '€' };
+  const currency = selectedSettlementAccount.value?.currency || 'EGP';
+  return symbolMap[currency] || currency;
+});
+
+const initialPaymentEgp = computed(() => {
+  const pay = Number(form.value.initial_payment) || 0;
+  if (form.value.currency === 'EGP') {
+    return pay;
+  }
+  const account = selectedSettlementAccount.value;
+  const payCurrency = account ? account.currency : 'EGP';
+  if (payCurrency === 'EGP') {
+    return pay;
+  }
+  const rate = Number(form.value.exchange_rate) || 1.0;
+  return pay * rate;
+});
+
 const customerCurrentLedger = computed(() =>
   formatLedgerBalance(form.value.customer?.balance ?? 0, 'customer')
 );
@@ -2260,7 +2300,7 @@ const customerProjectedLedger = computed(() =>
     projectedLedgerBalance(
       form.value.customer?.balance ?? 0,
       sellingPriceEgp.value,
-      form.value.initial_payment ?? 0
+      initialPaymentEgp.value
     ),
     'customer'
   )
@@ -3123,7 +3163,7 @@ const customerCollectionStatus = computed(() => {
   const sell = sellingPriceEgp.value;
   const paid = isEditMode.value
     ? Number(editTotalPaid.value) || 0
-    : Number(form.value.initial_payment) || 0;
+    : initialPaymentEgp.value;
   if (sell <= 0) return null;
   if (paid <= 0) {
     return {

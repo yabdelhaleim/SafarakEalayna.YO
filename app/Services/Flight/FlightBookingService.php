@@ -1546,15 +1546,8 @@ class FlightBookingService
         try {
             return DB::transaction(function () use ($booking, $data) {
                 $amount = (float) $data['amount'];
-
-                // Validate total payments won't exceed selling_price
-                $totalPaid = $booking->payments()->sum('amount') ?? 0;
-                if ($totalPaid + $amount > $booking->selling_price) {
-                    throw new \Exception(
-                        'Total payments would exceed selling price. '.
-                        "Current: {$totalPaid}, Adding: {$amount}, Total: ".($totalPaid + $amount).
-                        ", Selling: {$booking->selling_price}"
-                    );
+                if ($amount <= 0) {
+                    throw new \Exception('Payment amount must be greater than zero.');
                 }
 
                 $accountId = (int) ($data['account_id'] ?? 0);
@@ -1568,20 +1561,55 @@ class FlightBookingService
 
                 $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
 
+                $account = Account::query()->find($accountId);
+                $paymentCurrency = $account ? strtoupper($account->currency) : 'EGP';
+                $customerCurrency = strtoupper($customerAccount->currency);
+
+                $transferAmount = $amount;
+                $convertedAmount = null;
+
+                if ($customerCurrency === 'EGP' && $paymentCurrency !== 'EGP') {
+                    $rate = (float) ($booking->exchange_rate ?? 1.0);
+                    if ($rate <= 0) {
+                        $rate = 1.0;
+                    }
+                    $transferAmount = $amount * $rate;
+                    $convertedAmount = $amount;
+                }
+
+                // Validate total payments won't exceed selling_price
+                $totalPaid = $booking->payments()->sum('amount') ?? 0;
+                if ($totalPaid + $transferAmount > $booking->selling_price) {
+                    throw new \Exception(
+                        'Total payments would exceed selling price. '.
+                        "Current EGP: {$totalPaid}, Adding EGP: {$transferAmount}, Total EGP: ".($totalPaid + $transferAmount).
+                        ", Selling EGP: {$booking->selling_price}"
+                    );
+                }
+
+                $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+
+                $currencyNote = '';
+                if ($paymentCurrency !== 'EGP') {
+                    $currencyNote = sprintf(" (تم تحصيل %.2f %s)", $amount, $paymentCurrency);
+                }
+                $paymentNotes = isset($data['notes']) ? ($data['notes'] . $currencyNote) : (trim($currencyNote) ?: null);
+
                 // تحصيل الدفعة من حساب العميل (تخفيض المديونية) إلى الخزينة
                 // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
                 // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
                 $transaction = $this->transactionService->recordIncome([
-                    'amount' => $amount,
+                    'amount' => $transferAmount,
+                    'converted_amount' => $convertedAmount,
+                    'exchange_rate' => $booking->exchange_rate ?? null,
                     'to_account_id' => $accountId,
                     'contra_account_id' => $customerAccount->id,
                     'module' => TransactionModule::Flight->value,
                     'related_type' => FlightBooking::class,
                     'related_id' => $booking->id,
-                    'notes' => $data['notes'] ?? null,
+                    'notes' => $paymentNotes,
                 ]);
 
-                $account = Account::query()->find($accountId);
                 $treasuryLabel = $account
                     ? (string) $account->id.'|'.($account->name ?? '')
                     : (string) ($data['account_id'] ?? '');
@@ -1596,16 +1624,16 @@ class FlightBookingService
 
                 $payment = FlightPayment::create([
                     'flight_booking_id' => $booking->id,
-                    'amount' => $amount,
+                    'amount' => $transferAmount, // Store EGP value so that paid_amount is correctly calculated in EGP
                     'payment_method' => $data['payment_method'] ?? $data['method'] ?? FlightPaymentMethod::Cash->value,
-                    'currency' => $booking->currency ?? 'EGP',
+                    'currency' => 'EGP',
                     'treasury_account' => $treasuryLabel,
                     'transaction_reference' => (string) $transaction->id,
                     'payment_date' => now(),
                     'paid_by' => (string) (Auth::user()?->name ?? 'system'),
-                    'account_id' => $data['account_id'],
+                    'account_id' => $accountId,
                     'transaction_id' => $transaction->id,
-                    'notes' => $data['notes'] ?? null,
+                    'notes' => $paymentNotes,
                     'created_by' => Auth::id(),
                 ]);
 

@@ -258,6 +258,85 @@ class FlightBookingFlowTest extends TestCase
         ]);
     }
 
+    public function test_handles_foreign_currency_booking_payment_conversion(): void
+    {
+        Log::info('Starting test: test_handles_foreign_currency_booking_payment_conversion');
+
+        // Create carrier with USD
+        $usdCarrier = FlightCarrier::create([
+            'name' => 'US Airline 2',
+            'code' => 'USA_PAY',
+            'flight_system_id' => $this->flightSystem->id,
+            'currency' => 'USD',
+            'balance' => 10000,
+            'credit_limit' => 5000,
+            'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+
+        // Create USD bank account for payment
+        $usdBankAccount = Account::create([
+            'name' => 'USD Bank Account',
+            'type' => 'bank',
+            'balance' => 100, // 100 USD
+            'currency' => 'USD',
+            'is_active' => true,
+            'owner_type' => Account::OWNER_TYPE_OWNER,
+            'module_type' => 'office',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $bookingData = [
+            'customer_id' => $this->customer->id,
+            'airline_name' => 'US Airline 2',
+            'from_airport' => 'CAI',
+            'to_airport' => 'JFK',
+            'departure_date' => now()->addDays(10)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'USD',
+            'purchase_price_foreign' => 500,
+            'exchange_rate' => 50,
+            'selling_price' => 600,
+            'flight_carrier_id' => $usdCarrier->id,
+            'account_id' => $this->treasuryAccount->id,
+            'passengers' => [
+                ['name' => 'Test Passenger', 'type' => 'adult'],
+            ],
+        ];
+
+        $booking = $this->bookingService->createBooking($bookingData);
+
+        // Fetch customer account and verify its initial balance after booking
+        // The booking selling price is 600 USD. With rate 50, it is 30,000 EGP.
+        $this->customer->refresh();
+        $customerAccount = Account::findOrFail($this->customer->account_id);
+
+        // Customer ledger in EGP is debited 30,000. Under double entry, customer balance should be 30,000.
+        $this->assertEquals(30000.0, $customerAccount->balance);
+
+        // Add payment of 600 USD (which should settle the entire EGP debt: 600 * 50 = 30,000 EGP)
+        $paymentData = [
+            'amount' => 600,
+            'payment_method' => 'bank_transfer',
+            'account_id' => $usdBankAccount->id,
+            'notes' => 'Full payment in USD',
+        ];
+
+        $this->bookingService->addPayment($booking, $paymentData);
+
+        // Refresh accounts and assert balances
+        $customerAccount->refresh();
+        $usdBankAccount->refresh();
+
+        // USD Bank balance should increase by 600 USD (100 USD old balance + 600 USD payment = 700 USD)
+        $this->assertEquals(700.0, $usdBankAccount->balance);
+
+        // Customer EGP balance should become 0.0 (30,000 debt - 30,000 converted payment)
+        $this->assertEquals(0.0, $customerAccount->balance);
+
+        Log::info('Test passed: test_handles_foreign_currency_booking_payment_conversion successfully completed');
+    }
+
     public function test_prevents_booking_when_insufficient_carrier_balance(): void
     {
         Log::info('Starting test: it_prevents_booking_when_insufficient_carrier_balance');

@@ -57,6 +57,8 @@ class TransactionService
         if ($resolvedContra !== null && $resolvedContra !== $fromId) {
             return $this->recordJournalTransfer([
                 'amount' => $amount,
+                'converted_amount' => $data['converted_amount'] ?? null,
+                'exchange_rate' => $data['exchange_rate'] ?? null,
                 'from_account_id' => $fromId,
                 'to_account_id' => $resolvedContra,
                 'allow_from_negative' => $data['allow_from_negative'] ?? $this->ledgerClearingAccounts->isPrepaidAccountId($fromId),
@@ -149,6 +151,8 @@ class TransactionService
         if ($resolvedContra !== null && $resolvedContra !== $toId) {
             return $this->recordJournalTransfer([
                 'amount' => $amount,
+                'converted_amount' => $data['converted_amount'] ?? null,
+                'exchange_rate' => $data['exchange_rate'] ?? null,
                 'from_account_id' => $resolvedContra,
                 'to_account_id' => $toId,
                 'allow_from_negative' => (bool) ($data['allow_contra_negative'] ?? true),
