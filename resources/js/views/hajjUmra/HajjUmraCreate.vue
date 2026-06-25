@@ -408,7 +408,7 @@
                   </option>
                 </select>
                 <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-2">
-                  لا توجد حسابات متاحة في هذا التصنيف.
+                  لا توجد حسابات حج وعمرة في هذا التصنيف — أنشئ حساباً من Filament (موديول: الحج والعمرة).
                 </p>
                 <p class="text-xs text-muted mt-2">الحسابات تُدار من Filament &gt; الحسابات.</p>
               </div>
@@ -570,6 +570,7 @@
 import { ref, computed, onMounted, onActivated, h } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
+import { filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
 import { useAuthStore } from '@/stores/authStore';
 import { 
@@ -676,8 +677,12 @@ const steps = [
   { id: 6, title: 'الملخص', label: 'مراجعة نهائية' },
 ];
 
+const moduleSettlementAccounts = computed(() =>
+  filterSettlementAccountsByModule(store.accounts || [], 'hajj_umra')
+);
+
 const filteredAccounts = computed(() => {
-  const accounts = store.accounts || [];
+  const accounts = moduleSettlementAccounts.value;
   if (settlementCategoryUi.value === 'cash') {
     return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
   }

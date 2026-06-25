@@ -438,6 +438,7 @@
 <script setup>
 import { ref, computed, onMounted, onActivated } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
+import { filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { 
@@ -462,7 +463,7 @@ const settlementCategoryChips = [
 ];
 
 const filteredAccounts = computed(() => {
-  const accounts = store.accounts || [];
+  const accounts = filterSettlementAccountsByModule(store.accounts || [], 'visa');
   if (settlementCategoryUi.value === 'cash') {
     return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
   }

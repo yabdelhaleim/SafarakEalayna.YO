@@ -261,11 +261,18 @@ class DashboardService
         $busOps = $this->buildBusOperationsDashboard($from, $to);
 
         // Per-module P&L from the double-entry ledger (covers flight transfers correctly)
-        $plBreakdown = resolve(ProfitLossReportService::class)->moduleBreakdown([
+        $plService = resolve(ProfitLossReportService::class);
+        $plBreakdown = $plService->moduleBreakdown([
             'from_date' => $from,
             'to_date'   => $to,
         ]);
         $plByModule = collect($plBreakdown['by_module'])->keyBy('module');
+
+        $tourismPl = $plService->report([
+            'from_date' => $from,
+            'to_date' => $to,
+            'category' => 'tourism',
+        ]);
 
         // Hajj Stats — booking counts from model, profit from ledger
         $hajjStats = \App\Models\HajjUmraBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
@@ -290,6 +297,14 @@ class DashboardService
         $fawryCount   = (int) $fawryStats->count;
         $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
         $fawryProfit  = (float) ($plByModule->get('fawry')['profit'] ?? 0);
+
+        // Visa Stats
+        $visaStats = \App\Models\VisaBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
+            ->first();
+        $visaCount   = (int) $visaStats->count;
+        $visaRevenue = (float) ($plByModule->get('visa')['income'] ?? $visaStats->revenue);
+        $visaProfit  = (float) ($plByModule->get('visa')['profit'] ?? 0);
 
         // Flight profit from ledger (flight bookings are type=transfer, not type=income)
         $flightLedgerProfit  = (float) ($plByModule->get('flight')['profit'] ?? 0);
@@ -337,10 +352,21 @@ class DashboardService
                 'revenue' => $hajjRevenue,
                 'profit'  => $hajjProfit,
             ],
-            'total_count'   => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount,
-            'total_revenue' => ($flightLedgerRevenue ?: ($airline['kpis']['revenue'] ?? 0)) + $hajjRevenue,
-            'total_profit'  => $flightLedgerProfit + $hajjProfit,
+            'visa' => [
+                'count'   => $visaCount,
+                'revenue' => $visaRevenue,
+                'profit'  => $visaProfit,
+            ],
+            'total_count'   => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount + $visaCount,
+            'total_revenue' => round((float) ($tourismPl['totalRevenues'] ?? 0), 2),
+            'total_profit'  => round((float) ($tourismPl['netProfit'] ?? 0), 2),
         ];
+
+        $officePl = $plService->report([
+            'from_date' => $from,
+            'to_date' => $to,
+            'category' => 'office',
+        ]);
 
         $officeSummary = [
             'bus' => [
@@ -359,8 +385,8 @@ class DashboardService
                 'profit'  => $onlineProfit,
             ],
             'total_count'   => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount,
-            'total_revenue' => ($busLedgerRevenue ?: ($busOps['bus_kpis']['revenue'] ?? 0)) + $fawryRevenue + $onlineRevenue,
-            'total_profit'  => $busLedgerProfit + $fawryProfit + $onlineProfit,
+            'total_revenue' => round((float) ($officePl['totalRevenues'] ?? 0), 2),
+            'total_profit'  => round((float) ($officePl['netProfit'] ?? 0), 2),
         ];
 
         $extra = [

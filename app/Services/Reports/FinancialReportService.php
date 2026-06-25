@@ -23,6 +23,7 @@ use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Supplier;
 use App\Models\Transaction;
+use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Support\Facades\DB;
 
 class FinancialReportService
@@ -1159,7 +1160,36 @@ class FinancialReportService
 
         foreach ($currencies as $currency) {
             $tourismCapital = $this->calculateTourismCapital($currency);
-            $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $officeCapital = $this->calculateOfficeCapital($currency);
+
+            if (strtoupper($currency) === 'EGP') {
+                $tourismPlReport = app(ProfitLossReportService::class)->report([
+                    'from_date' => $fromDate,
+                    'to_date' => $toDate,
+                    'category' => 'tourism',
+                ]);
+                $officePlReport = app(ProfitLossReportService::class)->report([
+                    'from_date' => $fromDate,
+                    'to_date' => $toDate,
+                    'category' => 'office',
+                ]);
+
+                $tourismPL = [
+                    'revenue' => round((float) ($tourismPlReport['totalRevenues'] ?? 0), 2),
+                    'cogs' => round((float) ($tourismPlReport['totalCogs'] ?? 0), 2),
+                    'expense' => round((float) ($tourismPlReport['totalExpenses'] ?? 0), 2),
+                    'profit' => round((float) ($tourismPlReport['netProfit'] ?? 0), 2),
+                ];
+                $officePL = [
+                    'revenue' => round((float) ($officePlReport['totalRevenues'] ?? 0), 2),
+                    'cogs' => round((float) ($officePlReport['totalCogs'] ?? 0), 2),
+                    'expense' => round((float) ($officePlReport['totalExpenses'] ?? 0), 2),
+                    'profit' => round((float) ($officePlReport['netProfit'] ?? 0), 2),
+                ];
+            } else {
+                $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
+                $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            }
 
             $tourismReport[$currency] = [
                 'capital' => $tourismCapital,
@@ -1168,9 +1198,6 @@ class FinancialReportService
                 'cogs' => $tourismPL['cogs'],
                 'revenue' => $tourismPL['revenue'],
             ];
-
-            $officeCapital = $this->calculateOfficeCapital($currency);
-            $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
 
             $officeReport[$currency] = [
                 'capital' => $officeCapital,

@@ -150,6 +150,7 @@ class UnifiedDashboardTest extends TestCase
                     'tourism_summary' => [
                         'flights',
                         'hajj',
+                        'visa',
                         'total_count',
                         'total_revenue',
                         'total_profit',

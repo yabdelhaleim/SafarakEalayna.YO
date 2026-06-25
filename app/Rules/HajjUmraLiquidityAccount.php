@@ -37,12 +37,12 @@ class HajjUmraLiquidityAccount implements ValidationRule
 
     public static function applyLiquidityScope(Builder $query): Builder
     {
-        return $query
-            ->where('is_active', true)
-            ->where(function (Builder $q): void {
-                $q->where('module_type', 'hajj_umra')->orWhere('module', 'hajj_umra');
-            })
+        $query->where('is_active', true)
             ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES);
+
+        AccountModuleDivision::applyModuleFilter($query, 'hajj_umra');
+
+        return $query;
     }
 
     public static function belongsToHajjUmraModule(Account $account): bool
@@ -54,6 +54,14 @@ class HajjUmraLiquidityAccount implements ValidationRule
             ? $account->module->value
             : (string) ($account->module ?? '');
 
-        return $moduleType === 'hajj_umra' || $module === 'hajj_umra';
+        if (in_array($moduleType, ['hajj_umra', 'hajj', 'umrah'], true)) {
+            return true;
+        }
+
+        if (in_array($module, ['hajj_umra', 'hajj', 'umrah'], true)) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -509,6 +509,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
+import { filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -619,7 +620,7 @@ const payForm = ref({
 });
 
 const filteredSafeAccounts = computed(() => {
-  const accounts = store.accounts || [];
+  const accounts = filterSettlementAccountsByModule(store.accounts || [], 'hajj_umra');
   if (settlementCategory.value === 'cash') {
     return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
   }

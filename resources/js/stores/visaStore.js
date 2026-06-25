@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { fetchSettlementAccounts, filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -266,11 +267,8 @@ export const useVisaStore = defineStore('visa', {
     async fetchAccounts() {
       this.loading.accounts = true;
       try {
-        const { data } = await axios.get('/api/v1/finance/accounts', {
-          params: { per_page: 100, is_active: 1, module: 'visa' },
-        });
-        const items = data?.data?.items ?? data?.data ?? [];
-        this.accounts = Array.isArray(items) ? items : [];
+        const list = await fetchSettlementAccounts(axios, { module: 'visa' });
+        this.accounts = filterSettlementAccountsByModule(list, 'visa');
       } catch (e) {
         this.accounts = [];
       } finally {

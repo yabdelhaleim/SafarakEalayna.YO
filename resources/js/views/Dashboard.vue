@@ -91,7 +91,7 @@
             </div>
           </div>
           <div class="text-left">
-            <div class="text-xs text-gray-400">إجمالي الأرباح</div>
+            <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black text-amber-400 font-mono">{{ formatCurrency(tourismSummary.total_profit) }}</div>
           </div>
         </button>
@@ -114,7 +114,7 @@
             </div>
           </div>
           <div class="text-left">
-            <div class="text-xs text-gray-400">إجمالي الأرباح</div>
+            <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black text-sky-400 font-mono">{{ formatCurrency(officeSummary.total_profit) }}</div>
           </div>
         </button>
@@ -235,9 +235,10 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💰</div>
           <div class="text-xs font-bold text-emerald-400 mb-1">صافي أرباح قطاع السياحة</div>
           <div class="text-3xl font-black text-emerald-400 font-mono">{{ formatCurrency(tourismSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>ربح الطيران: {{ formatCompactNumber(tourismSummary.flights.profit) }}</span>
             <span>ربح الحج: {{ formatCompactNumber(tourismSummary.hajj.profit) }}</span>
+            <span>ربح التأشيرات: {{ formatCompactNumber(tourismSummary.visa.profit) }}</span>
           </div>
         </div>
 
@@ -1254,7 +1255,7 @@ const isLoadingConsolidatedTrialBalance = ref(false);
 
 // Filters
 const filters = ref({
-  date_from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  date_from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   date_to: new Date().toISOString().split('T')[0],
   carrier_id: '',
   system_type: '',
@@ -1264,6 +1265,7 @@ const filters = ref({
 const tourismSummary = ref({
   flights: { count: 0, revenue: 0, profit: 0 },
   hajj: { count: 0, revenue: 0, profit: 0 },
+  visa: { count: 0, revenue: 0, profit: 0 },
   total_count: 0,
   total_revenue: 0,
   total_profit: 0,
@@ -1318,6 +1320,7 @@ const normalizeModuleBlock = (block = {}) => ({
 const normalizeTourismSummary = (raw = {}) => ({
   flights: normalizeModuleBlock(raw.flights),
   hajj: normalizeModuleBlock(raw.hajj),
+  visa: normalizeModuleBlock(raw.visa),
   total_count: parseAmount(raw.total_count),
   total_revenue: parseAmount(raw.total_revenue),
   total_profit: parseAmount(raw.total_profit),
@@ -1391,7 +1394,7 @@ const applyFilters = async () => {
 
 const resetFilters = () => {
   filters.value = {
-    date_from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    date_from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     date_to: new Date().toISOString().split('T')[0],
     carrier_id: '',
     system_type: '',

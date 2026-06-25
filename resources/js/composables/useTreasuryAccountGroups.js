@@ -98,12 +98,45 @@ export function accountMatchesWalletType(account, walletType) {
   return provider === code;
 }
 
-/** Liquidity accounts for settlements; retries without module when module filter returns none. */
+export function accountBelongsToModule(account, module) {
+  if (!module || !account) {
+    return true;
+  }
+
+  const canonical = MODULE_TO_MODULE_TYPE[module] || module;
+  const moduleType = account.module_type || '';
+  const legacyModule = account.module || '';
+
+  if (moduleType === canonical || legacyModule === canonical) {
+    return true;
+  }
+  if (moduleType === module || legacyModule === module) {
+    return true;
+  }
+
+  const legacyAliases = Object.entries(MODULE_TO_MODULE_TYPE)
+    .filter(([, value]) => value === canonical)
+    .map(([key]) => key);
+
+  return legacyAliases.includes(moduleType) || legacyAliases.includes(legacyModule);
+}
+
+export function filterSettlementAccountsByModule(accounts, module) {
+  if (!module) {
+    return accounts || [];
+  }
+
+  return (accounts || []).filter((account) => accountBelongsToModule(account, module));
+}
+
+/** Liquidity accounts for settlements; when module is set, never falls back to all modules. */
 export async function fetchSettlementAccounts(httpClient, options = {}) {
   const {
     module = null,
+    module_type = null,
     includePost = true,
     isActive = 1,
+    strictModule = true,
   } = options;
 
   const types = includePost
@@ -122,11 +155,24 @@ export async function fetchSettlementAccounts(httpClient, options = {}) {
     return unwrapAccountsApiResponse(res);
   };
 
-  if (module) {
-    const scoped = await fetchList({ ...baseParams, module });
-    if (scoped.length > 0) {
-      return scoped;
+  if (module || module_type) {
+    const params = { ...baseParams };
+    if (module) {
+      params.module = module;
     }
+    if (module_type) {
+      params.module_type = module_type;
+    } else if (module && MODULE_TO_MODULE_TYPE[module]) {
+      params.module_type = MODULE_TO_MODULE_TYPE[module];
+    }
+
+    const scoped = await fetchList(params);
+
+    if (strictModule && module) {
+      return filterSettlementAccountsByModule(scoped, module);
+    }
+
+    return scoped;
   }
 
   return fetchList(baseParams);

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
-import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
+import { fetchSettlementAccounts, filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -257,10 +257,11 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
     async fetchAccounts(params = {}) {
       this.loading.accounts = true;
       try {
-        this.accounts = await fetchSettlementAccounts(axios, {
+        const list = await fetchSettlementAccounts(axios, {
           module: 'hajj_umra',
           ...params,
         });
+        this.accounts = filterSettlementAccountsByModule(list, 'hajj_umra');
       } catch (e) {
         console.error('fetchAccounts failed', e);
         this.accounts = [];
