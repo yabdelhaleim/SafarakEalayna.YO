@@ -355,12 +355,21 @@ class TreasuryService
             $flightProfits = DB::table('flight_bookings')
                 ->whereNull('deleted_at')
                 ->whereNotIn('status', [
-                    'CANCELLED', 'REFUNDED', 'PENDING',
-                    'cancelled', 'refunded', 'pending',
+                    'CANCELLED', 'PENDING',
+                    'cancelled', 'pending',
                     'PARTIALLY_REFUNDED', 'partially_refunded',
                 ])
                 ->get()
                 ->sum(function ($booking) {
+                    $status = strtoupper((string) $booking->status);
+
+                    // حجز مسترد بالكامل: الربح المحتفظ به = غرامة المكتب فقط
+                    if ($status === 'REFUNDED') {
+                        return (float) DB::table('flight_refunds')
+                            ->where('flight_booking_id', $booking->id)
+                            ->sum('office_penalty');
+                    }
+
                     $hasB2cRefund = DB::table('flight_refunds')
                         ->where('flight_booking_id', $booking->id)
                         ->exists();
