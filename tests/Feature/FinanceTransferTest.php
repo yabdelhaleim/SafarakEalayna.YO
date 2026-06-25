@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Employee;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -218,7 +219,7 @@ class FinanceTransferTest extends TestCase
         ]);
 
         $response2->assertStatus(201);
-        
+
         $createdAccount->refresh();
         $this->assertEquals(2000.0, (float) $createdAccount->balance); // 1200 + 800
 
@@ -226,5 +227,143 @@ class FinanceTransferTest extends TestCase
         $count = Account::where('name', $customName)->count();
         $this->assertEquals(1, $count);
     }
-}
 
+    public function test_tourism_expense_transfer_records_module_and_balances(): void
+    {
+        $tourismTreasury = Account::create([
+            'name' => 'خزينة السياحة',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 20000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'created_by' => $this->user->id,
+        ]);
+
+        $expenseAccount = Account::create([
+            'name' => 'مصروفات تسويق سياحي',
+            'type' => 'expense',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'tourism',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $tourismTreasury->id,
+            'to_account_id' => $expenseAccount->id,
+            'amount' => 2500,
+            'type' => 'expense',
+            'module' => 'tourism',
+            'notes' => 'حملة إعلانية للسياحة',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('success', true);
+
+        $tourismTreasury->refresh();
+        $expenseAccount->refresh();
+
+        $this->assertSame(17500.0, (float) $tourismTreasury->balance);
+        $this->assertSame(2500.0, (float) $expenseAccount->balance);
+
+        $transaction = Transaction::query()->latest('id')->first();
+        $this->assertNotNull($transaction);
+        $this->assertSame('expense', $transaction->type->value);
+        $this->assertSame('tourism', $transaction->module->value);
+        $this->assertSame($tourismTreasury->id, $transaction->from_account_id);
+        $this->assertSame($expenseAccount->id, $transaction->to_account_id);
+    }
+
+    public function test_office_expense_transfer_records_module_and_balances(): void
+    {
+        $officeTreasury = Account::create([
+            'name' => 'خزينة فوري',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 15000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        $expenseAccount = Account::create([
+            'name' => 'مصروفات تشغيل فوري',
+            'type' => 'expense',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $officeTreasury->id,
+            'to_account_id' => $expenseAccount->id,
+            'amount' => 900,
+            'type' => 'expense',
+            'module' => 'office',
+            'notes' => 'مصروفات تشغيل المكتب',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('success', true);
+
+        $officeTreasury->refresh();
+        $expenseAccount->refresh();
+
+        $this->assertSame(14100.0, (float) $officeTreasury->balance);
+        $this->assertSame(900.0, (float) $expenseAccount->balance);
+
+        $transaction = Transaction::query()->latest('id')->first();
+        $this->assertNotNull($transaction);
+        $this->assertSame('expense', $transaction->type->value);
+        $this->assertSame('office', $transaction->module->value);
+    }
+
+    public function test_flight_expense_transfer_records_correct_module(): void
+    {
+        $flightTreasury = Account::create([
+            'name' => 'خزينة الطيران',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 30000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'created_by' => $this->user->id,
+        ]);
+
+        $expenseAccount = Account::create([
+            'name' => 'مصروفات طيران',
+            'type' => 'expense',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'flights',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->postJson('/api/v1/finance/transfers', [
+            'from_account_id' => $flightTreasury->id,
+            'to_account_id' => $expenseAccount->id,
+            'amount' => 1200,
+            'type' => 'expense',
+            'module' => 'flight',
+            'notes' => 'مصروفات تشغيل طيران',
+        ]);
+
+        $response->assertStatus(201);
+
+        $transaction = Transaction::query()->latest('id')->first();
+        $this->assertSame('flight', $transaction->module->value);
+        $this->assertSame(28800.0, (float) $flightTreasury->fresh()->balance);
+        $this->assertSame(1200.0, (float) $expenseAccount->fresh()->balance);
+    }
+}

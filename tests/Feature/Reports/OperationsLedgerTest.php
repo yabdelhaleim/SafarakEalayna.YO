@@ -4,7 +4,9 @@ namespace Tests\Feature\Reports;
 
 use App\Models\Account;
 use App\Models\Employee;
+use App\Models\ExchangeRate;
 use App\Models\Transaction;
+use App\Models\Transfer;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Reports\ReportFinanceService;
@@ -147,6 +149,53 @@ class OperationsLedgerTest extends TestCase
         $this->assertEquals(400.0, $summary['total_expense']);
     }
 
+    public function test_expenses_only_report_includes_tourism_module_and_treasury_names(): void
+    {
+        $tourismTreasury = Account::create([
+            'name' => 'خزينة سياحة للتقرير',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 10000,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'tourism',
+            'created_by' => $this->user->id,
+        ]);
+
+        $expenseAccount = Account::create([
+            'name' => 'مصروف تسويق سياحي',
+            'type' => 'expense',
+            'currency' => 'EGP',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'tourism',
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->createTransfer(
+            $tourismTreasury->id,
+            $expenseAccount->id,
+            850,
+            'tourism',
+            'حملة سياحية',
+            'expense'
+        );
+
+        $paginator = app(ReportFinanceService::class)->getTransactionReport([
+            'expenses_only' => true,
+            'per_page' => 20,
+        ]);
+
+        $this->assertCount(1, $paginator->items());
+        $row = $paginator->items()[0];
+        $this->assertSame('expense', $row->type);
+        $this->assertSame('tourism', $row->module);
+        $this->assertSame('خزينة سياحة للتقرير', $row->from_account_name);
+        $this->assertSame('مصروف تسويق سياحي', $row->to_account_name);
+        $this->assertSame('outflow', $row->flow_kind);
+    }
+
     public function test_operations_office_api_endpoints_return_live_data(): void
     {
         $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 1100, 'fawry', 'API فوري');
@@ -199,7 +248,7 @@ class OperationsLedgerTest extends TestCase
             'notes' => 'تحويل عملة طيران',
         ]);
 
-        \App\Models\Transfer::create([
+        Transfer::create([
             'from_account_id' => $usdAccount->id,
             'to_account_id' => $egpAccount->id,
             'amount' => 100.0,
@@ -211,7 +260,7 @@ class OperationsLedgerTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+        $paginator = app(ReportFinanceService::class)->getTransactionReport([
             'module' => 'flight',
         ]);
 
@@ -241,7 +290,7 @@ class OperationsLedgerTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        \App\Models\ExchangeRate::create([
+        ExchangeRate::create([
             'from_currency' => 'USD',
             'to_currency' => 'EGP',
             'rate' => 50.0,
@@ -260,7 +309,7 @@ class OperationsLedgerTest extends TestCase
             'notes' => 'إيداع دولاري بدون تحويل',
         ]);
 
-        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+        $paginator = app(ReportFinanceService::class)->getTransactionReport([
             'module' => 'flight',
         ]);
 
@@ -288,7 +337,7 @@ class OperationsLedgerTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        \App\Models\ExchangeRate::create([
+        ExchangeRate::create([
             'from_currency' => 'USD',
             'to_currency' => 'EGP',
             'rate' => 50.0,
@@ -307,7 +356,7 @@ class OperationsLedgerTest extends TestCase
             'notes' => 'مصروف دولاري بدون تحويل من فوري',
         ]);
 
-        $paginator = app(\App\Services\Reports\ReportFinanceService::class)->getTransactionReport([
+        $paginator = app(ReportFinanceService::class)->getTransactionReport([
             'module' => 'fawry',
         ]);
 

@@ -11,13 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('bus_companies', 'account_id')) {
+        if (Schema::hasTable('bus_companies') && ! Schema::hasColumn('bus_companies', 'account_id')) {
             Schema::table('bus_companies', function (Blueprint $table) {
                 $table->foreignId('account_id')->nullable()->after('phone')->constrained('accounts')->nullOnDelete();
             });
         }
 
-        if (!Schema::hasColumn('hajj_umra_executing_companies', 'account_id')) {
+        if (Schema::hasTable('hajj_umra_executing_companies') && ! Schema::hasColumn('hajj_umra_executing_companies', 'account_id')) {
             Schema::table('hajj_umra_executing_companies', function (Blueprint $table) {
                 $table->foreignId('account_id')->nullable()->after('phone')->constrained('accounts')->nullOnDelete();
             });

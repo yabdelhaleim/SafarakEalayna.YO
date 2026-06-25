@@ -10,6 +10,8 @@ use App\Models\Customer;
 use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryTransaction;
+use App\Models\Transaction;
+use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -144,8 +146,8 @@ class FawryTransactionService
 
                 $expenseTransactionId = null;
                 if ((float) $data['fawry_price'] > 0) {
-                    $expenseAccountId = $machine 
-                        ? app(\App\Services\Finance\LedgerClearingAccounts::class)->prepaidAccountId('fawry')
+                    $expenseAccountId = $machine
+                        ? app(LedgerClearingAccounts::class)->prepaidAccountId('fawry')
                         : $data['account_id'];
 
                     if ($expenseAccountId) {
@@ -288,12 +290,29 @@ class FawryTransactionService
     {
         try {
             return DB::transaction(function () use ($transaction) {
-                if ($transaction->expense_transaction_id) {
-                    $this->transactionService->reverseTransaction($transaction->expenseTransaction);
+                // ── 1. Reverse the machine balance (restore fawry_price to machine)
+                if ($transaction->fawry_machine_id && $transaction->fawry_price > 0) {
+                    $machine = FawryMachine::lockForUpdate()->find($transaction->fawry_machine_id);
+                    if ($machine) {
+                        $createdBy = Auth::id() ?? $transaction->created_by_user_id ?? 1;
+                        $machine->credit(
+                            (float) $transaction->fawry_price,
+                            'عكس عملية فوري #'.$transaction->id,
+                            $createdBy,
+                            $transaction->id
+                        );
+                    }
                 }
 
-                if ($transaction->income_transaction_id) {
-                    $this->transactionService->reverseTransaction($transaction->incomeTransaction);
+                // ── 2. Reverse ALL transactions linked to this fawry transaction
+                //       (covers: expense TX, income/debt TX, and payment TX)
+                $linkedTransactions = Transaction::where('related_type', FawryTransaction::class)
+                    ->where('related_id', $transaction->id)
+                    ->orderByDesc('id') // reverse in reverse chronological order
+                    ->get();
+
+                foreach ($linkedTransactions as $linkedTx) {
+                    $this->transactionService->reverseTransaction($linkedTx);
                 }
 
                 $transaction->delete();
@@ -376,7 +395,7 @@ class FawryTransactionService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'fawry',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,

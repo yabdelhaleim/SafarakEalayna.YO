@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             OnlineSettingsSeeder::class,
             HajjUmraSettingsSeeder::class,
             WalletSettingsSeeder::class,
+            TourismAccountsSeeder::class,
         ]);
 
         $this->command->info('═══════════════════════════════════════');

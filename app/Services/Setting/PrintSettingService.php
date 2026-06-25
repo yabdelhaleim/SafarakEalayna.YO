@@ -41,20 +41,22 @@ class PrintSettingService
 
     public function get(): PrintSetting
     {
-        return PrintSetting::query()->firstOrCreate(
-            ['id' => 1],
-            [
-                'company_name_ar' => 'سفرك علينا',
-                'company_name_en' => 'Safarak Ealayna',
-                'address' => null,
-                'phones' => null,
-                'finance_label' => 'المالية والمحاسب',
-                'show_amount_due' => true,
-                'modules' => $this->defaultModules(),
-                'base_capital' => 1000000.00,
-                'office_base_capital' => 0.00,
-            ]
-        );
+        $setting = PrintSetting::query()->first();
+        if ($setting) {
+            return $setting;
+        }
+
+        return PrintSetting::query()->create([
+            'company_name_ar' => 'سفرك علينا',
+            'company_name_en' => 'Safarak Ealayna',
+            'address' => null,
+            'phones' => null,
+            'finance_label' => 'المالية والمحاسب',
+            'show_amount_due' => true,
+            'modules' => $this->defaultModules(),
+            'base_capital' => 1000000.00,
+            'office_base_capital' => 0.00,
+        ]);
     }
 
     public function toArray(?PrintSetting $setting = null): array

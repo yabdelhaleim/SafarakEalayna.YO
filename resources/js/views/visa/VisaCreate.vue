@@ -86,12 +86,22 @@
                         class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
                     </div>
                     <div>
-                      <label class="block text-xs text-muted mb-2">رقم الجواز</label>
+                      <label class="block text-xs text-muted mb-2">الرقم القومي *</label>
+                      <input v-model="newCustomer.national_id" type="text" maxlength="14"
+                        class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-muted mb-2">دولة السفر *</label>
+                      <input v-model="newCustomer.travel_country" type="text"
+                        class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-muted mb-2">رقم الجواز (اختياري)</label>
                       <input v-model="newCustomer.passport_number" type="text"
                         class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
                     </div>
                     <div>
-                      <label class="block text-xs text-muted mb-2">تاريخ الميلاد</label>
+                      <label class="block text-xs text-muted mb-2">تاريخ الميلاد (اختياري)</label>
                       <input v-model="newCustomer.date_of_birth" type="date"
                         class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none" />
                     </div>
@@ -471,6 +481,8 @@ function createDefaultNewCustomer() {
     phone: '',
     passport_number: '',
     date_of_birth: '',
+    national_id: '',
+    travel_country: '',
   };
 }
 
@@ -621,15 +633,24 @@ const createNewCustomer = async () => {
     store.addToast('الاسم ورقم الهاتف مطلوبان', 'error');
     return;
   }
+  if (!newCustomer.value.national_id?.trim()) {
+    store.addToast('الرقم القومي مطلوب', 'error');
+    return;
+  }
+  if (!newCustomer.value.travel_country?.trim()) {
+    store.addToast('دولة السفر مطلوبة', 'error');
+    return;
+  }
   try {
     const customer = await store.createCustomer(newCustomer.value);
     form.value.customer = customer;
     form.value.initial_payment.paid_by = customer.full_name || customer.name;
     showNewCustomerForm.value = false;
-    newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '' };
+    newCustomer.value = createDefaultNewCustomer();
     store.addToast('تم إضافة العميل بنجاح');
   } catch (error) {
-    store.addToast('فشل إضافة العميل', 'error');
+    const errMsg = error.response?.data?.message || 'فشل إضافة العميل';
+    store.addToast(errMsg, 'error');
   }
 };
 

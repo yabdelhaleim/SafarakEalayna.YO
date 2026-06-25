@@ -235,7 +235,15 @@
               </optgroup>
             </select>
             <p class="text-xs text-text-muted mt-2">
-              الخزائن مجمّعة حسب الموديول. يُفضّل السحب من خزينة نفس القسم المختار أعلاه.
+              <template v-if="form.category === 'tourism'">
+                تظهر خزائن قسم السياحة فقط (الطيران، الحج والعمرة، التأشيرات، وغيرها).
+              </template>
+              <template v-else-if="form.category === 'office'">
+                تظهر خزائن قسم المكتب فقط (الباص، فوري، الإلكتروني، وغيرها).
+              </template>
+              <template v-else>
+                تظهر خزائن الإدارة العامة والمكتب.
+              </template>
             </p>
           </div>
 
@@ -370,6 +378,10 @@ import { useAsyncState } from '@/composables/useAsyncState';
 import {
   formatAccountType,
   unwrapAccountItems,
+  filterTreasuryAccountsByDivision,
+  filterExpenseAccountsByDivision,
+  TOURISM_MODULE_TYPES,
+  OFFICE_MODULE_TYPES,
   useTreasuryAccountGroups,
 } from '@/composables/useTreasuryAccountGroups';
 import axios from 'axios';
@@ -435,28 +447,20 @@ const preferredTreasuryModuleKeys = computed(() => {
     return ['general', 'office'];
   }
   if (form.value.category === 'tourism') {
-    const map = {
-      flight: ['flights', 'tourism'],
-      hajj_umra: ['hajj_umra'],
-      visa: ['visas'],
-      tourism: ['tourism']
-    };
-    return map[form.value.module] || [];
+    return [...TOURISM_MODULE_TYPES];
   }
   if (form.value.category === 'office') {
-    const map = {
-      bus: ['bus'],
-      fawry: ['fawry'],
-      online: ['online'],
-      office: ['office']
-    };
-    return map[form.value.module] || [];
+    return [...OFFICE_MODULE_TYPES];
   }
   return [];
 });
 
+const scopedTreasuryAccounts = computed(() =>
+  filterTreasuryAccountsByDivision(treasuryAccounts.value, form.value.category)
+);
+
 const treasuryAccountGroups = useTreasuryAccountGroups(
-  treasuryAccounts,
+  scopedTreasuryAccounts,
   preferredTreasuryModuleKeys
 );
 
@@ -475,34 +479,9 @@ const updateModuleSelection = () => {
   form.value.expense_account_name = '';
 };
 
-const moduleTypeForForm = computed(() => {
-  if (form.value.category === 'general') {
-    return 'general';
-  }
-  if (form.value.category === 'tourism') {
-    const map = { flight: 'flights', hajj_umra: 'hajj_umra', visa: 'visas', tourism: 'tourism' };
-    return map[form.value.module] || 'tourism';
-  }
-  if (form.value.category === 'office') {
-    const map = { bus: 'bus', fawry: 'fawry', online: 'online', office: 'office' };
-    return map[form.value.module] || 'office';
-  }
-  return null;
-});
-
-const selectableExpenseAccounts = computed(() => {
-  const active = expenseAccounts.value.filter((acc) => acc.is_active !== false);
-  const scope = moduleTypeForForm.value;
-  if (!scope || scope === 'general') {
-    return active.filter((acc) => acc.module_type === 'general' || !acc.module_type);
-  }
-  return active.filter(
-    (acc) =>
-      acc.module_type === scope ||
-      acc.module === form.value.module ||
-      acc.module_type === 'general'
-  );
-});
+const selectableExpenseAccounts = computed(() =>
+  filterExpenseAccountsByDivision(expenseAccounts.value, form.value.category)
+);
 
 const filteredExpenses = computed(() => {
   return expenses.value;
@@ -521,10 +500,16 @@ watch(
   () => form.value.module,
   () => {
     form.value.expense_account_id = '';
-    form.value.from_account_id = '';
     form.value.exchange_rate = 1.0;
     form.value.is_custom = false;
     form.value.expense_account_name = '';
+
+    const stillValidTreasury = scopedTreasuryAccounts.value.some(
+      (acc) => acc.id === form.value.from_account_id
+    );
+    if (!stillValidTreasury) {
+      form.value.from_account_id = '';
+    }
   }
 );
 
@@ -597,7 +582,7 @@ const fetchAccounts = async () => {
   try {
     const [expenseRes, treasuriesRes] = await Promise.all([
       axios.get('/api/v1/finance/accounts', { params: { type: 'expense', is_active: true, per_page: 100 } }),
-      axios.get('/api/v1/finance/accounts', { params: { types: 'cashbox,bank,treasury,wallet', is_active: true, per_page: 100 } }),
+      axios.get('/api/v1/finance/accounts', { params: { types: 'cashbox,bank,treasury,wallet,post', is_active: true, per_page: 100 } }),
     ]);
     
     expenseAccounts.value = unwrapItems(expenseRes.data?.data);

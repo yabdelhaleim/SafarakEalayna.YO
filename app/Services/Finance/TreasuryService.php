@@ -2,18 +2,25 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\AccountType;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Transaction;
+use App\Services\Reports\FinancialReportService;
 use App\Services\Reports\ProfitLossReportService;
+use App\Services\Setting\PrintSettingService;
 use App\Support\Finance\AccountModuleDivision;
 use App\Support\Finance\UnifiedLiquidityGrouper;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class TreasuryService
 {
+    /** ذمم مدينة حقيقية في معادلة الميزان (غير مُدرجة في إجمالي الأرصدة كأصول مسبقة الدفع). */
+    private const TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES = ['customer', 'flight_group'];
+
     /**
      * الحصول على رصيد خزينة معينة
      */
@@ -110,8 +117,8 @@ class TreasuryService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Account>  $accounts
-     * @return array{office: \Illuminate\Support\Collection<int, Account>, tourism: \Illuminate\Support\Collection<int, Account>}
+     * @param  Collection<int, Account>  $accounts
+     * @return array{office: Collection<int, Account>, tourism: Collection<int, Account>}
      */
     protected function splitAccountsByCategory($accounts): array
     {
@@ -133,7 +140,7 @@ class TreasuryService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Account>  $accounts
+     * @param  Collection<int, Account>  $accounts
      * @return array<string, array<string, float|int>>
      */
     protected function buildStatsByCategory($accounts): array
@@ -160,7 +167,7 @@ class TreasuryService
                 $category = 'office';
             }
 
-            $type = $account->type instanceof \App\Enums\AccountType
+            $type = $account->type instanceof AccountType
                 ? $account->type->value
                 : (string) $account->type;
             $balance = (float) $account->balance;
@@ -347,21 +354,24 @@ class TreasuryService
             // طيران + حج وعمرة + تأشيرات فقط
             $flightProfits = DB::table('flight_bookings')
                 ->whereNull('deleted_at')
+                ->whereNotIn('status', [
+                    'CANCELLED', 'REFUNDED', 'PENDING',
+                    'cancelled', 'refunded', 'pending',
+                    'PARTIALLY_REFUNDED', 'partially_refunded',
+                ])
                 ->get()
                 ->sum(function ($booking) {
                     $hasB2cRefund = DB::table('flight_refunds')
                         ->where('flight_booking_id', $booking->id)
                         ->exists();
 
-                    if ($booking->status === 'CONFIRMED' || !$hasB2cRefund) {
-                        return (float) $booking->profit;
+                    if ($hasB2cRefund) {
+                        return (float) DB::table('flight_refunds')
+                            ->where('flight_booking_id', $booking->id)
+                            ->sum('office_penalty');
                     }
 
-                    // Otherwise, it has a B2C refund
-                    $refundsSum = DB::table('flight_refunds')
-                        ->where('flight_booking_id', $booking->id)
-                        ->sum('office_penalty');
-                    return (float) $refundsSum;
+                    return (float) $booking->profit;
                 });
 
             $hajjUmraProfits = DB::table('hajj_umra_bookings')
@@ -427,18 +437,25 @@ class TreasuryService
      */
     public function calculateOperatingExpenses(string $division = 'tourism'): float
     {
-        $modules = $division === 'tourism'
-            ? ['flight', 'hajj_umra', 'visa', 'tourism']
-            : ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+        $expenseClearingIds = array_keys(app(LedgerClearingAccounts::class)->moduleAccountMaps()['expense']);
+        $liquidityTypes = AccountModuleDivision::LIQUIDITY_TYPES;
+
+        $divisionModules = $division === 'tourism'
+            ? AccountModuleDivision::TOURISM
+            : AccountModuleDivision::OFFICE;
 
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
             ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
-            ->where(function ($q) {
+            ->whereIn('from_acc.type', $liquidityTypes)
+            ->whereIn('from_acc.module_type', $divisionModules)
+            ->whereNull('t.related_type')
+            ->where(function ($q) use ($expenseClearingIds) {
                 $q->where('t.type', 'expense')
-                  ->orWhere('to_acc.type', 'expense');
-            })
-            ->whereIn('t.module', $modules);
+                    ->orWhere('to_acc.type', 'expense')
+                    ->orWhereIn('t.to_account_id', $expenseClearingIds);
+            });
 
         $total = 0.0;
         foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency'])->cursor() as $tx) {
@@ -470,15 +487,23 @@ class TreasuryService
             $rates[$curr] = $this->getAveragePurchaseRate($curr);
         }
 
-        // 2. Total Balances (إجمالي الأرصدة للموديولات)
-        $flightSystems = DB::table('flight_systems')->where('is_active', 1)->whereNull('deleted_at')->get();
-        $flightSystemsTotal = $flightSystems->sum(fn($sys) => (float) $sys->balance * $this->getAveragePurchaseRate($sys->currency));
+        // 2. Total Balances (إجمالي الأرصدة للموديولات) — أصول مسبقة الدفع فقط (رصيد موجب)
+        $flightSystems = DB::table('flight_systems')
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->where('balance', '>', 0)
+            ->get();
+        $flightSystemsTotal = $flightSystems->sum(fn ($sys) => (float) $sys->balance * $this->getAveragePurchaseRate($sys->currency));
 
-        $flightCarriers = DB::table('flight_carriers')->where('is_active', 1)->whereNull('deleted_at')->get();
-        $flightCarriersTotal = $flightCarriers->sum(fn($car) => (float) $car->balance * $this->getAveragePurchaseRate($car->currency));
+        $flightCarriers = DB::table('flight_carriers')
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->where('balance', '>', 0)
+            ->get();
+        $flightCarriersTotal = $flightCarriers->sum(fn ($car) => (float) $car->balance * $this->getAveragePurchaseRate($car->currency));
 
-        $airlineAccounts = DB::table('airline_accounts')->get();
-        $airlineAccountsTotal = $airlineAccounts->sum(fn($air) => (float) $air->balance * $this->getAveragePurchaseRate($air->currency));
+        $airlineAccounts = DB::table('airline_accounts')->where('balance', '>', 0)->get();
+        $airlineAccountsTotal = $airlineAccounts->sum(fn ($air) => (float) $air->balance * $this->getAveragePurchaseRate($air->currency));
 
         $flightTotalBalances = $flightSystemsTotal + $flightCarriersTotal + $airlineAccountsTotal;
 
@@ -488,7 +513,7 @@ class TreasuryService
             ->where('is_active', true)
             ->where('balance', '>', 0)
             ->get()
-            ->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
+            ->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
         $visaAgentsTotal = DB::table('accounts')
             ->where('type', 'supplier')
@@ -496,7 +521,7 @@ class TreasuryService
             ->where('is_active', true)
             ->where('balance', '>', 0)
             ->get()
-            ->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
+            ->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
         $totalBalances = $flightTotalBalances + $hajjUmraSuppliersTotal + $visaAgentsTotal;
 
@@ -513,7 +538,7 @@ class TreasuryService
             ->where('name', 'not like', '%ذممة%')
             ->get();
 
-        $totalLiquidity = $tourismLiquidityAccounts->sum(fn($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
+        $totalLiquidity = $tourismLiquidityAccounts->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
         // تمرير 'tourism' صراحةً لضمان عدم احتساب ذمم المكتب في ميزان السياحة
         $receivablesPayables = $this->calculateReceivablesAndPayables('tourism');
@@ -523,8 +548,12 @@ class TreasuryService
         // 6. Capital Equation Calculations
         $currentCapital = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
 
-        $printSettingService = app(\App\Services\Setting\PrintSettingService::class);
+        $printSettingService = app(PrintSettingService::class);
         $baseCapital = (float) ($printSettingService->get()->base_capital ?? 1000000.00);
+
+        // الأرباح الإجمالية (قبل خصم المصروفات) والمصروفات التشغيلية بشكل منفصل
+        $grossProfits = round($this->calculateDynamicProfits('tourism'), 2);
+        $operatingExpenses = round($this->calculateOperatingExpenses('tourism'), 2);
 
         // تمرير 'tourism' صراحةً لضمان عدم احتساب أرباح المكتب في ميزان السياحة
         $profits = $this->calculateDivisionNetProfits('tourism');
@@ -552,6 +581,8 @@ class TreasuryService
             'due_from_us' => $dueFromUs,
             'current_capital' => $currentCapital,
             'base_capital' => $baseCapital,
+            'gross_profits' => $grossProfits,
+            'operating_expenses' => $operatingExpenses,
             'profits' => $profits,
             'expected_capital' => $expectedCapital,
             'variance' => $variance,
@@ -573,7 +604,7 @@ class TreasuryService
     public function calculateReceivablesAndPayables(string $division = 'tourism'): array
     {
         $filters = ['department' => $division];
-        $debtsReport = app(\App\Services\Reports\FinancialReportService::class)->getDebtsReport($filters);
+        $debtsReport = app(FinancialReportService::class)->getDebtsReport($filters);
         $dueToUs = 0.0;
         $dueFromUs = 0.0;
 
@@ -588,23 +619,69 @@ class TreasuryService
             $egp = abs($balance) * $rate;
 
             if ($balance > 0) {
+                $entityType = (string) ($item['entity_type'] ?? '');
+                // الأرصدة الموجبة للموردين/الشركات/الخطوط مُدرجة في total_balances كأصول مسبقة الدفع
+                if (! in_array($entityType, self::TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES, true)) {
+                    continue;
+                }
                 $dueToUs += $egp;
             } else {
                 $dueFromUs += $egp;
             }
         }
 
+        if ($division === 'tourism') {
+            $dueFromUs += $this->sumNegativeTourismPrepaidBalances();
+        }
+
         return [
-            'due_to_us'   => round($dueToUs, 2),
+            'due_to_us' => round($dueToUs, 2),
             'due_from_us' => round($dueFromUs, 2),
         ];
     }
 
     /**
+     * مستحقات سالبة على أنظمة/ناقلين/خطوط الطيران (غير مُدرجة في تقرير الديون).
+     */
+    private function sumNegativeTourismPrepaidBalances(): float
+    {
+        $total = 0.0;
+
+        $systems = DB::table('flight_systems')
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->where('balance', '<', 0)
+            ->get(['balance', 'currency']);
+
+        foreach ($systems as $row) {
+            $total += abs((float) $row->balance) * $this->getAveragePurchaseRate((string) $row->currency);
+        }
+
+        $carriers = DB::table('flight_carriers')
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->where('balance', '<', 0)
+            ->get(['balance', 'currency']);
+
+        foreach ($carriers as $row) {
+            $total += abs((float) $row->balance) * $this->getAveragePurchaseRate((string) $row->currency);
+        }
+
+        $airlines = DB::table('airline_accounts')
+            ->where('balance', '<', 0)
+            ->get(['balance', 'currency']);
+
+        foreach ($airlines as $row) {
+            $total += abs((float) $row->balance) * $this->getAveragePurchaseRate((string) ($row->currency ?? 'EGP'));
+        }
+
+        return round($total, 2);
+    }
+
+    /**
      * ميزان حسابات قسم المكتب (باص + فوري + أونلاين + محافظ + عام).
      * المعادلة: currentCapital = (totalBalances + totalLiquidity + dueToUs) - dueFromUs
-     * expectedCapital = baseCapital + profits(office)
-     * يجب أن يكون كل مكوّن من نفس القسم لضمان صحة المعادلة.
+     * expectedCapital = baseCapital + grossProfits - operatingExpenses
      */
     public function getOfficeTrialBalance(): array
     {
@@ -622,7 +699,6 @@ class TreasuryService
             ->where('name', 'not like', '%رصيد مسبق%')
             ->get();
 
-        // حسابات المكتب بالجنيه المصري فقط في الغالب — مع توفير تحويل العملة احتياطياً
         $totalLiquidity = $officeLiquidityAccounts->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
 
         // 2. الأصول — حسابات شركات الباص (رصيد موجب) + أرصدة ماكينات فوري النشطة
@@ -640,12 +716,14 @@ class TreasuryService
 
         $totalBalances = $busCompanyTotal + $fawryMachinesTotal;
 
-        // 3. الأرباح — نفس منطق السياحة عبر calculateDivisionNetProfits (مع أولوية القيد المزدوج للمكتب)
+        // 3. الأرباح — عرض إجمالي/مصروفات للواجهة؛ صافي الميزان عبر calculateDivisionNetProfits (أولوية P&L للمكتب)
+        $grossProfits = round($this->calculateDynamicProfits('office'), 2);
+        $operatingExpenses = round($this->calculateOperatingExpenses('office'), 2);
         $profits = $this->calculateDivisionNetProfits('office');
 
         // 4. الذمم المدينة والدائنة — المكتب فقط
         $receivablesPayables = $this->calculateReceivablesAndPayables('office');
-        $dueToUs   = $receivablesPayables['due_to_us'];
+        $dueToUs = $receivablesPayables['due_to_us'];
         $dueFromUs = $receivablesPayables['due_from_us'];
 
         // 5. المعادلة المحاسبية
@@ -655,11 +733,11 @@ class TreasuryService
             $rates[$curr] = $this->getAveragePurchaseRate($curr);
         }
 
-        $currentCapital  = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
-        $printSettingService = app(\App\Services\Setting\PrintSettingService::class);
-        $baseCapital     = (float) ($printSettingService->get()->office_base_capital ?? 0.00);
+        $currentCapital = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
+        $printSettingService = app(PrintSettingService::class);
+        $baseCapital = (float) ($printSettingService->get()->office_base_capital ?? 0.00);
         $expectedCapital = $baseCapital + $profits;
-        $variance        = $currentCapital - $expectedCapital;
+        $variance = $currentCapital - $expectedCapital;
 
         $status = 'متساوية';
         if ($variance > 0.01) {
@@ -674,16 +752,18 @@ class TreasuryService
                 'bus_company_balances' => $busCompanyTotal,
                 'fawry_machine_balances' => $fawryMachinesTotal,
             ],
-            'total_balances'  => round($totalBalances, 2),
+            'total_balances' => round($totalBalances, 2),
             'total_liquidity' => round($totalLiquidity, 2),
-            'due_to_us'       => $dueToUs,
-            'due_from_us'     => $dueFromUs,
+            'due_to_us' => $dueToUs,
+            'due_from_us' => $dueFromUs,
             'current_capital' => round($currentCapital, 2),
-            'base_capital'    => $baseCapital,
-            'profits'         => round($profits, 2),
-            'expected_capital'=> round($expectedCapital, 2),
-            'variance'        => round($variance, 2),
-            'status'          => $status,
+            'base_capital' => $baseCapital,
+            'gross_profits' => $grossProfits,
+            'operating_expenses' => $operatingExpenses,
+            'profits' => round($profits, 2),
+            'expected_capital' => round($expectedCapital, 2),
+            'variance' => round($variance, 2),
+            'status' => $status,
         ];
     }
 
@@ -702,9 +782,10 @@ class TreasuryService
 
         $currentCapital = ($totalBalances + $totalLiquidity + $dueToUs) - $dueFromUs;
         $baseCapital = (float) $tourism['base_capital'] + (float) $office['base_capital'];
+        $grossProfits = (float) $tourism['gross_profits'] + (float) $office['gross_profits'];
+        $operatingExpenses = (float) $tourism['operating_expenses'] + (float) $office['operating_expenses'];
         $profits = (float) $tourism['profits'] + (float) $office['profits'];
         $expectedCapital = $baseCapital + $profits;
-
         $variance = $currentCapital - $expectedCapital;
 
         $status = 'متساوية';
@@ -729,6 +810,8 @@ class TreasuryService
             'due_from_us' => round($dueFromUs, 2),
             'current_capital' => round($currentCapital, 2),
             'base_capital' => round($baseCapital, 2),
+            'gross_profits' => round($grossProfits, 2),
+            'operating_expenses' => round($operatingExpenses, 2),
             'profits' => round($profits, 2),
             'expected_capital' => round($expectedCapital, 2),
             'variance' => round($variance, 2),

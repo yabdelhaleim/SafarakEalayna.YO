@@ -119,7 +119,7 @@
             >
               <option :value="null" disabled>اختر الحساب</option>
               <option
-                v-for="account in store.accounts"
+                v-for="account in filteredAccounts"
                 :key="account.id"
                 :value="account.id"
               >
@@ -178,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated } from 'vue';
+import { ref, computed, watch, onMounted, onActivated } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useFinanceStore } from '@/stores/financeStore';
 import {
@@ -240,6 +240,30 @@ const creatableTypeValues = ['income', 'expense'];
 const creatableTypes = computed(() =>
   store.transactionTypes.filter((t) => creatableTypeValues.includes(t.value))
 );
+
+// تصفية الحسابات حسب القسم المختار (سياحة vs مكتب)
+const tourismModules = ['flight', 'hajj_umra', 'visa', 'tourism', 'flights', 'visas'];
+
+const filteredAccounts = computed(() => {
+  if (!form.value.module) return store.accounts;
+  
+  const isTourismSelected = tourismModules.includes(form.value.module);
+  
+  return store.accounts.filter(account => {
+    const isTourismAccount = ['tourism', 'flights', 'hajj_umra', 'visas'].includes(account.module_type);
+    return isTourismSelected ? isTourismAccount : !isTourismAccount;
+  });
+});
+
+// مراقبة تغيير القسم لتصفير الحساب في حال لم يعد متوافقاً
+watch(() => form.value.module, () => {
+  if (form.value.account_id) {
+    const isAvailable = filteredAccounts.value.some(acc => acc.id === form.value.account_id);
+    if (!isAvailable) {
+      form.value.account_id = null;
+    }
+  }
+});
 
 const handleSubmit = async () => {
   if (!form.value.account_id) {

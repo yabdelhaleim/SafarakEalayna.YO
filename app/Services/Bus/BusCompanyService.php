@@ -2,9 +2,9 @@
 
 namespace App\Services\Bus;
 
-use App\Models\Bus\BusCompany;
-use App\Models\Account;
 use App\Enums\AccountType;
+use App\Models\Account;
+use App\Models\Bus\BusCompany;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -203,15 +203,15 @@ class BusCompanyService
 
         return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($company) {
             $account = Account::create([
-                'name' => 'حساب شركة باصات: ' . $company->name,
+                'name' => 'حساب شركة باصات: '.$company->name,
                 'type' => AccountType::Supplier,
                 'balance' => 0,
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'bus',
                 'is_module_vault' => false,
-                'notes' => 'حساب تلقائي لشركة الباصات #' . $company->id,
+                'notes' => 'حساب تلقائي لشركة الباصات #'.$company->id,
                 'created_by' => Auth::id() ?? 1,
             ]);
 

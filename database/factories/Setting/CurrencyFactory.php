@@ -11,7 +11,7 @@ class CurrencyFactory extends Factory
 
     public function definition(): array
     {
-        $code = 'CUR-'.$this->faker->unique()->randomNumber(5);
+        $code = strtoupper($this->faker->unique()->lexify('???'));
 
         return [
             'code' => $code,

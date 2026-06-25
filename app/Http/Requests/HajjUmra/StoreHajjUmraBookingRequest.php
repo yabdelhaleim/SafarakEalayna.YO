@@ -20,6 +20,8 @@ class StoreHajjUmraBookingRequest extends FormRequest
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'customer.full_name' => ['required_without:customer_id', 'nullable', 'string', 'max:255'],
             'customer.phone' => ['required_without:customer_id', 'nullable', 'string', 'max:30'],
+            'customer.national_id' => ['nullable', 'string', 'max:20'],
+            'customer.travel_country' => ['nullable', 'string', 'max:100'],
             'customer.passport_number' => ['nullable', 'string', 'max:50'],
             'customer.passport_expiry' => ['nullable', 'date'],
             'customer.date_of_birth' => ['nullable', 'date'],

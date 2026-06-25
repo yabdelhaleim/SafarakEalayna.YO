@@ -818,28 +818,58 @@
           </div>
 
           <!-- Capital Formula Match -->
-          <div class="bg-gradient-to-r from-slate-900 to-purple-950/40 border border-white/10 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
-            <div class="flex-1 space-y-2">
-              <div class="text-xs text-gray-400 font-bold">المعادلة المحاسبية لرأس المال الحالي:</div>
-              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
-                رأس المال الحالي ({{ formatCompactNumber(trialBalance.current_capital) }}) = (الأرصدة + السيولة + لنا) - علينا
+          <div class="bg-gradient-to-r from-slate-900 to-purple-950/40 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div class="text-xs text-gray-400 font-bold border-b border-white/5 pb-2">الحسابات الدفترية والأرباح والمصروفات</div>
+            
+            <!-- Accounting Breakdown Table -->
+            <div class="space-y-1.5">
+              <!-- Base Capital Row -->
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-white/3 hover:bg-white/5 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+                  <span class="text-xs text-gray-400">رأس المال الأساسي</span>
+                </div>
+                <span class="text-sm font-bold text-white font-mono">{{ formatCurrency(trialBalance.base_capital) }}</span>
+              </div>
+
+              <!-- Gross Profits Row -->
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                  <span class="text-xs text-emerald-300">إجمالي الأرباح المحققة (+)</span>
+                </div>
+                <span class="text-sm font-bold text-emerald-400 font-mono">+ {{ formatCurrency(trialBalance.gross_profits ?? trialBalance.profits) }}</span>
+              </div>
+
+              <!-- Operating Expenses Row -->
+              <div v-if="trialBalance.operating_expenses > 0" class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span>
+                  <span class="text-xs text-rose-300">إجمالي المصروفات العامة (-)</span>
+                </div>
+                <span class="text-sm font-bold text-rose-400 font-mono">- {{ formatCurrency(trialBalance.operating_expenses) }}</span>
+              </div>
+
+              <!-- Divider -->
+              <div class="border-t border-white/5 my-1"></div>
+
+              <!-- Net Target Capital Row -->
+              <div class="flex items-center justify-between py-2 px-3 rounded-xl bg-white/8 border border-white/10">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                  <span class="text-xs font-bold text-gray-200">رأس المال المستهدف (الدفتري)</span>
+                </div>
+                <span class="text-base font-black text-white font-mono">{{ formatCurrency(trialBalance.expected_capital) }}</span>
               </div>
             </div>
-            
-            <!-- Comparison Details -->
-            <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
-              <div>
-                <div class="text-[10px] text-gray-400">رأس المال المستهدف (الأساسي + الأرباح)</div>
-                <div class="text-base font-black text-white font-mono">
-                  {{ formatCurrency(trialBalance.expected_capital) }}
-                  <span class="text-xs font-normal text-gray-500">
-                    ({{ formatCompactNumber(trialBalance.base_capital) }} + {{ formatCompactNumber(trialBalance.profits) }})
-                  </span>
-                </div>
+
+            <!-- Variance Summary -->
+            <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-white/5">
+              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
+                الواقع ({{ formatCompactNumber(trialBalance.current_capital) }}) = (الأرصدة + السيولة + لنا) - علينا
               </div>
-              <div class="border-r border-white/10 h-8 hidden md:block"></div>
-              <div>
-                <div class="text-[10px] text-gray-400">الفارق / الانحراف</div>
+              <div class="text-right">
+                <div class="text-[10px] text-gray-400 mb-0.5">الفارق / الانحراف</div>
                 <div :class="[
                   'text-lg font-black font-mono',
                   trialBalance.variance === 0 ? 'text-emerald-400' :
@@ -949,26 +979,58 @@
           </div>
 
           <!-- المعادلة المحاسبية -->
-          <div class="bg-gradient-to-r from-slate-900 to-amber-950/30 border border-white/10 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
-            <div class="flex-1 space-y-2">
-              <div class="text-xs text-gray-400 font-bold">المعادلة المحاسبية لرأس مال المكتب:</div>
-              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
-                رأس المال الحالي ({{ formatCompactNumber(officeTrialBalance.current_capital) }}) = (أرصدة + سيولة + لنا) - علينا
+          <div class="bg-gradient-to-r from-slate-900 to-amber-950/30 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div class="text-xs text-gray-400 font-bold border-b border-white/5 pb-2">الحسابات الدفترية والأرباح والمصروفات</div>
+
+            <!-- Accounting Breakdown Table -->
+            <div class="space-y-1.5">
+              <!-- Base Capital Row -->
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-white/3 hover:bg-white/5 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+                  <span class="text-xs text-gray-400">رأس المال الأساسي</span>
+                </div>
+                <span class="text-sm font-bold text-white font-mono">{{ formatCurrency(officeTrialBalance.base_capital) }}</span>
+              </div>
+
+              <!-- Gross Profits Row -->
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                  <span class="text-xs text-emerald-300">إجمالي الأرباح المحققة (+)</span>
+                </div>
+                <span class="text-sm font-bold text-emerald-400 font-mono">+ {{ formatCurrency(officeTrialBalance.gross_profits ?? officeTrialBalance.profits) }}</span>
+              </div>
+
+              <!-- Operating Expenses Row -->
+              <div v-if="officeTrialBalance.operating_expenses > 0" class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span>
+                  <span class="text-xs text-rose-300">إجمالي المصروفات العامة (-)</span>
+                </div>
+                <span class="text-sm font-bold text-rose-400 font-mono">- {{ formatCurrency(officeTrialBalance.operating_expenses) }}</span>
+              </div>
+
+              <!-- Divider -->
+              <div class="border-t border-white/5 my-1"></div>
+
+              <!-- Net Target Capital Row -->
+              <div class="flex items-center justify-between py-2 px-3 rounded-xl bg-white/8 border border-white/10">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                  <span class="text-xs font-bold text-gray-200">رأس المال المستهدف (الدفتري)</span>
+                </div>
+                <span class="text-base font-black text-white font-mono">{{ formatCurrency(officeTrialBalance.expected_capital) }}</span>
               </div>
             </div>
-            <div class="flex flex-wrap items-center justify-end gap-6 shrink-0 text-left lg:text-right">
-              <div>
-                <div class="text-[10px] text-gray-400">رأس المال المستهدف (الأساسي + الأرباح)</div>
-                <div class="text-base font-black text-white font-mono">
-                  {{ formatCurrency(officeTrialBalance.expected_capital) }}
-                  <span class="text-xs font-normal text-gray-500">
-                    ({{ formatCompactNumber(officeTrialBalance.base_capital) }} + {{ formatCompactNumber(officeTrialBalance.profits) }})
-                  </span>
-                </div>
+
+            <!-- Variance Summary -->
+            <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-white/5">
+              <div class="text-xs font-mono bg-black/40 px-3 py-2 rounded-xl text-gray-300 leading-relaxed border border-white/5">
+                الواقع ({{ formatCompactNumber(officeTrialBalance.current_capital) }}) = (أرصدة + سيولة + لنا) - علينا
               </div>
-              <div class="border-r border-white/10 h-8 hidden md:block"></div>
-              <div>
-                <div class="text-[10px] text-gray-400">الفارق / الانحراف</div>
+              <div class="text-right">
+                <div class="text-[10px] text-gray-400 mb-0.5">الفارق / الانحراف</div>
                 <div :class="[
                   'text-lg font-black font-mono',
                   officeTrialBalance.variance === 0 ? 'text-amber-400' :

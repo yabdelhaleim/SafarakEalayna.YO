@@ -399,7 +399,7 @@ class WalletTransactionService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'wallet',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,

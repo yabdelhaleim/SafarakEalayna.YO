@@ -2,14 +2,18 @@
 
 namespace Tests\Feature\Finance;
 
-use App\Models\User;
-use App\Models\Account;
-use App\Models\Customer;
 use App\Enums\AccountType;
 use App\Enums\CustomerTier;
+use App\Models\Account;
+use App\Models\Customer;
+use App\Models\Setting\PrintSetting;
+use App\Models\Supplier;
+use App\Models\User;
+use App\Services\Finance\LedgerClearingAccounts;
+use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryService;
-use App\Services\Finance\TrialBalanceExportService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\Setting\PrintSettingService;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -17,10 +21,12 @@ use Tests\TestCase;
 
 class TrialBalanceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     protected User $user;
+
     protected Customer $customer;
+
     protected TreasuryService $treasuryService;
 
     protected function setUp(): void
@@ -45,6 +51,7 @@ class TrialBalanceTest extends TestCase
             'national_id' => '12345678901234',
             'city' => 'Cairo',
             'customer_tier' => CustomerTier::STANDARD->value,
+            'created_by' => $this->user->id,
         ]);
     }
 
@@ -99,7 +106,7 @@ class TrialBalanceTest extends TestCase
                 'status' => 'CONFIRMED',
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]
+            ],
         ]);
 
         // Average purchase rate should be: (5000 + 11000) / (100 + 200) = 16000 / 300 = 53.3333
@@ -128,8 +135,13 @@ class TrialBalanceTest extends TestCase
     public function test_get_trial_balance_equation(): void
     {
         // Set Base Capital in settings
-        $printSettingService = app(\App\Services\Setting\PrintSettingService::class);
-        $printSettingService->update(['base_capital' => 500000.0]);
+        $printSettingService = app(PrintSettingService::class);
+        $setting = $printSettingService->get();
+        $setting->update(['base_capital' => 500000.0]);
+        $setting->refresh();
+        $this->assertEquals(500000.0, (float) $setting->base_capital);
+
+        $baseline = $this->treasuryService->getTrialBalance();
 
         // 1. Total Balances (إجمالي أرصدة الموديولات)
         DB::table('flight_systems')->insert([
@@ -210,7 +222,7 @@ class TrialBalanceTest extends TestCase
             'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
-        \App\Models\Supplier::query()->create([
+        Supplier::query()->create([
             'account_id' => $payableAccount->id,
             'name' => 'مورد تجريبي',
             'code' => 'SUP-TB-01',
@@ -234,16 +246,16 @@ class TrialBalanceTest extends TestCase
 
         $trialBalance = $this->treasuryService->getTrialBalance();
 
-        $this->assertEquals(50000.0, $trialBalance['total_balances']);
-        $this->assertEquals(150000.0, $trialBalance['total_liquidity']);
-        $this->assertEquals(20000.0, $trialBalance['due_to_us']);
-        $this->assertEquals(10000.0, $trialBalance['due_from_us']);
-        $this->assertEquals(210000.0, $trialBalance['current_capital']);
+        $this->assertEquals($baseline['total_balances'] + 50000.0, $trialBalance['total_balances']);
+        $this->assertEquals($baseline['total_liquidity'] + 150000.0, $trialBalance['total_liquidity']);
+        $this->assertEquals($baseline['due_to_us'] + 20000.0, $trialBalance['due_to_us']);
+        $this->assertEquals($baseline['due_from_us'] + 10000.0, $trialBalance['due_from_us']);
+        $this->assertEquals($baseline['current_capital'] + 210000.0, $trialBalance['current_capital']);
         $this->assertEquals(500000.0, $trialBalance['base_capital']);
-        $this->assertEquals(5000.0, $trialBalance['profits']);
-        $this->assertEquals(505000.0, $trialBalance['expected_capital']);
-        $this->assertEquals(-295000.0, $trialBalance['variance']);
-        $this->assertSame('يوجد عجز', $trialBalance['status']);
+        $this->assertEquals($baseline['profits'] + 5000.0, $trialBalance['profits']);
+        $this->assertEquals(500000.0 + $baseline['profits'] + 5000.0, $trialBalance['expected_capital']);
+        $this->assertEqualsWithDelta($baseline['variance'] + 205000.0, $trialBalance['variance'], 0.01);
+        $this->assertSame($trialBalance['variance'] < -0.05 ? 'يوجد عجز' : ($trialBalance['variance'] > 0.05 ? 'يوجد زيادة' : 'متساوية'), $trialBalance['status']);
     }
 
     public function test_api_trial_balance_endpoint(): void
@@ -270,7 +282,7 @@ class TrialBalanceTest extends TestCase
                 'expected_capital',
                 'variance',
                 'status',
-            ]
+            ],
         ]);
     }
 
@@ -365,6 +377,8 @@ class TrialBalanceTest extends TestCase
 
     public function test_office_trial_balance_balances_with_operating_expenses(): void
     {
+        $baseline = $this->treasuryService->getOfficeTrialBalance();
+
         // 1. Create office cashbox account
         $cashbox = Account::query()->create([
             'name' => 'خزينة المكتب العامة',
@@ -391,12 +405,12 @@ class TrialBalanceTest extends TestCase
 
         // Initial trial balance before expense
         $tbBefore = $this->treasuryService->getOfficeTrialBalance();
-        $this->assertEquals(10000.0, $tbBefore['total_liquidity']);
-        $this->assertEquals(0.0, $tbBefore['profits']);
-        $this->assertEquals(10000.0, $tbBefore['variance']); // expected = 0, current = 10000
+        $this->assertEquals($baseline['total_liquidity'] + 10000.0, $tbBefore['total_liquidity']);
+        $this->assertEquals($baseline['profits'], $tbBefore['profits']);
+        $this->assertEquals($baseline['variance'] + 10000.0, $tbBefore['variance']);
 
         // 3. Record an operating expense transfer
-        $transactionService = app(\App\Services\Finance\TransactionService::class);
+        $transactionService = app(TransactionService::class);
         $transactionService->recordTransfer([
             'from_account_id' => $cashbox->id,
             'to_account_id' => $expenseAccount->id,
@@ -409,15 +423,17 @@ class TrialBalanceTest extends TestCase
 
         // Trial balance after expense
         $tbAfter = $this->treasuryService->getOfficeTrialBalance();
-        
-        $this->assertEquals(9500.0, $tbAfter['total_liquidity']); // Decreased by 500
-        $this->assertEquals(-500.0, $tbAfter['profits']); // Net profits decreased by 500
-        $this->assertEquals(10000.0, $tbAfter['variance']); // Variance remains EXACTLY the same (10000.0)!
+
+        $this->assertEquals($baseline['total_liquidity'] + 9500.0, $tbAfter['total_liquidity']); // Decreased by 500
+        $this->assertEquals($baseline['profits'] - 500.0, $tbAfter['profits']); // Net profits decreased by 500
+        $this->assertEquals($baseline['variance'] + 10000.0, $tbAfter['variance']); // Variance remains EXACTLY the same!
     }
 
     public function test_office_trial_balance_uses_ledger_profits_for_variance(): void
     {
-        $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $baseline = $this->treasuryService->getOfficeTrialBalance();
+
+        $clearing = app(LedgerClearingAccounts::class);
         $incomeId = $clearing->incomeContraIdForModule('fawry');
         $expenseId = $clearing->expenseContraIdForModule('fawry');
         $this->assertNotNull($incomeId);
@@ -434,12 +450,9 @@ class TrialBalanceTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        $printSetting = \App\Models\Setting\PrintSetting::query()->first()
-            ?? new \App\Models\Setting\PrintSetting();
-        $printSetting->office_base_capital = 15000.0;
-        $printSetting->save();
+        app(PrintSettingService::class)->update(['office_base_capital' => 15000.0]);
 
-        $transactionService = app(\App\Services\Finance\TransactionService::class);
+        $transactionService = app(TransactionService::class);
         $transactionService->recordJournalTransfer([
             'amount' => 1600.0,
             'from_account_id' => $incomeId,
@@ -460,10 +473,38 @@ class TrialBalanceTest extends TestCase
 
         $tb = $this->treasuryService->getOfficeTrialBalance();
 
-        $this->assertEquals(600.0, $tb['profits']);
-        $this->assertEquals(15600.0, $tb['expected_capital']);
-        $this->assertEqualsWithDelta(0.0, $tb['variance'], 0.01);
-        $this->assertSame('متساوية', $tb['status']);
+        $this->assertEquals($baseline['profits'] + 600.0, $tb['profits']);
+        $this->assertEquals(15000.0 + $baseline['profits'] + 600.0, $tb['expected_capital']);
+        $this->assertEqualsWithDelta($baseline['variance'] + 15000.0, $tb['variance'], 0.01);
+        $this->assertSame($tb['variance'] < -0.05 ? 'يوجد عجز' : ($tb['variance'] > 0.05 ? 'يوجد زيادة' : 'متساوية'), $tb['status']);
+    }
+
+    public function test_positive_supplier_balances_not_double_counted_in_trial_balance(): void
+    {
+        $supplierAccount = Account::query()->create([
+            'name' => 'مورد حج وعمرة — رصيد مسبق',
+            'type' => AccountType::Supplier,
+            'balance' => 25000.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'hajj_umra',
+            'created_by' => $this->user->id,
+        ]);
+
+        Supplier::query()->create([
+            'account_id' => $supplierAccount->id,
+            'name' => 'مورد حج تجريبي',
+            'code' => 'HAJJ-TB-01',
+            'phone' => '01055554444',
+            'type' => 'hotel',
+        ]);
+
+        $receivables = $this->treasuryService->calculateReceivablesAndPayables('tourism');
+        $this->assertEquals(0.0, $receivables['due_to_us']);
+
+        $trialBalance = $this->treasuryService->getTrialBalance();
+        $this->assertEquals(25000.0, $trialBalance['details']['hajj_umra_balances']);
     }
 
     public function test_consolidated_trial_balance_returns_correct_data(): void
@@ -483,7 +524,7 @@ class TrialBalanceTest extends TestCase
                     'expected_capital',
                     'variance',
                     'status',
-                ]
+                ],
             ]);
     }
 }

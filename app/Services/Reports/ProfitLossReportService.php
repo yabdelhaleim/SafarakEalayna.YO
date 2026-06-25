@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use App\Services\Finance\LedgerClearingAccounts;
+use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -39,6 +40,7 @@ class ProfitLossReportService
 
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
             ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
             ->select([
                 't.id',
@@ -49,6 +51,8 @@ class ProfitLossReportService
                 't.to_account_id',
                 'to_acc.type as to_account_type',
                 'to_acc.name as to_account_name',
+                'to_acc.module_type as to_account_module_type',
+                'from_acc.module_type as from_account_module_type',
                 'tr.converted_amount',
                 'tr.from_currency',
                 'tr.to_currency',
@@ -163,6 +167,7 @@ class ProfitLossReportService
 
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
             ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
             ->select([
                 't.id',
@@ -173,6 +178,8 @@ class ProfitLossReportService
                 't.to_account_id',
                 'to_acc.type as to_account_type',
                 'to_acc.name as to_account_name',
+                'to_acc.module_type as to_account_module_type',
+                'from_acc.module_type as from_account_module_type',
                 'tr.converted_amount',
                 'tr.from_currency',
                 'tr.to_currency',
@@ -318,18 +325,55 @@ class ProfitLossReportService
         }
 
         $modules = $category === 'tourism' ? self::TOURISM_MODULES : self::OFFICE_MODULES;
+        $divisionModules = $category === 'tourism'
+            ? AccountModuleDivision::TOURISM
+            : AccountModuleDivision::OFFICE;
+
+        // Exclude 'general' and empty from direct module matching to enforce account-based resolution for general/unassigned transactions
+        $filteredModules = array_values(array_diff($modules, ['general', '']));
+
+        // Exclude 'general' from clearing account ID lookup as well so that general clearing accounts are resolved by source/destination account module
         $clearingIds = $this->clearingIdsForModules(
             $incomeClearing,
             $expenseClearing,
-            $modules
+            $filteredModules
         );
 
-        $query->where(function (Builder $q) use ($modules, $clearingIds): void {
-            $q->whereIn('t.module', $modules);
+        $incomeClearingIds = array_keys($incomeClearing);
+        $expenseClearingIds = array_keys($expenseClearing);
+
+        $query->where(function (Builder $q) use ($filteredModules, $clearingIds, $divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+            if ($filteredModules !== []) {
+                $q->whereIn('t.module', $filteredModules);
+            }
             if ($clearingIds !== []) {
                 $q->orWhereIn('t.from_account_id', $clearingIds)
                     ->orWhereIn('t.to_account_id', $clearingIds);
             }
+            // General transactions are resolved strictly by their source/destination account's module_type
+            $q->orWhere(function (Builder $sub) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+                $sub->whereIn('t.module', ['general', ''])
+                    ->where(function (Builder $sub2) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+                        // Expense path: paid from a liquidity account belonging to the division
+                        $sub2->where(function (Builder $exp) use ($divisionModules, $expenseClearingIds): void {
+                            $exp->where(function (Builder $eCond) use ($expenseClearingIds): void {
+                                $eCond->where('t.type', 'expense')
+                                    ->orWhere('to_acc.type', 'expense')
+                                    ->orWhereIn('t.to_account_id', $expenseClearingIds);
+                            })
+                                ->whereIn('from_acc.module_type', $divisionModules);
+                        })
+                        // Income path: received into a liquidity account belonging to the division
+                            ->orWhere(function (Builder $inc) use ($divisionModules, $incomeClearingIds): void {
+                                $inc->where(function (Builder $iCond) use ($incomeClearingIds): void {
+                                    $iCond->where('t.type', 'income')
+                                        ->orWhere('to_acc.type', 'income')
+                                        ->orWhereIn('t.from_account_id', $incomeClearingIds);
+                                })
+                                    ->whereIn('to_acc.module_type', $divisionModules);
+                            });
+                    });
+            });
         });
     }
 
@@ -437,6 +481,21 @@ class ProfitLossReportService
 
         if ($module !== '' && $module !== 'general') {
             return $module;
+        }
+
+        // Try resolving by the liquidity/source account's module_type (highest precision for manual expenses/incomes)
+        if ($tx->type === 'expense' && ! empty($tx->from_account_module_type)) {
+            $resolved = $this->normalizeModuleKey($tx->from_account_module_type);
+            if ($resolved !== 'general' && $resolved !== '') {
+                return $resolved;
+            }
+        }
+
+        if ($tx->type === 'income' && ! empty($tx->to_account_module_type)) {
+            $resolved = $this->normalizeModuleKey($tx->to_account_module_type);
+            if ($resolved !== 'general' && $resolved !== '') {
+                return $resolved;
+            }
         }
 
         if ($fromId > 0 && isset($incomeClearing[$fromId])) {

@@ -87,10 +87,12 @@
                 <div v-if="showNewCustomerForm" class="p-4 bg-card border border-white/10 rounded-xl space-y-4">
                   <h3 class="font-bold text-white">عميل جديد</h3>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input v-model="newCustomer.full_name" placeholder="الاسم الكامل" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.phone" placeholder="رقم الهاتف" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.passport_number" placeholder="رقم الجواز" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.date_of_birth" type="date" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.full_name" placeholder="الاسم الكامل *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.phone" placeholder="رقم الهاتف *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.national_id" placeholder="الرقم القومي *" maxlength="14" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.travel_country" placeholder="دولة السفر *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.passport_number" placeholder="رقم الجواز (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.date_of_birth" type="date" placeholder="تاريخ الميلاد (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
                   <button type="button" @click="createNewCustomer" class="w-full py-2 bg-gold text-black rounded-xl font-bold hover:bg-gold/90">
                     حفظ العميل
@@ -114,8 +116,15 @@
                 </option>
               </select>
 
-              <div v-if="!store.programs.length" class="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-xl text-warning text-sm">
-                لا توجد برامج مفعّلة. أنشئ برنامجاً من Filament &gt; البرامج.
+              <div v-if="!store.programs.length" class="mt-4 p-5 bg-warning/10 border border-warning/30 rounded-xl text-warning text-sm space-y-3">
+                <div class="font-bold flex items-center gap-2">
+                  <span>⚠</span> لا توجد برامج حج/عمرة مفعّلة في النظام
+                </div>
+                <p class="text-warning/80">يجب أولاً إنشاء برنامج من لوحة التحكم الإدارية قبل إتمام الحجز.</p>
+                <a href="/admin/programs/create" target="_blank"
+                  class="inline-flex items-center gap-2 px-4 py-2 bg-warning/20 hover:bg-warning/30 border border-warning/40 rounded-lg font-bold text-warning transition-colors">
+                  ➕ إنشاء برنامج جديد من لوحة الإدارة
+                </a>
               </div>
 
               <div v-if="selectedProgram" class="mt-6 p-6 bg-card border border-white/10 rounded-2xl space-y-4">
@@ -655,7 +664,7 @@ function resetBookingForm() {
   settlementCategoryUi.value = 'cash';
   passengers.value = defaultPassengers();
   form.value = createDefaultForm();
-  newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '' };
+  newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '', national_id: '', travel_country: 'السعودية' };
 }
 
 const steps = [
@@ -744,7 +753,7 @@ const isStepValid = computed(() => {
   }
 });
 
-const newCustomer = ref({ full_name: '', phone: '', passport_number: '', date_of_birth: '' });
+const newCustomer = ref({ full_name: '', phone: '', passport_number: '', date_of_birth: '', national_id: '', travel_country: 'السعودية' });
 
 function round(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -860,14 +869,23 @@ async function createNewCustomer() {
     store.addToast('الاسم والهاتف مطلوبان', 'error');
     return;
   }
+  if (!newCustomer.value.national_id?.trim()) {
+    store.addToast('الرقم القومي مطلوب', 'error');
+    return;
+  }
+  if (!newCustomer.value.travel_country?.trim()) {
+    store.addToast('دولة السفر مطلوبة', 'error');
+    return;
+  }
   try {
     const c = await store.createCustomer(newCustomer.value);
     selectCustomer(c);
     showNewCustomerForm.value = false;
-    newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '' };
+    newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '', national_id: '', travel_country: 'السعودية' };
     store.addToast('تم إضافة العميل بنجاح');
   } catch (e) {
-    store.addToast('فشل إضافة العميل', 'error');
+    const errMsg = e.response?.data?.message || 'فشل إضافة العميل';
+    store.addToast(errMsg, 'error');
   }
 }
 

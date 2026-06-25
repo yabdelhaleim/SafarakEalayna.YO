@@ -2,16 +2,22 @@
 
 namespace App\Services\Bus;
 
+use App\Enums\AccountType;
 use App\Enums\BusBookingStatus;
+use App\Enums\BusInventoryPaymentType;
 use App\Enums\BusPaymentStatus;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusInventory;
+use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
+use App\Models\Customer;
 use App\Models\Employee;
+use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -21,11 +27,12 @@ use Illuminate\Support\Facades\Log;
 class BusBookingService
 {
     protected TransactionService $transactionService;
-    protected \App\Services\Finance\LedgerClearingAccounts $ledgerClearingAccounts;
+
+    protected LedgerClearingAccounts $ledgerClearingAccounts;
 
     public function __construct(
         TransactionService $transactionService,
-        \App\Services\Finance\LedgerClearingAccounts $ledgerClearingAccounts
+        LedgerClearingAccounts $ledgerClearingAccounts
     ) {
         $this->transactionService = $transactionService;
         $this->ledgerClearingAccounts = $ledgerClearingAccounts;
@@ -150,7 +157,7 @@ class BusBookingService
 
                     if ($inventory->available_tickets < $data['quantity']) {
                         throw new \Exception(
-                            'لا توجد تذاكر كافية. المتاح: ' . $inventory->available_tickets
+                            'لا توجد تذاكر كافية. المتاح: '.$inventory->available_tickets
                         );
                     }
                 } else {
@@ -161,22 +168,22 @@ class BusBookingService
                 // ── Resolve customer ────────────────────────────────────────────
                 $customerId = $data['customer_id'] ?? null;
                 if (! $customerId && isset($data['customer_name']) && isset($data['customer_phone'])) {
-                    $customer = \App\Models\Customer::firstOrCreate(
+                    $customer = Customer::firstOrCreate(
                         ['phone' => $data['customer_phone']],
                         [
-                            'full_name'  => $data['customer_name'],
-                            'type'       => 'individual',
-                            'is_active'  => true,
+                            'full_name' => $data['customer_name'],
+                            'type' => 'individual',
+                            'is_active' => true,
                             'created_by' => Auth::id(),
                         ]
                     );
                     $customerId = $customer->id;
                 }
 
-                $unitPrice    = (float) $inventory->selling_price;
-                $totalPrice   = $data['quantity'] * $unitPrice;
+                $unitPrice = (float) $inventory->selling_price;
+                $totalPrice = $data['quantity'] * $unitPrice;
                 $costPerTicket = (float) $inventory->cost_per_ticket;
-                $profit       = ($unitPrice - $costPerTicket) * $data['quantity'];
+                $profit = ($unitPrice - $costPerTicket) * $data['quantity'];
 
                 $inventory->decrement('available_tickets', $data['quantity']);
 
@@ -193,28 +200,28 @@ class BusBookingService
                 }
 
                 $booking = BusBooking::create([
-                    'inventory_id'   => $inventory->id,
-                    'customer_id'    => $customerId,
-                    'employee_id'    => $employeeId,
-                    'quantity'       => $data['quantity'],
-                    'unit_price'     => $unitPrice,
-                    'total_price'    => $totalPrice,
-                    'paid_amount'    => 0,
+                    'inventory_id' => $inventory->id,
+                    'customer_id' => $customerId,
+                    'employee_id' => $employeeId,
+                    'quantity' => $data['quantity'],
+                    'unit_price' => $unitPrice,
+                    'total_price' => $totalPrice,
+                    'paid_amount' => 0,
                     'payment_status' => BusPaymentStatus::Pending,
-                    'profit'         => $profit,
-                    'status'         => BusBookingStatus::Pending,
-                    'notes'          => $data['notes'] ?? null,
-                    'created_by'     => Auth::id(),
+                    'profit' => $profit,
+                    'status' => BusBookingStatus::Pending,
+                    'notes' => $data['notes'] ?? null,
+                    'created_by' => Auth::id(),
                 ]);
 
                 // ✅ Record company debt (cost) if company exists
                 $company = $inventory->company;
                 if ($company && $costPerTicket > 0) {
-                    $companyService = app(\App\Services\Bus\BusCompanyService::class);
+                    $companyService = app(BusCompanyService::class);
                     $companyAccount = $companyService->ensureCompanyAccount($company);
                     $company->account_id = $companyAccount->id;
 
-                    $totalCost         = $costPerTicket * $data['quantity'];
+                    $totalCost = $costPerTicket * $data['quantity'];
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                     // يمنع تسجيل الإيراد بدون COGS — يؤدي لتضخيم صافي الربح
@@ -226,14 +233,14 @@ class BusBookingService
                     }
 
                     $this->transactionService->recordJournalTransfer([
-                        'amount'             => $totalCost,
-                        'from_account_id'    => $company->account_id,
-                        'to_account_id'      => $clearingAccountId,
-                        'module'             => TransactionModule::Bus->value,
-                        'related_type'       => BusBooking::class,
-                        'related_id'         => $booking->id,
-                        'notes'              => 'تكلفة حجز باص #' . $booking->id . ' — ' . $inventory->route,
-                        'allow_from_negative'=> true,
+                        'amount' => $totalCost,
+                        'from_account_id' => $company->account_id,
+                        'to_account_id' => $clearingAccountId,
+                        'module' => TransactionModule::Bus->value,
+                        'related_type' => BusBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'تكلفة حجز باص #'.$booking->id.' — '.$inventory->route,
+                        'allow_from_negative' => true,
                     ]);
                 }
 
@@ -246,14 +253,14 @@ class BusBookingService
                 );
 
                 Log::info('Bus booking created', [
-                    'booking_id'   => $booking->id,
+                    'booking_id' => $booking->id,
                     'inventory_id' => $inventory->id,
                     'auto_created' => $inventory->is_auto_created,
-                    'customer_id'  => $customerId,
-                    'employee_id'  => $employeeId,
-                    'quantity'     => $data['quantity'],
-                    'route'        => $inventory->route,
-                    'user_id'      => Auth::id(),
+                    'customer_id' => $customerId,
+                    'employee_id' => $employeeId,
+                    'quantity' => $data['quantity'],
+                    'route' => $inventory->route,
+                    'user_id' => Auth::id(),
                 ]);
 
                 return $booking->load([
@@ -267,10 +274,10 @@ class BusBookingService
             });
         } catch (\Exception $e) {
             Log::error('BusBookingService::createBooking failed', [
-                'error'      => $e->getMessage(),
-                'user_id'    => Auth::id(),
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
                 'booking_id' => null,
-                'input'      => $data,
+                'input' => $data,
             ]);
             throw $e;
         }
@@ -283,11 +290,11 @@ class BusBookingService
      */
     protected function findOrCreateAutoInventory(array $data): BusInventory
     {
-        $companyId    = (int) $data['company_id'];
-        $route        = trim($data['route']);
+        $companyId = (int) $data['company_id'];
+        $route = trim($data['route']);
         $sellingPrice = (float) ($data['selling_price'] ?? 0);
-        $costPrice    = (float) ($data['cost_price']    ?? $sellingPrice); // سعر الشراء — المديونية للشركة
-        $travelDate   = $data['travel_date'] ?? now()->toDateString();
+        $costPrice = (float) ($data['cost_price'] ?? $sellingPrice); // سعر الشراء — المديونية للشركة
+        $travelDate = $data['travel_date'] ?? now()->toDateString();
 
         // Try to find an existing auto-inventory for same company + route + date + prices
         $existing = BusInventory::where('company_id', $companyId)
@@ -308,21 +315,21 @@ class BusBookingService
         //   selling_price   = سعر البيع    → ما يدفعه العميل
         //   profit margin   = selling - cost (تُحسب في createBooking)
         return BusInventory::create([
-            'company_id'        => $companyId,
-            'route'             => $route,
-            'travel_date'       => $travelDate,
-            'departure_time'    => $data['departure_time'] ?? null,
-            'total_tickets'     => 999999,
+            'company_id' => $companyId,
+            'route' => $route,
+            'travel_date' => $travelDate,
+            'departure_time' => $data['departure_time'] ?? null,
+            'total_tickets' => 999999,
             'available_tickets' => 999999,
-            'cost_per_ticket'   => $costPrice,    // ← المديونية للشركة
-            'selling_price'     => $sellingPrice, // ← سعر البيع للعميل
-            'payment_type'      => \App\Enums\BusInventoryPaymentType::Deferred,
-            'total_cost'        => 0,
-            'amount_paid'       => 0,
-            'remaining_debt'    => 0,
-            'is_auto_created'   => true,
-            'notes'             => 'تلقائي — ' . $route . ' — شراء ' . $costPrice . ' / بيع ' . $sellingPrice,
-            'created_by'        => Auth::id(),
+            'cost_per_ticket' => $costPrice,    // ← المديونية للشركة
+            'selling_price' => $sellingPrice, // ← سعر البيع للعميل
+            'payment_type' => BusInventoryPaymentType::Deferred,
+            'total_cost' => 0,
+            'amount_paid' => 0,
+            'remaining_debt' => 0,
+            'is_auto_created' => true,
+            'notes' => 'تلقائي — '.$route.' — شراء '.$costPrice.' / بيع '.$sellingPrice,
+            'created_by' => Auth::id(),
         ]);
     }
 
@@ -357,7 +364,7 @@ class BusBookingService
                 }
 
                 // ✅ Create payment record
-                $payment = \App\Models\Bus\BusPayment::create([
+                $payment = BusPayment::create([
                     'booking_id' => $booking->id,
                     'amount' => $data['amount'],
                     'payment_method' => $data['payment_method'] ?? 'cash',
@@ -369,7 +376,7 @@ class BusBookingService
                 // ✅ Record transaction if account provided
                 $accountId = (int) ($data['account_id'] ?? 0);
                 if ($accountId === 0) {
-                    $vault = \App\Models\Account::getModuleVault('bus');
+                    $vault = Account::getModuleVault('bus');
                     $accountId = $vault ? $vault->id : null;
                 }
 
@@ -519,7 +526,7 @@ class BusBookingService
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
-                        'notes' => 'استرداد حجز باص #' . $booking->id,
+                        'notes' => 'استرداد حجز باص #'.$booking->id,
                     ]);
                 }
 
@@ -580,7 +587,7 @@ class BusBookingService
                 'booking_id' => $booking->id,
                 'input' => $data,
             ]);
-            throw new \Exception('فشل إلغاء الحجز: ' . $e->getMessage());
+            throw new \Exception('فشل إلغاء الحجز: '.$e->getMessage());
         }
     }
 
@@ -610,8 +617,8 @@ class BusBookingService
 
         if ($balance >= 0) {
             throw new \Exception(
-                'لا يمكن إلغاء هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
-                number_format($balance, 2) . ' ج.م). ' .
+                'لا يمكن إلغاء هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: '.
+                number_format($balance, 2).' ج.م). '.
                 'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
             );
         }
@@ -619,8 +626,8 @@ class BusBookingService
         $owed = abs($balance);
         if ($companyCreditAmount > $owed + 0.001) {
             throw new \Exception(
-                'لا يمكن إلغاء هذا الحجز لأن جزءاً من دين الشركة تم تسديده بالفعل (المديونية المتبقية: ' .
-                number_format($owed, 2) . ' ج.م). ' .
+                'لا يمكن إلغاء هذا الحجز لأن جزءاً من دين الشركة تم تسديده بالفعل (المديونية المتبقية: '.
+                number_format($owed, 2).' ج.م). '.
                 'قم بتسوية يدوية من خلال قسم المحاسبة.'
             );
         }
@@ -637,7 +644,7 @@ class BusBookingService
             'module' => TransactionModule::Bus->value,
             'related_type' => BusBooking::class,
             'related_id' => $booking->id,
-            'notes' => 'إلغاء تكلفة حجز باص #' . $booking->id . ' (بعد خصم الشركة)',
+            'notes' => 'إلغاء تكلفة حجز باص #'.$booking->id.' (بعد خصم الشركة)',
             'allow_from_negative' => true,
         ]);
     }
@@ -665,7 +672,7 @@ class BusBookingService
             'module' => TransactionModule::Bus->value,
             'related_type' => BusBooking::class,
             'related_id' => $booking->id,
-            'notes' => 'إلغاء مديونية حجز باص #' . $booking->id,
+            'notes' => 'إلغاء مديونية حجز باص #'.$booking->id,
             'allow_from_negative' => true,
         ]);
     }
@@ -714,11 +721,11 @@ class BusBookingService
                 if ($companyForCheck && $companyForCheck->account_id) {
                     $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
                     if ($costForThisBooking > 0) {
-                        $companyAccount = \App\Models\Account::lockForUpdate()->find($companyForCheck->account_id);
+                        $companyAccount = Account::lockForUpdate()->find($companyForCheck->account_id);
                         if ($companyAccount && (float) $companyAccount->balance >= 0) {
                             throw new \Exception(
-                                'لا يمكن حذف هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: ' .
-                                number_format((float) $companyAccount->balance, 2) . ' ج.م). ' .
+                                'لا يمكن حذف هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: '.
+                                number_format((float) $companyAccount->balance, 2).' ج.م). '.
                                 'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
                             );
                         }
@@ -737,13 +744,13 @@ class BusBookingService
 
                     if ($clearingAccountId && $totalCost > 0) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount'              => $totalCost,
-                            'from_account_id'     => $clearingAccountId,
-                            'to_account_id'       => $company->account_id,
-                            'module'              => TransactionModule::Bus->value,
-                            'related_type'        => BusBooking::class,
-                            'related_id'          => $booking->id,
-                            'notes'               => 'إلغاء تكلفة حجز باص #' . $booking->id,
+                            'amount' => $totalCost,
+                            'from_account_id' => $clearingAccountId,
+                            'to_account_id' => $company->account_id,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'إلغاء تكلفة حجز باص #'.$booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
@@ -755,13 +762,13 @@ class BusBookingService
                     $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
                     if ($clearingAccountId) {
                         $this->transactionService->recordJournalTransfer([
-                            'amount'              => $booking->total_price,
-                            'from_account_id'     => $customer->account_id,
-                            'to_account_id'       => $clearingAccountId,
-                            'module'              => TransactionModule::Bus->value,
-                            'related_type'        => BusBooking::class,
-                            'related_id'          => $booking->id,
-                            'notes'               => 'إلغاء مديونية حجز باص #' . $booking->id,
+                            'amount' => $booking->total_price,
+                            'from_account_id' => $customer->account_id,
+                            'to_account_id' => $clearingAccountId,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'إلغاء مديونية حجز باص #'.$booking->id,
                             'allow_from_negative' => true,
                         ]);
                     }
@@ -770,20 +777,20 @@ class BusBookingService
                 $booking->delete();
 
                 Log::info('Bus booking deleted', [
-                    'booking_id'   => $booking->id,
+                    'booking_id' => $booking->id,
                     'inventory_id' => $inventory->id,
-                    'user_id'      => Auth::id(),
+                    'user_id' => Auth::id(),
                 ]);
             });
 
             return true;
         } catch (\Exception $e) {
             Log::error('BusBookingService::deleteBooking failed', [
-                'error'        => $e->getMessage(),
-                'user_id'      => Auth::id(),
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
                 'inventory_id' => $booking->inventory_id,
-                'booking_id'   => $booking->id,
-                'input'        => null,
+                'booking_id' => $booking->id,
+                'input' => null,
             ]);
             throw $e;
         }
@@ -792,29 +799,29 @@ class BusBookingService
     /**
      * Ensures the customer has a ledger account. Creates one if missing.
      */
-    protected function ensureCustomerAccount(int $customerId): \App\Models\Account
+    protected function ensureCustomerAccount(int $customerId): Account
     {
-        $customer = \App\Models\Customer::findOrFail($customerId);
+        $customer = Customer::findOrFail($customerId);
 
         if ($customer->account_id) {
-            $account = \App\Models\Account::find($customer->account_id);
+            $account = Account::find($customer->account_id);
             if ($account) {
                 return $account;
             }
         }
 
         // Create new account for customer
-        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
-            $account = \App\Models\Account::create([
-                'name' => 'حساب العميل: ' . $customer->full_name,
-                'type' => \App\Enums\AccountType::Customer,
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+            $account = Account::create([
+                'name' => 'حساب العميل: '.$customer->full_name,
+                'type' => AccountType::Customer,
                 'balance' => 0,
                 'currency' => 'EGP',
                 'is_active' => true,
-                'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'bus',
                 'is_module_vault' => false,
-                'notes' => 'حساب تلقائي للعميل #' . $customer->id,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,
             ]);
 
@@ -839,6 +846,7 @@ class BusBookingService
 
         if ($clearingAccountId === null) {
             Log::warning('No bus clearing account configured for income. Skipping sale journal.');
+
             return;
         }
 
@@ -861,14 +869,14 @@ class BusBookingService
             'created_by' => $userId,
         ]);
 
-        // Optional: save $tx->id to a field like sale_gl_transaction_id if it exists, 
+        // Optional: save $tx->id to a field like sale_gl_transaction_id if it exists,
         // but since BusBooking doesn't have it by default, we just record it.
 
         Log::info('Bus sale recorded on customer ledger', [
             'booking_id' => $booking->id,
             'customer_id' => $customerId,
             'account_id' => $customerAccount->id,
-            'amount' => $sellingPrice
+            'amount' => $sellingPrice,
         ]);
     }
 }

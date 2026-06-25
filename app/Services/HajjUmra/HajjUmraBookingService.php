@@ -7,8 +7,8 @@ use App\Enums\HajjUmraStatus;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\Customer;
-use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\Program;
@@ -176,13 +176,13 @@ class HajjUmraBookingService
                 $company = HajjUmraExecutingCompany::find($program->executing_company_id);
                 if ($company) {
                     if (! $company->account_id) {
-                        $account = \App\Models\Account::create([
+                        $account = Account::create([
                             'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
-                            'type' => \App\Enums\AccountType::Supplier->value,
+                            'type' => AccountType::Supplier->value,
                             'currency' => 'EGP',
                             'balance' => 0.00,
                             'is_active' => true,
-                            'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                            'owner_type' => Account::OWNER_TYPE_OWNER,
                             'module_type' => 'hajj_umra',
                             'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
                             'created_by' => $createdBy,
@@ -251,13 +251,13 @@ class HajjUmraBookingService
                 $company = HajjUmraExecutingCompany::find($program->executing_company_id);
                 if ($company) {
                     if (! $company->account_id) {
-                        $account = \App\Models\Account::create([
+                        $account = Account::create([
                             'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
-                            'type' => \App\Enums\AccountType::Supplier->value,
+                            'type' => AccountType::Supplier->value,
                             'currency' => 'EGP',
                             'balance' => 0.00,
                             'is_active' => true,
-                            'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                            'owner_type' => Account::OWNER_TYPE_OWNER,
                             'module_type' => 'hajj_umra',
                             'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
                             'created_by' => $booking->created_by ?? 1,
@@ -272,7 +272,7 @@ class HajjUmraBookingService
 
         $oldAmount = (float) $transaction->amount;
         $accountChanged = ($expenseAccountId !== (int) $transaction->from_account_id);
-        if ($oldAmount === $newAmount && !$accountChanged) {
+        if ($oldAmount === $newAmount && ! $accountChanged) {
             return $transaction;
         }
 
@@ -474,7 +474,7 @@ class HajjUmraBookingService
         return Customer::updateOrCreate(
             ['phone' => $data['phone']],
             collect($data)->only([
-                'full_name', 'national_id', 'passport_number', 'passport_expiry',
+                'full_name', 'national_id', 'travel_country', 'passport_number', 'passport_expiry',
                 'date_of_birth', 'city', 'affiliation', 'notes',
             ])->all()
         );
@@ -500,7 +500,7 @@ class HajjUmraBookingService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'hajj_umra',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,

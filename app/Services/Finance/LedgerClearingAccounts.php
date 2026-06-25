@@ -5,6 +5,11 @@ namespace App\Services\Finance;
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Models\Account;
+use App\Support\Finance\AccountModuleDivision;
+use App\Support\Finance\LedgerBalanceMutationGuard;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Resolves contra (clearing / suspense) GL accounts used for strictly balanced postings.
@@ -161,7 +166,7 @@ class LedgerClearingAccounts
             return $id;
         }
 
-        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($name, $moduleKey, $type) {
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $moduleKey, $type) {
             $account = Account::query()->firstOrCreate(
                 ['name' => $name],
                 [
@@ -170,18 +175,18 @@ class LedgerClearingAccounts
                     'currency' => 'EGP',
                     'is_active' => true,
                     'owner_type' => Account::OWNER_TYPE_OWNER,
-                    'module_type' => 'office',
+                    'module_type' => AccountModuleDivision::resolveModuleTypeKey(null, $moduleKey),
                     'is_module_vault' => false,
                     'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type})",
-                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                    'created_by' => Auth::id() ?? 1,
                 ]
             );
 
-            \Illuminate\Support\Facades\Log::info("Clearing account automatically created", [
+            Log::info('Clearing account automatically created', [
                 'name' => $name,
                 'id' => $account->id,
                 'module' => $moduleKey,
-                'type' => $type
+                'type' => $type,
             ]);
 
             return $account->id;
@@ -195,7 +200,14 @@ class LedgerClearingAccounts
             return $id;
         }
 
-        return \App\Support\Finance\LedgerBalanceMutationGuard::run(fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($name, $key) {
+        $moduleType = 'office';
+        if (str_starts_with($key, 'flight')) {
+            $moduleType = 'flights';
+        } elseif ($key === 'fawry') {
+            $moduleType = 'fawry';
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $key, $moduleType) {
             $account = Account::query()->firstOrCreate(
                 ['name' => $name],
                 [
@@ -204,14 +216,14 @@ class LedgerClearingAccounts
                     'currency' => 'EGP',
                     'is_active' => true,
                     'owner_type' => Account::OWNER_TYPE_OWNER,
-                    'module_type' => 'office',
+                    'module_type' => $moduleType,
                     'is_module_vault' => false,
                     'notes' => "حساب رصيد مسبق (أصل): {$key}",
-                    'created_by' => \Illuminate\Support\Facades\Auth::id() ?? 1,
+                    'created_by' => Auth::id() ?? 1,
                 ]
             );
 
-            \Illuminate\Support\Facades\Log::info('Prepaid account automatically created', [
+            Log::info('Prepaid account automatically created', [
                 'name' => $name,
                 'id' => $account->id,
                 'key' => $key,

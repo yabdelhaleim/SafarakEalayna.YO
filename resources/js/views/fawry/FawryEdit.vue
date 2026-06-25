@@ -89,14 +89,16 @@
             <label class="block text-sm font-medium text-text-muted mb-2">
               نوع العملية <span class="text-error">*</span>
             </label>
-            <input
-              v-model.trim="form.operation_type"
-              type="text"
+            <select
+              v-model="form.operation_type"
               required
-              maxlength="50"
-              placeholder="مثال: دفع فاتورة كهرباء، شحن رصيد..."
-              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
-            />
+              class="form-select-dark w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
+            >
+              <option value="">اختر نوع العملية</option>
+              <option v-for="type in store.operationTypes" :key="type.value" :value="type.value">
+                {{ type.label }}
+              </option>
+            </select>
           </div>
 
         </div>

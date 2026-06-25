@@ -3,6 +3,7 @@
 namespace App\Services\Flight;
 
 use App\Enums\AccountType;
+use App\Enums\BookingChannelType;
 use App\Enums\FlightBookingStatus;
 use App\Enums\FlightPaymentMethod;
 use App\Enums\FlightSystemType;
@@ -247,7 +248,7 @@ class FlightBookingService
                     'employee_id' => $data['employee_id'] ?? null,
                     'booking_reference' => "FLT-{$bookingNumber}",
                     'booking_number' => "FLT-{$bookingNumber}",
-                    'booking_channel_type' => $data['booking_channel_type'] ?? \App\Enums\BookingChannelType::SIGN->value,
+                    'booking_channel_type' => $data['booking_channel_type'] ?? BookingChannelType::SIGN->value,
                     'booking_channel_provider' => $data['booking_channel_provider'] ?? 'SIGN',
                     'system_type' => $data['system_type'] ?? FlightSystemType::Manual,
                     'pnr' => $data['pnr'] ?? null,
@@ -1591,9 +1592,9 @@ class FlightBookingService
 
                 $currencyNote = '';
                 if ($paymentCurrency !== 'EGP') {
-                    $currencyNote = sprintf(" (تم تحصيل %.2f %s)", $amount, $paymentCurrency);
+                    $currencyNote = sprintf(' (تم تحصيل %.2f %s)', $amount, $paymentCurrency);
                 }
-                $paymentNotes = isset($data['notes']) ? ($data['notes'] . $currencyNote) : (trim($currencyNote) ?: null);
+                $paymentNotes = isset($data['notes']) ? ($data['notes'].$currencyNote) : (trim($currencyNote) ?: null);
 
                 // تحصيل الدفعة من حساب العميل (تخفيض المديونية) إلى الخزينة
                 // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
@@ -2077,7 +2078,7 @@ class FlightBookingService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'flights',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,
@@ -2155,8 +2156,8 @@ class FlightBookingService
 
         if ($group->account_id === null) {
             $account = Account::create([
-                'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),
-                'type' => \App\Enums\AccountType::Supplier->value,
+                'name' => 'حساب مجموعة طيران: '.($group->name ?: 'غير مسمى'),
+                'type' => AccountType::Supplier->value,
                 'currency' => $groupCurrency,
                 'balance' => 0.00,
                 'is_active' => true,
@@ -2189,7 +2190,7 @@ class FlightBookingService
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightGroupTransaction::class,
             'related_id' => $groupTx->id,
-            'notes' => 'تكلفة شراء بالأجل — حجز #' . $booking->booking_number . ' — مجموعة: ' . $group->name,
+            'notes' => 'تكلفة شراء بالأجل — حجز #'.$booking->booking_number.' — مجموعة: '.$group->name,
             'created_by' => $userId,
         ]);
 
@@ -2241,8 +2242,8 @@ class FlightBookingService
 
         if ($group->account_id === null) {
             $account = Account::create([
-                'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),
-                'type' => \App\Enums\AccountType::Supplier->value,
+                'name' => 'حساب مجموعة طيران: '.($group->name ?: 'غير مسمى'),
+                'type' => AccountType::Supplier->value,
                 'currency' => $groupCurrency,
                 'balance' => 0.00,
                 'is_active' => true,
@@ -2275,7 +2276,7 @@ class FlightBookingService
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightGroupTransaction::class,
             'related_id' => $groupTx->id,
-            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #'.$booking->booking_number.' — مجموعة: ' . $group->name,
+            'notes' => 'إلغاء شراء تذكرة طيران (إرجاع رصيد) — حجز #'.$booking->booking_number.' — مجموعة: '.$group->name,
             'created_by' => $userId,
         ]);
 

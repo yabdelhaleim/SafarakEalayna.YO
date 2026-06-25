@@ -255,12 +255,43 @@ class VisaBookingService
                 $note = ($note === '' ? '' : $note."\n").'سبب الإلغاء: '.$reason;
             }
 
+            // تحميل العلاقات المالية قبل الإلغاء
+            $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction']);
+
+            // عكس قيود الدفعات المسجلة (إن وُجدت)
+            foreach ($booking->payments as $payment) {
+                if ($payment->transaction) {
+                    $this->transactions->voidTransactionJournal($payment->transaction);
+                    $payment->transaction->delete();
+                }
+                $payment->delete();
+            }
+
+            // عكس قيد الإيراد (مديونية العميل ← إيرادات)
+            if ($booking->incomeTransaction) {
+                $this->transactions->voidTransactionJournal($booking->incomeTransaction);
+                $booking->incomeTransaction->delete();
+            }
+
+            // عكس قيد المصروف (التكلفة ← حساب المورد/الخزينة)
+            if ($booking->expenseTransaction) {
+                $this->transactions->voidTransactionJournal($booking->expenseTransaction);
+                $booking->expenseTransaction->delete();
+            }
+
             $booking->update([
-                'status' => VisaStatus::Cancelled->value,
-                'notes' => $note,
+                'status'               => VisaStatus::Cancelled->value,
+                'notes'                => $note,
+                'expense_transaction_id' => null,
+                'income_transaction_id'  => null,
             ]);
 
             $booking->visaDetail?->update(['status' => VisaStatus::Cancelled->value]);
+
+            Log::info('Visa booking cancelled with journal reversal', [
+                'booking_id' => $booking->id,
+                'reason'     => $reason,
+            ]);
 
             return $this->find($booking->id);
         });
@@ -375,7 +406,7 @@ class VisaBookingService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'visas',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,

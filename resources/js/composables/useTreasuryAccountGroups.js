@@ -144,6 +144,46 @@ export function isTreasuryAccount(account) {
   return TREASURY_TYPES.has(type);
 }
 
+const TOURISM_MODULE_KEYS = new Set([...TOURISM_MODULE_TYPES, 'flight', 'visa', 'hajj']);
+const OFFICE_MODULE_KEYS = new Set([...OFFICE_MODULE_TYPES, 'wallet', 'wallets', 'service']);
+
+export function accountBelongsToDivision(account, category) {
+  const moduleType = account?.module_type || 'general';
+  const module = account?.module || '';
+
+  if (category === 'tourism') {
+    return TOURISM_MODULE_KEYS.has(moduleType) || TOURISM_MODULE_KEYS.has(module);
+  }
+
+  if (category === 'office') {
+    return OFFICE_MODULE_KEYS.has(moduleType) || OFFICE_MODULE_KEYS.has(module);
+  }
+
+  if (category === 'general') {
+    return moduleType === 'general' || moduleType === 'office' || !moduleType;
+  }
+
+  return true;
+}
+
+export function filterTreasuryAccountsByDivision(accounts, category) {
+  return (accounts || []).filter(
+    (acc) => acc.is_active !== false && isTreasuryAccount(acc) && accountBelongsToDivision(acc, category)
+  );
+}
+
+export function filterExpenseAccountsByDivision(accounts, category) {
+  const active = (accounts || []).filter((acc) => acc.is_active !== false);
+
+  if (category === 'general') {
+    return active.filter((acc) => acc.module_type === 'general' || !acc.module_type);
+  }
+
+  return active.filter(
+    (acc) => accountBelongsToDivision(acc, category) || acc.module_type === 'general' || !acc.module_type
+  );
+}
+
 export function groupAccountsByModule(accounts, preferredKeys = []) {
   const active = (accounts || []).filter(
     (acc) => acc.is_active !== false && isTreasuryAccount(acc)

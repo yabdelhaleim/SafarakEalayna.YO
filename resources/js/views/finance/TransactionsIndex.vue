@@ -86,7 +86,7 @@
 
     <!-- Transactions Table -->
     <template v-if="state === 'loading'">
-      <TableSkeleton :rows="store.filters.per_page || 15" :columns="7" />
+      <TableSkeleton :rows="store.filters.per_page || 15" :columns="8" />
     </template>
     <div v-else-if="state === 'error'" class="p-6 bg-card-bg border border-white/10 rounded-2xl text-center text-error">
       {{ asyncError || 'حدث خطأ أثناء تحميل المعاملات' }}
@@ -96,10 +96,11 @@
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-white/5 text-xs text-text-muted uppercase tracking-widest border-b border-white/10">
-              <th class="px-6 py-4 font-semibold">الرقم</th>
+              <th class="px-6 py-4 font-semibold text-right">رقم المعاملة</th>
               <th class="px-6 py-4 font-semibold">التاريخ</th>
               <th class="px-6 py-4 font-semibold">النوع</th>
               <th class="px-6 py-4 font-semibold">القسم</th>
+              <th class="px-6 py-4 font-semibold">الخزينة / الحساب</th>
               <th class="px-6 py-4 font-semibold">الوصف</th>
               <th class="px-6 py-4 font-semibold">المبلغ</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
@@ -137,9 +138,17 @@
                     {{ transactionTypeLabel(transaction.type) }}
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                 <td class="px-6 py-4">
                   <span class="text-xs text-text-muted">
                     {{ transactionModuleLabel(transaction.module) }}
+                  </span>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-xs text-text-main font-semibold block">
+                    <span v-if="transaction.type === 'income'" class="text-success text-[10px] font-bold block mb-0.5">إلى:</span>
+                    <span v-else-if="transaction.type === 'expense'" class="text-error text-[10px] font-bold block mb-0.5">من:</span>
+                    <span v-else class="text-blue-500 text-[10px] font-bold block mb-0.5">⇅ تحويل:</span>
+                    {{ transaction.type === 'income' ? transaction.to_account_name : transaction.type === 'expense' ? transaction.from_account_name : (transaction.from_account_name + ' ➔ ' + transaction.to_account_name) }}
                   </span>
                 </td>
                 <td class="px-6 py-4">
@@ -189,7 +198,7 @@
             </template>
             <template v-else-if="state === 'empty'">
               <tr>
-                <td colspan="7" class="px-6 py-20 text-center">
+                <td colspan="8" class="px-6 py-20 text-center">
                   <div class="flex flex-col items-center gap-4">
                     <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center">
                       <FileText class="w-10 h-10 text-white/10" />
@@ -370,7 +379,7 @@
                   class="px-4 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm w-full text-white"
                 >
                   <option value="">اختر الحساب</option>
-                  <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
+                  <option v-for="acc in filteredAccountsForEdit" :key="acc.id" :value="acc.id">
                     {{ acc.name }} ({{ acc.currency }})
                   </option>
                 </select>
@@ -422,7 +431,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useFinanceStore } from '@/stores/financeStore';
 import { useAsyncState } from '@/composables/useAsyncState';
@@ -471,6 +480,26 @@ const editForm = ref({
   account_id: '',
   reference: '',
   notes: '',
+});
+
+const tourismModules = ['flight', 'hajj_umra', 'visa', 'tourism', 'flights', 'visas'];
+
+const filteredAccountsForEdit = computed(() => {
+  if (!editForm.value.module) return store.accounts;
+  const isTourismSelected = tourismModules.includes(editForm.value.module);
+  return store.accounts.filter(account => {
+    const isTourismAccount = ['tourism', 'flights', 'hajj_umra', 'visas'].includes(account.module_type);
+    return isTourismSelected ? isTourismAccount : !isTourismAccount;
+  });
+});
+
+watch(() => editForm.value.module, () => {
+  if (editForm.value.account_id) {
+    const isAvailable = filteredAccountsForEdit.value.some(acc => acc.id === Number(editForm.value.account_id));
+    if (!isAvailable) {
+      editForm.value.account_id = '';
+    }
+  }
 });
 
 const openEditTransaction = (transaction) => {

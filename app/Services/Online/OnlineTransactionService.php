@@ -225,19 +225,33 @@ class OnlineTransactionService
     {
         try {
             return DB::transaction(function () use ($tx) {
-                $relatedTransactions = Transaction::where('related_type', OnlineTransaction::class)
-                    ->where('related_id', $tx->id)
-                    ->get();
+                // لا يمكن حذف المعاملة فعلياً (يمنعها النموذج للحفاظ على السجلات).
+                // بدلاً من ذلك نُغير الحالة إلى "ملغاة" ونعكس القيود المالية.
 
-                foreach ($relatedTransactions as $rt) {
-                    $this->transactionService->reverseTransaction($rt);
+                if ($tx->status === OnlineTransactionStatus::Cancelled) {
+                    throw new \RuntimeException('المعاملة ملغاة بالفعل.');
                 }
 
-                $tx->delete();
+                // عكس القيود المالية فقط إذا كانت المعاملة مكتملة (لها قيود)
+                if ($tx->status === OnlineTransactionStatus::Completed) {
+                    $relatedTransactions = Transaction::where('related_type', OnlineTransaction::class)
+                        ->where('related_id', $tx->id)
+                        ->get();
 
-                Log::info('Online transaction deleted and ledger reversed', [
+                    foreach ($relatedTransactions as $rt) {
+                        $this->transactionService->reverseTransaction($rt);
+                    }
+                }
+
+                // تغيير الحالة إلى "ملغاة" مع تسجيل السبب
+                $tx->status = OnlineTransactionStatus::Cancelled;
+                $tx->failure_reason = ($tx->failure_reason ? $tx->failure_reason."\n" : '')
+                    .'[تم الإلغاء بواسطة '.Auth::user()?->name.' في '.now()->format('Y-m-d H:i').']';
+                $tx->save();
+
+                Log::info('Online transaction cancelled and ledger reversed', [
                     'online_transaction_id' => $tx->id,
-                    'deleted_by' => Auth::id(),
+                    'cancelled_by' => Auth::id(),
                 ]);
 
                 return true;
@@ -368,7 +382,7 @@ class OnlineTransactionService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'tourism',
+                'module_type' => 'online',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,

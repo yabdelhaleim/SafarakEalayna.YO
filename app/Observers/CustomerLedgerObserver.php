@@ -1,9 +1,11 @@
 <?php
 
 namespace App\Observers;
+
 use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\Customer;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Ensures each customer row has an {@see Account} for future AR / unified ledger wiring.
@@ -16,7 +18,10 @@ class CustomerLedgerObserver
             return;
         }
 
-        $userId = $customer->created_by ?: 1;
+        $userId = $customer->created_by ?: Auth::id();
+        if ($userId === null) {
+            return;
+        }
 
         $account = Account::create([
             'name' => 'ذممة عميل — '.$customer->full_name.' · '.$customer->phone,
