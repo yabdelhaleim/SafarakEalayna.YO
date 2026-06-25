@@ -19,7 +19,7 @@ class StoreCustomerRequest extends FormRequest
             'national_id' => 'nullable|string|max:20|unique:customers,national_id',
             'passport_number' => 'nullable|string|max:20',
             'passport_expiry' => 'nullable|date',
-            'date_of_birth' => 'nullable|date|before:today',
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
             'city' => 'nullable|string|max:100',
             'affiliation' => 'nullable|string|max:100',
             'customer_tier' => 'nullable|in:STANDARD,PREMIUM',
@@ -53,6 +53,8 @@ class StoreCustomerRequest extends FormRequest
             'phone.max' => 'رقم الهاتف يجب ألا يتجاوز 20 حرف',
             'phone.unique' => 'رقم الهاتف مستخدم بالفعل',
             'national_id.unique' => 'رقم الهوية مستخدم بالفعل',
+            'date_of_birth.before_or_equal' => 'تاريخ الميلاد لا يمكن أن يكون في المستقبل',
+            'passport_number.max' => 'رقم الجواز يجب ألا يتجاوز 20 حرفاً',
             'customer_tier.in' => 'فئة العميل يجب أن تكون: regular, silver, gold, platinum',
         ];
     }

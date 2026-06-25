@@ -48,10 +48,11 @@
                   <input v-model="customerSearch" type="text" placeholder="بحث بالاسم أو الهاتف..."
                     class="w-full pl-10 pr-4 py-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white"
                     @input="onCustomerSearchDebounced"
-                    @focus="showDropdown = true" />
+                    @focus="showDropdown = true"
+                    @blur="onCustomerSearchBlur" />
                   
                   <!-- Absolute Dropdown for Search Results -->
-                  <div v-if="showDropdown && (loadingCustomers || searchResults.length)" 
+                  <div v-if="showDropdown && !showNewCustomerForm && (loadingCustomers || searchResults.length)" 
                     class="absolute z-50 left-0 right-0 mt-2 p-2 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl max-h-64 overflow-y-auto space-y-1">
                     <div v-if="loadingCustomers" class="flex items-center justify-center py-4">
                       <div class="animate-spin w-6 h-6 border-2 border-gold border-t-transparent rounded-full"></div>
@@ -79,23 +80,26 @@
                   <button type="button" @click="form.customer = null" class="text-xs text-error hover:underline">إلغاء التحديد</button>
                 </div>
 
-                <button type="button" @click="showNewCustomerForm = !showNewCustomerForm"
+                <button type="button" @click="toggleNewCustomerForm"
                   class="w-full p-4 bg-white/5 border border-dashed border-white/20 rounded-xl text-muted hover:border-gold hover:text-gold transition-all flex items-center justify-center gap-2">
                   <Plus class="w-4 h-4" /> {{ showNewCustomerForm ? 'إخفاء النموذج' : 'إضافة عميل جديد' }}
                 </button>
 
-                <div v-if="showNewCustomerForm" class="p-4 bg-card border border-white/10 rounded-xl space-y-4">
+                <div v-if="showNewCustomerForm" class="p-4 bg-card border border-white/10 rounded-xl space-y-4" @keydown.enter.prevent="createNewCustomer">
                   <h3 class="font-bold text-white">عميل جديد</h3>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input v-model="newCustomer.full_name" placeholder="الاسم الكامل *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.phone" placeholder="رقم الهاتف *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.national_id" placeholder="الرقم القومي *" maxlength="14" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.travel_country" placeholder="دولة السفر *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.passport_number" placeholder="رقم الجواز (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
-                    <input v-model="newCustomer.date_of_birth" type="date" placeholder="تاريخ الميلاد (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.full_name" type="text" placeholder="الاسم الكامل *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.phone" type="tel" placeholder="رقم الهاتف *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.national_id" type="text" placeholder="الرقم القومي *" maxlength="14" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.travel_country" type="text" placeholder="دولة السفر *" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.passport_number" type="text" placeholder="رقم الجواز (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
+                    <input v-model="newCustomer.date_of_birth" type="date" :max="todayDate" placeholder="تاريخ الميلاد (اختياري)" class="p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-white" />
                   </div>
-                  <button type="button" @click="createNewCustomer" class="w-full py-2 bg-gold text-black rounded-xl font-bold hover:bg-gold/90">
-                    حفظ العميل
+                  <p v-if="newCustomerError" class="text-xs text-error">{{ newCustomerError }}</p>
+                  <button type="button" @click="createNewCustomer" :disabled="isCreatingCustomer"
+                    class="w-full py-2 bg-gold text-black rounded-xl font-bold hover:bg-gold/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    <Loader2 v-if="isCreatingCustomer" class="w-4 h-4 animate-spin" />
+                    {{ isCreatingCustomer ? 'جارٍ الحفظ...' : 'حفظ العميل' }}
                   </button>
                 </div>
               </div>
@@ -584,6 +588,9 @@ const authStore = useAuthStore();
 
 const currentStep = ref(1);
 const isSaving = ref(false);
+const isCreatingCustomer = ref(false);
+const newCustomerError = ref('');
+const todayDate = new Date().toISOString().split('T')[0];
 const customerSearch = ref('');
 const companionSearch = ref('');
 const showNewCustomerForm = ref(false);
@@ -792,6 +799,56 @@ function setPaidPercent(pct) {
   form.value.initial_payment.amount = Math.round((sp * pct) / 100 * 100) / 100;
 }
 
+function notifyUser(message, type = 'success') {
+  if (typeof window.addToast === 'function') {
+    window.addToast(message, type);
+    return;
+  }
+  store.addToast(message, type);
+}
+
+function extractApiError(error, fallback = 'حدث خطأ') {
+  const data = error?.response?.data;
+  if (data?.errors && typeof data.errors === 'object') {
+    const first = Object.values(data.errors).flat().find(Boolean);
+    if (first) {
+      return String(first);
+    }
+  }
+  return data?.message || fallback;
+}
+
+function buildCustomerPayload(source) {
+  const payload = {
+    full_name: source.full_name?.trim(),
+    phone: source.phone?.trim(),
+    national_id: source.national_id?.trim(),
+    travel_country: source.travel_country?.trim(),
+  };
+  const passport = source.passport_number?.trim();
+  if (passport) {
+    payload.passport_number = passport;
+  }
+  const dob = source.date_of_birth?.trim();
+  if (dob) {
+    payload.date_of_birth = dob;
+  }
+  return payload;
+}
+
+function toggleNewCustomerForm() {
+  showNewCustomerForm.value = !showNewCustomerForm.value;
+  newCustomerError.value = '';
+  showDropdown.value = false;
+  searchResults.value = [];
+}
+
+function onCustomerSearchBlur() {
+  window.setTimeout(() => {
+    showDropdown.value = false;
+  }, 200);
+}
+
 let debounceTimeout = null;
 const onCustomerSearchDebounced = () => {
   if (debounceTimeout) clearTimeout(debounceTimeout);
@@ -870,27 +927,35 @@ function clearCompanion() {
 }
 
 async function createNewCustomer() {
+  newCustomerError.value = '';
   if (!newCustomer.value.full_name?.trim() || !newCustomer.value.phone?.trim()) {
-    store.addToast('الاسم والهاتف مطلوبان', 'error');
+    newCustomerError.value = 'الاسم والهاتف مطلوبان';
+    notifyUser(newCustomerError.value, 'error');
     return;
   }
   if (!newCustomer.value.national_id?.trim()) {
-    store.addToast('الرقم القومي مطلوب', 'error');
+    newCustomerError.value = 'الرقم القومي مطلوب';
+    notifyUser(newCustomerError.value, 'error');
     return;
   }
   if (!newCustomer.value.travel_country?.trim()) {
-    store.addToast('دولة السفر مطلوبة', 'error');
+    newCustomerError.value = 'دولة السفر مطلوبة';
+    notifyUser(newCustomerError.value, 'error');
     return;
   }
+  isCreatingCustomer.value = true;
   try {
-    const c = await store.createCustomer(newCustomer.value);
+    const c = await store.createCustomer(buildCustomerPayload(newCustomer.value));
     selectCustomer(c);
     showNewCustomerForm.value = false;
     newCustomer.value = { full_name: '', phone: '', passport_number: '', date_of_birth: '', national_id: '', travel_country: 'السعودية' };
-    store.addToast('تم إضافة العميل بنجاح');
+    notifyUser('تم إضافة العميل بنجاح');
   } catch (e) {
-    const errMsg = e.response?.data?.message || 'فشل إضافة العميل';
-    store.addToast(errMsg, 'error');
+    const errMsg = extractApiError(e, 'فشل إضافة العميل');
+    newCustomerError.value = errMsg;
+    notifyUser(errMsg, 'error');
+  } finally {
+    isCreatingCustomer.value = false;
   }
 }
 
