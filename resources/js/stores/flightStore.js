@@ -1016,6 +1016,15 @@ export const useFlightStore = defineStore('flight', {
     },
 
     /**
+     * @param {number|string} carrierId
+     * @param {Record<string, unknown>} [params]
+     */
+    async fetchFlightCarrierTransactions(carrierId, params = {}) {
+      const response = await axios.get(`/api/v1/flight/treasury/carriers/${carrierId}/transactions`, { params });
+      return response.data?.data ?? null;
+    },
+
+    /**
      * @param {number|string} accountId
      * @param {Record<string, unknown>} [params]
      */

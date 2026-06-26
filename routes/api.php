@@ -174,6 +174,7 @@ Route::prefix('v1')->middleware([
         Route::prefix('treasury')->group(function () {
             Route::get('overview', [FlightTreasuryController::class, 'overview']);
             Route::get('systems/{system}/transactions', [FlightTreasuryController::class, 'systemTransactions']);
+            Route::get('carriers/{carrier}/transactions', [FlightTreasuryController::class, 'carrierTransactions']);
             Route::post('systems/{system}/recharge', [FlightTreasuryController::class, 'rechargeSystem']);
             Route::get('accounts/{account}/flight-transactions', [FlightTreasuryController::class, 'accountFlightTransactions']);
         });

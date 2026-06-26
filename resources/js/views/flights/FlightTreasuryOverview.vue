@@ -279,6 +279,13 @@
                   <Wallet class="h-3.5 w-3.5" />
                   شحن
                 </button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-sky-300 transition hover:border-sky-400/50"
+                  @click="openCarrierTx(c)"
+                >
+                  العمليات
+                </button>
               </div>
             </div>
             <!-- تفاصيل الأرصدة -->
@@ -552,6 +559,123 @@
                 class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
                 :disabled="systemTxMeta.current_page >= systemTxMeta.last_page"
                 @click="loadSystemPage(systemTxMeta.current_page + 1)"
+              >
+                التالي
+                <ArrowRight class="h-4 w-4 rotate-180" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal: عمليات ناقل طيران -->
+    <Teleport to="body">
+      <div
+        v-if="modal.type === 'carrier' && modal.carrier"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeModal"
+      >
+        <div class="flex flex-col max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-card shadow-2xl animate-in zoom-in-95 duration-300">
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5 shrink-0">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                <Plane class="h-6 w-6" />
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-sky-400">عمليات ناقل الطيران</p>
+                <h3 class="text-2xl font-black text-white mt-1">{{ modal.carrier.name }}</h3>
+                <p class="text-xs text-text-muted">{{ modal.carrier.code }} · {{ modal.carrier.currency }}</p>
+              </div>
+            </div>
+            <button type="button" class="rounded-xl bg-white/5 p-2.5 text-text-muted hover:bg-white/10 hover:text-white transition-colors" @click="closeModal">
+              <X class="h-5 w-5" />
+            </button>
+          </div>
+
+          <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+            <div class="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+              <table class="min-w-full text-right text-sm whitespace-nowrap">
+                <thead class="border-b border-white/10 bg-white/[0.02]">
+                  <tr>
+                    <th class="px-6 py-4 font-black text-white">التاريخ</th>
+                    <th class="px-6 py-4 font-black text-white">النوع</th>
+                    <th class="px-6 py-4 font-black text-white">المبلغ</th>
+                    <th class="px-6 py-4 font-black text-white">الرصيد بعد</th>
+                    <th class="px-6 py-4 font-black text-white">مرجع الحجز</th>
+                    <th class="px-6 py-4 font-black text-white">وصف العمليّة</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <tr v-for="row in carrierTxRows" :key="row.id" class="transition-colors hover:bg-white/[0.04]">
+                    <td class="px-6 py-4">
+                      <div class="flex flex-col">
+                        <span class="font-mono font-bold text-white">{{ formatDt(row.created_at).split(',')[0] }}</span>
+                        <span class="text-[10px] text-text-muted">{{ formatDt(row.created_at).split(',')[1] }}</span>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span
+                        class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-black border"
+                        :class="carrierTxTypeClass(row.type)"
+                      >
+                        {{ carrierTxTypeLabel(row.type) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="font-mono font-black" :class="carrierTxAmountClass(row.type)">
+                        {{ carrierTxAmountPrefix(row.type) }}{{ Number(row.amount).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="font-mono font-bold text-gold">{{ Number(row.balance_after).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                      <span v-if="row.flight_booking?.booking_number || row.flight_booking_id" class="font-mono text-sky-400 bg-sky-400/10 px-2 py-1 rounded-lg border border-sky-400/20 text-xs font-bold">
+                        {{ row.flight_booking?.booking_number || row.flight_booking_id }}
+                      </span>
+                      <span v-else class="text-text-muted">—</span>
+                    </td>
+                    <td class="px-6 py-4 text-xs text-text-muted max-w-[250px] truncate" :title="row.description">
+                      {{ row.description || '—' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div v-if="!carrierTxLoading && !carrierTxRows.length" class="flex flex-col items-center justify-center py-16 text-text-muted">
+                <FileX class="h-12 w-12 mb-4 opacity-40" />
+                <p class="text-lg font-bold">لا توجد عمليات</p>
+                <p class="text-xs mt-1">لم يتم تسجيل أي عمليات شحن أو خصم لهذا الناقل.</p>
+              </div>
+              <div v-if="carrierTxLoading" class="flex flex-col items-center justify-center py-16 text-sky-400">
+                <Loader2 class="h-10 w-10 animate-spin mb-4" />
+                <p class="font-bold">جاري تحميل البيانات...</p>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="carrierTxMeta && carrierTxMeta.last_page > 1" class="flex items-center justify-between border-t border-white/10 bg-white/5 px-6 py-4 shrink-0">
+            <span class="text-sm font-bold text-text-muted">
+              الصفحة <span class="text-white">{{ carrierTxMeta.current_page }}</span> من <span class="text-white">{{ carrierTxMeta.last_page }}</span>
+            </span>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="carrierTxMeta.current_page <= 1"
+                @click="loadCarrierPage(carrierTxMeta.current_page - 1)"
+              >
+                <ArrowRight class="h-4 w-4" />
+                السابق
+              </button>
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                :disabled="carrierTxMeta.current_page >= carrierTxMeta.last_page"
+                @click="loadCarrierPage(carrierTxMeta.current_page + 1)"
               >
                 التالي
                 <ArrowRight class="h-4 w-4 rotate-180" />
@@ -853,7 +977,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useFlightStore } from '@/stores/flightStore';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
-import { ArrowRight, Loader2, RefreshCw, Wallet, X, FileX, Monitor, Eye, Printer } from 'lucide-vue-next';
+import { ArrowRight, Loader2, RefreshCw, Wallet, X, FileX, Monitor, Eye, Printer, Plane } from 'lucide-vue-next';
 
 const store = useFlightStore();
 const printSettingsStore = usePrintSettingsStore();
@@ -970,6 +1094,10 @@ const systemTxRows = ref([]);
 const systemTxMeta = ref(null);
 const systemTxLoading = ref(false);
 
+const carrierTxRows = ref([]);
+const carrierTxMeta = ref(null);
+const carrierTxLoading = ref(false);
+
 const accountTxRows = ref([]);
 const accountTxMeta = ref(null);
 const accountTxLoading = ref(false);
@@ -978,6 +1106,8 @@ const closeModal = () => {
   modal.value = { type: 'idle' };
   systemTxRows.value = [];
   systemTxMeta.value = null;
+  carrierTxRows.value = [];
+  carrierTxMeta.value = null;
   accountTxRows.value = [];
   accountTxMeta.value = null;
   rechargeForm.value = { from_account_id: '', amount: '', notes: '' };
@@ -1089,6 +1219,48 @@ const loadSystemPage = async (page) => {
     systemTxMeta.value = null;
   } finally {
     systemTxLoading.value = false;
+  }
+};
+
+const carrierTxTypeLabel = (type) => {
+  if (type === 'credit') return 'شحن / إضافة';
+  if (type === 'refund') return 'استرداد';
+  return 'خصم / حجز';
+};
+
+const carrierTxTypeClass = (type) => {
+  if (type === 'credit') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+  if (type === 'refund') return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+  return 'bg-red-500/10 text-red-400 border-red-500/20';
+};
+
+const carrierTxAmountClass = (type) => {
+  if (type === 'credit' || type === 'refund') return 'text-emerald-400';
+  return 'text-red-400';
+};
+
+const carrierTxAmountPrefix = (type) => ((type === 'credit' || type === 'refund') ? '+' : '-');
+
+const openCarrierTx = async (carrier) => {
+  modal.value = { type: 'carrier', carrier };
+  await loadCarrierPage(1);
+};
+
+const loadCarrierPage = async (page) => {
+  if (!modal.value.carrier) return;
+  carrierTxLoading.value = true;
+  try {
+    const data = await store.fetchFlightCarrierTransactions(modal.value.carrier.id, { page, per_page: 25 });
+    carrierTxRows.value = data?.data || [];
+    carrierTxMeta.value = {
+      current_page: data?.current_page ?? 1,
+      last_page: data?.last_page ?? 1,
+    };
+  } catch {
+    carrierTxRows.value = [];
+    carrierTxMeta.value = null;
+  } finally {
+    carrierTxLoading.value = false;
   }
 };
 

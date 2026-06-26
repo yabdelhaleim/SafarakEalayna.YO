@@ -8,6 +8,7 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Flight\RechargeFlightSystemRequest;
 use App\Models\Account;
+use App\Models\Flight\AirlineTransaction;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Flight\FlightSystemTransaction;
@@ -141,6 +142,19 @@ class FlightTreasuryController extends Controller
             ->paginate($perPage);
 
         return ApiResponse::success('Flight system transactions', $paginator);
+    }
+
+    public function carrierTransactions(Request $request, FlightCarrier $carrier): JsonResponse
+    {
+        $perPage = min((int) $request->query('per_page', 30), 100);
+
+        $paginator = AirlineTransaction::query()
+            ->where('flight_carrier_id', $carrier->id)
+            ->with(['flightBooking:id,booking_number', 'createdBy:id,name'])
+            ->latest()
+            ->paginate($perPage);
+
+        return ApiResponse::success('Flight carrier transactions', $paginator);
     }
 
     public function accountFlightTransactions(Request $request, Account $account): JsonResponse
