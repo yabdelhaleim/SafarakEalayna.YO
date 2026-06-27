@@ -285,7 +285,10 @@ class FlightBookingService
                     'flight_carrier_id' => $data['flight_carrier_id'] ?? null,
                     'flight_group_id' => $data['flight_group_id'] ?? null,
                     'purchase_balance_source' => $purchaseBalanceSource,
-                    'status' => FlightBookingStatus::PENDING,
+                    // إذا أُدخل PNR عند الإنشاء = الحجز مؤكد تلقائياً
+                    'status' => !empty($data['pnr'])
+                        ? FlightBookingStatus::CONFIRMED
+                        : FlightBookingStatus::PENDING,
                     'account_id' => $data['account_id'] ?? null,
                     'airline_account_id' => $data['airline_account_id'] ?? null,
                     'agent_name' => $data['agent_name'] ?? 'Office',
