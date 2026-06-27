@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'passport_number',
     'national_id',
     'baggage_allowance_kg',
+    'traveled_at',
 ])]
 class FlightPassenger extends Model
 {
@@ -32,9 +33,10 @@ class FlightPassenger extends Model
     protected function casts(): array
     {
         return [
-            'type'         => PassengerType::class,
+            'type'          => PassengerType::class,
             'date_of_birth' => 'date',
-            'birth_date'   => 'date',
+            'birth_date'    => 'date',
+            'traveled_at'   => 'datetime',
         ];
     }
 

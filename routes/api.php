@@ -243,7 +243,11 @@ Route::prefix('v1')->middleware([
             Route::get('/notifications', [PassengerController::class, 'getNotifications']);
             Route::post('/notifications/mark-all-read', [PassengerController::class, 'markAllNotificationsRead']);
             Route::post('/notifications/{id}/mark-read', [PassengerController::class, 'markNotificationRead']);
+            // تسجيل السفر الفعلي
+            Route::post('/{id}/mark-traveled', [PassengerController::class, 'markTraveled']);
+            Route::post('/{id}/unmark-traveled', [PassengerController::class, 'unmarkTraveled']);
         });
+
     });
 
     // Bus API
