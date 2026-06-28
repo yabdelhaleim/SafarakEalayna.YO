@@ -57,11 +57,10 @@ class FawryTransactionResource extends Resource
                     ->required()
                     ->maxLength(255),
 
-                Select::make('operation_type')
+                TextInput::make('operation_type')
                     ->label('نوع العملية')
-                    ->options(fn (): array => FawryOperationType::query()->orderBy('order')->pluck('name_ar', 'code')->all())
-                    ->searchable()
-                    ->required(),
+                    ->required()
+                    ->maxLength(50),
 
                 Select::make('currency_id')
                     ->label('العملة')

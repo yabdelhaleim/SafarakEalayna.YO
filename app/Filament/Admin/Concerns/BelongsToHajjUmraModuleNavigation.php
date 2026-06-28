@@ -8,7 +8,7 @@ trait BelongsToHajjUmraModuleNavigation
 {
     public static function getNavigationParentItem(): ?string
     {
-        return HajjUmraModuleNavigation::PARENT_LABEL;
+        return null;
     }
 }
 

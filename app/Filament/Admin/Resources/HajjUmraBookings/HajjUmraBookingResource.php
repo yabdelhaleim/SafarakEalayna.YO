@@ -41,7 +41,7 @@ class HajjUmraBookingResource extends Resource
 {
     protected static ?string $model = HajjUmraBooking::class;
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static bool $shouldRegisterNavigation = true;
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 

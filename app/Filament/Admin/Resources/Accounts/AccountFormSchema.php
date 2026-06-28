@@ -33,14 +33,14 @@ use Illuminate\Database\Eloquent\Model;
 
 final class AccountFormSchema
 {
-    public static function configure(Schema $schema, ?AccountType $fixedType = null, string $defaultModule = 'general', bool $lockModuleType = false): Schema
+    public static function configure(Schema $schema, AccountType|array|null $fixedType = null, string $defaultModule = 'general', bool $lockModuleType = false): Schema
     {
         $definitionFields = [
             TextInput::make('name')
                 ->label('اسم الحساب')
                 ->required()
                 ->maxLength(255)
-                ->placeholder(match ($fixedType) {
+                ->placeholder(match (is_array($fixedType) ? reset($fixedType) : $fixedType) {
                     AccountType::Bank => 'مثال: البنك الأهلي — جنيه، بنك مصر — دولار',
                     AccountType::Wallet => 'مثال: فودافون كاش، محفظة أورانج، محفظة إلكترونية — USD',
                     AccountType::Expense => 'مثال: إيجار مكتب، رواتب، فواتير كهرباء، مصروفات تشغيل',
@@ -48,7 +48,16 @@ final class AccountFormSchema
                 }),
         ];
 
-        if ($fixedType === null) {
+        if (is_array($fixedType)) {
+            $definitionFields[] = Select::make('type')
+                ->label('نوع الحساب')
+                ->options(collect($fixedType)->mapWithKeys(
+                    fn (AccountType $t) => [$t->value => $t->label()]
+                ))
+                ->required()
+                ->live()
+                ->native(false);
+        } elseif ($fixedType === null) {
             $definitionFields[] = Select::make('type')
                 ->label('نوع الحساب')
                 ->options(collect(AccountType::cases())->mapWithKeys(
