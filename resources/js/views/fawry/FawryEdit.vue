@@ -89,16 +89,13 @@
             <label class="block text-sm font-medium text-text-muted mb-2">
               نوع العملية <span class="text-error">*</span>
             </label>
-            <select
+            <input
               v-model="form.operation_type"
+              type="text"
               required
-              class="form-select-dark w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
-            >
-              <option value="">اختر نوع العملية</option>
-              <option v-for="type in store.operationTypes" :key="type.value" :value="type.value">
-                {{ type.label }}
-              </option>
-            </select>
+              placeholder="اكتب نوع العملية"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
+            />
           </div>
 
         </div>
@@ -221,16 +218,13 @@
             <label class="block text-sm font-medium text-text-muted mb-2">
               طريقة الدفع <span class="text-error">*</span>
             </label>
-            <select
+            <input
               v-model="form.payment_method"
+              type="text"
               required
-              class="form-select-dark"
-            >
-              <option value="">اختر طريقة الدفع</option>
-              <option v-for="method in store.paymentMethods" :key="method.value" :value="method.value">
-                {{ method.label }}
-              </option>
-            </select>
+              placeholder="اكتب طريقة الدفع (مثال: نقدي، تحويل بنكي، إلخ)"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all"
+            />
           </div>
 
           <div class="md:col-span-2">
