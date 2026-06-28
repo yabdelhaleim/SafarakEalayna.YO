@@ -313,12 +313,15 @@ class FawryTransactionServiceTest extends TestCase
 
     public function test_delete_transaction_reverses_accounting_transactions()
     {
-        $expenseTransaction = Transaction::factory()->create();
-        $incomeTransaction = Transaction::factory()->create();
+        $transaction = FawryTransaction::factory()->create();
 
-        $transaction = FawryTransaction::factory()->create([
-            'expense_transaction_id' => $expenseTransaction->id,
-            'income_transaction_id' => $incomeTransaction->id,
+        $expenseTransaction = Transaction::factory()->create([
+            'related_type' => FawryTransaction::class,
+            'related_id' => $transaction->id,
+        ]);
+        $incomeTransaction = Transaction::factory()->create([
+            'related_type' => FawryTransaction::class,
+            'related_id' => $transaction->id,
         ]);
 
         // Mock the transaction service to verify reversal

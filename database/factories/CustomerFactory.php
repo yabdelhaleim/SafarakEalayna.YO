@@ -29,7 +29,7 @@ class CustomerFactory extends Factory
             'affiliation' => fake()->company(),
             'customer_tier' => \App\Enums\CustomerTier::STANDARD->value,
             'notes' => fake()->sentence(),
-            'created_by' => 1,
+            'created_by' => null,
         ];
     }
 }

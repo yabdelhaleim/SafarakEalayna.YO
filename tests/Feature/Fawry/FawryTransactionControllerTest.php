@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryTransaction;
 use App\Models\User;
+use App\Models\Transaction;
 use App\Services\Finance\TransactionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -359,6 +360,15 @@ class FawryTransactionControllerTest extends TestCase
     public function test_delete_transaction_reverses_accounting_entries()
     {
         $transaction = FawryTransaction::factory()->create();
+
+        Transaction::factory()->create([
+            'related_type' => FawryTransaction::class,
+            'related_id' => $transaction->id,
+        ]);
+        Transaction::factory()->create([
+            'related_type' => FawryTransaction::class,
+            'related_id' => $transaction->id,
+        ]);
 
         // Mock the transaction service to reverse transactions
         $this->mock(TransactionService::class, function ($mock) {
