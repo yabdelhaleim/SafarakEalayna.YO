@@ -9,6 +9,7 @@ class PrintSetting extends Model
     protected $fillable = [
         'company_name_ar',
         'company_name_en',
+        'logo_path',
         'address',
         'phones',
         'finance_label',

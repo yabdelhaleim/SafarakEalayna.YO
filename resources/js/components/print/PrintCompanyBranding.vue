@@ -33,10 +33,13 @@ const isDark = computed(() => props.variant === 'dark');
     <!-- Header: company identity -->
     <template v-if="position === 'header'">
       <div
-        class="text-right leading-snug"
+        class="text-right leading-snug flex flex-col items-end gap-1.5"
         :class="isDark ? 'text-sky-100' : 'text-slate-700'"
         :style="isDark ? 'text-align:right;' : 'text-align:right;'"
       >
+        <div v-if="settings.logo_url" class="mb-1 flex justify-end w-full">
+          <img :src="settings.logo_url" class="h-12 object-contain" style="max-height: 48px;" />
+        </div>
         <div
           v-if="settings.company_name_en"
           class="font-black tracking-wide uppercase"

@@ -401,8 +401,21 @@ const confirmDelete = (transaction) => {
 };
 
 const exportReport = () => {
-  // TODO: Implement export functionality
-  alert('سيتم تنفيذ تصدير التقرير قريباً');
+  if (!store.filteredTransactions.length) return;
+  const headers = ['العميل', 'نوع العملية', 'المبلغ', 'الربح', 'طريقة الدفع', 'التاريخ'];
+  const rows = store.filteredTransactions.map(tx => [
+    tx.client_name,
+    tx.operation_type_label || store.getOperationTypeLabel(tx.operation_type) || '',
+    tx.amount,
+    tx.profit,
+    tx.payment_method_label || store.getPaymentMethodLabel(tx.payment_method) || '',
+    formatDate(tx.created_at)
+  ]);
+  const csv = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = `تقرير_فوري_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
 };
 
 // Lifecycle

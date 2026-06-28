@@ -408,9 +408,10 @@
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">🏢</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي إيرادات حسابات المكتب</div>
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(officeSummary.total_revenue) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
-            <span>الباصات: {{ formatCompactNumber(officeSummary.bus.revenue) }}</span>
-            <span>فوري: {{ formatCompactNumber(officeSummary.fawry.revenue) }}</span>
+          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
+            <span>الباص: {{ formatCompactNumber(officeSummary.bus.revenue) }}</span>
+            <span>المحافظ: {{ formatCompactNumber(officeSummary.wallet.revenue) }}</span>
+            <span>خدمات: {{ formatCompactNumber(officeSummary.fawry.revenue + officeSummary.online.revenue) }}</span>
           </div>
         </div>
 
@@ -418,8 +419,9 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💎</div>
           <div class="text-xs font-bold text-emerald-400 mb-1">صافي أرباح حسابات المكتب</div>
           <div class="text-3xl font-black text-emerald-400 font-mono">{{ formatCurrency(officeSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
+            <span>ربح المحافظ: {{ formatCompactNumber(officeSummary.wallet.profit) }}</span>
             <span>ربح الخدمات: {{ formatCompactNumber(officeServiceProfit) }}</span>
           </div>
         </div>
@@ -500,11 +502,11 @@
         </div>
       </div>
 
-      <!-- Fawry & Online modules parallel preview -->
-      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <GridSkeleton :count="2" itemHeight="200px" />
+      <!-- Fawry, Online & Wallets modules parallel preview -->
+      <div v-if="isLoading()" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <GridSkeleton :count="3" itemHeight="200px" />
       </div>
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- Fawry -->
         <div class="bg-card-bg border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
           <div>
@@ -558,6 +560,34 @@
           </div>
           <div class="mt-4 pt-3 border-t border-white/5 text-left">
             <span class="text-xs text-gray-500 font-mono">{{ officeSummary.online.count }} معاملة منفذة</span>
+          </div>
+        </div>
+
+        <!-- Wallets & Transfers -->
+        <div class="bg-card-bg border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-2 bg-blue-500/10 rounded-lg text-blue-400 border border-blue-500/20 font-black text-xs px-2.5">
+                المحافظ
+              </div>
+              <div>
+                <h4 class="text-base font-bold text-white">المحافظ والتحويلات</h4>
+                <p class="text-xs text-gray-400">الإرسال والاستقبال الكاش</p>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
+                <span class="text-gray-400">إجمالي المبيعات</span>
+                <span class="font-bold text-white font-mono">{{ formatCurrency(officeSummary.wallet.revenue) }}</span>
+              </div>
+              <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
+                <span class="text-gray-400">الربح الصافي المحقق</span>
+                <span class="font-bold text-emerald-400 font-mono">{{ formatCurrency(officeSummary.wallet.profit) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-white/5 text-left">
+            <span class="text-xs text-gray-500 font-mono">{{ officeSummary.wallet.count }} معاملة منفذة</span>
           </div>
         </div>
       </div>
@@ -1275,6 +1305,7 @@ const officeSummary = ref({
   bus: { count: 0, revenue: 0, profit: 0 },
   fawry: { count: 0, revenue: 0, profit: 0 },
   online: { count: 0, revenue: 0, profit: 0 },
+  wallet: { count: 0, revenue: 0, profit: 0 },
   total_count: 0,
   total_revenue: 0,
   total_profit: 0,
@@ -1330,6 +1361,7 @@ const normalizeOfficeSummary = (raw = {}) => ({
   bus: normalizeModuleBlock(raw.bus),
   fawry: normalizeModuleBlock(raw.fawry),
   online: normalizeModuleBlock(raw.online),
+  wallet: normalizeModuleBlock(raw.wallet),
   total_count: parseAmount(raw.total_count),
   total_revenue: parseAmount(raw.total_revenue),
   total_profit: parseAmount(raw.total_profit),
@@ -1353,11 +1385,11 @@ const normalizeFinancial = (raw = {}) => ({
 });
 
 const officeServiceProfit = computed(() =>
-  officeSummary.value.fawry.profit + officeSummary.value.online.profit
+  officeSummary.value.fawry.profit + officeSummary.value.online.profit + officeSummary.value.wallet.profit
 );
 
 const officeServiceCount = computed(() =>
-  officeSummary.value.fawry.count + officeSummary.value.online.count
+  officeSummary.value.fawry.count + officeSummary.value.online.count + officeSummary.value.wallet.count
 );
 
 // Methods
@@ -1403,7 +1435,7 @@ const resetFilters = () => {
 };
 
 const exportReport = () => {
-  alert('جاري تجهيز تقرير المركز المالي والتشغيلي للطباعة...');
+  window.print();
 };
 
 const fetchTrialBalance = async () => {

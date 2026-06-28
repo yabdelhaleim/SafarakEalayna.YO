@@ -25,7 +25,7 @@ class PassengerController extends Controller
             $query = Passenger::query()
                 ->select('passengers.*')
                 ->join('flight_bookings', 'passengers.flight_booking_id', '=', 'flight_bookings.id')
-                ->with(['booking.customer']);
+                ->with(['booking.customer', 'booking.flightGroup', 'booking.employee', 'booking.createdBy', 'booking.segments.fromAirport', 'booking.segments.toAirport']);
 
             // Search by name, passport, national ID, or PNR
             if ($search = $request->input('search')) {
@@ -62,30 +62,34 @@ class PassengerController extends Controller
             $perPage  = $request->input('per_page', 15);
             $paginator = $query->paginate($perPage);
 
-            // بناء الـ response مع إضافة رحلة العودة للرحلات ذهاب وعودة
-            $items = $paginator->getCollection()->map(function ($passenger) use ($today) {
-                return $this->formatPassengerRow($passenger, $today, 'outbound');
-            })->values();
-
-            // إضافة صفوف الإياب لرحلات ذهاب وعودة
-            $returnLegs = collect();
+            // بناء الـ response باستخدام الـ segments إن وجدت لتقسيم الرحلة لخطوات منفصلة
+            $allItems = collect();
             foreach ($paginator->getCollection() as $passenger) {
                 $booking = $passenger->booking;
-                if (
-                    $booking &&
-                    strtolower($booking->trip_type ?? '') === 'round_trip' &&
-                    !empty($booking->return_date)
-                ) {
-                    $returnLegs->push($this->formatPassengerRow($passenger, $today, 'return'));
+                if (!$booking) {
+                    continue;
+                }
+
+                $segments = $booking->segments;
+                if ($segments && $segments->count() > 0) {
+                    foreach ($segments as $index => $segment) {
+                        $allItems->push($this->formatPassengerSegmentRow($passenger, $segment, $today, $index + 1));
+                    }
+                } else {
+                    // Fallback to old outbound/return logic
+                    $allItems->push($this->formatPassengerRow($passenger, $today, 'outbound'));
+                    if (strtolower($booking->trip_type ?? '') === 'round_trip' && !empty($booking->return_date)) {
+                        $allItems->push($this->formatPassengerRow($passenger, $today, 'return'));
+                    }
                 }
             }
 
             // دمج الصفوف وترتيبها بالتاريخ
-            $allItems = $items->concat($returnLegs)->sortBy('sort_date')->values();
+            $sortedItems = $allItems->sortBy('sort_date')->values();
 
             return ApiResponse::paginated(
                 'Passengers retrieved successfully.',
-                $allItems,
+                $sortedItems,
                 $paginator
             );
         } catch (\Exception $e) {
@@ -95,7 +99,85 @@ class PassengerController extends Controller
     }
 
     /**
-     * تنسيق صف المسافر (ذهاب أو إياب).
+     * تنسيق صف المسافر بناءً على segment محدد.
+     */
+    private function formatPassengerSegmentRow(Passenger $passenger, $segment, string $today, int $legNumber): array
+    {
+        $booking = $passenger->booking;
+        $fromAirport = $segment->fromAirport ?? $segment->from_airport;
+        $toAirport = $segment->toAirport ?? $segment->to_airport;
+        
+        $departureDate = $segment->departure_date
+            ? (is_string($segment->departure_date) ? $segment->departure_date : $segment->departure_date->format('Y-m-d'))
+            : null;
+        $departureTime = $segment->departure_time
+            ? ($segment->departure_time instanceof \DateTimeInterface ? $segment->departure_time->format('H:i') : substr($segment->departure_time, 11, 5))
+            : null;
+
+        $hasNotTraveled = $departureDate && $departureDate > $today;
+        $traveled = $departureDate && $departureDate <= $today;
+
+        $daysUntil = $departureDate ? Carbon::today()->diffInDays(Carbon::parse($departureDate), false) : null;
+        
+        $affiliation = '—';
+        if ($booking) {
+            if ($booking->booking_source === 'group') {
+                $affiliation = 'عميل مجموعات';
+            } elseif ($booking->customer?->type === 'counter') {
+                $affiliation = 'عميل كاونتر';
+            } else {
+                $affiliation = 'عميل فردي/قطاعي';
+            }
+        }
+
+        return [
+            'passenger_id'    => $passenger->id,
+            'leg'             => 'segment', 
+            'leg_number'      => $legNumber,
+            'first_name'      => $passenger->first_name,
+            'last_name'       => $passenger->last_name,
+            'first_name_en'   => $passenger->first_name_en,
+            'last_name_en'    => $passenger->last_name_en,
+            'passport_number' => $passenger->passport_number,
+            'national_id'     => $passenger->national_id,
+            'type'            => $passenger->type instanceof \App\Enums\PassengerType
+                ? $passenger->type->value
+                : $passenger->type,
+            'traveled'        => $traveled,
+            'traveled_at'     => $passenger->traveled_at?->format('Y-m-d H:i:s'),
+            'departure_date'  => $departureDate,
+            'departure_time'  => $departureTime,
+            'days_until'      => $daysUntil, 
+            'date_label'      => $this->buildDateLabel($daysUntil),
+            'sort_date'       => $departureDate ?? '9999-12-31',
+            'affiliation'     => $affiliation,
+            'group_name'      => $booking?->flightGroup?->name ?? '—',
+            'booking_date'    => $booking?->created_at?->format('Y-m-d H:i:s'),
+            'employee_name'   => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
+            'booking_notes'   => $booking?->notes ?? '—',
+            'booking'         => $booking ? [
+                'id'             => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'pnr'            => $booking->pnr,
+                'status'         => $booking->status instanceof \App\Enums\FlightBookingStatus
+                    ? $booking->status->value
+                    : $booking->status,
+                'trip_type'      => $booking->trip_type,
+                'from_airport'   => $fromAirport,
+                'to_airport'     => $toAirport,
+                'airline_name'   => $segment->airline ?? $booking->airline_name,
+                'currency'       => $booking->currency,
+                'passenger_count'=> $booking->passenger_count ?? 1,
+            ] : null,
+            'customer' => $booking?->customer ? [
+                'id'   => $booking->customer->id,
+                'name' => $booking->customer->full_name,
+            ] : null,
+        ];
+    }
+
+    /**
+     * تنسيق صف المسافر (ذهاب أو إياب) كاحتياطي.
      */
     private function formatPassengerRow(Passenger $passenger, string $today, string $legType): array
     {
@@ -109,7 +191,7 @@ class PassengerController extends Controller
                 : null;
             $departureTime = $booking->return_time ?? null;
             $hasNotTraveled = $departureDate && $departureDate > $today;
-            $traveled      = false; // الإياب: يُعتمد على تاريخ العودة فقط
+            $traveled      = false;
         } else {
             $fromAirport   = $booking?->from_airport;
             $toAirport     = $booking?->to_airport;
@@ -122,6 +204,17 @@ class PassengerController extends Controller
         }
 
         $daysUntil = $departureDate ? Carbon::today()->diffInDays(Carbon::parse($departureDate), false) : null;
+
+        $affiliation = '—';
+        if ($booking) {
+            if ($booking->booking_source === 'group') {
+                $affiliation = 'عميل مجموعات';
+            } elseif ($booking->customer?->type === 'counter') {
+                $affiliation = 'عميل كاونتر';
+            } else {
+                $affiliation = 'عميل فردي/قطاعي';
+            }
+        }
 
         return [
             'passenger_id'    => $passenger->id,
@@ -137,13 +230,17 @@ class PassengerController extends Controller
                 : $passenger->type,
             'traveled'        => $traveled,
             'traveled_at'     => $passenger->traveled_at?->format('Y-m-d H:i:s'),
-            // رحلة الإياب: لم يسافر بعد إذا التاريخ في المستقبل
             'return_not_traveled_yet' => ($legType === 'return' && $hasNotTraveled),
             'departure_date'  => $departureDate,
             'departure_time'  => $departureTime,
-            'days_until'      => $daysUntil, // سالب = مضى، 0 = اليوم، موجب = قادم
+            'days_until'      => $daysUntil, 
             'date_label'      => $this->buildDateLabel($daysUntil),
             'sort_date'       => $departureDate ?? '9999-12-31',
+            'affiliation'     => $affiliation,
+            'group_name'      => $booking?->flightGroup?->name ?? '—',
+            'booking_date'    => $booking?->created_at?->format('Y-m-d H:i:s'),
+            'employee_name'   => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
+            'booking_notes'   => $booking?->notes ?? '—',
             'booking'         => $booking ? [
                 'id'             => $booking->id,
                 'booking_number' => $booking->booking_number,
@@ -152,11 +249,11 @@ class PassengerController extends Controller
                     ? $booking->status->value
                     : $booking->status,
                 'trip_type'      => $booking->trip_type,
-                // from → to صحيح دائماً بغض النظر عن الرحلة ذهاب/إياب
                 'from_airport'   => $fromAirport,
                 'to_airport'     => $toAirport,
                 'airline_name'   => $booking->airline_name,
                 'currency'       => $booking->currency,
+                'passenger_count'=> $booking->passenger_count ?? 1,
             ] : null,
             'customer' => $booking?->customer ? [
                 'id'   => $booking->customer->id,

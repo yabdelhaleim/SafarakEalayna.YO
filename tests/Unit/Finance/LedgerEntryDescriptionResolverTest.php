@@ -27,7 +27,7 @@ class LedgerEntryDescriptionResolverTest extends TestCase
         $description = app(LedgerEntryDescriptionResolver::class)->forFlightBooking($booking);
 
         $this->assertSame(
-            'حجز تذكرة طيران للعميل / ياسر محمود أحمد نوح / سوهاج - الكويت / 29-06-2025',
+            'حجز طيران / المسافر: — / الوجهة: سوهاج - الكويت / تاريخ: 29-06-2025 / الناقل: —',
             $description,
         );
     }
@@ -53,8 +53,6 @@ class LedgerEntryDescriptionResolverTest extends TestCase
 
         $description = app(LedgerEntryDescriptionResolver::class)->forFlightBooking($booking);
 
-        $this->assertStringContainsString('حجز تذكرة طيران للعميل / أحمد علي محمد / القاهرة - جدة / 10-07-2025', $description);
-        $this->assertStringContainsString('3 مسافرين', $description);
-        $this->assertStringContainsString('سارة أحمد', $description);
+        $this->assertStringContainsString('حجز طيران / المسافر: سارة أحمد، محمد أحمد، ليلى أحمد / الوجهة: القاهرة - جدة / تاريخ: 10-07-2025 / الناقل: —', $description);
     }
 }

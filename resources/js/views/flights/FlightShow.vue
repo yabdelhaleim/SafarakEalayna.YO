@@ -1052,8 +1052,8 @@ const PAYMENT_METHOD_ACCOUNT_TYPES = {
   vodafone_cash: ['wallet'],
   instapay: ['wallet'],
   cash_wallet: ['wallet'],
-  postal_transfer: ['bank', 'treasury', 'cashbox'],
-  mixed: ['cashbox', 'wallet', 'bank', 'treasury'],
+  postal_transfer: ['bank', 'treasury', 'cashbox', 'post'],
+  mixed: ['cashbox', 'wallet', 'bank', 'treasury', 'post'],
 };
 
 const ACCOUNT_TYPE_LABELS = {
@@ -1061,6 +1061,7 @@ const ACCOUNT_TYPE_LABELS = {
   wallet: 'محفظة إلكترونية',
   bank: 'حساب بنكي',
   treasury: 'خزينة عامة',
+  post: 'بريد',
 };
 
 const settlementAccounts = computed(() => {
@@ -1371,14 +1372,14 @@ const formatDate = (date, withTime = false) => {
     const d = new Date(date);
     if (isNaN(d.getTime())) {
       const match = String(date).match(/\d{4}-\d{2}-\d{2}/);
-      return match ? match[0] : String(date);
+      return match ? '\u200E' + match[0] : '\u200E' + String(date);
     }
     // English numerals, clear format
-    if (withTime) return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (withTime) return '\u200E' + d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + '\u200E';
+    return '\u200E' + d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + '\u200E';
   } catch {
     const match = String(date).match(/\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : String(date);
+    return match ? '\u200E' + match[0] : '\u200E' + String(date);
   }
 };
 

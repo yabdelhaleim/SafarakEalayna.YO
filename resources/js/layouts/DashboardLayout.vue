@@ -260,6 +260,7 @@
             <div v-show="isEmployeesOpen" class="dropdown-content-styled">
               <router-link to="/employees/list" class="nl-sub">قائمة الموظفين</router-link>
               <router-link to="/employees/attendance" class="nl-sub">الحضور والغياب</router-link>
+              <router-link to="/employees/commissions" class="nl-sub">تقارير العمولات والإنتاجية</router-link>
             </div>
           </div>
 

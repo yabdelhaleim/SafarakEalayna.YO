@@ -137,6 +137,8 @@
               <th class="px-6 py-4 font-semibold">العميل</th>
               <th class="px-6 py-4 font-semibold">المسار</th>
               <th class="px-6 py-4 font-semibold">المسافرون</th>
+              <th class="px-6 py-4 font-semibold">السيستم</th>
+              <th class="px-6 py-4 font-semibold">الموظف</th>
               <th class="px-6 py-4 font-semibold">السعر / الربح</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
@@ -145,7 +147,7 @@
           <tbody>
             <template v-if="store.loading.list">
               <tr v-for="i in 8" :key="i" class="border-b border-white/5">
-                <td v-for="j in 7" :key="j" class="px-6 py-4">
+                <td v-for="j in 9" :key="j" class="px-6 py-4">
                   <div class="h-4 animate-shimmer rounded w-full"></div>
                 </td>
               </tr>
@@ -192,9 +194,9 @@
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2 font-mono text-xs">
-                    <span class="font-bold">{{ booking.segments?.[0]?.from }}</span>
+                    <span class="font-bold">{{ booking.fromAirportCity }}</span>
                     <ArrowRight class="w-3 h-3 text-muted" />
-                    <span class="font-bold">{{ booking.segments?.[booking.segments?.length - 1]?.to }}</span>
+                    <span class="font-bold">{{ booking.toAirportCity }}</span>
                     <span v-if="booking.segments?.length > 1" class="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-muted">
                       +{{ booking.segments.length - 1 }} توقف
                     </span>
@@ -203,9 +205,21 @@
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-1.5 text-xs">
                     <Users class="w-3 h-3 text-muted" />
-                    <span>{{ booking.passengers?.length || 0 }}</span>
-                    <span class="text-[10px] text-muted">({{ paxBreakdown(booking.passengers || []) }})</span>
+                    <span>{{ booking.passengersCount }}</span>
+                    <span v-if="booking.passengers?.length" class="text-[10px] text-muted">({{ paxBreakdown(booking.passengers) }})</span>
                   </div>
+                </td>
+                <!-- GDS/System name -->
+                <td class="px-6 py-4">
+                  <span class="text-xs font-semibold text-slate-300">
+                    {{ booking.flightSystem?.name || booking.systemTypeLabel }}
+                  </span>
+                </td>
+                <!-- Creator/Employee name -->
+                <td class="px-6 py-4">
+                  <span class="text-xs text-slate-300">
+                    {{ booking.employee?.name || booking.createdByName || '—' }}
+                  </span>
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex flex-col">
@@ -250,7 +264,7 @@
               </template>
             </template>
             <tr v-else-if="store.errors.fetch">
-              <td colspan="7" class="px-6 py-20 text-center">
+              <td colspan="9" class="px-6 py-20 text-center">
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-20 h-20 bg-error/10 text-error rounded-full flex items-center justify-center">
                     <AlertCircle class="w-10 h-10" />
@@ -266,7 +280,7 @@
               </td>
             </tr>
             <tr v-else>
-              <td colspan="7" class="px-6 py-20 text-center">
+              <td colspan="9" class="px-6 py-20 text-center">
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center">
                     <Plane class="w-10 h-10 text-white/10 -rotate-45" />
@@ -332,9 +346,9 @@
             <div class="space-y-2">
               <div class="font-bold text-sm">{{ booking.customer?.name }}</div>
               <div class="flex items-center gap-2 font-mono text-xs">
-                <span class="font-bold">{{ booking.segments?.[0]?.from }}</span>
+                <span class="font-bold">{{ booking.fromAirportCity }}</span>
                 <ArrowRight class="w-3 h-3 text-muted" />
-                <span class="font-bold">{{ booking.segments?.[booking.segments?.length - 1]?.to }}</span>
+                <span class="font-bold">{{ booking.toAirportCity }}</span>
                 <span v-if="booking.segments?.length > 1" class="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-muted">
                   +{{ booking.segments.length - 1 }} توقف
                 </span>
@@ -347,7 +361,10 @@
                 <span>{{ formatDate(booking.createdAt) }}</span>
                 <span class="flex items-center gap-1">
                   <Users class="w-3 h-3" />
-                  {{ booking.passengers?.length || 0 }}
+                  {{ booking.passengersCount }}
+                </span>
+                <span class="text-[10px] text-muted">
+                  ({{ booking.flightSystem?.name || booking.systemTypeLabel }})
                 </span>
               </div>
               <div :class="['flex items-center gap-1 font-bold font-mono', booking.pricing?.profit >= 0 ? 'text-success' : 'text-error']">

@@ -98,6 +98,8 @@ class FlightBookingService
             'segments',
             'payments',
             'createdBy',
+            'fromAirport',
+            'toAirport',
         ]);
 
         if (isset($filters['status']) && $filters['status']) {

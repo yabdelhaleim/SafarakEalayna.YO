@@ -23,7 +23,7 @@ class StoreAccountRequest extends FormRequest
             'currency' => ['required', 'string', 'size:3'],
             'is_active' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
-            'module_type' => ['nullable', 'string', 'in:tourism,office'],
+            'module_type' => ['nullable', 'string', 'in:general,office,flights,tourism,hajj_umra,visas,bus,fawry,online,wallet_transfer'],
             'owner_type' => ['nullable', 'string', 'in:owner,office'],
             'wallet_provider' => [
                 Rule::requiredIf(fn () => $this->input('type') === AccountType::Wallet->value),

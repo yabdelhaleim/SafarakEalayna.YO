@@ -66,6 +66,8 @@ class PrintSettingService
         return [
             'company_name_ar' => $setting->company_name_ar,
             'company_name_en' => $setting->company_name_en,
+            'logo_path' => $setting->logo_path,
+            'logo_url' => $setting->logo_path ? asset('storage/' . $setting->logo_path) : null,
             'address' => $setting->address,
             'phones' => $setting->phones,
             'finance_label' => $setting->finance_label ?: 'المالية والمحاسب',
@@ -92,6 +94,7 @@ class PrintSettingService
             $setting->update([
                 'company_name_ar' => $data['company_name_ar'] ?? $setting->company_name_ar,
                 'company_name_en' => $data['company_name_en'] ?? $setting->company_name_en,
+                'logo_path' => array_key_exists('logo_path', $data) ? $data['logo_path'] : $setting->logo_path,
                 'address' => $data['address'] ?? null,
                 'phones' => $data['phones'] ?? null,
                 'finance_label' => $data['finance_label'] ?? $setting->finance_label,

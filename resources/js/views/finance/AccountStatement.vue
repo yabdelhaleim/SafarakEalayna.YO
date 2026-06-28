@@ -3,9 +3,12 @@
     <!-- Professional Print Header (Visible only on print) -->
     <div class="hidden print:block print:mb-10">
       <div class="flex items-center justify-between border-b-2 border-black pb-6">
-        <div>
-          <h2 class="text-3xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
-          <p class="text-sm font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
+        <div class="flex items-center gap-4">
+          <img v-if="printSettingsStore.settings.logo_url" :src="printSettingsStore.settings.logo_url" class="h-16 object-contain" style="max-height: 64px;" />
+          <div>
+            <h2 class="text-3xl font-black text-black">{{ printSettingsStore.settings.company_name_ar || 'سفري علينا' }}</h2>
+            <p class="text-sm font-bold text-black mt-1">للتسويق السياحي والخدمات الإلكترونية</p>
+          </div>
         </div>
         <div class="text-right">
           <h1 class="text-2xl font-black text-black">كشف حساب تفصيلي</h1>
@@ -80,6 +83,15 @@
           >
             <FileText class="w-4 h-4 text-rose-400" />
             تصدير PDF
+          </button>
+
+          <button
+            @click="exportExcel"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 hover:text-white hover:bg-emerald-500/20 transition-all font-bold text-sm"
+            title="تصدير كشف الحساب بصيغة Excel"
+          >
+            <Download class="w-4 h-4 text-emerald-400" />
+            تصدير Excel
           </button>
 
           <button
@@ -1296,7 +1308,8 @@ import {
   Bus,
   Eye,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Download
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1788,6 +1801,48 @@ function getModuleLabel(val) {
 function printStatement() {
   window.print();
 }
+
+const exportExcel = () => {
+  if (!statement.value.length) return;
+  const headers = ['التاريخ', 'القسم/الموظف', 'رقم المرجع/PNR', 'البيان/الوصف', 'مدين (-)', 'دائن (+)', 'الرصيد بعد الحركة'];
+  
+  const formatDateLocal = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  const rows = statement.value.map(entry => {
+    const date = entry.date_human || formatDateLocal(entry.created_at || entry.date) || '';
+    const moduleLabel = getModuleLabel(entry.module || account.value?.module || 'general');
+    const user = entry.user_name || 'تلقائي';
+    const moduleUser = `${moduleLabel} - ${user}`;
+    const pnr = entry.booking_details?.pnr || entry.reference_id || '—';
+    const description = (entry.description || entry.notes || '').replace(/,/g, ' - ').replace(/[\r\n]+/g, ' ');
+    const debit = entry.debit > 0 ? entry.debit : 0;
+    const credit = entry.credit > 0 ? entry.credit : 0;
+    const balance = entry.balance_after || 0;
+    
+    return [date, moduleUser, pnr, description, debit, credit, balance];
+  });
+  
+  const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const name = statementTargetType.value === 'customer' ? (selectedCustomer.value?.name || 'عميل') : (account.value?.name || 'حساب');
+  a.href = url;
+  a.download = `كشف_حساب_${name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+};
 
 function formatCurrency(amount, currency = 'EGP') {
   return new Intl.NumberFormat('ar-EG', {

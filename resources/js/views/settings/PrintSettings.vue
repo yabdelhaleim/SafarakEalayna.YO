@@ -58,6 +58,16 @@ const toggleAllForDoc = (docType, value) => {
   });
 };
 
+const logoFileInput = ref(null);
+const selectedLogoName = ref('');
+
+const onLogoFileChange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  form.logo = file;
+  selectedLogoName.value = file.name;
+};
+
 const hydrateForm = () => {
   const s = printStore.settings;
   form.company_name_ar = s.company_name_ar || '';
@@ -67,11 +77,14 @@ const hydrateForm = () => {
   form.finance_label = s.finance_label || 'المالية والمحاسب';
   form.show_amount_due = s.show_amount_due !== false;
   form.modules = JSON.parse(JSON.stringify(s.modules || {}));
+  form.logo = null;
+  selectedLogoName.value = '';
 };
 
 const save = async () => {
   try {
     await printStore.save({ ...form });
+    hydrateForm();
     window.addToast?.('تم حفظ إعدادات الطباعة بنجاح', 'success');
   } catch (error) {
     console.error(error);
@@ -131,6 +144,37 @@ onMounted(async () => {
           </h2>
 
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-xs font-bold text-text-muted">شعار / لوجو الشركة</label>
+              <div class="flex items-center gap-5 p-4 rounded-2xl border border-white/5 bg-white/[0.02]">
+                <div v-if="printStore.settings.logo_url" class="relative group w-20 h-20 bg-white/5 rounded-xl border border-white/10 overflow-hidden flex items-center justify-center">
+                  <img :src="printStore.settings.logo_url" class="max-w-full max-h-full object-contain" />
+                </div>
+                <div v-else class="w-20 h-20 bg-white/5 rounded-xl border border-dashed border-white/10 flex items-center justify-center text-text-muted">
+                  <Building2 class="w-8 h-8" />
+                </div>
+                <div class="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    ref="logoFileInput"
+                    @change="onLogoFileChange"
+                    :disabled="!authStore.isAdmin"
+                  />
+                  <button
+                    type="button"
+                    class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold transition"
+                    @click="$refs.logoFileInput.click()"
+                    :disabled="!authStore.isAdmin"
+                  >
+                    اختر صورة الشعار
+                  </button>
+                  <p class="text-[10px] text-text-muted mt-1.5">يدعم صيغ PNG, JPG, JPEG, SVG بحجم أقصى 2 ميجابايت.</p>
+                  <span v-if="selectedLogoName" class="text-xs text-gold font-bold block mt-1">الملف المختار: {{ selectedLogoName }}</span>
+                </div>
+              </div>
+            </div>
             <div>
               <label class="mb-2 block text-xs font-bold text-text-muted">اسم الشركة بالكامل (عربي)</label>
               <input
@@ -323,6 +367,9 @@ onMounted(async () => {
                 
                 <!-- dynamic branding header -->
                 <div class="text-right max-w-[60%] space-y-1">
+                  <div v-if="printStore.settings.logo_url" class="mb-2 flex justify-end">
+                    <img :src="printStore.settings.logo_url" class="h-10 object-contain" />
+                  </div>
                   <div v-if="form.company_name_en" class="text-base font-black uppercase text-slate-900 tracking-wide font-sans">{{ form.company_name_en }}</div>
                   <div v-if="form.company_name_ar" class="text-xs font-bold text-slate-600">{{ form.company_name_ar }}</div>
                   

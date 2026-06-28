@@ -23,7 +23,7 @@ class UpdateAccountRequest extends FormRequest
             'currency' => ['sometimes', 'string', 'size:3'],
             'is_active' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
-            'module_type' => ['nullable', 'string', 'in:tourism,office'],
+            'module_type' => ['nullable', 'string', 'in:general,office,flights,tourism,hajj_umra,visas,bus,fawry,online,wallet_transfer'],
             'owner_type' => ['nullable', 'string', 'in:owner,office'],
             'wallet_provider' => ['nullable', Rule::enum(WalletProvider::class)],
             'wallet_number' => ['nullable', 'string', 'max:100'],

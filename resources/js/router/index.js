@@ -502,6 +502,12 @@ const routes = [
         meta: { title: 'سجل الحضور والغياب' },
       },
       {
+        path: 'commissions',
+        name: 'employees.commissions',
+        component: () => import('@/views/employees/EmployeeCommissions.vue'),
+        meta: { title: 'تقارير العمولات والإنتاجية' },
+      },
+      {
         path: 'create',
         name: 'employees.create',
         component: () => import('@/views/employees/EmployeeCreate.vue'),

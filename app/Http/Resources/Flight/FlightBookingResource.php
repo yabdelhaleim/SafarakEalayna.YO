@@ -42,10 +42,12 @@ class FlightBookingResource extends JsonResource
             'pnr' => $this->pnr,
             'airline_name' => $this->airline_name,
             'from_airport' => $this->from_airport,
+            'from_airport_city' => $this->fromAirport?->city_name_ar ?? $this->from_airport,
             'to_airport' => $this->to_airport,
-            'route' => $this->from_airport && $this->to_airport
-                ? "{$this->from_airport} → {$this->to_airport}"
-                : null,
+            'to_airport_city' => $this->toAirport?->city_name_ar ?? $this->to_airport,
+            'route' => $this->fromAirport?->city_name_ar && $this->toAirport?->city_name_ar
+                ? "{$this->fromAirport->city_name_ar} → {$this->toAirport->city_name_ar}"
+                : ($this->from_airport && $this->to_airport ? "{$this->from_airport} → {$this->to_airport}" : null),
             'departure_date' => $this->departure_date?->format('Y-m-d'),
             'return_date' => $this->return_date?->format('Y-m-d'),
             'trip_type' => $this->trip_type,

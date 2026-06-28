@@ -108,63 +108,61 @@
       </div>
 
       <div v-else class="overflow-x-auto">
-        <table class="w-full text-right border-collapse">
+        <table class="w-full text-right border-collapse min-w-[1200px]">
           <thead>
-            <tr class="border-b border-slate-800 bg-slate-900/40 text-slate-400 font-semibold text-xs uppercase">
-              <th class="px-6 py-4">اسم المسافر</th>
-              <th class="px-6 py-4">بيانات الهوية والاتصال</th>
-              <th class="px-6 py-4">تفاصيل الحجز / الـ PNR</th>
-              <th class="px-6 py-4">خط السفر والموعد</th>
-              <th class="px-6 py-4 text-center">نوع التذكرة</th>
-              <th class="px-6 py-4 text-center">أدوات</th>
+            <tr class="border-b border-slate-800 bg-slate-900/40 text-slate-400 font-semibold text-[11px] uppercase">
+              <th class="px-4 py-3.5 text-right">المسافر</th>
+              <th class="px-4 py-3.5 text-right">رقم الحجز (PNR)</th>
+              <th class="px-4 py-3.5 text-right">العميل (بالعربي)</th>
+              <th class="px-4 py-3.5 text-right">التبعية والجروب</th>
+              <th class="px-4 py-3.5 text-right">خط الطيران والسير</th>
+              <th class="px-4 py-3.5 text-right">تاريخ وساعة السفر</th>
+              <th class="px-4 py-3.5 text-center">العدد</th>
+              <th class="px-4 py-3.5 text-center">تاريخ الحجز</th>
+              <th class="px-4 py-3.5 text-right">الموظف</th>
+              <th class="px-4 py-3.5 text-right">ملاحظات</th>
+              <th class="px-4 py-3.5 text-center">أدوات</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/60">
-            <tr v-for="pax in passengers" :key="pax.id" class="hover:bg-slate-900/20 transition-colors">
-              <!-- Name & Gender/Type -->
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center text-slate-300 font-semibold uppercase">
-                    {{ pax.first_name[0] }}{{ pax.last_name[0] }}
+            <tr v-for="pax in passengers" :key="pax.passenger_id + '-' + pax.departure_date + '-' + pax.leg_number" class="hover:bg-slate-900/20 transition-colors text-xs text-slate-300">
+              <!-- Passenger Name (Copiable) -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-300 font-bold uppercase text-[11px] shrink-0">
+                    {{ pax.first_name ? pax.first_name[0] : '' }}{{ pax.last_name ? pax.last_name[0] : '' }}
                   </div>
                   <div>
-                    <div class="font-bold text-white text-base">
-                      {{ pax.first_name }} {{ pax.last_name }}
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-white text-sm">{{ pax.first_name }} {{ pax.last_name }}</span>
+                      <button
+                        @click="copyToClipboard(pax.first_name + ' ' + pax.last_name, 'تم نسخ اسم المسافر')"
+                        class="text-slate-500 hover:text-slate-300 p-0.5 rounded transition-colors"
+                        title="نسخ الاسم"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H5.25m14.25 2.25V7.875c0-.621-.504-1.125-1.125-1.125H11.25a1.125 1.125 0 00-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125h12.75c0-.621.504-1.125 1.125-1.125V11.25a1.125 1.125 0 00-1.125-1.125z" />
+                        </svg>
+                      </button>
                     </div>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                      <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/30">
-                        {{ pax.relation_to_customer || 'مسافر رئيسي' }}
-                      </span>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      جواز: {{ pax.passport_number || '—' }} | قومي: {{ pax.national_id || '—' }}
                     </div>
                   </div>
                 </div>
               </td>
 
-              <!-- Passports & IDs -->
-              <td class="px-6 py-4">
-                <div class="space-y-1 text-slate-300">
-                  <div class="flex items-center gap-2 text-sm">
-                    <span class="text-slate-500 font-medium">جواز:</span>
-                    <span class="font-mono text-slate-100">{{ pax.passport_number || 'غير متوفر' }}</span>
-                  </div>
-                  <div class="flex items-center gap-2 text-sm">
-                    <span class="text-slate-500 font-medium">القومي:</span>
-                    <span class="font-mono text-slate-100">{{ pax.national_id || 'غير متوفر' }}</span>
-                  </div>
-                </div>
-              </td>
-
-              <!-- PNR & Booking Ref -->
-              <td class="px-6 py-4">
-                <div class="space-y-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs px-2 py-0.5 rounded font-mono font-bold bg-primary-950 text-primary-400 border border-primary-800/40">
+              <!-- PNR (Copiable) -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="space-y-0.5">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs px-2 py-0.5 rounded font-mono font-black bg-primary-950 text-primary-400 border border-primary-800/40">
                       {{ pax.booking?.pnr || 'بدون PNR' }}
                     </span>
                     <button
                       v-if="pax.booking?.pnr"
-                      @click="copyToClipboard(pax.booking.pnr)"
-                      class="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                      @click="copyToClipboard(pax.booking.pnr, 'تم نسخ PNR الحجز')"
+                      class="text-slate-500 hover:text-slate-300 p-0.5"
                       title="نسخ PNR"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
@@ -172,45 +170,85 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="text-xs text-slate-500">
-                    رقم الحجز: <span class="font-mono text-slate-400">{{ pax.booking?.booking_number }}</span>
+                  <div class="text-[10px] text-slate-500">
+                    رقم السيستم: <span class="font-mono text-slate-400">{{ pax.booking?.booking_number }}</span>
                   </div>
                 </div>
               </td>
 
-              <!-- Flight Info -->
-              <td class="px-6 py-4">
-                <div class="space-y-1">
-                  <div class="flex items-center gap-1.5 text-white font-medium">
-                    <span>{{ pax.booking?.origin }}</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 text-slate-500">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                    </svg>
-                    <span>{{ pax.booking?.destination }}</span>
-                  </div>
-                  <div class="text-xs flex items-center gap-2">
-                    <span :class="isUpcoming(pax.booking?.departure_date) ? 'text-emerald-400 font-semibold' : 'text-slate-500'">
-                      {{ formatDepartureDate(pax.booking?.departure_date) }}
-                    </span>
-                    <span class="text-slate-600">|</span>
-                    <span class="text-slate-400 font-mono">{{ pax.booking?.departure_time }}</span>
+              <!-- Customer Name (Arabic) -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span class="font-bold text-white">{{ pax.customer?.name || '—' }}</span>
+              </td>
+
+              <!-- Affiliation & Group -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="space-y-0.5">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" :class="pax.affiliation === 'عميل مجموعات' ? 'bg-amber-950 text-amber-400 border border-amber-800/40' : 'bg-slate-800 text-slate-400 border border-slate-700/40'">
+                    {{ pax.affiliation }}
+                  </span>
+                  <div v-if="pax.group_name && pax.group_name !== '—'" class="text-[10px] text-amber-500 font-semibold mt-1">
+                    {{ pax.group_name }}
                   </div>
                 </div>
               </td>
 
-              <!-- Passenger Type Badge -->
-              <td class="px-6 py-4 text-center whitespace-nowrap">
-                <span :class="getTypeBadgeClass(pax.type)" class="text-xs px-2.5 py-1 rounded-full font-bold uppercase">
-                  {{ getTypeLabel(pax.type) }}
+              <!-- Route & Airline -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="space-y-0.5">
+                  <div class="flex items-center gap-1 text-white font-semibold">
+                    <span>{{ pax.booking?.from_airport }}</span>
+                    <span>←</span>
+                    <span>{{ pax.booking?.to_airport }}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400">
+                    {{ pax.booking?.airline_name || '—' }}
+                  </div>
+                </div>
+              </td>
+
+              <!-- Travel Date & Time -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="space-y-0.5">
+                  <span :class="isUpcoming(pax.departure_date) ? 'text-emerald-400 font-semibold' : 'text-slate-500'">
+                    {{ formatDepartureDate(pax.departure_date) }}
+                  </span>
+                  <div class="text-[10px] font-mono text-slate-400">
+                    ساعة الإقلاع: {{ pax.departure_time || '—' }}
+                  </div>
+                </div>
+              </td>
+
+              <!-- Number of passengers -->
+              <td class="px-4 py-3 text-center whitespace-nowrap">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 font-black text-xs text-white">
+                  {{ pax.booking?.passenger_count }}
                 </span>
               </td>
 
+              <!-- Booking Date -->
+              <td class="px-4 py-3 text-center whitespace-nowrap">
+                <div class="text-xs text-slate-400">
+                  {{ formatBookingDate(pax.booking_date) }}
+                </div>
+              </td>
+
+              <!-- Employee Name -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span class="text-slate-300 font-medium">{{ pax.employee_name }}</span>
+              </td>
+
+              <!-- Notes -->
+              <td class="px-4 py-3 max-w-[150px] truncate" :title="pax.booking_notes">
+                <span class="text-xs text-slate-400">{{ pax.booking_notes || '—' }}</span>
+              </td>
+
               <!-- Actions/Details Links -->
-              <td class="px-6 py-4 text-center whitespace-nowrap">
+              <td class="px-4 py-3 text-center whitespace-nowrap">
                 <router-link
-                  v-if="pax.flight_booking_id"
-                  :to="`/flights/${pax.flight_booking_id}`"
-                  class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg border border-slate-700 text-xs transition-colors"
+                  v-if="pax.booking?.id"
+                  :to="`/flights/${pax.booking.id}`"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg border border-slate-700 text-xs transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -490,12 +528,26 @@ function getTypeBadgeClass(type) {
   return classes[type] || 'bg-slate-800 text-slate-300';
 }
 
-function copyToClipboard(text) {
+function copyToClipboard(text, successMsg = 'تم نسخ الرمز بنجاح') {
   navigator.clipboard.writeText(text).then(() => {
-    window.addToast?.('تم نسخ الرمز PNR بنجاح', 'success');
+    window.addToast?.(successMsg, 'success');
   }).catch(err => {
-    console.error('Could not copy PNR', err);
+    console.error('Could not copy text', err);
   });
+}
+
+function formatBookingDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (e) {
+    return dateStr;
+  }
 }
 
 onMounted(() => {

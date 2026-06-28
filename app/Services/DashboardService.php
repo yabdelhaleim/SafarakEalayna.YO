@@ -362,6 +362,14 @@ class DashboardService
             'total_profit'  => round((float) ($tourismPl['netProfit'] ?? 0), 2),
         ];
 
+        // Wallet Stats
+        $walletStats = \App\Models\Wallet\WalletTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->selectRaw("COUNT(*) as count, COALESCE(SUM(amount), 0) as revenue")
+            ->first();
+        $walletCount   = (int) $walletStats->count;
+        $walletRevenue = (float) ($plByModule->get('wallet')['income'] ?? $walletStats->revenue);
+        $walletProfit  = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+
         $officePl = $plService->report([
             'from_date' => $from,
             'to_date' => $to,
@@ -384,7 +392,12 @@ class DashboardService
                 'revenue' => $onlineRevenue,
                 'profit'  => $onlineProfit,
             ],
-            'total_count'   => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount,
+            'wallet' => [
+                'count'   => $walletCount,
+                'revenue' => $walletRevenue,
+                'profit'  => $walletProfit,
+            ],
+            'total_count'   => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount + $walletCount,
             'total_revenue' => round((float) ($officePl['totalRevenues'] ?? 0), 2),
             'total_profit'  => round((float) ($officePl['netProfit'] ?? 0), 2),
         ];

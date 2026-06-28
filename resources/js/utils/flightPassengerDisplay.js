@@ -23,13 +23,12 @@ export function passengerLastName(passenger) {
   return parts.length > 1 ? parts.slice(1).join(' ') : '';
 }
 
-/** اسم مختصر: الاسم الأول + أول 3 حروف من الأخير (بأحرف كبيرة) */
+/** الاسم الكامل بأحرف كبيرة */
 export function compactPassengerName(passenger) {
   const first = passengerFirstName(passenger).toUpperCase();
   const last = passengerLastName(passenger).toUpperCase();
   if (!first && !last) return '—';
-  const lastShort = last ? (last.length > 3 ? last.slice(0, 3) : last) : '';
-  return [first, lastShort].filter(Boolean).join(' ');
+  return [first, last].filter(Boolean).join(' ');
 }
 
 export function compactPassengerTypeLabel(type) {

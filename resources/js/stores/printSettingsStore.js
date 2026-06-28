@@ -21,6 +21,8 @@ export const usePrintSettingsStore = defineStore('printSettings', {
     settings: {
       company_name_ar: 'سفرك علينا',
       company_name_en: 'Safarak Ealayna',
+      logo_path: '',
+      logo_url: '',
       address: '',
       phones: '',
       finance_label: 'المالية والمحاسب',
@@ -81,7 +83,29 @@ export const usePrintSettingsStore = defineStore('printSettings', {
     async save(form) {
       this.saving = true;
       try {
-        const { data } = await axios.put('/api/v1/settings/print', form);
+        const formData = new FormData();
+        formData.append('_method', 'PUT');
+        formData.append('company_name_ar', form.company_name_ar || '');
+        formData.append('company_name_en', form.company_name_en || '');
+        formData.append('address', form.address || '');
+        formData.append('phones', form.phones || '');
+        formData.append('finance_label', form.finance_label || 'المالية والمحاسب');
+        formData.append('show_amount_due', form.show_amount_due ? '1' : '0');
+        
+        Object.keys(form.modules || {}).forEach(moduleKey => {
+          formData.append(`modules[${moduleKey}][ticket]`, form.modules[moduleKey].ticket ? '1' : '0');
+          formData.append(`modules[${moduleKey}][invoice]`, form.modules[moduleKey].invoice ? '1' : '0');
+        });
+
+        if (form.logo instanceof File) {
+          formData.append('logo', form.logo);
+        }
+
+        const { data } = await axios.post('/api/v1/settings/print', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
         const payload = data?.data || data;
         if (payload) {
           this.settings = {

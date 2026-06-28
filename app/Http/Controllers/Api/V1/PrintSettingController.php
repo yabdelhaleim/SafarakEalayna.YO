@@ -24,7 +24,12 @@ class PrintSettingController extends Controller
 
     public function update(UpdatePrintSettingRequest $request): JsonResponse
     {
-        $setting = $this->printSettingService->update($request->validated());
+        $data = $request->validated();
+        if ($request->hasFile('logo')) {
+            $data['logo_path'] = $request->file('logo')->store('settings', 'public');
+        }
+
+        $setting = $this->printSettingService->update($data);
 
         return ApiResponse::success(
             'تم حفظ إعدادات الطباعة بنجاح',

@@ -254,13 +254,20 @@ class AccountService
         // Calculate Period Totals
         $periodTotals = (clone $statsQuery)->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
 
-        // Calculate Opening Balance (balance before from_date)
-        $openingBalance = 0;
+        // Calculate Initial Balance (account balance minus all entry mutations)
+        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
+        $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
+        $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
+        $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
+
+        // Calculate Opening Balance (initial balance + mutations before from_date)
+        $openingBalance = $initialBalance;
         if (! empty($filters['from_date'])) {
-            $openingBalance = $account->entries()
+            $beforeBalance = $account->entries()
                 ->where('created_at', '<', $filters['from_date'])
                 ->selectRaw('SUM(credit) - SUM(debit) as balance')
                 ->value('balance') ?? 0;
+            $openingBalance += (float) $beforeBalance;
         }
 
         $perPage = min($filters['per_page'] ?? 20, 100);
@@ -439,13 +446,13 @@ class AccountService
 
         $allTransactions = $allTxQuery->get();
 
-        $running = 0.0;
-        
-        // Find if there's any opening balance entry in account_entries.
-        $firstEntry = $account->entries()->where('notes', 'رصيد افتتاحي')->first();
-        if ($firstEntry) {
-            $running += ($firstEntry->credit - $firstEntry->debit);
-        }
+        // Calculate Initial Balance (account balance minus all entry mutations)
+        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
+        $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
+        $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
+        $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
+
+        $running = $initialBalance;
 
         foreach ($allTransactions as $tx) {
             if ($tx->type === 'payment') {

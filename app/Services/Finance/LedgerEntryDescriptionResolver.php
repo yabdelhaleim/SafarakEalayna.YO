@@ -70,17 +70,20 @@ class LedgerEntryDescriptionResolver
 
     public function forFlightBooking(FlightBooking $booking, ?Transaction $transaction = null): string
     {
-        $line = $this->formatSlashLine(
-            'حجز تذكرة طيران للعميل',
-            $this->flightCustomerName($booking),
-            $this->flightRoute($booking),
-            $this->formatDate($booking->departure_date),
-        );
+        $booking->loadMissing(['customer', 'passengers', 'fromAirport', 'toAirport']);
 
-        $passengerSuffix = $this->flightPassengerSuffix($booking);
-        if ($passengerSuffix !== '') {
-            $line .= ' — '.$passengerSuffix;
-        }
+        $airline = $booking->airline_name ?: '—';
+        $passengerNames = $this->passengerNamesList($booking) ?: '—';
+        $route = $this->flightRoute($booking);
+        $travelDate = $this->formatDate($booking->departure_date);
+
+        $line = $this->formatSlashLine(
+            'حجز طيران',
+            'المسافر: ' . $passengerNames,
+            'الوجهة: ' . $route,
+            'تاريخ: ' . $travelDate,
+            'الناقل: ' . $airline
+        );
 
         return $this->withContextPrefix($line, $transaction);
     }
@@ -216,13 +219,13 @@ class LedgerEntryDescriptionResolver
         $booking->loadMissing(['fromAirport', 'toAirport']);
 
         $from = trim((string) (
-            $booking->fromAirport?->name
+            $booking->fromAirport?->city_name_ar
             ?? $booking->from_airport
             ?? $booking->origin
             ?? ''
         ));
         $to = trim((string) (
-            $booking->toAirport?->name
+            $booking->toAirport?->city_name_ar
             ?? $booking->to_airport
             ?? $booking->destination
             ?? ''

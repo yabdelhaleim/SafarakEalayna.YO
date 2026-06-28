@@ -258,10 +258,8 @@
                         <label class="mb-2 block text-sm font-medium text-gray-300">
                           وقت المغادرة <span class="text-error">*</span>
                         </label>
-                        <input
+                        <TimePicker
                           v-model="form.departure_time"
-                          type="time"
-                          class="flight-input"
                           required
                         />
                       </div>
@@ -269,10 +267,8 @@
                         <label class="mb-2 block text-sm font-medium text-gray-300">
                           وقت الوصول <span class="text-error">*</span>
                         </label>
-                        <input
+                        <TimePicker
                           v-model="form.arrival_time"
-                          type="time"
-                          class="flight-input"
                           required
                         />
                       </div>
@@ -289,10 +285,8 @@
                         <label class="mb-2 block text-sm font-medium text-gray-300">
                           وقت المغادرة <span class="text-error">*</span>
                         </label>
-                        <input
+                        <TimePicker
                           v-model="form.return_time"
-                          type="time"
-                          class="flight-input"
                           required
                         />
                       </div>
@@ -300,10 +294,8 @@
                         <label class="mb-2 block text-sm font-medium text-gray-300">
                           وقت الوصول <span class="text-error">*</span>
                         </label>
-                        <input
+                        <TimePicker
                           v-model="form.return_arrival_time"
-                          type="time"
-                          class="flight-input"
                           required
                         />
                       </div>
@@ -368,20 +360,18 @@
                           <label class="mb-2 block text-sm font-medium text-gray-300">
                             وقت المغادرة <span class="text-error">*</span>
                           </label>
-                          <input
+                          <TimePicker
                             v-model="leg.departure_time"
-                            type="time"
-                            class="flight-input"
+                            required
                           />
                         </div>
                         <div>
                           <label class="mb-2 block text-sm font-medium text-gray-300">
                             وقت الوصول <span class="text-error">*</span>
                           </label>
-                          <input
+                          <TimePicker
                             v-model="leg.arrival_time"
-                            type="time"
-                            class="flight-input"
+                            required
                           />
                         </div>
                       </div>
@@ -849,6 +839,7 @@
                             min="0" 
                             placeholder="0"
                             class="flight-input" 
+                            @wheel="$event.target.blur()"
                           />
                         </div>
                       </div>
@@ -929,6 +920,7 @@
                         min="0"
                         :placeholder="'أدخل المبلغ بـ ' + form.currency"
                         class="flight-input text-lg font-bold text-center"
+                        @wheel="$event.target.blur()"
                       />
                     </div>
 
@@ -954,6 +946,7 @@
                           min="0"
                           placeholder="0.00"
                           class="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-14 pr-4 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
+                          @wheel="$event.target.blur()"
                         />
                         <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">ج.م</span>
                       </div>
@@ -974,6 +967,7 @@
                           min="0"
                           placeholder="0.00"
                           class="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-14 pr-4 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
+                          @wheel="$event.target.blur()"
                         />
                         <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">ج.م</span>
                       </div>
@@ -1228,6 +1222,7 @@
                             min="0"
                             placeholder="0.00"
                             class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-14 text-white placeholder-gray-500 transition-all focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/50"
+                            @wheel="$event.target.blur()"
                           />
                           <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">{{ settlementAccountCurrencySymbol }}</span>
                         </div>
@@ -2115,6 +2110,7 @@ import { useRouter } from 'vue-router';
 import { useFlightStore } from '@/stores/flightStore';
 import axios from 'axios';
 import AirportSearchInput from '@/components/flights/AirportSearchInput.vue';
+import TimePicker from '@/components/flights/TimePicker.vue';
 import CustomerSelect from '@/components/flights/CustomerSelect.vue';
 import CompactPassengerList from '@/components/flights/CompactPassengerList.vue';
 import { passengerFirstName, passengerLastName } from '@/utils/flightPassengerDisplay';
@@ -2462,8 +2458,8 @@ const PAYMENT_METHOD_ACCOUNT_TYPES = {
   vodafone_cash: ['wallet'],
   instapay: ['wallet'],
   cash_wallet: ['wallet'],
-  postal_transfer: ['bank', 'treasury', 'cashbox'],
-  mixed: ['cashbox', 'wallet', 'bank', 'treasury'],
+  postal_transfer: ['bank', 'treasury', 'cashbox', 'post'],
+  mixed: ['cashbox', 'wallet', 'bank', 'treasury', 'post'],
 };
 
 const WALLET_PROVIDER_AR = {
