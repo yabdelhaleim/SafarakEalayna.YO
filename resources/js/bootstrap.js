@@ -1,6 +1,91 @@
 import axios from 'axios';
 import { isRequestCanceled } from './utils/api.js';
 
+// Global Locale Override to force English numerals (Latin numbering system) in Arabic formatting
+(function () {
+    try {
+        const patchLocale = (locales) => {
+            if (locales === undefined || locales === null) {
+                const navLang = typeof navigator !== 'undefined' ? (navigator.language || '') : '';
+                if (navLang.startsWith('ar')) {
+                    return 'ar-EG-u-nu-latn';
+                }
+                return undefined;
+            }
+            if (typeof locales === 'string') {
+                if (locales.startsWith('ar-EG') || locales === 'ar') {
+                    return 'ar-EG-u-nu-latn';
+                }
+            } else if (Array.isArray(locales)) {
+                return locales.map(l => typeof l === 'string' && (l.startsWith('ar-EG') || l === 'ar') ? 'ar-EG-u-nu-latn' : l);
+            }
+            return locales;
+        };
+
+        // 1. Patch Intl.NumberFormat
+        const OriginalIntlNumberFormat = Intl.NumberFormat;
+        const patchedNumberFormat = function(locales, options) {
+            return new OriginalIntlNumberFormat(patchLocale(locales), options);
+        };
+        patchedNumberFormat.prototype = OriginalIntlNumberFormat.prototype;
+        Object.getOwnPropertyNames(OriginalIntlNumberFormat).forEach(prop => {
+            if (prop !== 'prototype' && prop !== 'length' && prop !== 'name') {
+                Object.defineProperty(patchedNumberFormat, prop, {
+                    value: OriginalIntlNumberFormat[prop],
+                    writable: true,
+                    configurable: true,
+                    enumerable: true
+                });
+            }
+        });
+        Intl.NumberFormat = patchedNumberFormat;
+
+        // 2. Patch Intl.DateTimeFormat
+        const OriginalIntlDateTimeFormat = Intl.DateTimeFormat;
+        const patchedDateTimeFormat = function(locales, options) {
+            return new OriginalIntlDateTimeFormat(patchLocale(locales), options);
+        };
+        patchedDateTimeFormat.prototype = OriginalIntlDateTimeFormat.prototype;
+        Object.getOwnPropertyNames(OriginalIntlDateTimeFormat).forEach(prop => {
+            if (prop !== 'prototype' && prop !== 'length' && prop !== 'name') {
+                Object.defineProperty(patchedDateTimeFormat, prop, {
+                    value: OriginalIntlDateTimeFormat[prop],
+                    writable: true,
+                    configurable: true,
+                    enumerable: true
+                });
+            }
+        });
+        Intl.DateTimeFormat = patchedDateTimeFormat;
+
+        // 3. Patch Number.prototype.toLocaleString
+        const originalNumberToLocaleString = Number.prototype.toLocaleString;
+        Number.prototype.toLocaleString = function(locales, options) {
+            return originalNumberToLocaleString.call(this, patchLocale(locales), options);
+        };
+
+        // 4. Patch Date.prototype.toLocaleString
+        const originalDateToLocaleString = Date.prototype.toLocaleString;
+        Date.prototype.toLocaleString = function(locales, options) {
+            return originalDateToLocaleString.call(this, patchLocale(locales), options);
+        };
+
+        // 5. Patch Date.prototype.toLocaleDateString
+        const originalDateToLocaleDateString = Date.prototype.toLocaleDateString;
+        Date.prototype.toLocaleDateString = function(locales, options) {
+            return originalDateToLocaleDateString.call(this, patchLocale(locales), options);
+        };
+
+        // 6. Patch Date.prototype.toLocaleTimeString
+        const originalDateToLocaleTimeString = Date.prototype.toLocaleTimeString;
+        Date.prototype.toLocaleTimeString = function(locales, options) {
+            return originalDateToLocaleTimeString.call(this, patchLocale(locales), options);
+        };
+    } catch (e) {
+        console.error('Failed to patch global locale formatting:', e);
+    }
+})();
+
 window.axios = axios;
 window.isRequestCanceled = isRequestCanceled;
 
