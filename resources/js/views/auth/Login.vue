@@ -47,7 +47,7 @@
                 type="email"
                 class="flight-input !bg-input-bg !pl-12 !text-text-main placeholder:!text-text-muted/80"
                 :class="errors.email ? '!border-error/50 !ring-2 !ring-error/25' : ''"
-                placeholder="admin@admin.com"
+                placeholder="أدخل بريدك الإلكتروني"
                 required
                 autocomplete="email"
                 dir="ltr"
@@ -99,47 +99,6 @@
           </button>
         </form>
 
-        <!-- Professional Credentials Box -->
-        <div class="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 shadow-inner">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gold/20 text-gold">
-              <Info class="h-5 w-5" />
-            </div>
-            <div>
-              <span class="block text-[10px] font-black uppercase tracking-widest text-text-main">بيانات الوصول السريع</span>
-              <span class="text-[9px] text-text-muted italic">لأغراض المراجعة والتدقيق</span>
-            </div>
-          </div>
-          <div class="space-y-3">
-            <button
-              type="button"
-              class="group flex w-full items-center justify-between rounded-xl border border-white/5 bg-card-bg/50 px-4 py-3 text-start transition-all hover:border-gold/30 hover:bg-gold/5"
-              @click="fillAdmin"
-            >
-              <div class="flex flex-col">
-                <span class="text-xs font-bold text-text-muted group-hover:text-text-main">مدير النظام</span>
-                <span class="text-[9px] text-text-muted/50 font-mono">Full Access</span>
-              </div>
-              <code class="font-mono text-[10px] text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/20">admin@admin.com</code>
-            </button>
-            <button
-              type="button"
-              class="group flex w-full items-center justify-between rounded-xl border border-white/5 bg-card-bg/50 px-4 py-3 text-start transition-all hover:border-gold/30 hover:bg-gold/5"
-              @click="fillEmployee"
-            >
-              <div class="flex flex-col">
-                <span class="text-xs font-bold text-text-muted group-hover:text-text-main">موظف (مثال)</span>
-                <span class="text-[9px] text-text-muted/50 font-mono">Standard Ops</span>
-              </div>
-              <code class="font-mono text-[10px] text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/20">employee1@office.com</code>
-            </button>
-          </div>
-          <div class="mt-4 pt-4 border-t border-white/5 text-center">
-            <span class="text-[10px] text-text-muted/60">
-              ⚠️ يتم إنشاء الحسابات الجديدة حصراً من داخل لوحة الإدارة.
-            </span>
-          </div>
-        </div>
       </div>
 
       <p class="mt-8 text-center text-[11px] text-text-muted/80">© 2026 سفرك علينا. جميع الحقوق محفوظة.</p>
@@ -151,7 +110,7 @@
 import { ref, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
-import { Plane, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, Info } from 'lucide-vue-next';
+import { Plane, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-vue-next';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -174,15 +133,5 @@ const handleLogin = async () => {
   if (result.success) {
     router.push('/dashboard');
   }
-};
-
-const fillAdmin = () => {
-  form.email = 'admin@admin.com';
-  form.password = '11223311';
-};
-
-const fillEmployee = () => {
-  form.email = 'employee1@office.com';
-  form.password = 'password';
 };
 </script>

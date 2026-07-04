@@ -13,11 +13,11 @@ class UserSeeder extends Seeder
         $now = now();
 
         DB::table('users')->updateOrInsert(
-            ['email' => 'admin@admin.com'],
+            ['email' => 'admin@safarakealayna.com'],
             [
                 'name' => 'System Admin',
-                'email' => 'admin@admin.com',
-                'password' => Hash::make('11223311'),
+                'email' => 'admin@safarakealayna.com',
+                'password' => Hash::make('Sf@2026#Admin!'),
                 'role' => 'admin',
                 'is_active' => true,
                 'created_at' => $now,
@@ -25,6 +25,6 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $this->command->info('✅ UserSeeder: حساب الدخول الافتراضي — admin@admin.com / 11223311');
+        $this->command->info('✅ UserSeeder: تم إنشاء حساب المدير.');
     }
 }
