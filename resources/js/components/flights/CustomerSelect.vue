@@ -93,7 +93,19 @@
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">رقم الهاتف*</label>
-            <input v-model="newCustomer.phone" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="01xxxxxxxxx" />
+            <input
+              v-model="newCustomer.phone"
+              type="text"
+              inputmode="numeric"
+              maxlength="11"
+              dir="ltr"
+              placeholder="01xxxxxxxxx"
+              class="w-full p-3 bg-input border rounded-xl focus:border-gold outline-none text-left transition-colors"
+              :class="phoneError ? 'border-red-500/70' : 'border-white/10'"
+              @input="onPhoneFieldInput"
+              @blur="onPhoneBlur"
+            />
+            <p v-if="phoneError" class="mt-1 text-xs text-red-400">{{ phoneError }}</p>
           </div>
           <div v-if="props.type !== 'counter'">
             <label class="block text-sm text-muted mb-1">الرقم القومي*</label>
@@ -105,7 +117,19 @@
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">رقم الواتساب</label>
-            <input v-model="newCustomer.whatsapp_number" type="text" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-left" dir="ltr" placeholder="01xxxxxxxxx" />
+            <input
+              v-model="newCustomer.whatsapp_number"
+              type="text"
+              inputmode="numeric"
+              maxlength="11"
+              dir="ltr"
+              placeholder="01xxxxxxxxx"
+              class="w-full p-3 bg-input border rounded-xl focus:border-gold outline-none text-left transition-colors"
+              :class="whatsappError ? 'border-red-500/70' : 'border-white/10'"
+              @input="onWhatsappFieldInput"
+              @blur="onWhatsappBlur"
+            />
+            <p v-if="whatsappError" class="mt-1 text-xs text-red-400">{{ whatsappError }}</p>
           </div>
           <div>
             <label class="block text-sm text-muted mb-1">المدينة</label>
@@ -133,6 +157,7 @@
 
 <script setup>
 import { ref, watch } from 'vue';
+import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
 import { useFlightStore } from '@/stores/flightStore';
 import { Search } from 'lucide-vue-next';
 import { useDebounceFn } from '@vueuse/core';
@@ -171,6 +196,23 @@ watch(() => props.type, (newType) => {
 });
 
 const savingCustomer = ref(false);
+const phoneError    = ref('');
+const whatsappError = ref('');
+
+const onPhoneFieldInput = () => {
+  newCustomer.value.phone = enforcePhoneInput(newCustomer.value.phone);
+  phoneError.value = '';
+};
+const onPhoneBlur = () => {
+  phoneError.value = validateEgyptianPhone(newCustomer.value.phone);
+};
+const onWhatsappFieldInput = () => {
+  newCustomer.value.whatsapp_number = enforcePhoneInput(newCustomer.value.whatsapp_number);
+  whatsappError.value = '';
+};
+const onWhatsappBlur = () => {
+  whatsappError.value = validateEgyptianPhone(newCustomer.value.whatsapp_number);
+};
 
 const getInitials = (name) => {
   if (!name) return '?';
@@ -211,6 +253,19 @@ const saveCustomer = async () => {
     store.addToast('يرجى ملء الاسم ورقم الهاتف على الأقل', 'error');
     return;
   }
+  // Validate phone format
+  const phoneErr    = validateEgyptianPhone(newCustomer.value.phone);
+  const whatsappErr = validateEgyptianPhone(newCustomer.value.whatsapp_number);
+  phoneError.value    = phoneErr;
+  whatsappError.value = whatsappErr;
+  if (phoneErr) {
+    store.addToast(phoneErr, 'error');
+    return;
+  }
+  if (whatsappErr) {
+    store.addToast(whatsappErr, 'error');
+    return;
+  }
   if (props.type !== 'counter') {
     if (!newCustomer.value.national_id?.trim()) {
       store.addToast('الرقم القومي مطلوب', 'error');
@@ -227,6 +282,8 @@ const saveCustomer = async () => {
     const saved = await store.createCustomer(newCustomer.value);
     selectCustomer(saved);
     showCreateModal.value = false;
+    phoneError.value    = '';
+    whatsappError.value = '';
     newCustomer.value = {
       full_name: '',
       phone: '',

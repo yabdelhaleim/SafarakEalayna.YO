@@ -614,7 +614,19 @@
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-300">رقم التليفون <span class="text-error">*</span></label>
-                        <input v-model="customerProfile.phone" type="text" class="flight-input" dir="ltr" placeholder="01xxxxxxxxx" />
+                        <input
+                          v-model="customerProfile.phone"
+                          type="text"
+                          inputmode="numeric"
+                          maxlength="11"
+                          dir="ltr"
+                          placeholder="01xxxxxxxxx"
+                          class="flight-input transition-colors"
+                          :class="cpPhoneError ? 'border-red-500/70' : ''"
+                          @input="onCpPhoneInput"
+                          @blur="onCpPhoneBlur"
+                        />
+                        <p v-if="cpPhoneError" class="mt-1 text-xs text-red-400">{{ cpPhoneError }}</p>
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-300">الرقم القومي <span class="text-error">*</span></label>
@@ -2114,6 +2126,7 @@ import TimePicker from '@/components/flights/TimePicker.vue';
 import CustomerSelect from '@/components/flights/CustomerSelect.vue';
 import CompactPassengerList from '@/components/flights/CompactPassengerList.vue';
 import { passengerFirstName, passengerLastName } from '@/utils/flightPassengerDisplay';
+import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
 import { fetchSettlementAccounts as fetchModuleSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import { formatLedgerBalance, projectedLedgerBalance } from '@/composables/useLedgerBalance';
 import {
@@ -2220,7 +2233,7 @@ const PAYMENT_METHODS_FALLBACK = [
 const SETTLEMENT_CATEGORY_TYPES = {
   cash: ['cashbox', 'treasury'],
   wallet: ['wallet'],
-  bank: ['bank'],
+  bank: ['bank', 'post'],
 };
 
 let searchDebounceFrom = null;
@@ -2319,6 +2332,15 @@ const customerProfile = ref({
   national_id: '',
   travel_country: '',
 });
+
+const cpPhoneError = ref('');
+const onCpPhoneInput = () => {
+  customerProfile.value.phone = enforcePhoneInput(customerProfile.value.phone);
+  cpPhoneError.value = '';
+};
+const onCpPhoneBlur = () => {
+  cpPhoneError.value = validateEgyptianPhone(customerProfile.value.phone);
+};
 
 function syncCustomerProfileFromSelection(customer) {
   if (!customer) {
@@ -2511,6 +2533,8 @@ function syncPaymentMethodFromSelectedAccount() {
     form.value.payment_method = paymentMethodFromWalletProvider(acc.wallet_provider ?? acc.walletProvider);
   } else if (t === 'bank') {
     form.value.payment_method = 'bank_transfer';
+  } else if (t === 'post') {
+    form.value.payment_method = 'postal_transfer';
   } else {
     form.value.payment_method = 'cash';
   }
@@ -3208,6 +3232,7 @@ const ACCOUNT_TYPE_LABELS = {
   wallet: 'محفظة إلكترونية',
   bank: 'حساب بنكي',
   treasury: 'خزينة عامة',
+  post: 'بريد',
 };
 
 const getAccountTypeLabel = (type) => ACCOUNT_TYPE_LABELS[normalizeAccountType(type)] || type;

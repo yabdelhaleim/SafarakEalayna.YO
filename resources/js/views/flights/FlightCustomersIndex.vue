@@ -433,7 +433,19 @@
             </div>
             <div class="form-field">
               <label class="form-label">رقم الهاتف *</label>
-              <input v-model="form.phone" type="text" class="form-input" dir="ltr" placeholder="01xxxxxxxxx" />
+              <input
+                v-model="form.phone"
+                type="text"
+                inputmode="numeric"
+                maxlength="11"
+                dir="ltr"
+                placeholder="01xxxxxxxxx"
+                class="form-input"
+                :class="phoneError ? 'border-red-500/70 !border-red-500/70' : ''"
+                @input="onPhoneInput"
+                @blur="onPhoneBlur"
+              />
+              <p v-if="phoneError" class="mt-1 text-xs text-red-400">{{ phoneError }}</p>
             </div>
             <div v-if="activeTab === 'regular'" class="form-field">
               <label class="form-label">الرقم القومي</label>
@@ -441,7 +453,19 @@
             </div>
             <div class="form-field">
               <label class="form-label">رقم الواتساب</label>
-              <input v-model="form.whatsapp_number" type="text" class="form-input" dir="ltr" placeholder="01xxxxxxxxx" />
+              <input
+                v-model="form.whatsapp_number"
+                type="text"
+                inputmode="numeric"
+                maxlength="11"
+                dir="ltr"
+                placeholder="01xxxxxxxxx"
+                class="form-input"
+                :class="whatsappError ? 'border-red-500/70 !border-red-500/70' : ''"
+                @input="onWhatsappInput"
+                @blur="onWhatsappBlur"
+              />
+              <p v-if="whatsappError" class="mt-1 text-xs text-red-400">{{ whatsappError }}</p>
             </div>
             <div class="form-field">
               <label class="form-label">المدينة</label>
@@ -1160,6 +1184,7 @@ import axios from 'axios';
 import { isRequestCanceled } from '@/utils/api';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import { formatLedgerBalance } from '@/composables/useLedgerBalance';
+import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
 
 const store = useCustomerStore();
 
@@ -1268,6 +1293,27 @@ const pagination = ref({ total: 0, currentPage: 1, lastPage: 1, perPage: 15 });
 const stats = reactive({ totalDebt: 0, counterCount: 0, companiesCount: 0, groupsCount: 0 });
 
 const form = ref({ full_name: '', phone: '', national_id: '', whatsapp_number: '', city: '', travel_country: '', affiliation: '', notes: '' });
+
+// ——————————————————
+// Phone Validation
+// ——————————————————
+const phoneError    = ref('');
+const whatsappError = ref('');
+
+const onPhoneInput = () => {
+  form.value.phone = enforcePhoneInput(form.value.phone);
+  phoneError.value = '';
+};
+const onPhoneBlur = () => {
+  phoneError.value = validateEgyptianPhone(form.value.phone);
+};
+const onWhatsappInput = () => {
+  form.value.whatsapp_number = enforcePhoneInput(form.value.whatsapp_number);
+  whatsappError.value = '';
+};
+const onWhatsappBlur = () => {
+  whatsappError.value = validateEgyptianPhone(form.value.whatsapp_number);
+};
 
 // ——————————————————
 // Computed
@@ -1553,11 +1599,24 @@ const editCustomer = (customer) => {
   showModal.value = true;
 };
 
-const closeModal = () => { showModal.value = false; editingCustomerId.value = null; };
+const closeModal = () => { showModal.value = false; editingCustomerId.value = null; phoneError.value = ''; whatsappError.value = ''; };
 
 const saveCustomer = async () => {
   if (!form.value.full_name || !form.value.phone) {
     store.addToast('يرجى كتابة الاسم ورقم الهاتف', 'error');
+    return;
+  }
+  // Validate phone format
+  const phoneErr    = validateEgyptianPhone(form.value.phone);
+  const whatsappErr = validateEgyptianPhone(form.value.whatsapp_number);
+  phoneError.value    = phoneErr;
+  whatsappError.value = whatsappErr;
+  if (phoneErr) {
+    store.addToast(phoneErr, 'error');
+    return;
+  }
+  if (whatsappErr) {
+    store.addToast(whatsappErr, 'error');
     return;
   }
   saving.value = true;

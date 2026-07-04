@@ -322,10 +322,14 @@
                   </div>
                   <input
                     v-model="form.customer_phone" type="tel" placeholder="01xxxxxxxxx"
+                    inputmode="numeric"
+                    maxlength="11"
                     class="w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-sky-400/50"
-                    :class="customerFound ? 'border-green-500/30 bg-green-500/5' : ''"
+                    :class="customerFound ? 'border-green-500/30 bg-green-500/5' : (phoneValidationError ? 'border-red-500/50' : '')"
                     @input="onPhoneInput"
+                    @blur="onPhoneBlurBus"
                   />
+                  <p v-if="phoneValidationError" class="mt-1 text-xs text-red-400">{{ phoneValidationError }}</p>
                 </div>
               </div>
             </div>
@@ -663,6 +667,7 @@ import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
+import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
 import {
   ArrowRight, BusFront, UserCircle, Ticket, CreditCard, FileText,
   Check, CheckCircle, Loader2, Wallet, Landmark, Banknote,
@@ -687,6 +692,7 @@ const companyStats     = ref(null);
 const fromSuggestions  = ref([]);
 const toSuggestions    = ref([]);
 let phoneTimeout, suggTimeout;
+const phoneValidationError = ref('');
 
 function createDefaultForm() {
   return {
@@ -733,7 +739,7 @@ const settlementCategoryChips = [
 const SETTLEMENT_CATEGORY_TYPES = {
   cash:   ['cashbox', 'treasury'],
   wallet: ['wallet'],
-  bank:   ['bank'],
+  bank:   ['bank', 'post'],
 };
 
 const WALLET_PROVIDER_AR = {
@@ -743,7 +749,7 @@ const WALLET_PROVIDER_AR = {
 };
 
 const ACCOUNT_TYPE_LABELS = {
-  cashbox: 'خزينة نقدي', wallet: 'محفظة', bank: 'حساب بنكي', treasury: 'خزينة عامة',
+  cashbox: 'خزينة نقدي', wallet: 'محفظة', bank: 'حساب بنكي', treasury: 'خزينة عامة', post: 'بريد',
 };
 
 // ─── Admin URLs ────────────────────────────────────────────────────────────
@@ -959,10 +965,16 @@ const fetchToSuggestions   = () =>
 
 // ─── Customer search ───────────────────────────────────────────────────────
 const onPhoneInput = () => {
+  // Enforce digits-only and max 11 chars
+  form.value.customer_phone = enforcePhoneInput(form.value.customer_phone);
+  phoneValidationError.value = '';
   clearTimeout(phoneTimeout);
   customerFound.value = false;
   if ((form.value.customer_phone || '').length >= 10)
     phoneTimeout = setTimeout(searchCustomer, 500);
+};
+const onPhoneBlurBus = () => {
+  phoneValidationError.value = validateEgyptianPhone(form.value.customer_phone);
 };
 const searchCustomer = async () => {
   if (!form.value.customer_phone || form.value.customer_phone.length < 10) return;
@@ -992,6 +1004,7 @@ const syncPaymentMethod = () => {
     const p = normalizeWalletProvider(acc.wallet_provider);
     form.value.payment_method = { vodafone_cash: 'vodafone_cash', instapay: 'instapay' }[p] || 'cash_wallet';
   } else if (t === 'bank') { form.value.payment_method = 'bank_transfer'; }
+  else if (t === 'post') { form.value.payment_method = 'postal_transfer'; }
   else { form.value.payment_method = 'cash'; }
 };
 

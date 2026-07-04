@@ -122,7 +122,7 @@ Route::prefix('v1')->middleware([
         Route::get('transaction-modules', [SettingController::class, 'transactionModules']);
         Route::get('flight-booking-reference', [SettingController::class, 'flightBookingReference']);
         Route::get('print', [PrintSettingController::class, 'show']);
-        Route::middleware('admin')->put('print', [PrintSettingController::class, 'update']);
+        Route::middleware('admin')->match(['put', 'post'], 'print', [PrintSettingController::class, 'update']);
     });
 
     // Dashboard API (Admin Only)
