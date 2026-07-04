@@ -15,7 +15,14 @@ class EditBankAccount extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $data['type'] = AccountType::Bank->value;
+        // Honor the user's selection from the dropdown (Bank / Post).
+        $data['type'] = $data['type'] ?? AccountType::Bank->value;
+
+        if (! in_array($data['type'], [AccountType::Bank->value, AccountType::Post->value], true)) {
+            $data['type'] = AccountType::Bank->value;
+        }
+
+        $data['module_type'] = $data['module_type'] ?? 'flights';
 
         return $data;
     }
