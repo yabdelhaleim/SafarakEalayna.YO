@@ -3,11 +3,13 @@
 namespace App\Models\Flight;
 
 use App\Models\User;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Log;
 
 #[Fillable([
     'flight_system_id',
@@ -24,6 +26,71 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class FlightCarrier extends Model
 {
     use SoftDeletes;
+
+    /**
+     * Flag يدل على أن التعديل جاي من debit()/credit() (مسار معتمد).
+     */
+    private static bool $internalBalanceUpdate = false;
+
+    /**
+     * Defense-in-depth: منع تعديل `balance` خارج نطاق debit()/credit() و LedgerBalanceMutationGuard.
+     *
+     * السبب: Filament Resources كانت تعرض حقل `balance` قابلاً للتعديل مما سمح للأدمن
+     * بتعديل رصيد الناقل مباشرةً بدون تسجيل القيد المحاسبي المقابل في الـ GL
+     * (Account ID=24 "رصيد مسبق ناقلي")، مما كان يسبب عجزاً محاسبياً.
+     *
+     * @see app/Services/Flight/FlightCarrierRechargeService.php
+     * @see app/Services/Finance/PrepaidLedgerService.php
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (FlightCarrier $carrier): void {
+            if (! $carrier->isDirty('balance')) {
+                return;
+            }
+
+            // مسموح: من داخل debit()/credit() عبر increment/decrement (يرفع العلم)
+            // أو من داخل LedgerBalanceMutationGuard::run (مسار الدفتر المعتمد)
+            if (self::$internalBalanceUpdate || LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+
+            // في الـ production: الـ guard شغال.
+            // في الـ tests افتراضياً: bypassed للـ backwards compatibility مع الـ tests القديمة.
+            // في الـ tests الجديدة (PrepaidCogsTest): config('accounting.strict_test_guards') = true → الـ guard شغال.
+            if (app()->runningUnitTests() && ! (bool) config('accounting.strict_test_guards', false)) {
+                return;
+            }
+
+            Log::warning('FlightCarrier balance mutation blocked', [
+                'flight_carrier_id' => $carrier->id,
+                'carrier_name' => $carrier->name,
+                'attempted_balance' => (float) $carrier->balance,
+                'original_balance' => (float) $carrier->getOriginal('balance'),
+                'user_id' => \Illuminate\Support\Facades\Auth::id(),
+            ]);
+
+            throw new \RuntimeException(
+                sprintf(
+                    'لا يمكن تعديل رصيد الناقل "%s" مباشرةً. استخدم زر "شحن رصيد" في Filament أو FlightCarrierRechargeService::rechargeFromAccount() لضمان تسجيل القيد المحاسبي الصحيح.',
+                    $carrier->name
+                )
+            );
+        });
+    }
+
+    /**
+     * تنفيذ آمن لـ increment/decrement على balance مع رفع العلم لكسر الـ observer guard.
+     */
+    protected function mutateBalanceInternal(float $delta, callable $mutator): void
+    {
+        self::$internalBalanceUpdate = true;
+        try {
+            $mutator();
+        } finally {
+            self::$internalBalanceUpdate = false;
+        }
+    }
 
     /**
      * يُضمَّن في JSON (قائمة الناقلين، Vue، وغيرها) حتى تُحسب الواجهة «المتاح» بشكل صحيح.
@@ -107,7 +174,7 @@ class FlightCarrier extends Model
         }
 
         $before = $this->balance;
-        $this->decrement('balance', $amount);
+        $this->mutateBalanceInternal($amount, fn () => $this->decrement('balance', $amount));
 
         return $this->transactions()->create([
             'flight_booking_id' => $bookingId,
@@ -123,7 +190,7 @@ class FlightCarrier extends Model
     public function credit(float $amount, string $description, int $userId, ?int $bookingId = null): AirlineTransaction
     {
         $before = $this->balance;
-        $this->increment('balance', $amount);
+        $this->mutateBalanceInternal($amount, fn () => $this->increment('balance', $amount));
 
         return $this->transactions()->create([
             'flight_booking_id' => $bookingId,

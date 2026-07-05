@@ -38,7 +38,12 @@ class FlightTreasuryResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('module_type', 'flights')
-            ->where('type', \App\Enums\AccountType::Cashbox->value);
+            ->where('type', \App\Enums\AccountType::Cashbox->value)
+            // استثناء حسابات الإقفال والرصيد المسبق والتسوية (حسابات داخلية)
+            ->where('name', 'not like', '%إقفال%')
+            ->where('name', 'not like', '%(نظام)%')
+            ->where('name', 'not like', '%رصيد مسبق%')
+            ->where('name', 'not like', '%تسوية%');
     }
 
     public static function form(Schema $schema): Schema

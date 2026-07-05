@@ -47,6 +47,12 @@ class FlightTreasuryController extends Controller
             ->where('is_active', true)
             ->whereIn('type', $accountTypes)
             ->where('module_type', 'flights')
+            // استثناء حسابات الإقفال والرصيد المسبق والتسوية
+            // (هذه حسابات وسيطة محاسبية وليست خزائن نقدية حقيقية)
+            ->where('name', 'not like', '%إقفال%')
+            ->where('name', 'not like', '%(نظام)%')
+            ->where('name', 'not like', '%رصيد مسبق%')
+            ->where('name', 'not like', '%تسوية%')
             ->orderBy('type')
             ->orderBy('name')
             ->get([

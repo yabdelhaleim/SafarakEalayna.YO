@@ -3,10 +3,13 @@
 namespace App\Models\Flight;
 
 use App\Models\User;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 #[Fillable([
     'name',
@@ -22,6 +25,68 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class FlightSystem extends Model
 {
     use SoftDeletes;
+
+    /**
+     * Flag يدل على أن التعديل جاي من debit()/credit() (مسار معتمد).
+     */
+    private static bool $internalBalanceUpdate = false;
+
+    /**
+     * Defense-in-depth: منع تعديل `balance` خارج نطاق debit()/credit() و LedgerBalanceMutationGuard.
+     *
+     * السبب: نفس مشكلة FlightCarrier — تعديل الرصيد من Filament بدون قيد محاسبي
+     * مقابل في Account ID=23 "رصيد مسبق أنظمة" كان يسبب عجزاً محاسبياً.
+     *
+     * @see app/Services/Flight/FlightSystemRechargeService.php
+     * @see app/Services/Finance/PrepaidLedgerService.php
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (FlightSystem $system): void {
+            if (! $system->isDirty('balance')) {
+                return;
+            }
+
+            if (self::$internalBalanceUpdate || LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+
+            // في الـ production: الـ guard شغال.
+            // في الـ tests افتراضياً: bypassed للـ backwards compatibility مع الـ tests القديمة.
+            // في الـ tests الجديدة (PrepaidCogsTest): config('accounting.strict_test_guards') = true → الـ guard شغال.
+            if (app()->runningUnitTests() && ! (bool) config('accounting.strict_test_guards', false)) {
+                return;
+            }
+
+            Log::warning('FlightSystem balance mutation blocked', [
+                'flight_system_id' => $system->id,
+                'system_name' => $system->name,
+                'attempted_balance' => (float) $system->balance,
+                'original_balance' => (float) $system->getOriginal('balance'),
+                'user_id' => Auth::id(),
+            ]);
+
+            throw new \RuntimeException(
+                sprintf(
+                    'لا يمكن تعديل رصيد نظام الحجز "%s" مباشرةً. استخدم زر "إعادة شحن" في Filament أو FlightSystemRechargeService::rechargeFromAccount() لضمان تسجيل القيد المحاسبي الصحيح.',
+                    $system->name
+                )
+            );
+        });
+    }
+
+    /**
+     * تنفيذ آمن لـ increment/decrement على balance مع رفع العلم لكسر الـ observer guard.
+     */
+    protected function mutateBalanceInternal(float $delta, callable $mutator): void
+    {
+        self::$internalBalanceUpdate = true;
+        try {
+            $mutator();
+        } finally {
+            self::$internalBalanceUpdate = false;
+        }
+    }
 
     protected $appends = [
         'available_balance',
@@ -71,7 +136,7 @@ class FlightSystem extends Model
         }
 
         $before = (float) $this->balance;
-        $this->decrement('balance', $amount);
+        $this->mutateBalanceInternal($amount, fn () => $this->decrement('balance', $amount));
 
         return $this->systemTransactions()->create([
             'flight_booking_id' => $bookingId,
@@ -87,7 +152,7 @@ class FlightSystem extends Model
     public function credit(float $amount, string $description, int $userId, ?int $bookingId = null): FlightSystemTransaction
     {
         $before = (float) $this->balance;
-        $this->increment('balance', $amount);
+        $this->mutateBalanceInternal($amount, fn () => $this->increment('balance', $amount));
 
         return $this->systemTransactions()->create([
             'flight_booking_id' => $bookingId,

@@ -90,7 +90,9 @@ class FlightCarrierResource extends Resource
                                 default => '',
                             })
                             ->default(0)
-                            ->required(),
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->helperText('هذا الـ Resource قديم. الرجاء استخدام "FlightCarriers" الجديد من القائمة الإدارية لشحن الرصيد وتسجيل القيد المحاسبي.'),
 
                         Forms\Components\TextInput::make('credit_limit')
                             ->label('حد الائتمان')

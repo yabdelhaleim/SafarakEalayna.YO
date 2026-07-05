@@ -133,6 +133,9 @@ class FlightSystemResource extends Resource
                                             ->default(0)
                                             ->step(0.01)
                                             ->required()
+                                            ->disabled()
+                                            ->dehydrated(false)
+                                            ->helperText('لا يمكن تعديل الرصيد مباشرة. استخدم زر "إعادة شحن" في القائمة لضمان تسجيل القيد المحاسبي الصحيح.')
                                             ->prefix(fn ($get) => match ($get('currency')) {
                                                 'EGP' => 'ج.م',
                                                 'KWD' => 'د.ك',

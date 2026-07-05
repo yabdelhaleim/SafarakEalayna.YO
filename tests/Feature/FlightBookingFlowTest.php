@@ -13,6 +13,7 @@ use App\Models\Flight\FlightSystem;
 use App\Models\User;
 use App\Mail\FlightBookingTicketMailable;
 use App\Services\Flight\FlightBookingService;
+use App\Services\Flight\FlightCarrierRechargeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -35,6 +36,15 @@ class FlightBookingFlowTest extends TestCase
 
     protected Account $treasuryAccount;
 
+    /**
+     * تم تحديث setUp ليستخدم FlightCarrierRechargeService (الـ proper flow) لشحن
+     * كل من carrier.balance و الـ prepaid GL account (رصيد مسبق ناقلي/أنظمة).
+     *
+     * كان setup القديم بيكتب balance مباشرة على الـ FlightCarrier — نفس الـ bug
+     * الذي كان يحصل في production بسبب Filament UI escape hatch.
+     *
+     * @see app/Services/Finance/PrepaidLedgerService.php
+     */
     protected function setUp(): void
     {
         parent::setUp();
@@ -73,29 +83,42 @@ class FlightBookingFlowTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        // Create flight carrier with balance
+        // Create flight carrier with balance = 0 (سيتم شحنه عبر RechargeService صح)
         $this->carrier = FlightCarrier::create([
             'name' => 'Test Airline',
             'code' => 'TA',
             'flight_system_id' => $this->flightSystem->id,
             'currency' => 'EGP',
-            'balance' => 100000,
+            'balance' => 0,
             'credit_limit' => 50000,
             'is_active' => true,
             'created_by' => $this->admin->id,
         ]);
 
-        // Create treasury account
+        // Treasury account به رصيد كافي لشحن carrier (100k) + الإبقاء على 50k للـ tests
         $this->treasuryAccount = Account::create([
             'name' => 'Main Treasury',
             'type' => 'treasury',
-            'balance' => 50000,
+            'balance' => 150000, // 100k شحن + 50k متبقي للـ tests
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'office',
             'created_by' => $this->admin->id,
         ]);
+
+        // شحن carrier.balance + Account "رصيد مسبق ناقلي" عبر RechargeService (الـ proper flow)
+        // ده يحاكي الـ flow الصحيح: الخزينة → رصيد مسبق → استهلاك عند الحجز
+        app(FlightCarrierRechargeService::class)->rechargeFromAccount(
+            $this->carrier,
+            $this->treasuryAccount,
+            100000.00,
+            'Test setup: شحن carrier'
+        );
+
+        // Sync الـ in-memory model مع الـ DB بعد الـ recharge
+        $this->carrier->refresh();
+        $this->treasuryAccount->refresh();
 
         Log::info('Test setup completed', [
             'admin_id' => $this->admin->id,
@@ -650,7 +673,13 @@ class FlightBookingFlowTest extends TestCase
 
     public function test_system_booking_debits_system_not_carrier_when_carrier_is_informational(): void
     {
-        $this->flightSystem->update(['balance' => 50000]);
+        // شحن رصيد نظام الحجز من الخزينة (الـ proper flow)
+        app(\App\Services\Flight\FlightSystemRechargeService::class)->rechargeFromAccount(
+            $this->flightSystem,
+            $this->treasuryAccount,
+            50000.00,
+            'Test setup: شحن flight system'
+        );
 
         $carrierBefore = (float) $this->carrier->balance;
         $systemBefore = (float) $this->flightSystem->fresh()->balance;

@@ -13,6 +13,7 @@ enum AccountType: string
     case Supplier = 'supplier';
     case Expense = 'expense';
     case Revenue = 'revenue';
+    case Owner = 'owner';
 
     public function label(): string
     {
@@ -26,6 +27,7 @@ enum AccountType: string
             self::Supplier => 'حساب مورد',
             self::Expense => 'مصروفات',
             self::Revenue => 'إيرادات',
+            self::Owner => 'حساب داخلي (نظام)',
         };
     }
 }

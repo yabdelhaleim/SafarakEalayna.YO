@@ -170,7 +170,7 @@ class LedgerClearingAccounts
             $account = Account::query()->firstOrCreate(
                 ['name' => $name],
                 [
-                    'type' => AccountType::Cashbox,
+                    'type' => AccountType::Owner,  // owner = حساب داخلي لا يظهر في الخزائن
                     'balance' => 0,
                     'currency' => 'EGP',
                     'is_active' => true,
@@ -211,7 +211,7 @@ class LedgerClearingAccounts
             $account = Account::query()->firstOrCreate(
                 ['name' => $name],
                 [
-                    'type' => AccountType::Cashbox,
+                    'type' => AccountType::Owner,  // owner = حساب داخلي لا يظهر في الخزائن
                     'balance' => 0,
                     'currency' => 'EGP',
                     'is_active' => true,

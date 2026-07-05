@@ -545,6 +545,8 @@ class TreasuryService
             ->where('name', 'not like', '%إقفال%')
             ->where('name', 'not like', '%(نظام)%')
             ->where('name', 'not like', '%ذممة%')
+            ->where('name', 'not like', '%رصيد مسبق%')
+            ->where('name', 'not like', '%تسوية%')
             ->get();
 
         $totalLiquidity = $tourismLiquidityAccounts->sum(fn ($acc) => (float) $acc->balance * $this->getAveragePurchaseRate($acc->currency));
