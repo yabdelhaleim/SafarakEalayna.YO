@@ -209,10 +209,10 @@
                     <span v-if="booking.passengers?.length" class="text-[10px] text-muted">({{ paxBreakdown(booking.passengers) }})</span>
                   </div>
                 </td>
-                <!-- GDS/System name -->
+                <!-- GDS/System name (or Carrier name if booked directly from carrier) -->
                 <td class="px-6 py-4">
                   <span class="text-xs font-semibold text-slate-300">
-                    {{ booking.flightSystem?.name || booking.systemTypeLabel }}
+                    {{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }}
                   </span>
                 </td>
                 <!-- Creator/Employee name -->
@@ -364,7 +364,7 @@
                   {{ booking.passengersCount }}
                 </span>
                 <span class="text-[10px] text-muted">
-                  ({{ booking.flightSystem?.name || booking.systemTypeLabel }})
+                  ({{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }})
                 </span>
               </div>
               <div :class="['flex items-center gap-1 font-bold font-mono', booking.pricing?.profit >= 0 ? 'text-success' : 'text-error']">

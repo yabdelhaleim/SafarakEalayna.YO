@@ -201,6 +201,8 @@ export const useFlightStore = defineStore('flight', {
         id: b.id,
         bookingNumber: b.booking_number || b.bookingNumber || '',
         systemType: b.system_type || b.systemType || 'manual',
+        systemTypeLabel: b.system_type_label || '',
+        systemDisplay: b.system_display || '',
         status: (b.status || 'pending').toLowerCase(),
         createdAt: b.created_at || b.createdAt || null,
         updatedAt: b.updated_at || b.updatedAt || null,

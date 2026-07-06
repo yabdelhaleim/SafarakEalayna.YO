@@ -33,12 +33,28 @@ class FlightBookingResource extends JsonResource
             default => 'غير مدفوع',
         };
 
+        // Resolved display name for the "system/carrier" column.
+        // Fallback chain: flightSystem → flightCarrier → airline_name (free text) → system_type enum label.
+        // قبل الـ fix: الحجوزات من carrier مباشرة (flight_system_id = null) كانت تظهر cell فاضي
+        // لأن الـ Vue template كان يعتمد على flightSystem?.name فقط.
+        $systemDisplay = null;
+        if ($this->relationLoaded('flightSystem') && $this->flightSystem) {
+            $systemDisplay = $this->flightSystem->name;
+        } elseif ($this->relationLoaded('flightCarrier') && $this->flightCarrier) {
+            // الـ carrier عنده system relation → استخدم اسم الـ system إن وُجد، وإلا اسم الـ carrier نفسه
+            $systemDisplay = $this->flightCarrier->system?->name ?? $this->flightCarrier->name;
+        } elseif ($this->airline_name) {
+            $systemDisplay = $this->airline_name;
+        }
+        $systemDisplay = $systemDisplay ?? $systemType->label();
+
         return [
             'id' => $this->id,
             'booking_number' => $this->booking_number,
             'agent_name' => $this->agent_name,
             'system_type' => $this->system_type,
             'system_type_label' => $systemType->label(),
+            'system_display' => $systemDisplay,
             'pnr' => $this->pnr,
             'airline_name' => $this->airline_name,
             'from_airport' => $this->from_airport,
