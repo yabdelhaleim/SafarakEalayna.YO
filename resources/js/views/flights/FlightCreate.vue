@@ -2762,12 +2762,10 @@ const pricingCurrencyOptions = computed(() => {
 });
 
 const sellingPriceEgp = computed(() => {
-  const sell = Number(form.value.selling_price) || 0;
-  if (form.value.currency === 'EGP') {
-    return sell;
-  }
-  const rate = Number(form.value.exchange_rate) || 1.0;
-  return sell * rate;
+  // حقل "سعر البيع للعميل" يكون دائماً بالجنيه المصري بصرف النظر عن عملة الشراء،
+  // فلا يجب ضربه في سعر الصرف — وإلا يطلب النظام من المستخدم إدخال قيمة بالدينار
+  // بينما الليبل يقول EGP.
+  return Number(form.value.selling_price) || 0;
 });
 
 const calculatedProfit = computed(() => {
