@@ -537,42 +537,67 @@ class FinancialReportService
                 }
 
                 // Deduce customer active department and module
+                // Priority: ledger account module_type → booking counts (fallback)
                 $custDept = 'office';
                 $custMod = 'general';
+                $deptFromAccount = false;
 
                 if ($c->ledgerAccount) {
                     $accModule = $c->ledgerAccount->module_type;
                     if (in_array($accModule, ['tourism', 'flights', 'hajj_umra', 'visas'])) {
                         $custDept = 'tourism';
                         $custMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : $accModule);
+                        $deptFromAccount = true;
                     } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet'])) {
                         $custDept = 'office';
                         $custMod = $accModule === 'office' ? 'general' : $accModule;
+                        $deptFromAccount = true;
                     }
                 }
 
-                if ($c->flight_bookings_count > 0 || $c->hajj_umra_bookings_count > 0 || $c->visa_bookings_count > 0) {
-                    $custDept = 'tourism';
-                    if ($c->flight_bookings_count > 0) {
-                        $custMod = 'flight';
-                    } elseif ($c->hajj_umra_bookings_count > 0) {
-                        $custMod = 'hajj_umra';
+                // Only use booking counts to determine department when the ledger account
+                // does NOT already point to a clear department (i.e. module_type is ambiguous).
+                // This prevents office customers who also have a flight booking from being
+                // misclassified as tourism and disappearing from the office receivables report.
+                if (! $deptFromAccount) {
+                    if ($c->flight_bookings_count > 0 || $c->hajj_umra_bookings_count > 0 || $c->visa_bookings_count > 0) {
+                        $custDept = 'tourism';
+                        if ($c->flight_bookings_count > 0) {
+                            $custMod = 'flight';
+                        } elseif ($c->hajj_umra_bookings_count > 0) {
+                            $custMod = 'hajj_umra';
+                        } else {
+                            $custMod = 'visa';
+                        }
                     } else {
-                        $custMod = 'visa';
+                        if ($c->bus_bookings_count > 0) {
+                            $custDept = 'office';
+                            $custMod = 'bus';
+                        } elseif ($c->fawry_transactions_count > 0) {
+                            $custDept = 'office';
+                            $custMod = 'fawry';
+                        } elseif ($c->online_transactions_count > 0) {
+                            $custDept = 'office';
+                            $custMod = 'online';
+                        } elseif ($c->wallet_transactions_count > 0) {
+                            $custDept = 'office';
+                            $custMod = 'wallet';
+                        }
                     }
                 } else {
-                    if ($c->bus_bookings_count > 0) {
-                        $custDept = 'office';
-                        $custMod = 'bus';
-                    } elseif ($c->fawry_transactions_count > 0) {
-                        $custDept = 'office';
-                        $custMod = 'fawry';
-                    } elseif ($c->online_transactions_count > 0) {
-                        $custDept = 'office';
-                        $custMod = 'online';
-                    } elseif ($c->wallet_transactions_count > 0) {
-                        $custDept = 'office';
-                        $custMod = 'wallet';
+                    // Account module_type gave us the department, but we can still refine
+                    // the module from booking counts if the module is still 'general'.
+                    if ($custMod === 'general') {
+                        if ($custDept === 'office') {
+                            if ($c->bus_bookings_count > 0) { $custMod = 'bus'; }
+                            elseif ($c->fawry_transactions_count > 0) { $custMod = 'fawry'; }
+                            elseif ($c->online_transactions_count > 0) { $custMod = 'online'; }
+                            elseif ($c->wallet_transactions_count > 0) { $custMod = 'wallet'; }
+                        } elseif ($custDept === 'tourism') {
+                            if ($c->flight_bookings_count > 0) { $custMod = 'flight'; }
+                            elseif ($c->hajj_umra_bookings_count > 0) { $custMod = 'hajj_umra'; }
+                            elseif ($c->visa_bookings_count > 0) { $custMod = 'visa'; }
+                        }
                     }
                 }
 

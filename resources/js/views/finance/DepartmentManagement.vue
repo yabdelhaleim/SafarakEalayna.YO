@@ -246,11 +246,16 @@
             <select v-model="entityFilter" class="filter-select">
               <option value="all">كل الجهات</option>
               <option value="customer">عملاء أفراد</option>
-              <option value="flight_group">مجموعات طيران</option>
-              <option value="airline_account">حسابات شركات الطيران</option>
-              <option value="visa_agent">وكلاء تأشيرات</option>
-              <option value="executing_company">شركات منفذة (حج)</option>
-              <option value="bus_company">شركات باصات</option>
+              <template v-if="isTourism">
+                <option value="flight_group">مجموعات طيران</option>
+                <option value="airline_account">حسابات شركات الطيران</option>
+                <option value="visa_agent">وكلاء تأشيرات</option>
+                <option value="executing_company">شركات منفذة (حج)</option>
+              </template>
+              <template v-else>
+                <option value="bus_company">شركات باصات</option>
+                <option value="supplier">موردون / شركات</option>
+              </template>
             </select>
           </div>
 
@@ -355,7 +360,15 @@ const payableItems = computed(() => allItems.value.filter(i => i.balance < 0));
 
 const filteredReceivables = computed(() => {
   let list = receivableItems.value;
-  if (entityFilter.value !== 'all') list = list.filter(i => i.entity_type === entityFilter.value);
+  if (entityFilter.value !== 'all') {
+    // 'bus_company' matches both the BusCompany entity type AND
+    // suppliers whose module is 'bus' (they come as entity_type='supplier')
+    if (entityFilter.value === 'bus_company') {
+      list = list.filter(i => i.entity_type === 'bus_company' || (i.entity_type === 'supplier' && i.module === 'bus'));
+    } else {
+      list = list.filter(i => i.entity_type === entityFilter.value);
+    }
+  }
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase();
     list = list.filter(i => i.name?.toLowerCase().includes(q) || i.phone?.toLowerCase().includes(q));
