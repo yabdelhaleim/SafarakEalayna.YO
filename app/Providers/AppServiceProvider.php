@@ -86,30 +86,32 @@ class AppServiceProvider extends ServiceProvider
         );
 
         // ════════════════════════════════════════════════════════════════════
-        // SAFETY NET (Phase 1): كشف أي UPDATE مباشر على flight_carriers.balance
-        // أو flight_systems.balance يتجاوز الـ Eloquent observer.
+        // SAFETY NET (Phase 1 + 1v2): كشف أي UPDATE مباشر على flight_carriers.balance
+        // أو flight_systems.balance أو airline_accounts.balance يتجاوز الـ Eloquent observer.
         //
         // الـ FlightCarrier::updating() observer يحمي من التعديل عبر Eloquent.
         // لكن DB::table('flight_carriers')->update(['balance' => ...]) يتخطاه.
         //
-        // نضيف DB::listen() يرصد أي UPDATE على عمود balance في الجدولين المحميين
+        // نضيف DB::listen() يرصد أي UPDATE على عمود balance في الـ 3 جداول المحمية
         // خارج سياق LedgerBalanceMutationGuard::run() — ويسجل Log::warning فقط
         // (لا يرمي exception عشان ما يكسرش migrations / seeders / artisan commands).
         //
         // @see app/Models/Flight/FlightCarrier.php
         // @see app/Models/Flight/FlightSystem.php
+        // @see app/Models/Flight/AirlineAccount.php  ← Phase 1v2
         // @see app/Services/Flight/FlightCarrierRechargeService.php (الطريق المعتمد)
         // ════════════════════════════════════════════════════════════════════
         Event::listen(QueryExecuted::class, function (QueryExecuted $event): void {
             $sql = strtolower(trim($event->sql));
 
-            // فقط استعلامات UPDATE على الجدولين المحميين
+            // فقط استعلامات UPDATE على الـ 3 جداول المحمية
             if (! str_starts_with($sql, 'update')) {
                 return;
             }
-            $touchingCarrier = str_contains($sql, 'flight_carriers') && str_contains($sql, 'balance');
-            $touchingSystem  = str_contains($sql, 'flight_systems') && str_contains($sql, 'balance');
-            if (! $touchingCarrier && ! $touchingSystem) {
+            $touchingCarrier  = str_contains($sql, 'flight_carriers')  && str_contains($sql, 'balance');
+            $touchingSystem   = str_contains($sql, 'flight_systems')   && str_contains($sql, 'balance');
+            $touchingAirline  = str_contains($sql, 'airline_accounts') && str_contains($sql, 'balance');
+            if (! $touchingCarrier && ! $touchingSystem && ! $touchingAirline) {
                 return;
             }
 
@@ -130,7 +132,12 @@ class AppServiceProvider extends ServiceProvider
                 ->first(fn ($f) => isset($f['file']) && ! str_contains($f['file'], '/vendor/'))
                 ?? [];
 
-            $tableName = $touchingCarrier ? 'flight_carriers' : 'flight_systems';
+            $tableName = match (true) {
+                $touchingCarrier => 'flight_carriers',
+                $touchingSystem  => 'flight_systems',
+                $touchingAirline => 'airline_accounts',
+                default          => 'unknown',
+            };
             $sqlPreview = mb_substr($event->sql, 0, 200);
             $callerFile = $caller['file'] ?? '?';
             $callerLine = (int) ($caller['line'] ?? 0);
@@ -146,7 +153,7 @@ class AppServiceProvider extends ServiceProvider
                 'binding_count' => count($event->bindings ?? []),
                 'connection' => $connection,
                 'user_id' => Auth::id(),
-                'hint' => 'استخدم FlightCarrierRechargeService::rechargeFromAccount() أو debit()/credit() بدلاً من ذلك.',
+                'hint' => 'استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك.',
             ]);
 
             // ───────────────────────────────────────────────────────────────

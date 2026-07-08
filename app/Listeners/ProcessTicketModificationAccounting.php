@@ -8,6 +8,7 @@ use App\Models\AccountEntry;
 use App\Models\Flight\AirlineAccount;
 use App\Models\Flight\TicketModification;
 use App\Models\Transaction;
+use App\Services\Flight\AirlineAccountDebitService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\DB;
@@ -53,9 +54,30 @@ class ProcessTicketModificationAccounting implements ShouldQueue
 
                 if ($airlineAccount) {
                     $userId = $modification->modified_by ?? 1;
-                    $tx = $airlineAccount->debit((float) $modification->airline_change_fee, $booking->id, $userId);
-                    $tx->description = "غرامة تعديل تذكرة #{$booking->booking_reference}";
-                    $tx->save();
+
+                    // ✅ Phase 1v2 FIX: استخدام AirlineAccountDebitService
+                    //    بدل $airlineAccount->debit() المباشر
+                    //    الـ service ده بي:
+                    //      - يعمل debit للـ AirlineAccount.balance (آمن)
+                    //      - ينشئ GL entries متوازنة على prepaid flight_carrier GL
+                    //      - يحمي من desync محاسبي
+                    try {
+                        app(AirlineAccountDebitService::class)->debitForModification(
+                            $airlineAccount,
+                            $booking,
+                            $modification,
+                            $userId,
+                        );
+                    } catch (\App\Exceptions\InsufficientBalanceException $e) {
+                        // الـ prepaid GL غير كافٍ — لازم نشحن الناقل الأول
+                        Log::error('Phase 1v2: insufficient prepaid GL for airline modification', [
+                            'modification_id' => $modification->id,
+                            'booking_id' => $booking->id,
+                            'airline_account_id' => $airlineAccount->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        throw $e;
+                    }
                 } else {
                     throw new \RuntimeException("حساب الطيران المرتبط بالحجز غير نشط أو غير موجود.");
                 }
