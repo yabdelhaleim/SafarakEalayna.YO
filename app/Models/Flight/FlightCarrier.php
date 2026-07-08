@@ -17,7 +17,10 @@ use Illuminate\Support\Facades\Log;
     'code',
     'iata_code',
     'currency',
-    'balance',
+    // ⚠️ 'balance' intentionally REMOVED — ممنوع التعديل الجماعي المباشر (mass assignment).
+    //    يجب استخدام FlightCarrierRechargeService::rechargeFromAccount() فقط.
+    //    السبب: تعديل balance بدون update للحساب المسبق
+    //    (Account "رصيد مسبق — ناقلو الطيران") يسبب desync محاسبي.
     'credit_limit',
     'is_active',
     'notes',
@@ -93,7 +96,7 @@ class FlightCarrier extends Model
     }
 
     /**
-     * يُضمَّن في JSON (قائمة الناقلين، Vue، وغيرها) حتى تُحسب الواجهة «المتاح» بشكل صحيح.
+     * يُضمَّن في JSON (قائمة الناقلين، Vue، وغيرها) حتى تُحسب الواجهة «المتاح» بشكل صحيح.
      *
      * @var list<string>
      */
@@ -104,6 +107,11 @@ class FlightCarrier extends Model
     protected function casts(): array
     {
         return [
+            // ⚠️ 'balance' ممنوع تعديله مباشرةً:
+            //   - ليس في $fillable (لا mass assignment)
+            //   - لا يُقبل التعديل إلا من داخل debit()/credit() أو LedgerBalanceMutationGuard::run()
+            //   - أي محاولة فردية تعدّله ترمي RuntimeException
+            //   - لتعديل الرصيد: FlightCarrierRechargeService::rechargeFromAccount()
             'balance' => 'decimal:2',
             'credit_limit' => 'decimal:2',
             'is_active' => 'boolean',

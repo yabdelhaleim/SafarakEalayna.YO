@@ -34,7 +34,7 @@ use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightPassenger;
 use App\Models\Flight\FlightPayment;
-use App\Models\Flight\FlightPricing;
+use App\Models\FlightPricing;
 use App\Models\Flight\FlightRefund;
 use App\Models\Flight\FlightSegment;
 use App\Models\Flight\FlightSystemTransaction;
@@ -68,7 +68,7 @@ echo "  ✓ ملف التأكيد موجود ({$confirmFile})\n";
 // [1] البحث عن الحجز
 // ─────────────────────────────────────────────────────────────
 $booking = FlightBooking::withTrashed()
-    ->with(['customer.account', 'flightCarrier', 'flightSystem', 'flightGroup', 'account'])
+    ->with(['customer.ledgerAccount', 'flightCarrier', 'flightSystem', 'flightGroup', 'account'])
     ->where(function ($q) use ($bookingRef) {
         $q->where('booking_reference', $bookingRef)
             ->orWhere('booking_number', $bookingRef)
@@ -116,8 +116,8 @@ printf("  Selling:        %.2f EGP\n", (float) $booking->selling_price);
 printf("  Paid:           %.2f EGP\n", (float) $booking->payments()->sum('amount'));
 
 // حفظ الأرصدة قبل
-$customerBalanceBefore = $booking->customer?->account
-    ? (float) $booking->customer->account->balance
+$customerBalanceBefore = $booking->customer?->ledgerAccount
+    ? (float) $booking->customer->ledgerAccount->balance
     : 0.0;
 $carrierBalanceBefore = $booking->flightCarrier
     ? (float) $booking->flightCarrier->available_balance
@@ -186,7 +186,7 @@ try {
 
             try {
                 $refund = $svc->cancelBooking($booking->fresh([
-                    'customer.account', 'flightCarrier', 'flightSystem', 'flightGroup',
+                    'customer.ledgerAccount', 'flightCarrier', 'flightSystem', 'flightGroup',
                     'passengers', 'tickets', 'segments', 'payments',
                 ]), [
                     'airline_penalty' => 0,

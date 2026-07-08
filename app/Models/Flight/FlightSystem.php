@@ -17,7 +17,10 @@ use Illuminate\Support\Facades\Log;
     'type',
     'is_active',
     'currency',
-    'balance',
+    // ⚠️ 'balance' intentionally REMOVED — ممنوع التعديل الجماعي المباشر (mass assignment).
+    //    يجب استخدام FlightSystemRechargeService::rechargeFromAccount() فقط.
+    //    السبب: تعديل balance بدون update للحساب المسبق
+    //    (Account "رصيد مسبق — أنظمة حجز الطيران") يسبب desync محاسبي.
     'credit_limit',
     'description',
     'created_by',
@@ -96,6 +99,11 @@ class FlightSystem extends Model
     {
         return [
             'is_active' => 'boolean',
+            // ⚠️ 'balance' ممنوع تعديله مباشرةً:
+            //   - ليس في $fillable (لا mass assignment)
+            //   - لا يُقبل التعديل إلا من داخل debit()/credit() أو LedgerBalanceMutationGuard::run()
+            //   - أي محاولة فردية تعدّله ترمي RuntimeException
+            //   - لتعديل الرصيد: FlightSystemRechargeService::rechargeFromAccount()
             'balance' => 'decimal:2',
             'credit_limit' => 'decimal:2',
         ];

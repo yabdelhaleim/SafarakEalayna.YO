@@ -23,7 +23,7 @@ use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightPassenger;
 use App\Models\Flight\FlightPayment;
-use App\Models\Flight\FlightPricing;
+use App\Models\FlightPricing;
 use App\Models\Flight\FlightRefund;
 use App\Models\Flight\FlightSegment;
 use App\Models\Flight\FlightSystemTransaction;
@@ -44,7 +44,7 @@ echo "=========================================================\n";
 // ─────────────────────────────────────────────────────────────
 $booking = FlightBooking::withTrashed()
     ->with([
-        'customer.account',
+        'customer.ledgerAccount',
         'employee.user',
         'account',
         'airlineAccount',
@@ -112,8 +112,8 @@ printf("  Created By:        %s (id=%s)\n",
 );
 
 echo "\n  Customer: {$booking->customer?->full_name} (id={$booking->customer_id})\n";
-if ($booking->customer?->account) {
-    $custAcc = $booking->customer->account;
+if ($booking->customer?->ledgerAccount) {
+    $custAcc = $booking->customer->ledgerAccount;
     printf("    Customer Account: #%d \"%s\" | balance=%.2f %s\n",
         $custAcc->id, $custAcc->name, (float) $custAcc->balance, $custAcc->currency
     );
@@ -151,18 +151,18 @@ if ($booking->account) {
 echo "\n[2] السجلات المرتبطة\n";
 echo "─────────────────────────────────────────────────────────\n";
 
-$passengers = FlightPassenger::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$tickets    = FlightTicket::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$segments   = FlightSegment::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$payments   = FlightPayment::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$refunds    = FlightRefund::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$pricings   = FlightPricing::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$airlineTx  = AirlineTransaction::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$systemTx   = FlightSystemTransaction::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$groupTx    = FlightGroupTransaction::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$airlineCr  = AirlineCredit::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$refundReq  = RefundRequest::withTrashed()->where('flight_booking_id', $bookingId)->get();
-$mods       = TicketModification::withTrashed()->where('booking_id', $bookingId)->get();
+$passengers = FlightPassenger::where('flight_booking_id', $bookingId)->get();
+$tickets    = FlightTicket::where('flight_booking_id', $bookingId)->get();
+$segments   = FlightSegment::where('flight_booking_id', $bookingId)->get();
+$payments   = FlightPayment::where('flight_booking_id', $bookingId)->get();
+$refunds    = FlightRefund::where('flight_booking_id', $bookingId)->get();
+$pricings   = FlightPricing::where('flight_booking_id', $bookingId)->get();
+$airlineTx  = AirlineTransaction::where('flight_booking_id', $bookingId)->get();
+$systemTx   = FlightSystemTransaction::where('flight_booking_id', $bookingId)->get();
+$groupTx    = FlightGroupTransaction::where('flight_booking_id', $bookingId)->get();
+$airlineCr  = AirlineCredit::where('flight_booking_id', $bookingId)->get();
+$refundReq  = RefundRequest::where('flight_booking_id', $bookingId)->get();
+$mods       = TicketModification::where('booking_id', $bookingId)->get();
 
 printf("  Passengers:                %d\n", $passengers->count());
 printf("  Tickets:                   %d\n", $tickets->count());
@@ -213,9 +213,9 @@ echo "\n[3] القيود المحاسبية (Transactions / AccountEntries)\n";
 echo "─────────────────────────────────────────────────────────\n";
 
 $relatedType = 'App\\Models\\Flight\\FlightBooking';
-$txs = Transaction::withTrashed()
-    ->where('related_type', $relatedType)
+$txs = Transaction::where('related_type', $relatedType)
     ->where('related_id', $bookingId)
+    ->with(['fromAccount:id,name,type,module_type,currency', 'toAccount:id,name,type,module_type,currency'])
     ->orderBy('id')
     ->get();
 
@@ -224,8 +224,7 @@ printf("  عدد القيود المرتبطة: %d\n", $txs->count());
 $txIds = $txs->pluck('id')->toArray();
 $entries = collect();
 if (! empty($txIds)) {
-    $entries = AccountEntry::withTrashed()
-        ->whereIn('transaction_id', $txIds)
+    $entries = AccountEntry::whereIn('transaction_id', $txIds)
         ->with('account:id,name,type,module_type,currency')
         ->orderBy('id')
         ->get();
@@ -235,15 +234,20 @@ printf("  عدد القيود الفرعية (AccountEntry): %d\n", $entries->co
 if ($txs->count() > 0) {
     echo "\n  ── Transactions ──\n";
     foreach ($txs as $t) {
-        printf("    Tx#%-5d | %-12s | amount=%10.2f | from=%-5s | to=%-5s | mod=%s | notes=%s\n",
+        try {
+            $modStr = $t->module instanceof \BackedEnum ? (string) $t->module->value : (string) ($t->module ?? '-');
+        } catch (\Throwable $e) {
+            $modStr = '-';
+        }
+        $fromAcc = $t->fromAccount ? sprintf('%d/%s', $t->from_account_id, mb_substr($t->fromAccount->name, 0, 20)) : ($t->from_account_id ?? '-');
+        $toAcc   = $t->toAccount   ? sprintf('%d/%s', $t->to_account_id,   mb_substr($t->toAccount->name,   0, 20)) : ($t->to_account_id ?? '-');
+        printf("    Tx#%-5d | %-10s | amount=%12.2f | from=%-25s | to=%-25s | mod=%s\n",
             $t->id,
             $t->type?->value ?? '-',
             (float) $t->amount,
-            $t->from_account_id ?? '-',
-            $t->to_account_id ?? '-',
-            $t->module ?? '-',
-            mb_substr((string) ($t->notes ?? ''), 0, 60)
+            $fromAcc, $toAcc, $modStr
         );
+        printf("             notes: %s\n", mb_substr((string) ($t->notes ?? ''), 0, 90));
     }
 }
 
@@ -266,8 +270,8 @@ if ($entries->count() > 0) {
 echo "\n[4] أرصدة قبل الحذف\n";
 echo "─────────────────────────────────────────────────────────\n";
 
-$customerBalanceBefore = $booking->customer?->account
-    ? (float) $booking->customer->account->balance
+$customerBalanceBefore = $booking->customer?->ledgerAccount
+    ? (float) $booking->customer->ledgerAccount->balance
     : 0.0;
 $carrierBalanceBefore = $booking->flightCarrier
     ? (float) $booking->flightCarrier->available_balance

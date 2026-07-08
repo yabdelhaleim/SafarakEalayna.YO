@@ -138,6 +138,68 @@ class FlightSystemResource extends Resource
             ->actions([
                 \Filament\Actions\ViewAction::make(),
                 \Filament\Actions\EditAction::make(),
+
+                // 🔒 زر الشحن — الطريق الوحيد لزيادة رصيد نظام الحجز.
+                // يستدعي FlightSystemRechargeService::rechargeFromAccount() الذي يحدّث:
+                //   1) flight_systems.balance (عن طريق debit()/credit() الآمن)
+                //   2) account "رصيد مسبق — أنظمة حجز الطيران" (Prepaid GL Account) — في نفس DB transaction
+                Tables\Actions\Action::make('rechargeBalance')
+                    ->label('إعادة شحن')
+                    ->icon('heroicon-o-arrow-trending-up')
+                    ->color('success')
+                    ->visible(fn (FlightSystem $record): bool => (bool) $record->is_active)
+                    ->modalHeading(fn (FlightSystem $record): string => 'شحن رصيد نظام: '.$record->name.' ('.$record->code.')')
+                    ->modalDescription(fn (FlightSystem $record): string => 'العملة: '.$record->currency.
+                        ' — الرصيد الحالي: '.number_format((float) $record->balance, 2).' '.$record->currency.
+                        ' — يُخصم من حساب تحصيل بنفس العملة. الطريق الوحيد لتعديل الرصيد.'
+                    )
+                    ->form([
+                        Forms\Components\Select::make('from_account_id')
+                            ->label('من حساب (محفظة / بنك / خزينة)')
+                            ->options(function (FlightSystem $record) {
+                                return self::accountOptionsForSystem($record);
+                            })
+                            ->required()
+                            ->searchable()
+                            ->native(false)
+                            ->helperText('فقط الحسابات النشطة بعملة النظام.'),
+                        Forms\Components\TextInput::make('amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->required()
+                            ->minValue(0.01)
+                            ->step(0.01),
+                        Forms\Components\Textarea::make('notes')
+                            ->label('ملاحظات (اختياري)')
+                            ->rows(2)
+                            ->maxLength(500),
+                    ])
+                    ->action(function (FlightSystem $record, array $data): void {
+                        $account = Account::query()->findOrFail((int) $data['from_account_id']);
+                        $amount = (float) $data['amount'];
+                        $notes = filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null;
+
+                        try {
+                            app(FlightSystemRechargeService::class)->rechargeFromAccount(
+                                $record,
+                                $account,
+                                $amount,
+                                $notes,
+                            );
+                            Notification::make()
+                                ->title('تم شحن رصيد النظام بنجاح')
+                                ->body('الرصيد الجديد: '.number_format($record->fresh()->balance, 2).' '.$record->currency)
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('تعذر تنفيذ الشحن')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
                 \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
@@ -162,5 +224,58 @@ class FlightSystemResource extends Resource
             'create' => Pages\CreateFlightSystem::route('/create'),
             'edit' => Pages\EditFlightSystem::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * خيارات الحسابات المتاحة لشحن رصيد نظام الحجز (نفس العملة فقط).
+     *
+     * @return array<int, string>
+     */
+    protected static function accountOptionsForSystem(FlightSystem $system): array
+    {
+        $types = [
+            AccountType::Cashbox->value,
+            AccountType::Wallet->value,
+            AccountType::Bank->value,
+            AccountType::Treasury->value,
+        ];
+
+        return Account::query()
+            ->where('is_active', true)
+            ->where('module_type', 'flights')
+            ->whereIn('type', $types)
+            ->where('currency', $system->currency)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(fn (Account $a) => [$a->id => self::accountOptionLabel($a)])
+            ->all();
+    }
+
+    protected static function accountOptionLabel(Account $a): string
+    {
+        $typeVal = $a->type instanceof BackedEnum ? $a->type->value : (string) $a->type;
+        $bal = number_format((float) $a->balance, 2);
+        $cur = $a->currency ?? 'EGP';
+
+        if ($typeVal === AccountType::Wallet->value) {
+            $prov = $a->wallet_provider instanceof BackedEnum
+                ? $a->wallet_provider->value
+                : (string) ($a->wallet_provider ?? '');
+            $pl = WalletProvider::tryFrom($prov)?->label() ?? ($prov !== '' ? $prov : 'محفظة');
+            $num = trim((string) ($a->wallet_number ?? ''));
+            $mid = $num !== '' ? "{$pl} — {$num}" : $pl;
+
+            return "{$a->name} — {$mid} — {$bal} {$cur}";
+        }
+
+        $typeLabel = match ($typeVal) {
+            AccountType::Cashbox->value => 'نقدي / درج',
+            AccountType::Treasury->value => 'خزينة عامة',
+            AccountType::Bank->value => 'بنك',
+            default => $typeVal,
+        };
+
+        return "{$a->name} — {$typeLabel} — {$bal} {$cur}";
     }
 }
