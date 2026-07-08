@@ -24,3 +24,9 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# 2026-07-08 Balance-Incident Archive (debug + backups)
+/backup_*.sql
+/backup_pre_*.sql
+/diag_chunk_*
+/tmp_diag_*
