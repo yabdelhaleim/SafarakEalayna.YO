@@ -6,7 +6,6 @@ use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
@@ -25,7 +24,8 @@ use Illuminate\Support\Facades\Log;
 ])]
 class AirlineAccount extends Model
 {
-    use SoftDeletes;
+    // ملاحظة: مفيش use SoftDeletes — جدول airline_accounts ما عندوش deleted_at column
+    // (الـ schema قديم — الحذف يكون hard delete فقط).
 
     /**
      * Flag يدل على أن التعديل جاي من debit()/credit() (مسار معتمد).
