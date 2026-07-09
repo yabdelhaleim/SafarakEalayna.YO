@@ -31,6 +31,7 @@ use App\Models\AuditLog;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Transaction;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -341,113 +342,119 @@ if (! $apply) {
 
             echo "  ✓ All locks acquired.\n\n";
 
-            // ── Apply each case ──
-            $caseResults = [];
-            $runningWriteoffBalance = (float) $accountsLocked[$writeoffAccount->id]->balance;
-            $runningContraBalance = (float) $accountsLocked[$writeoffContraAccount->id]->balance;
+            // ── Apply each case (wrapped in LedgerBalanceMutationGuard) ──
+            // The Guard sets a static flag that allows FlightCarrier/FlightSystem
+            // models to bypass the "no direct balance mutation" rule.
+            $caseResults = LedgerBalanceMutationGuard::run(function () use ($cases, $writeoffAccount, $writeoffContraAccount, $carriersLocked, $systemsLocked, $accountsLocked) {
+                $results = [];
+                $runningWriteoffBalance = (float) $accountsLocked[$writeoffAccount->id]->balance;
+                $runningContraBalance = (float) $accountsLocked[$writeoffContraAccount->id]->balance;
 
-            foreach ($cases as $index => $case) {
-                $caseNum = $index + 1;
-                $modelClass = $case['type'] === 'carrier' ? FlightCarrier::class : FlightSystem::class;
-                $entityLocked = $case['type'] === 'carrier'
-                    ? $carriersLocked[$case['id']]
-                    : $systemsLocked[$case['id']];
+                foreach ($cases as $index => $case) {
+                    $caseNum = $index + 1;
+                    $modelClass = $case['type'] === 'carrier' ? FlightCarrier::class : FlightSystem::class;
+                    $entityLocked = $case['type'] === 'carrier'
+                        ? $carriersLocked[$case['id']]
+                        : $systemsLocked[$case['id']];
 
-                $balanceAtLock = (float) $entityLocked->balance;
-                $writeoffAmount = (float) $case['amount'];
-                $newBalance = $balanceAtLock - $writeoffAmount;
+                    $balanceAtLock = (float) $entityLocked->balance;
+                    $writeoffAmount = (float) $case['amount'];
+                    $newBalance = $balanceAtLock - $writeoffAmount;
 
-                echo "  ▸ Case #{$caseNum}: {$case['name']}\n";
-                echo "    Balance: {$balanceAtLock} → {$newBalance} (-{$writeoffAmount})\n";
+                    echo "  ▸ Case #{$caseNum}: {$case['name']}\n";
+                    echo "    Balance: {$balanceAtLock} → {$newBalance} (-{$writeoffAmount})\n";
 
-                // ① Transaction header
-                $transaction = Transaction::create([
-                    'type'            => 'writeoff',
-                    'amount'          => $writeoffAmount,
-                    'from_account_id' => null, // P&L
-                    'to_account_id'   => $writeoffAccount->id,
-                    'module'          => 'flight',
-                    'related_type'    => $modelClass,
-                    'related_id'      => $entityLocked->id,
-                    'notes'           => "Write-off approved by company owner on 2026-07-08 - " .
-                                       "Value: {$writeoffAmount} EGP - " .
-                                       "Reference: Phase 2 + 3a report (BALANCE_TOUCHPOINTS_MAP.md) - " .
-                                       "{$case['name']} (id={$entityLocked->id})",
-                    'created_by'      => Auth::id() ?? 1,
-                ]);
+                    // ① Transaction header
+                    $transaction = Transaction::create([
+                        'type'            => 'writeoff',
+                        'amount'          => $writeoffAmount,
+                        'from_account_id' => null, // P&L
+                        'to_account_id'   => $writeoffAccount->id,
+                        'module'          => 'flight',
+                        'related_type'    => $modelClass,
+                        'related_id'      => $entityLocked->id,
+                        'notes'           => "Write-off approved by company owner on 2026-07-08 - " .
+                                           "Value: {$writeoffAmount} EGP - " .
+                                           "Reference: Phase 2 + 3a report (BALANCE_TOUCHPOINTS_MAP.md) - " .
+                                           "{$case['name']} (id={$entityLocked->id})",
+                        'created_by'      => Auth::id() ?? 1,
+                    ]);
 
-                // ② DEBIT entry (writeoff expense)
-                $runningWriteoffBalance += $writeoffAmount;
-                $writeoffEntry = AccountEntry::create([
-                    'account_id'      => $writeoffAccount->id,
-                    'transaction_id'  => $transaction->id,
-                    'debit'           => $writeoffAmount,
-                    'credit'          => 0,
-                    'balance_after'   => $runningWriteoffBalance,
-                    'notes'           => "Write-off for {$case['name']} (Phase 3b v3, approved by company owner) [DEBIT side: expense recognized]",
-                ]);
+                    // ② DEBIT entry (writeoff expense)
+                    $runningWriteoffBalance += $writeoffAmount;
+                    $writeoffEntry = AccountEntry::create([
+                        'account_id'      => $writeoffAccount->id,
+                        'transaction_id'  => $transaction->id,
+                        'debit'           => $writeoffAmount,
+                        'credit'          => 0,
+                        'balance_after'   => $runningWriteoffBalance,
+                        'notes'           => "Write-off for {$case['name']} (Phase 3b v3, approved by company owner) [DEBIT side: expense recognized]",
+                    ]);
 
-                // ③ CREDIT entry (contra for double-entry)
-                $runningContraBalance += $writeoffAmount;
-                $writeoffContraEntry = AccountEntry::create([
-                    'account_id'      => $writeoffContraAccount->id,
-                    'transaction_id'  => $transaction->id,
-                    'debit'           => 0,
-                    'credit'          => $writeoffAmount,
-                    'balance_after'   => $runningContraBalance,
-                    'notes'           => "Write-off for {$case['name']} (Phase 3b v3) [CREDIT side: contra for double-entry]",
-                ]);
+                    // ③ CREDIT entry (contra for double-entry)
+                    $runningContraBalance += $writeoffAmount;
+                    $writeoffContraEntry = AccountEntry::create([
+                        'account_id'      => $writeoffContraAccount->id,
+                        'transaction_id'  => $transaction->id,
+                        'debit'           => 0,
+                        'credit'          => $writeoffAmount,
+                        'balance_after'   => $runningContraBalance,
+                        'notes'           => "Write-off for {$case['name']} (Phase 3b v3) [CREDIT side: contra for double-entry]",
+                    ]);
 
-                // ④ Update entity balance
-                $entityLocked->balance = $newBalance;
-                $entityLocked->save();
+                    // ④ Update entity balance — allowed inside LedgerBalanceMutationGuard
+                    $entityLocked->balance = $newBalance;
+                    $entityLocked->save();
 
-                // ⑤ Update both account balances
-                $accountsLocked[$writeoffAccount->id]->balance = $runningWriteoffBalance;
-                $accountsLocked[$writeoffAccount->id]->save();
-                $accountsLocked[$writeoffContraAccount->id]->balance = $runningContraBalance;
-                $accountsLocked[$writeoffContraAccount->id]->save();
+                    // ⑤ Update both account balances (Account model — no restriction)
+                    $accountsLocked[$writeoffAccount->id]->balance = $runningWriteoffBalance;
+                    $accountsLocked[$writeoffAccount->id]->save();
+                    $accountsLocked[$writeoffContraAccount->id]->balance = $runningContraBalance;
+                    $accountsLocked[$writeoffContraAccount->id]->save();
 
-                // ⑥ AuditLog (inside the transaction → atomic)
-                $auditLog = AuditLog::create([
-                    'user_id'      => Auth::id() ?? 1,
-                    'action'       => 'writeoff_phase3b_v3',
-                    'model_type'   => $modelClass,
-                    'model_id'     => $entityLocked->id,
-                    'ip_address'   => '127.0.0.1',
-                    'user_agent'   => 'phase3b_v3_writeoff_7desyncs',
-                    'old_values'   => ['balance' => $balanceAtLock],
-                    'new_values'   => ['balance' => $newBalance],
-                    'notes'        => "Write-off معتمد من صاحب الشركة بتاريخ 2026-07-08 - " .
-                                      "القيمة: {$writeoffAmount} - Transaction #{$transaction->id}",
-                ]);
+                    // ⑥ AuditLog (inside the transaction → atomic)
+                    $auditLog = AuditLog::create([
+                        'user_id'      => Auth::id() ?? 1,
+                        'action'       => 'writeoff_phase3b_v3',
+                        'model_type'   => $modelClass,
+                        'model_id'     => $entityLocked->id,
+                        'ip_address'   => '127.0.0.1',
+                        'user_agent'   => 'phase3b_v3_writeoff_7desyncs',
+                        'old_values'   => ['balance' => $balanceAtLock],
+                        'new_values'   => ['balance' => $newBalance],
+                        'notes'        => "Write-off معتمد من صاحب الشركة بتاريخ 2026-07-08 - " .
+                                          "القيمة: {$writeoffAmount} - Transaction #{$transaction->id}",
+                    ]);
 
-                // ⑦ Log to application log
-                Log::info('Phase 3b v3: Write-off applied (atomic)', [
-                    'case_num' => $caseNum,
-                    'entity_type' => $case['type'],
-                    'entity_id'   => $entityLocked->id,
-                    'entity_name' => $case['name'],
-                    'amount'      => $writeoffAmount,
-                    'balance_before' => $balanceAtLock,
-                    'balance_after'  => $newBalance,
-                    'tx_id' => $transaction->id,
-                ]);
+                    // ⑦ Log to application log
+                    Log::info('Phase 3b v3: Write-off applied (atomic)', [
+                        'case_num' => $caseNum,
+                        'entity_type' => $case['type'],
+                        'entity_id'   => $entityLocked->id,
+                        'entity_name' => $case['name'],
+                        'amount'      => $writeoffAmount,
+                        'balance_before' => $balanceAtLock,
+                        'balance_after'  => $newBalance,
+                        'tx_id' => $transaction->id,
+                    ]);
 
-                echo "    ✓ TX #{$transaction->id}, DEBIT entry #{$writeoffEntry->id}, CREDIT entry #{$writeoffContraEntry->id}, AuditLog #{$auditLog->id}\n\n";
+                    echo "    ✓ TX #{$transaction->id}, DEBIT entry #{$writeoffEntry->id}, CREDIT entry #{$writeoffContraEntry->id}, AuditLog #{$auditLog->id}\n\n";
 
-                $caseResults[] = [
-                    'case_num' => $caseNum,
-                    'tx_id' => $transaction->id,
-                    'audit_log_id' => $auditLog->id,
-                    'debit_entry_id' => $writeoffEntry->id,
-                    'credit_entry_id' => $writeoffContraEntry->id,
-                    'entity_name' => $case['name'],
-                    'amount' => $writeoffAmount,
-                    'balance_before' => $balanceAtLock,
-                    'balance_after' => $newBalance,
-                ];
-            }
+                    $results[] = [
+                        'case_num' => $caseNum,
+                        'tx_id' => $transaction->id,
+                        'audit_log_id' => $auditLog->id,
+                        'debit_entry_id' => $writeoffEntry->id,
+                        'credit_entry_id' => $writeoffContraEntry->id,
+                        'entity_name' => $case['name'],
+                        'amount' => $writeoffAmount,
+                        'balance_before' => $balanceAtLock,
+                        'balance_after' => $newBalance,
+                    ];
+                }
+
+                return $results;
+            });
 
             // ═══════════════════════════════════════════════════════════
             // [E.3] PRE-COMMIT SANITY CHECK (throw = rollback all)
@@ -503,7 +510,7 @@ if (! $apply) {
 
             echo "  ✅ PRE-COMMIT SANITY CHECK PASSED — committing transaction.\n\n";
 
-            return $caseResults;
+            return $caseResults;  // returned from LedgerBalanceMutationGuard
         });
 
         // ═══════════════════════════════════════════════════════════
