@@ -163,7 +163,7 @@ if (! $writeoffContraAccount) {
                 'updated_at'  => $now2,
             ]);
             $writeoffContraAccount = Account::where('name', 'مقابل شطب أرصدة الناقلين - طيران')->first();
-            echo "    ✓ Created: id={$writeoffContraAccount->id}, balance={$writeoffContraAccount->balance}, type={$writeoffContraAccount->type}\n\n";
+            echo "    ✓ Created: id={$writeoffContraAccount->id}, balance={$writeoffContraAccount->balance}, type=" . ($writeoffContraAccount->type?->value ?? 'unknown') . "\n\n";
         } catch (\Throwable $e) {
             echo "    ✗ Failed: {$e->getMessage()}\n";
             return;
@@ -173,7 +173,7 @@ if (! $writeoffContraAccount) {
         $writeoffContraAccount = new Account(['id' => 0, 'balance' => 0, 'name' => 'CONTRA-PENDING (pending)']);
     }
 } else {
-    echo "▸ Writeoff Contra Account موجود: '{$writeoffContraAccount->name}' (id={$writeoffContraAccount->id}, type={$writeoffContraAccount->type}, current balance={$writeoffContraAccount->balance})\n\n";
+    echo "▸ Writeoff Contra Account موجود: '{$writeoffContraAccount->name}' (id={$writeoffContraAccount->id}, type=" . ($writeoffContraAccount->type?->value ?? 'unknown') . ", current balance={$writeoffContraAccount->balance})\n\n";
 }
 
 if (! $writeoffAccount) {
