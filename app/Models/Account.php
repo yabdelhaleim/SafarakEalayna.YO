@@ -76,9 +76,13 @@ class Account extends Model
                 $account->owner_type = self::OWNER_TYPE_OWNER;
             }
 
-            $type = $account->type instanceof AccountType
-                ? $account->type
-                : AccountType::tryFrom((string) $account->type);
+            // ⚠️ Phase 4 fix: استخدام ->value بدل (string) cast
+            // السبب: في PHP 8.3.31 على الـ VPS، الـ BackedEnum::__toString() مش شغّال
+            //        (instanceof Stringable = NO). الـ ->value property شغّال 100%.
+            $typeValue = $account->type instanceof AccountType
+                ? $account->type->value
+                : (is_string($account->type) ? $account->type : null);
+            $type = $typeValue !== null ? AccountType::tryFrom($typeValue) : null;
 
             if ($type !== AccountType::Wallet) {
                 $account->wallet_provider = null;
