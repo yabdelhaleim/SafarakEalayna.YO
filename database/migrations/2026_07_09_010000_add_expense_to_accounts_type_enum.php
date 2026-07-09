@@ -16,19 +16,24 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // ⚠️ IMPORTANT: لازم تضم كل القيم الموجودة فعلاً في الـ DB + 'expense'
+        // القيم الفعلية (من query على staging 2026-07-09):
+        //   bank: 5, cashbox: 17, customer: 23, owner: 1, supplier: 12, wallet: 3
+        // (مش treasury — حد غيّر الـ enum قبل كده)
         DB::statement("
             ALTER TABLE accounts
             MODIFY COLUMN type
-            ENUM('cashbox', 'wallet', 'bank', 'treasury', 'expense') NOT NULL
+            ENUM('bank', 'cashbox', 'customer', 'owner', 'supplier', 'wallet', 'expense') NOT NULL
         ");
     }
 
     public function down(): void
     {
+        // Rollback: يرجع الـ enum للوضع الأصلي (بدون expense)
         DB::statement("
             ALTER TABLE accounts
             MODIFY COLUMN type
-            ENUM('cashbox', 'wallet', 'bank', 'treasury') NOT NULL
+            ENUM('bank', 'cashbox', 'customer', 'owner', 'supplier', 'wallet') NOT NULL
         ");
     }
 };

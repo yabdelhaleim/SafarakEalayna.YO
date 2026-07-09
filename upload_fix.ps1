@@ -1,0 +1,1 @@
+$VPS="188.68.36.142"; $R="/var/www/safarakealayna/"; $O="-o StrictHostKeyChecking=accept-new"; scp $O "C:\travile\SafarakEalayna\app\Models\Flight\AirlineAccount.php" "root@${VPS}:${R}"; echo "[DONE] Fixed AirlineAccount.php uploaded"
