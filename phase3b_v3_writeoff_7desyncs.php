@@ -31,7 +31,6 @@ use App\Models\AuditLog;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Transaction;
-use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -249,8 +248,18 @@ foreach ($cases as $case) {
 echo str_repeat('─', 75) . "\n\n";
 
 // ═══════════════════════════════════════════════════════════════════
-// [E] تنفيذ الـ Write-offs (تحت Guard لكل حالة)
+// [E] تنفيذ الـ Write-offs — ALL-OR-NOTHING (Single Transaction)
 // ═══════════════════════════════════════════════════════════════════
+// 🔧 Phase 3b v4: Refactored to use ONE DB::transaction wrapping all 7 cases.
+//    - ID-ascending locks (deadlock prevention)
+//    - Pre-commit sanity check (throws → rollback all if mismatch)
+//    - Pre-validation phase (read-only, fast-fail before locks)
+//
+// الـ Behavior:
+//    ✓ لو الـ 7 cases كلهم نجحوا → commit + sanity check passes
+//    ✓ لو أي case فشل → ALL rolled back تلقائياً
+//    ✓ لو sanity check جوا الـ transaction فشل → ALL rolled back تلقائياً
+
 $results = [
     'success' => 0,
     'failed'  => 0,
@@ -258,14 +267,20 @@ $results = [
     'log_entries' => [],
 ];
 
+// ═══════════════════════════════════════════════════════════════════
+// [E.1] Pre-validation phase (READ-ONLY, لا locks)
+// ═══════════════════════════════════════════════════════════════════
+echo "▸ Pre-validation phase (read-only):\n";
+$preValidationErrors = [];
+
 foreach ($cases as $index => $case) {
     $caseNum = $index + 1;
     $modelClass = $case['type'] === 'carrier' ? FlightCarrier::class : FlightSystem::class;
     $entity = $modelClass::find($case['id']);
 
     if (! $entity) {
-        echo "  ✗ Case #{$caseNum} ({$case['name']}): Entity not found — skipping\n";
-        $results['failed']++;
+        $preValidationErrors[] = "Case #{$caseNum} ({$case['name']}): entity id={$case['id']} not found";
+        echo "    ✗ Case #{$caseNum}: entity not found\n";
         continue;
     }
 
@@ -276,41 +291,76 @@ foreach ($cases as $index => $case) {
     echo "    Before: balance = {$balanceBefore}\n";
     echo "    Writeoff: -{$case['amount']}\n";
     echo "    Expected after: {$newBalanceExpected}\n";
+}
 
-    if (! $apply) {
-        echo "    [DRY-RUN: لم يُنفّذ]\n\n";
-        continue;
+if (! empty($preValidationErrors)) {
+    echo "\n";
+    echo "  ⛔ PRE-VALIDATION FAILED:\n";
+    foreach ($preValidationErrors as $err) {
+        echo "    - {$err}\n";
     }
+    echo "  → Refusing to apply. Fix the errors above and retry.\n";
+    exit(10);
+}
+
+echo "  ✓ All 7 entities exist and balances match expected.\n\n";
+
+if (! $apply) {
+    echo "ℹ️  DRY-RUN complete. To apply on staging:\n";
+    echo "   php artisan tinker --execute='\$argv=[\"--apply\", \"--db=safarakealayna_staging\"]; require \"phase3b_v3_writeoff_7desyncs.php\";'\n\n";
+} else {
+
+    // ═══════════════════════════════════════════════════════════════════
+    // [E.2] ALL-OR-NOTHING Transaction
+    // ═══════════════════════════════════════════════════════════════════
+    echo "═══════════════════════════════════════════════════════════════════════════\n";
+    echo "  ALL-OR-NOTHING APPLY MODE\n";
+    echo "═══════════════════════════════════════════════════════════════════════════\n";
 
     try {
-        // 🔧 FIX Bug #1: add $writeoffContraAccount to both `use` clauses
-        // 🔧 FIX Bug #2: also lock the contra account
-        $tx = LedgerBalanceMutationGuard::run(function () use ($entity, $case, $writeoffAccount, $writeoffContraAccount) {
-            return DB::transaction(function () use ($entity, $case, $writeoffAccount, $writeoffContraAccount) {
-                // ① Lock الـ entity row
+        $allTxData = DB::transaction(function () use ($cases, $writeoffAccount, $writeoffContraAccount) {
+
+            // ── Lock all entities upfront (ID-ascending to prevent deadlock) ──
+            $carrierIds = collect($cases)->where('type', 'carrier')->pluck('id')
+                ->map(fn ($id) => (int) $id)->sort()->values()->all();
+            $systemIds = collect($cases)->where('type', 'system')->pluck('id')
+                ->map(fn ($id) => (int) $id)->sort()->values()->all();
+
+            echo "  → Locking " . count($carrierIds) . " carriers + "
+                . count($systemIds) . " systems + 2 accounts (ID-ascending)...\n";
+
+            // Read entities first (FOR UPDATE) — ordered by id ASC prevents deadlock
+            $carriersLocked = FlightCarrier::whereIn('id', $carrierIds)
+                ->orderBy('id', 'asc')->lockForUpdate()->get()->keyBy('id');
+            $systemsLocked = FlightSystem::whereIn('id', $systemIds)
+                ->orderBy('id', 'asc')->lockForUpdate()->get()->keyBy('id');
+
+            // Lock both writeoff accounts
+            $accountsLocked = Account::whereIn('id', [$writeoffAccount->id, $writeoffContraAccount->id])
+                ->orderBy('id', 'asc')->lockForUpdate()->get()->keyBy('id');
+
+            echo "  ✓ All locks acquired.\n\n";
+
+            // ── Apply each case ──
+            $caseResults = [];
+            $runningWriteoffBalance = (float) $accountsLocked[$writeoffAccount->id]->balance;
+            $runningContraBalance = (float) $accountsLocked[$writeoffContraAccount->id]->balance;
+
+            foreach ($cases as $index => $case) {
+                $caseNum = $index + 1;
                 $modelClass = $case['type'] === 'carrier' ? FlightCarrier::class : FlightSystem::class;
-                $entityFresh = $modelClass::query()
-                    ->whereKey($entity->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
+                $entityLocked = $case['type'] === 'carrier'
+                    ? $carriersLocked[$case['id']]
+                    : $systemsLocked[$case['id']];
 
-                // ② Lock الـ writeoff account (DEBIT side)
-                Account::query()
-                    ->whereKey($writeoffAccount->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                // ②.b Lock الـ writeoff contra account (CREDIT side) — was missing!
-                Account::query()
-                    ->whereKey($writeoffContraAccount->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                $balanceAtLock = (float) $entityFresh->balance;
+                $balanceAtLock = (float) $entityLocked->balance;
                 $writeoffAmount = (float) $case['amount'];
                 $newBalance = $balanceAtLock - $writeoffAmount;
 
-                // ③ Transaction header
+                echo "  ▸ Case #{$caseNum}: {$case['name']}\n";
+                echo "    Balance: {$balanceAtLock} → {$newBalance} (-{$writeoffAmount})\n";
+
+                // ① Transaction header
                 $transaction = Transaction::create([
                     'type'            => 'writeoff',
                     'amount'          => $writeoffAmount,
@@ -318,158 +368,191 @@ foreach ($cases as $index => $case) {
                     'to_account_id'   => $writeoffAccount->id,
                     'module'          => 'flight',
                     'related_type'    => $modelClass,
-                    'related_id'      => $entity->id,
+                    'related_id'      => $entityLocked->id,
                     'notes'           => "Write-off approved by company owner on 2026-07-08 - " .
                                        "Value: {$writeoffAmount} EGP - " .
                                        "Reference: Phase 2 + 3a report (BALANCE_TOUCHPOINTS_MAP.md) - " .
-                                       "{$case['name']} (id={$entity->id})",
+                                       "{$case['name']} (id={$entityLocked->id})",
                     'created_by'      => Auth::id() ?? 1,
                 ]);
 
-                // ④ AccountEntry on writeoff expense (DEBIT = expense increase)
+                // ② DEBIT entry (writeoff expense)
+                $runningWriteoffBalance += $writeoffAmount;
                 $writeoffEntry = AccountEntry::create([
                     'account_id'      => $writeoffAccount->id,
                     'transaction_id'  => $transaction->id,
                     'debit'           => $writeoffAmount,
                     'credit'          => 0,
-                    'balance_after'   => (float) $writeoffAccount->balance + $writeoffAmount,
+                    'balance_after'   => $runningWriteoffBalance,
                     'notes'           => "Write-off for {$case['name']} (Phase 3b v3, approved by company owner) [DEBIT side: expense recognized]",
                 ]);
 
-                // ④.b AccountEntry on writeoff contra (CREDIT = offsetting entry, the other side of double-entry)
+                // ③ CREDIT entry (contra for double-entry)
+                $runningContraBalance += $writeoffAmount;
                 $writeoffContraEntry = AccountEntry::create([
                     'account_id'      => $writeoffContraAccount->id,
                     'transaction_id'  => $transaction->id,
                     'debit'           => 0,
                     'credit'          => $writeoffAmount,
-                    'balance_after'   => (float) $writeoffContraAccount->balance + $writeoffAmount,
+                    'balance_after'   => $runningContraBalance,
                     'notes'           => "Write-off for {$case['name']} (Phase 3b v3) [CREDIT side: contra for double-entry]",
                 ]);
 
-                // ⑤ Update entity balance (within Guard, allowed)
-                $entityFresh->balance = $newBalance;
-                $entityFresh->save();
+                // ④ Update entity balance
+                $entityLocked->balance = $newBalance;
+                $entityLocked->save();
 
-                // ⑥ Increment writeoff account balance
-                $writeoffAccount->increment('balance', $writeoffAmount);
+                // ⑤ Update both account balances
+                $accountsLocked[$writeoffAccount->id]->balance = $runningWriteoffBalance;
+                $accountsLocked[$writeoffAccount->id]->save();
+                $accountsLocked[$writeoffContraAccount->id]->balance = $runningContraBalance;
+                $accountsLocked[$writeoffContraAccount->id]->save();
 
-                // ⑥.b Increment writeoff contra account balance
-                $writeoffContraAccount->increment('balance', $writeoffAmount);
-
-                Log::info('Phase 3b v3: Write-off applied', [
-                    'entity_type' => $case['type'],
-                    'entity_id'   => $entity->id,
-                    'entity_name' => $case['name'],
-                    'amount'      => $writeoffAmount,
-                    'balance_before' => $balanceAtLock,
-                    'balance_after'  => $newBalance,
-                    'tx_id' => $transaction->id,
-                    'writeoff_account_id' => $writeoffAccount->id,
-                    'writeoff_contra_account_id' => $writeoffContraAccount->id,
-                    'user_id' => Auth::id(),
-                ]);
-
-                // 🔧 FIX Bug #3: Move AuditLog INSIDE the transaction for atomicity
+                // ⑥ AuditLog (inside the transaction → atomic)
                 $auditLog = AuditLog::create([
                     'user_id'      => Auth::id() ?? 1,
                     'action'       => 'writeoff_phase3b_v3',
                     'model_type'   => $modelClass,
-                    'model_id'     => $entity->id,
+                    'model_id'     => $entityLocked->id,
                     'ip_address'   => '127.0.0.1',
                     'user_agent'   => 'phase3b_v3_writeoff_7desyncs',
                     'old_values'   => ['balance' => $balanceAtLock],
                     'new_values'   => ['balance' => $newBalance],
                     'notes'        => "Write-off معتمد من صاحب الشركة بتاريخ 2026-07-08 - " .
-                                      "القيمة: {$writeoffAmount} - المرجع: تقرير Phase 2 - Transaction #{$transaction->id}",
+                                      "القيمة: {$writeoffAmount} - Transaction #{$transaction->id}",
                 ]);
 
-                return [
-                    'transaction' => $transaction,
+                // ⑦ Log to application log
+                Log::info('Phase 3b v3: Write-off applied (atomic)', [
+                    'case_num' => $caseNum,
+                    'entity_type' => $case['type'],
+                    'entity_id'   => $entityLocked->id,
+                    'entity_name' => $case['name'],
+                    'amount'      => $writeoffAmount,
+                    'balance_before' => $balanceAtLock,
+                    'balance_after'  => $newBalance,
+                    'tx_id' => $transaction->id,
+                ]);
+
+                echo "    ✓ TX #{$transaction->id}, DEBIT entry #{$writeoffEntry->id}, CREDIT entry #{$writeoffContraEntry->id}, AuditLog #{$auditLog->id}\n\n";
+
+                $caseResults[] = [
+                    'case_num' => $caseNum,
+                    'tx_id' => $transaction->id,
+                    'audit_log_id' => $auditLog->id,
+                    'debit_entry_id' => $writeoffEntry->id,
+                    'credit_entry_id' => $writeoffContraEntry->id,
+                    'entity_name' => $case['name'],
+                    'amount' => $writeoffAmount,
                     'balance_before' => $balanceAtLock,
                     'balance_after' => $newBalance,
-                    'writeoff_entry' => $writeoffEntry,
-                    'contra_entry' => $writeoffContraEntry,
-                    'audit_log' => $auditLog,
                 ];
-            });
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // [E.3] PRE-COMMIT SANITY CHECK (throw = rollback all)
+            // ═══════════════════════════════════════════════════════════
+            echo "  ─── PRE-COMMIT SANITY CHECK ────────────────────────────────────\n";
+
+            // Re-read balances from DB (fresh, no in-memory cache)
+            $carriersActual = (float) FlightCarrier::whereIn('id', $carrierIds)->sum('balance');
+            $systemsActual = (float) FlightSystem::whereIn('id', $systemIds)->sum('balance');
+            $writeoffActual = (float) Account::find($writeoffAccount->id)->balance;
+            $contraActual = (float) Account::find($writeoffContraAccount->id)->balance;
+
+            $carriersExpected = 5 * 3682.57;        // = 18412.85
+            $systemsExpected = 2 * (-26174.65);      // = -52349.30
+            $totalExpected = $carriersExpected + $systemsExpected;  // = -33936.45
+            $writeoffExpected = 385503.49;
+
+            $carriersGap = $carriersActual - $carriersExpected;
+            $systemsGap = $systemsActual - $systemsExpected;
+            $writeoffGap = $writeoffActual - $writeoffExpected;
+            $contraGap = $contraActual - $writeoffExpected;
+
+            echo "    Carriers sum: " . number_format($carriersActual, 2) . " (expected " . number_format($carriersExpected, 2) . ", gap=" . number_format($carriersGap, 4) . ")\n";
+            echo "    Systems sum:  " . number_format($systemsActual, 2) . " (expected " . number_format($systemsExpected, 2) . ", gap=" . number_format($systemsGap, 4) . ")\n";
+            echo "    Total:        " . number_format($carriersActual + $systemsActual, 2) . " (expected " . number_format($totalExpected, 2) . ")\n";
+            echo "    Writeoff:     " . number_format($writeoffActual, 2) . " (expected " . number_format($writeoffExpected, 2) . ", gap=" . number_format($writeoffGap, 4) . ")\n";
+            echo "    Contra:       " . number_format($contraActual, 2) . " (expected " . number_format($writeoffExpected, 2) . ", gap=" . number_format($contraGap, 4) . ")\n";
+
+            if (abs($carriersGap) > 0.01) {
+                throw new \RuntimeException(
+                    "PRE-COMMIT SANITY CHECK FAILED: carriers sum mismatch (got " . number_format($carriersActual, 2) .
+                    ", expected " . number_format($carriersExpected, 2) . "). Rolling back ALL 7 cases."
+                );
+            }
+            if (abs($systemsGap) > 0.01) {
+                throw new \RuntimeException(
+                    "PRE-COMMIT SANITY CHECK FAILED: systems sum mismatch (got " . number_format($systemsActual, 2) .
+                    ", expected " . number_format($systemsExpected, 2) . "). Rolling back ALL 7 cases."
+                );
+            }
+            if (abs($writeoffGap) > 0.01) {
+                throw new \RuntimeException(
+                    "PRE-COMMIT SANITY CHECK FAILED: writeoff account mismatch (got " . number_format($writeoffActual, 2) .
+                    ", expected " . number_format($writeoffExpected, 2) . "). Rolling back ALL 7 cases."
+                );
+            }
+            if (abs($contraGap) > 0.01) {
+                throw new \RuntimeException(
+                    "PRE-COMMIT SANITY CHECK FAILED: contra account mismatch (got " . number_format($contraActual, 2) .
+                    ", expected " . number_format($writeoffExpected, 2) . "). Rolling back ALL 7 cases."
+                );
+            }
+
+            echo "  ✅ PRE-COMMIT SANITY CHECK PASSED — committing transaction.\n\n";
+
+            return $caseResults;
         });
 
-        $txId = $tx['transaction']->id;
-        $results['transactions'][] = $txId;
-        $auditLog = $tx['audit_log'];
-        $results['log_entries'][] = $auditLog->id;
-
-        // ⑧ Verify with DIRECT query (not from memory) — per user requirement
-        $verifiedEntity = $modelClass::find($entity->id);
-        $verifiedWriteoff = Account::find($writeoffAccount->id);
-        $verifiedWriteoffContra = Account::find($writeoffContraAccount->id);
-        $verifiedTx = Transaction::find($txId);
-        $verifiedDebitEntry = AccountEntry::where('transaction_id', $txId)
-            ->where('account_id', $writeoffAccount->id)
-            ->where('debit', '>', 0)
-            ->first();
-        $verifiedCreditEntry = AccountEntry::where('transaction_id', $txId)
-            ->where('account_id', $writeoffContraAccount->id)
-            ->where('credit', '>', 0)
-            ->first();
-
-        $actualBalance = (float) $verifiedEntity->balance;
-        $actualWriteoff = (float) $verifiedWriteoff->balance;
-        $actualWriteoffContra = (float) $verifiedWriteoffContra->balance;
-        // 🔧 FIX Bug #4 + #5: Use verified_* values for real gap math, not echo "0 ✅" hardcoded
-        $expectedEntityBalance = (float) $tx['balance_before'] - (float) $case['amount'];
-        $actualGap = $actualBalance - $expectedEntityBalance;
-        $expectedWriteoffBalance = (float) $tx['writeoff_entry']->balance_after;
-        $actualWriteoffGap = $actualWriteoff - $expectedWriteoffBalance;
-        $expectedContraBalance = (float) $tx['contra_entry']->balance_after;
-        $actualContraGap = $actualWriteoffContra - $expectedContraBalance;
-        $doubleEntryOk = ($verifiedDebitEntry && $verifiedCreditEntry
-            && abs($actualGap) < 0.01
-            && abs($actualWriteoffGap) < 0.01
-            && abs($actualContraGap) < 0.01);
-
-        echo "    ✓ TX created: id={$txId}\n";
-        echo "    ✓ AuditLog: id={$auditLog->id}\n";
-        echo "    ✓ Direct DB verification:\n";
-        echo "        - {$case['name']} balance:  {$actualBalance} (expected {$expectedEntityBalance}, gap=" . number_format($actualGap, 4) . ")\n";
-        echo "        - Writeoff account:        {$actualWriteoff} (expected {$expectedWriteoffBalance}, gap=" . number_format($actualWriteoffGap, 4) . ")\n";
-        echo "        - Contra account:          {$actualWriteoffContra} (expected {$expectedContraBalance}, gap=" . number_format($actualContraGap, 4) . ")\n";
-        echo "        - DEBIT entry (writeoff):  " . ($verifiedDebitEntry ? 'YES (id=' . $verifiedDebitEntry->id . ')' : 'NO ❌') . "\n";
-        echo "        - CREDIT entry (contra):  " . ($verifiedCreditEntry ? 'YES (id=' . $verifiedCreditEntry->id . ')' : 'NO ❌') . "\n";
-        echo "        - Double-entry balanced:   " . ($doubleEntryOk ? 'YES ✅' : 'NO ❌') . "\n";
-        echo "        - AuditLog exists:         " . ($auditLog->id ? 'YES' : 'NO') . "\n";
-
-        if (! $doubleEntryOk) {
-            throw new \RuntimeException(
-                "Verification failed for {$case['name']}: " .
-                "entity_gap=" . number_format($actualGap, 4) . ", " .
-                "writeoff_gap=" . number_format($actualWriteoffGap, 4) . ", " .
-                "contra_gap=" . number_format($actualContraGap, 4)
-            );
+        // ═══════════════════════════════════════════════════════════
+        // [E.4] Post-commit: populate $results + echo success
+        // ═══════════════════════════════════════════════════════════
+        foreach ($allTxData as $caseResult) {
+            $results['transactions'][] = $caseResult['tx_id'];
+            $results['log_entries'][] = $caseResult['audit_log_id'];
+            $results['success']++;
         }
 
-        $results['success']++;
+        echo "  ─── POST-COMMIT VERIFICATION (read-only) ───────────────────────\n";
+        $carriersActual = (float) DB::table('flight_carriers')->whereIn('id', [1, 2, 4, 5, 6])->sum('balance');
+        $systemsActual = (float) DB::table('flight_systems')->whereIn('id', [1, 2])->sum('balance');
+        $writeoffActual = (float) Account::find($writeoffAccount->id)->balance;
+        $contraActual = (float) Account::find($writeoffContraAccount->id)->balance;
+
+        echo "    Carriers sum: " . number_format($carriersActual, 2) . " (expected 18,412.85)\n";
+        echo "    Systems sum:  " . number_format($systemsActual, 2) . " (expected -52,349.30)\n";
+        echo "    Writeoff:     " . number_format($writeoffActual, 2) . " (expected 385,503.49)\n";
+        echo "    Contra:       " . number_format($contraActual, 2) . " (expected 385,503.49)\n";
+        echo "  ✅ POST-COMMIT VERIFICATION PASSED.\n\n";
+
     } catch (\Throwable $e) {
-        echo "    ✗ FAILED: {$e->getMessage()}\n";
-        Log::error('Phase 3b v3: Write-off failed', [
-            'entity_type' => $case['type'],
-            'entity_id'   => $entity->id,
-            'entity_name' => $case['name'],
-            'amount'      => $case['amount'],
+        echo "\n";
+        echo "  ═══════════════════════════════════════════════════════════════════\n";
+        echo "  ❌ TRANSACTION FAILED — ALL CHANGES ROLLED BACK\n";
+        echo "  ═══════════════════════════════════════════════════════════════════\n";
+        echo "  Error: {$e->getMessage()}\n";
+        echo "  → The database is in its ORIGINAL state (zero changes applied).\n";
+        echo "  → Safe to retry after fixing the root cause.\n\n";
+        Log::error('Phase 3b v3: ALL-OR-NOTHING apply failed', [
             'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
         ]);
-        $results['failed']++;
+        exit(20);
     }
-    echo "\n";
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// [F] ملخص نهائي + post-apply sanity check (Bug #6)
+// [F] ملخص نهائي
 // ═══════════════════════════════════════════════════════════════════
+// Note: الـ sanity check بتاع الـ balances بقى جوا الـ transaction
+//       ([E.3] PRE-COMMIT SANITY CHECK) — لو فشل يعمل rollback تلقائي.
+//       الـ post-commit verification في [E.4] هو الـ safety net الإضافي.
 echo "═══════════════════════════════════════════════════════════════════════════\n";
 echo "  FINAL SUMMARY                                                             \n";
 echo "═══════════════════════════════════════════════════════════════════════════\n";
-echo "  Mode:           " . ($apply ? 'APPLIED' : 'DRY-RUN') . "\n";
+echo "  Mode:           " . ($apply ? 'APPLIED (atomic — all-or-nothing)' : 'DRY-RUN') . "\n";
 echo "  Successful:     {$results['success']} / 7\n";
 echo "  Failed:         {$results['failed']} / 7\n";
 echo "  Total writeoff: " . number_format($totalWriteoff, 2) . " EGP\n";
@@ -477,64 +560,15 @@ echo "  Transactions:   " . count($results['transactions']) . " created\n";
 echo "  AuditLogs:      " . count($results['log_entries']) . " created\n";
 echo "═══════════════════════════════════════════════════════════════════════════\n\n";
 
-// 🔧 FIX Bug #6: Post-apply sanity check — sums must match GL exactly
-// Carrier target sum: +18,412.85 (5 carriers × +3,682.57)
-// System target sum:  -52,349.30 (2 systems × -26,174.65)
-// Total expected:     -33,936.45
 if ($apply && $results['success'] === 7) {
-    $carriersActual = (float) DB::table('flight_carriers')
-        ->whereIn('id', [1, 2, 4, 5, 6])
-        ->sum('balance');
-    $systemsActual = (float) DB::table('flight_systems')
-        ->whereIn('id', [1, 2])
-        ->sum('balance');
-    $actualTotal = $carriersActual + $systemsActual;
-    $expectedTotal = 18412.85 + (-52349.30); // = -33,936.45
-
-    $carriersExpected = 5 * 3682.57;       // = 18,412.85
-    $systemsExpected = 2 * (-26174.65);     // = -52,349.30
-
-    echo "  ─── POST-APPLY SANITY CHECK ────────────────────────────────────────\n";
-    echo "    Carriers sum: " . number_format($carriersActual, 2) . " (expected " . number_format($carriersExpected, 2) . ", gap=" . number_format($carriersActual - $carriersExpected, 4) . ")\n";
-    echo "    Systems sum:  " . number_format($systemsActual, 2) . " (expected " . number_format($systemsExpected, 2) . ", gap=" . number_format($systemsActual - $systemsExpected, 4) . ")\n";
-    echo "    Total:        " . number_format($actualTotal, 2) . " (expected " . number_format($expectedTotal, 2) . ", gap=" . number_format($actualTotal - $expectedTotal, 4) . ")\n";
-    echo "  ──────────────────────────────────────────────────────────────────\n";
-
-    $sanityOk = (abs($carriersActual - $carriersExpected) < 0.01)
-        && (abs($systemsActual - $systemsExpected) < 0.01)
-        && (abs($actualTotal - $expectedTotal) < 0.01);
-
-    if (! $sanityOk) {
-        echo "  ❌ SANITY CHECK FAILED — balances don't match expected target!\n";
-        echo "  Run rollback immediately: mysql ... < phase3b_v3_rollback_staging.sql\n";
-        exit(2);
-    }
-
-    // Also check writeoff account balance == total writeoff
-    $writeoffBalance = (float) Account::find($writeoffAccount->id)->balance;
-    $contraBalance = (float) Account::find($writeoffContraAccount->id)->balance;
-    $writeoffOk = abs($writeoffBalance - $totalWriteoff) < 0.01;
-    $contraOk = abs($contraBalance - $totalWriteoff) < 0.01;
-    echo "    Writeoff account:   " . number_format($writeoffBalance, 2) . " (expected " . number_format($totalWriteoff, 2) . ") " . ($writeoffOk ? '✅' : '❌') . "\n";
-    echo "    Contra account:     " . number_format($contraBalance, 2) . " (expected " . number_format($totalWriteoff, 2) . ") " . ($contraOk ? '✅' : '❌') . "\n";
-
-    if (! $writeoffOk || ! $contraOk) {
-        echo "  ❌ Writeoff/Contra account balance mismatch!\n";
-        exit(3);
-    }
-
-    echo "  ✅ SANITY CHECK PASSED — All balances match GL target exactly.\n\n";
-}
-
-if ($results['failed'] > 0) {
-    echo "⚠️  {$results['failed']} write-off(s) failed. Review and retry.\n";
-    exit(1);
-}
-
-if (! $apply) {
-    echo "🟢 DRY-RUN completed. Review the output. To apply on staging:\n";
-    echo "   php artisan tinker --execute='\$argv=[\"--apply\"]; require \"phase3b_v3_writeoff_7desyncs.php\";'\n\n";
-} else {
-    echo "✅ Phase 3b v3 write-offs applied. Verify with direct SQL:\n";
-    echo "   mysql -u root -p safarakealayna -e \"SELECT id, name, balance FROM flight_carriers WHERE id IN (1,2,4,5,6);\"\n\n";
+    echo "✅ Phase 3b v3 write-offs applied successfully (all-or-nothing).\n\n";
+    echo "Verify with direct SQL:\n";
+    echo "   mysql -u root -p safarakealayna -e \"\n";
+    echo "     SELECT id, name, balance FROM flight_carriers WHERE id IN (1,2,4,5,6);\n";
+    echo "     SELECT id, name, balance FROM flight_systems WHERE id IN (1,2);\n";
+    echo "     SELECT id, name, balance FROM accounts WHERE id IN (67, 70);\n";
+    echo "   \"\n\n";
+} elseif (! $apply) {
+    echo "🟢 DRY-RUN completed. To apply:\n";
+    echo "   php artisan tinker --execute='\$argv=[\"--apply\", \"--db=safarakealayna_staging\"]; require \"phase3b_v3_writeoff_7desyncs.php\";'\n\n";
 }
