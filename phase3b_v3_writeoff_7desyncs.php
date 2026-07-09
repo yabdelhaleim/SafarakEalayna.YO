@@ -138,15 +138,27 @@ if (! $writeoffAccount) {
     echo "▸ Writeoff Account غير موجود — هيتم إنشاؤه:\n";
     if ($apply) {
         try {
-            $writeoffAccount = Account::create([
+            // ⚠️ Phase 5: Use DB::table() direct insert to bypass Eloquent cast
+            // مشكلة: Account model has 'type' => AccountType::class cast
+            //         Eloquent's BackedEnum cast fails to convert during save()
+            //         when passing the enum instance directly.
+            // الحل: insert via raw DB query, then fetch as model.
+            $now = now();
+            DB::table('accounts')->insert([
                 'name'        => 'مصروفات شطب أرصدة الناقلين - طيران',
-                'type'        => \App\Enums\AccountType::Expense,  // Phase 5: proper type — using enum instance to avoid cast string→enum issue
+                'type'        => 'expense',  // Phase 5: proper type (DB-level value)
                 'currency'    => 'EGP',
                 'balance'     => 0,
-                'is_active'   => true,
+                'is_active'   => 1,
                 'owner_type'  => 'owner',
+                'module'      => null,
+                'is_module_vault' => 0,
                 'notes'       => 'Phase 3b v3 (Option B): Write-off of 7 confirmed desyncs (approved by company owner 2026-07-08). Total: 385,503.49 EGP. Recalculated on current GL state (after 50K recharge to العربية).',
+                'created_by'  => Auth::id() ?? 1,
+                'created_at'  => $now,
+                'updated_at'  => $now,
             ]);
+            $writeoffAccount = Account::where('name', 'مصروفات شطب أرصدة الناقلين - طيران')->first();
             echo "    ✓ Created: id={$writeoffAccount->id}, balance={$writeoffAccount->balance}, type={$writeoffAccount->type}\n\n";
         } catch (\Throwable $e) {
             echo "    ✗ Failed: {$e->getMessage()}\n";
