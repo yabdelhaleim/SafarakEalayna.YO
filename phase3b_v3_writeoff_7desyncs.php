@@ -159,7 +159,7 @@ if (! $writeoffAccount) {
                 'updated_at'  => $now,
             ]);
             $writeoffAccount = Account::where('name', 'مصروفات شطب أرصدة الناقلين - طيران')->first();
-            echo "    ✓ Created: id={$writeoffAccount->id}, balance={$writeoffAccount->balance}, type={$writeoffAccount->type}\n\n";
+            echo "    ✓ Created: id={$writeoffAccount->id}, balance={$writeoffAccount->balance}, type=" . ($writeoffAccount->type?->value ?? 'unknown') . "\n\n";
         } catch (\Throwable $e) {
             echo "    ✗ Failed: {$e->getMessage()}\n";
             echo "    ⚠️  Aborting — ممكن الـ migration مش متنفذة (لازم 'expense' يكون في الـ enum).\n";
@@ -177,7 +177,7 @@ if (! $writeoffAccount) {
         $writeoffAccount = new Account(['id' => 0, 'balance' => 0, 'name' => 'WO-PENDING (pending)']);
     }
 } else {
-    echo "▸ Writeoff Account موجود: '{$writeoffAccount->name}' (id={$writeoffAccount->id}, type={$writeoffAccount->type}, current balance={$writeoffAccount->balance})\n\n";
+    echo "▸ Writeoff Account موجود: '{$writeoffAccount->name}' (id={$writeoffAccount->id}, type=" . ($writeoffAccount->type?->value ?? 'unknown') . ", current balance={$writeoffAccount->balance})\n\n";
 }
 
 // ═══════════════════════════════════════════════════════════════════
