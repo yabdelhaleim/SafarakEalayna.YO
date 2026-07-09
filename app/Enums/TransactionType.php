@@ -17,6 +17,7 @@ enum TransactionType: string
     case Expense = 'expense';
     case Transfer = 'transfer';
     case Refund = 'refund';
+    case Writeoff = 'writeoff';  // Phase 3b v3: Write-off of legacy desyncs
 
     public function label(): string
     {
@@ -25,6 +26,7 @@ enum TransactionType: string
             self::Expense => 'مصروف',
             self::Transfer => 'تحويل',
             self::Refund => 'استرداد',
+            self::Writeoff => 'شطب (خسارة معتمدة)',
         };
     }
 }

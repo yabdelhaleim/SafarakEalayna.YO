@@ -10,21 +10,43 @@ echo "════════════════════════�
 echo "  Safe staging runner — .env will be restored automatically"
 echo "════════════════════════════════════════════════════════════════"
 
-# ① Save original .env
-cp .env .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S)
-echo "✓ Backed up .env to .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S)"
+# ① Save original .env (only if .env has the production value)
+CURRENT_DB=$(grep '^DB_DATABASE=' .env | cut -d'=' -f2)
+if [ "$CURRENT_DB" != "safarakealayna_staging" ]; then
+    # .env is still in production state — back it up
+    cp .env .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S)
+    echo "✓ Backed up .env to .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S)"
+else
+    # .env was left in staging state from a previous failed run
+    # Find an OLDER backup that still has the production value
+    PROD_BACKUP=$(grep -l "^DB_DATABASE=safarakealayna$" .env.backup_pre_staging.* 2>/dev/null | head -1)
+    if [ -n "$PROD_BACKUP" ]; then
+        cp "$PROD_BACKUP" .env
+        echo "✓ Restored .env from $PROD_BACKUP (had production value)"
+    else
+        echo "✗ FAILED: .env is at staging and no clean backup found."
+        echo "   MANUAL FIX NEEDED:"
+        echo "   sed -i 's/^DB_DATABASE=safarakealayna_staging$/DB_DATABASE=safarakealayna/' .env"
+        echo "   Then re-run this script."
+        exit 1
+    fi
+fi
 
-# ② Modify .env: DB_DATABASE → staging
+# ② Backup the now-clean .env
+cp .env .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S).clean
+echo "✓ Backed up clean .env to .env.backup_pre_staging.$(date +%Y%m%d_%H%M%S).clean"
+
+# ③ Modify .env: DB_DATABASE → staging
 sed -i 's/^DB_DATABASE=safarakealayna$/DB_DATABASE=safarakealayna_staging/' .env
 echo "✓ Modified .env: DB_DATABASE=safarakealayna → safarakealayna_staging"
 
-# ③ Verify the change
+# ④ Verify the change
 NEW_DB=$(grep '^DB_DATABASE=' .env | cut -d'=' -f2)
 echo "✓ Verified: DB_DATABASE=$NEW_DB"
 
 if [ "$NEW_DB" != "safarakealayna_staging" ]; then
     echo "✗ FAILED: Could not change DB_DATABASE. Restoring .env..."
-    cp .env.backup_pre_staging.* .env
+    cp .env.backup_pre_staging.*.clean .env
     exit 1
 fi
 
@@ -47,13 +69,20 @@ echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  Restoring .env to original state..."
 echo "════════════════════════════════════════════════════════════"
-# Find the most recent backup and restore from it
-LATEST_BACKUP=$(ls -t .env.backup_pre_staging.* 2>/dev/null | head -1)
-if [ -n "$LATEST_BACKUP" ]; then
-    cp "$LATEST_BACKUP" .env
-    echo "✓ .env restored from $LATEST_BACKUP"
+# Find a CLEAN backup (one with .clean suffix, which was made AFTER the .env was production)
+LATEST_CLEAN=$(ls -t .env.backup_pre_staging.*.clean 2>/dev/null | head -1)
+if [ -n "$LATEST_CLEAN" ]; then
+    cp "$LATEST_CLEAN" .env
+    echo "✓ .env restored from $LATEST_CLEAN"
 else
-    echo "⚠️  No backup found — .env may already be in correct state"
+    # Fallback: find the OLDEST backup (likely has production value)
+    OLDEST_BACKUP=$(ls -tr .env.backup_pre_staging.* 2>/dev/null | grep -v '\.clean$' | head -1)
+    if [ -n "$OLDEST_BACKUP" ]; then
+        cp "$OLDEST_BACKUP" .env
+        echo "✓ .env restored from oldest backup: $OLDEST_BACKUP"
+    else
+        echo "⚠️  No backup found — .env may already be in correct state"
+    fi
 fi
 
 # ⑦ Verify the restore
