@@ -13,6 +13,7 @@ class AccountEntry extends Model
         'debit',
         'credit',
         'balance_after',
+        'notes',  // Phase 3b v3 fix: add 'notes' (was missing → caused NULL notes in writeoff entries)
     ];
 
     protected $casts = [

@@ -341,7 +341,7 @@ foreach ($cases as $index => $case) {
         $actualBalance = (float) $verifiedEntity->balance;
         $actualWriteoff = (float) $verifiedWriteoff->balance;
         $gap = $actualBalance - ($tx['balance_before'] - $case['amount']); // should = 0
-        $gapToWriteoff = $case['amount'] - ($writeoffAccount->balance - $tx['writeoff_entry']->balance_after + $writeoffAmount);
+        $gapToWriteoff = $case['amount'] - ($writeoffAccount->balance - $tx['writeoff_entry']->balance_after + $case['amount']);  // ⚠️ Fixed: $writeoffAmount (out of scope) → $case['amount']
 
         echo "    ✓ TX created: id={$txId}\n";
         echo "    ✓ AuditLog: id={$auditLog->id}\n";
