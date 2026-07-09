@@ -134,6 +134,48 @@ echo "▸ مجموع الـ 7 write-offs: " . number_format($totalWriteoff, 2) .
 
 $writeoffAccount = Account::where('name', 'مصروفات شطب أرصدة الناقلين - طيران')->first();
 
+// ═══════════════════════════════════════════════════════════════════
+// [C.5] حساب الـ Writeoff Contra Account (الجانب الثاني من القيد المزدوج)
+// ═══════════════════════════════════════════════════════════════════
+// لكل transaction لازم entry على الجانبين (DEBIT + CREDIT) عشان الـ double-entry
+// يبقى متوازن. الـ writeoff account عليه DEBIT (expense recognized).
+// الـ contra account عليه CREDIT (the offsetting entry — represents
+// the "writeoff contra" / reduction of the carrier's claim).
+$writeoffContraAccount = Account::where('name', 'مقابل شطب أرصدة الناقلين - طيران')->first();
+
+if (! $writeoffContraAccount) {
+    echo "▸ Writeoff Contra Account غير موجود — هيتم إنشاؤه:\n";
+    if ($apply) {
+        try {
+            $now2 = now();
+            DB::table('accounts')->insert([
+                'name'        => 'مقابل شطب أرصدة الناقلين - طيران',
+                'type'        => 'cashbox',  // workaround — accounts.type enum has no 'liability'/'equity'
+                'currency'    => 'EGP',
+                'balance'     => 0,
+                'is_active'   => 1,
+                'owner_type'  => 'owner',
+                'module'      => null,
+                'is_module_vault' => 0,
+                'notes'       => 'Phase 3b v3: Contra account for the write-off of 7 confirmed desyncs. Holds the credit side of the double-entry. (DB workaround: type=cashbox because accounts.type enum has no liability/equity).',
+                'created_by'  => Auth::id() ?? 1,
+                'created_at'  => $now2,
+                'updated_at'  => $now2,
+            ]);
+            $writeoffContraAccount = Account::where('name', 'مقابل شطب أرصدة الناقلين - طيران')->first();
+            echo "    ✓ Created: id={$writeoffContraAccount->id}, balance={$writeoffContraAccount->balance}, type={$writeoffContraAccount->type}\n\n";
+        } catch (\Throwable $e) {
+            echo "    ✗ Failed: {$e->getMessage()}\n";
+            return;
+        }
+    } else {
+        echo "    [DRY-RUN: الحساب هيتم إنشاؤه عند --apply]\n\n";
+        $writeoffContraAccount = new Account(['id' => 0, 'balance' => 0, 'name' => 'CONTRA-PENDING (pending)']);
+    }
+} else {
+    echo "▸ Writeoff Contra Account موجود: '{$writeoffContraAccount->name}' (id={$writeoffContraAccount->id}, type={$writeoffContraAccount->type}, current balance={$writeoffContraAccount->balance})\n\n";
+}
+
 if (! $writeoffAccount) {
     echo "▸ Writeoff Account غير موجود — هيتم إنشاؤه:\n";
     if ($apply) {
@@ -283,7 +325,17 @@ foreach ($cases as $index => $case) {
                     'debit'           => $writeoffAmount,
                     'credit'          => 0,
                     'balance_after'   => (float) $writeoffAccount->balance + $writeoffAmount,
-                    'notes'           => "Write-off for {$case['name']} (Phase 3b v3, approved by company owner)",
+                    'notes'           => "Write-off for {$case['name']} (Phase 3b v3, approved by company owner) [DEBIT side: expense recognized]",
+                ]);
+
+                // ④.b AccountEntry on writeoff contra (CREDIT = offsetting entry, the other side of double-entry)
+                $writeoffContraEntry = AccountEntry::create([
+                    'account_id'      => $writeoffContraAccount->id,
+                    'transaction_id'  => $transaction->id,
+                    'debit'           => 0,
+                    'credit'          => $writeoffAmount,
+                    'balance_after'   => (float) $writeoffContraAccount->balance + $writeoffAmount,
+                    'notes'           => "Write-off for {$case['name']} (Phase 3b v3) [CREDIT side: contra for double-entry]",
                 ]);
 
                 // ⑤ Update entity balance (within Guard, allowed)
@@ -292,6 +344,9 @@ foreach ($cases as $index => $case) {
 
                 // ⑥ Increment writeoff account balance
                 $writeoffAccount->increment('balance', $writeoffAmount);
+
+                // ⑥.b Increment writeoff contra account balance
+                $writeoffContraAccount->increment('balance', $writeoffAmount);
 
                 Log::info('Phase 3b v3: Write-off applied', [
                     'entity_type' => $case['type'],
@@ -335,11 +390,20 @@ foreach ($cases as $index => $case) {
         // ⑧ Verify with DIRECT query (not from memory) — per user requirement
         $verifiedEntity = $modelClass::find($entity->id);
         $verifiedWriteoff = Account::find($writeoffAccount->id);
+        $verifiedWriteoffContra = Account::find($writeoffContraAccount->id);
         $verifiedTx = Transaction::find($txId);
-        $verifiedEntry = AccountEntry::where('transaction_id', $txId)->first();
+        $verifiedDebitEntry = AccountEntry::where('transaction_id', $txId)
+            ->where('account_id', $writeoffAccount->id)
+            ->where('debit', '>', 0)
+            ->first();
+        $verifiedCreditEntry = AccountEntry::where('transaction_id', $txId)
+            ->where('account_id', $writeoffContraAccount->id)
+            ->where('credit', '>', 0)
+            ->first();
 
         $actualBalance = (float) $verifiedEntity->balance;
         $actualWriteoff = (float) $verifiedWriteoff->balance;
+        $actualWriteoffContra = (float) $verifiedWriteoffContra->balance;
         $gap = $actualBalance - ($tx['balance_before'] - $case['amount']); // should = 0
         $gapToWriteoff = $case['amount'] - ($writeoffAccount->balance - $tx['writeoff_entry']->balance_after + $case['amount']);  // ⚠️ Fixed: $writeoffAmount (out of scope) → $case['amount']
 
@@ -348,7 +412,10 @@ foreach ($cases as $index => $case) {
         echo "    ✓ Direct DB verification:\n";
         echo "        - {$case['name']} balance:  {$actualBalance} (expected {$tx['balance_after']})\n";
         echo "        - Writeoff account:        {$actualWriteoff}\n";
-        echo "        - AccountEntry exists:     " . ($verifiedEntry ? 'YES' : 'NO') . "\n";
+        echo "        - Contra account:          {$actualWriteoffContra}\n";
+        echo "        - DEBIT entry (writeoff):  " . ($verifiedDebitEntry ? 'YES (id=' . $verifiedDebitEntry->id . ')' : 'NO') . "\n";
+        echo "        - CREDIT entry (contra):  " . ($verifiedCreditEntry ? 'YES (id=' . $verifiedCreditEntry->id . ')' : 'NO') . "\n";
+        echo "        - Double-entry balanced:   " . ($verifiedDebitEntry && $verifiedCreditEntry ? 'YES ✅' : 'NO ❌') . "\n";
         echo "        - AuditLog exists:         " . ($auditLog->id ? 'YES' : 'NO') . "\n";
         echo "        - Gap (delta from expected): 0 ✅\n";
 

@@ -16,7 +16,7 @@
 -- ────────────────────────────────────────────────────────
 -- [1] VERIFICATION — show what will be rolled back
 -- ────────────────────────────────────────────────────────
-SELECT 'Account entries to delete:' AS step, COUNT(*) AS count_to_delete
+SELECT 'Account entries to delete (should be 14 = 7 DEBIT + 7 CREDIT):' AS step, COUNT(*) AS count_to_delete
 FROM account_entries
 WHERE transaction_id IN (
     SELECT id FROM transactions
@@ -24,11 +24,11 @@ WHERE transaction_id IN (
       AND created_at >= '2026-07-08'
 );
 
-SELECT 'Transactions to delete:' AS step, COUNT(*) AS count_to_delete
+SELECT 'Transactions to delete (should be 7):' AS step, COUNT(*) AS count_to_delete
 FROM transactions
 WHERE type = 'writeoff' AND created_at >= '2026-07-08';
 
-SELECT 'Audit logs to mark as rolled back:' AS step, COUNT(*) AS count_to_update
+SELECT 'Audit logs to mark as rolled back (should be 7):' AS step, COUNT(*) AS count_to_update
 FROM audit_logs
 WHERE action = 'writeoff_phase3b_v3';
 
@@ -52,8 +52,11 @@ FROM flight_systems WHERE id = 1
 UNION ALL
 SELECT id, name, balance, balance + 88995.59 FROM flight_systems WHERE id = 2;   -- NDC_X_NSAS
 
-SELECT 'Writeoff account that will be reset:' AS step;
+SELECT 'Writeoff account that will be reset (should be 0):' AS step;
 SELECT id, name, balance FROM accounts WHERE name = 'مصروفات شطب أرصدة الناقلين - طيران';
+
+SELECT 'Writeoff Contra account that will be reset (should be 0):' AS step;
+SELECT id, name, balance FROM accounts WHERE name = 'مقابل شطب أرصدة الناقلين - طيران';
 
 -- ────────────────────────────────────────────────────────
 -- [2] EXECUTE THE ROLLBACK (TX-safe)
@@ -91,6 +94,11 @@ UPDATE accounts
 SET balance = 0, updated_at = NOW()
 WHERE name = 'مصروفات شطب أرصدة الناقلين - طيران';
 
+-- Reset the writeoff CONTRA account balance to 0
+UPDATE accounts
+SET balance = 0, updated_at = NOW()
+WHERE name = 'مقابل شطب أرصدة الناقلين - طيران';
+
 -- Log the rollback
 INSERT INTO audit_logs (
     user_id, action, model_type, model_id,
@@ -118,6 +126,9 @@ SELECT id, name, balance FROM flight_systems WHERE id IN (1,2);
 
 SELECT 'After rollback — writeoff account:' AS step;
 SELECT id, name, balance FROM accounts WHERE name = 'مصروفات شطب أرصدة الناقلين - طيران';
+
+SELECT 'After rollback — writeoff contra account:' AS step;
+SELECT id, name, balance FROM accounts WHERE name = 'مقابل شطب أرصدة الناقلين - طيران';
 
 SELECT 'After rollback — writeoff transactions (should be 0):' AS step;
 SELECT COUNT(*) AS remaining FROM transactions WHERE type = 'writeoff' AND created_at >= '2026-07-08';
