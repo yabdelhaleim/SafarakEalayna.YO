@@ -140,7 +140,7 @@ if (! $writeoffAccount) {
         try {
             $writeoffAccount = Account::create([
                 'name'        => 'مصروفات شطب أرصدة الناقلين - طيران',
-                'type'        => 'expense',  // Phase 5: proper type (after migration)
+                'type'        => \App\Enums\AccountType::Expense,  // Phase 5: proper type — using enum instance to avoid cast string→enum issue
                 'currency'    => 'EGP',
                 'balance'     => 0,
                 'is_active'   => true,
