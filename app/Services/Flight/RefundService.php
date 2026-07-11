@@ -14,11 +14,15 @@ use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\LedgerClearingAccounts;
+use App\Support\Finance\DeadlockRetry;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class RefundService
 {
+    use DeadlockRetry;
+
     public function __construct(
         protected TransactionService $transactionService,
         protected LedgerClearingAccounts $clearingAccounts,
@@ -28,7 +32,16 @@ class RefundService
      */
     public function createRefundRequest(array $data, int $userId): RefundRequest
     {
-        $booking = FlightBooking::findOrFail($data['flight_booking_id']);
+        // Use withTrashed() + lockForUpdate() so concurrent refund-request creations
+        // on the same booking serialize cleanly (no two parallel requests get
+        // past the status check below without seeing each other).
+        $booking = FlightBooking::withTrashed()
+            ->lockForUpdate()
+            ->findOrFail($data['flight_booking_id']);
+
+        if ($booking->trashed()) {
+            throw new \RuntimeException('هذا الحجز محذوف ولا يمكن إنشاء طلب استرجاع عليه.');
+        }
 
         // التحقق من أن الحجز ليس مسترداً بالكامل مسبقاً
         if ($booking->status === FlightBookingStatus::REFUNDED) {
@@ -82,7 +95,9 @@ class RefundService
      */
     public function processRefundRequest(int $refundRequestId, int $userId): RefundRequest
     {
-        return DB::transaction(function () use ($refundRequestId, $userId) {
+        return $this->withDeadlockRetry(
+            fn () => LedgerBalanceMutationGuard::run(
+                fn () => DB::transaction(function () use ($refundRequestId, $userId) {
             $refundRequest = RefundRequest::lockForUpdate()->findOrFail($refundRequestId);
 
             // ضمان الـ Idempotency لمنع التكرار
@@ -98,7 +113,25 @@ class RefundService
                     throw new \RuntimeException('لا يمكن إصدار رصيد طيران لحجز لا يحتوي على شركة طيران (Carrier) محددة.');
                 }
 
-                // إنشاء أو تحديث رصيد الطيران
+                // NEW (2026-07-11): Defense against duplicate voucher creation.
+                // Check ONLY for ACTIVE vouchers — cancelled/historical ones are OK
+                // (allows re-refund after a previous refund was reversed).
+                // The check uses the outer lockForUpdate on the booking + this
+                // query (with its own lockForUpdate via forUpdate()) to serialize
+                // concurrent voucher creations for the same booking.
+                $existingActiveVoucher = AirlineCredit::query()
+                    ->where('flight_booking_id', $booking->id)
+                    ->where('status', 'active')
+                    ->lockForUpdate()
+                    ->exists();
+
+                if ($existingActiveVoucher) {
+                    throw new \RuntimeException(
+                        'يوجد رصيد طيران نشط مسبقًا لهذا الحجز. يجب إلغاء الرصيد القديم قبل إنشاء رصيد جديد.'
+                    );
+                }
+
+                // إنشاء رصيد طيران جديد
                 AirlineCredit::create([
                     'flight_carrier_id' => $booking->flight_carrier_id,
                     'customer_id' => $booking->customer_id,
@@ -179,7 +212,10 @@ class RefundService
                     $account = Account::getModuleVault('flights');
                 }
                 if (! $account) {
-                    // Create new Cashbox Account if none exists
+                    // Last-resort fallback: create the cashbox Account on-the-fly.
+                    // Safe here because we're inside LedgerBalanceMutationGuard::run() + DB::transaction
+                    // — any failure will roll back atomically. The legacy concern of
+                    // "untracked direct account creation" is mitigated by the wrapping guards.
                     $account = Account::create([
                         'name' => $treasury->name,
                         'type' => AccountType::Cashbox,
@@ -278,7 +314,9 @@ class RefundService
             $refundRequest->save();
 
             return $refundRequest;
-        });
+                })  // close DB::transaction
+            ),  // close LedgerBalanceMutationGuard::run
+        );  // close withDeadlockRetry
     }
 
     /**
@@ -297,15 +335,31 @@ class RefundService
      *
      * Idempotency: throws RuntimeException if already soft-deleted (prevents double-reversal).
      *
-     * Note on booking status: the original refund set $booking->status to REFUNDED /
-     * PARTIALLY_REFUNDED. This method does NOT revert that — the original refund still
-     * happened. Manual status management is recommended if there was only one refund.
+     * ⚠️ Known Limitation — Deferred (GAP 6, 2026-07-11):
+     *    This method does NOT revert $booking->status after reversal. The original refund
+     *    set the booking status to REFUNDED or PARTIALLY_REFUNDED — after reversal,
+     *    the status remains in that final state even though no financial impact remains.
+     *
+     *    Practical scenarios:
+     *      - Booking + 1 refund, refund reversed → status stays REFUNDED (no active
+     *        refund) but a new createRefundRequest() call would reject with "الحجز
+     *        تم استرداده بالكامل مسبقاً".
+     *      - Booking + 2 partial refunds, 1 reversed → status stays PARTIALLY_REFUNDED
+     *        (1 refund still active) which is correct by accident.
+     *      - Booking + 2 refunds, BOTH reversed → status stays REFUNDED (no active
+     *        refunds) — misleading state.
+     *
+     *    Why deferred: fixing this requires a business decision on whether booking.status
+     *    should reflect "current active refund count" or "has any refund ever happened".
+     *    Out of scope for the current hardening pass; documented for follow-up.
      *
      * @throws \RuntimeException if already deleted, or if booking/carrier is missing
      */
     public function reverseRefundRequest(int $refundRequestId, int $userId): RefundRequest
     {
-        return DB::transaction(function () use ($refundRequestId, $userId) {
+        return $this->withDeadlockRetry(
+            fn () => LedgerBalanceMutationGuard::run(
+                fn () => DB::transaction(function () use ($refundRequestId, $userId) {
             // Use withTrashed() so an already-soft-deleted refund can be located —
             // we want a clean idempotency error, not "No query results".
             $refundRequest = RefundRequest::withTrashed()
@@ -479,6 +533,8 @@ class RefundService
             ]);
 
             return $refundRequest;
-        });
+                })  // close DB::transaction
+            ),  // close LedgerBalanceMutationGuard::run
+        );  // close withDeadlockRetry
     }
 }
