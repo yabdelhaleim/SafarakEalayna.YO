@@ -94,7 +94,10 @@ class ProcessTicketModificationAccounting implements ShouldQueue
                 $cashAccount = Account::firstOrCreate([
                     'name' => "خزينة تعديلات التذاكر - {$modification->currency}",
                 ], [
-                    'type' => 'treasury',
+                    // Bug fix (2026-07-11): 'treasury' was removed from accounts.type
+                    // enum by migration 2026_07_09_010000. Use 'cashbox' (semantically
+                    // equivalent — it's the asset-side account that holds received cash).
+                    'type' => 'cashbox',
                     'currency' => $modification->currency,
                     'balance' => 0,
                     'is_active' => true,

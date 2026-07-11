@@ -3,6 +3,7 @@
 namespace App\Services\Flight;
 
 use App\Events\TicketModified;
+use App\Models\Flight\AirlineAccount;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\TicketModification;
 use Illuminate\Support\Facades\DB;
@@ -131,6 +132,149 @@ class ModificationService
             event(new TicketModified($modification));
 
             Log::info("Ticket Modification confirmed and applied successfully for Booking ID: {$booking->id}");
+
+            return $modification;
+        });
+    }
+
+    /**
+     * Reverse (delete with reversal) a confirmed ticket modification.
+     *
+     * Project rule: deleting any financial entity is a combination of:
+     *  1) a Soft Delete (preserves the row, hides it from views/reports), and
+     *  2) a Full Reversal of the financial impact made at confirmation time.
+     *
+     * In `confirmModification()`, the underlying `airline_change_fee` is debited
+     * from the booking's linked AirlineAccount (via the `ProcessTicketModificationAccounting`
+     * listener → `AirlineAccountDebitService::debitForModification`). There is
+     * **no paired GL entry** for that debit (this is the known GAP — see
+     * `docs/ARCHITECTURE.md` § 8.5).
+     *
+     * Therefore this reversal mirrors that pattern by crediting AirlineAccount.balance
+     * directly. A TODO marks the spot where the method should switch to using the
+     * canonical posting path once `Phase 1v2` (AirlineAccount protection + GL-aware
+     * modification flow) is delivered.
+     *
+     * Branches:
+     *  - Non-confirmed status → just soft-delete (no balance was ever touched).
+     *  - Confirmed → credit AirlineAccount + restore booking fields + soft-delete.
+     *
+     * Idempotency: throws RuntimeException on already-soft-deleted.
+     *
+     * @throws \RuntimeException on duplicates or when airline_account_id is missing
+     *                    on the booking.
+     */
+    public function reverseConfirmation(int $id, int $userId): TicketModification
+    {
+        return DB::transaction(function () use ($id, $userId) {
+            // Use withTrashed() so an already-soft-deleted modification can be located —
+            // we want a clean idempotency error, not "No query results".
+            $modification = TicketModification::withTrashed()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($modification->trashed()) {
+                throw new \RuntimeException(
+                    'هذا التعديل محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                );
+            }
+
+            Log::info('ModificationService::reverseConfirmation — starting', [
+                'modification_id' => $id,
+                'status' => $modification->status,
+                'booking_id' => $modification->booking_id,
+                'user_id' => $userId,
+            ]);
+
+            // If the modification was never confirmed, there is no balance change to reverse.
+            // The `TicketModified` event (which triggers the listener → debit) is only
+            // dispatched from `confirmModification()`, so for non-confirmed statuses the
+            // AirlineAccount.balance was untouched.
+            if ($modification->status !== 'confirmed') {
+                $modification->delete();
+                Log::info('ModificationService::reverseConfirmation — was not confirmed, soft-deleted only', [
+                    'modification_id' => $id,
+                    'user_id' => $userId,
+                ]);
+                return $modification;
+            }
+
+            // From here on, the modification was confirmed → reverse its financial impact.
+            $booking = FlightBooking::lockForUpdate()->findOrFail($modification->booking_id);
+
+            // ─────────────────────────────────────────────────────────────────
+            // GAP-AWARE REVERSAL: AirlineAccount.balance is mutated directly
+            // (no paired GL transaction existed at confirmation time either).
+            //   See docs/ARCHITECTURE.md § 8.5 for the larger AirlineAccount
+            //   protection task (Phase 1v2). Once that lands, this block
+            //   should ALSO post a paired GL journal entry (income_clearing ↔ carrier).
+            //
+            // Bug fix (2026-07-11): was using direct `$airlineAccount->balance = ...; ->save()`
+            // which collided with AirlineAccount::boot() guard and threw RuntimeException
+            // in production (only worked in tests due to app()->runningUnitTests() bypass).
+            // Now uses AirlineAccount::credit() which goes through mutateBalanceInternal()
+            // (sets internalBalanceUpdate flag → guard allows the save).
+            // ─────────────────────────────────────────────────────────────────
+            if ($booking->airline_account_id) {
+                $airlineAccount = AirlineAccount::lockForUpdate()->find($booking->airline_account_id);
+                if ($airlineAccount) {
+                    // Use the snapshot (immutable) value when available — fall back to the live value.
+                    $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
+                    if ($fee > 0) {
+                        // Use the proper credit() method which:
+                        //   - sets internalBalanceUpdate flag (boot guard allows the save)
+                        //   - records an AirlineTransaction audit row (type=credit)
+                        $airlineAccount->credit(
+                            amount: $fee,
+                            description: 'عكس قيد تعديل تذكرة — تعديل #'.$modification->id.' — حجز #'.$booking->id,
+                            userId: $userId,
+                            bookingId: $booking->id,
+                        );
+
+                        Log::info('ModificationService::reverseConfirmation — AirlineAccount credited back', [
+                            'modification_id' => $id,
+                            'airline_account_id' => $airlineAccount->id,
+                            'amount' => $fee,
+                            'new_balance' => (float) $airlineAccount->fresh()->balance,
+                        ]);
+                    } else {
+                        Log::info('ModificationService::reverseConfirmation — fee was 0, no balance change', [
+                            'modification_id' => $id,
+                        ]);
+                    }
+                } else {
+                    Log::warning('ModificationService::reverseConfirmation — AirlineAccount record missing', [
+                        'modification_id' => $id,
+                        'airline_account_id' => $booking->airline_account_id,
+                    ]);
+                }
+            } else {
+                Log::warning('ModificationService::reverseConfirmation — booking has no airline_account_id (cannot reverse balance)', [
+                    'modification_id' => $id,
+                    'booking_id' => $booking->id,
+                ]);
+            }
+
+            // Restore booking fields to their pre-modification values
+            if ($modification->original_departure_date) {
+                $booking->departure_date = $modification->original_departure_date;
+            }
+            if ($modification->original_destination) {
+                $booking->destination = $modification->original_destination;
+            }
+            if (($booking->modification_count ?? 0) > 0) {
+                $booking->modification_count = (int) $booking->modification_count - 1;
+            }
+            $booking->save();
+
+            // Soft delete the modification itself (uses new SoftDeletes trait)
+            $modification->delete();
+
+            Log::info('ModificationService::reverseConfirmation — complete', [
+                'modification_id' => $id,
+                'booking_id' => $booking->id,
+                'user_id' => $userId,
+            ]);
 
             return $modification;
         });
