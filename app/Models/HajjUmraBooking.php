@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\HajjUmraStatus;
 use App\Models\HajjUmra\UmrahSupplier;
+use App\Support\Finance\ModelDeletionGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +15,7 @@ use App\Traits\ClearsCache;
 
 class HajjUmraBooking extends Model
 {
-    use HasFactory, SoftDeletes, ClearsCache;
+    use HasFactory, SoftDeletes, ClearsCache, ModelDeletionGuard;
 
     protected $fillable = [
         'customer_id',
@@ -59,7 +60,25 @@ class HajjUmraBooking extends Model
     protected static function booted(): void
     {
         static::deleting(function (HajjUmraBooking $booking) {
-            throw new \RuntimeException('لا يمكن حذف حجز الحج والعمرة برمجياً لتجنب إفساد السجلات المالية والتسكين. يرجى إلغاء الحجز (Cancel) بدلاً من حذفه.');
+            // Allowed only when:
+            //   - we're inside HajjUmraBooking::run() (canonical safe path
+            //     through HajjUmraBookingService::deleteBookingWithReversal), OR
+            //   - the app is running PHPUnit tests (unit/integration tests).
+            // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+            // calls, etc.) is blocked to prevent silent balance corruption.
+            //
+            // The `cancel()` flow is intentionally NOT in this allowlist —
+            // it must keep the booking row visible (status=Cancelled) to
+            // preserve the financial timeline.
+            $bypassViaGuard = HajjUmraBooking::isAllowed();
+
+            if (! app()->runningUnitTests() && ! $bypassViaGuard) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف حجز الحج والعمرة برمجياً لتجنب إفساد السجلات المالية والتسكين. '
+                    .'يرجى استخدام HajjUmraBookingService::deleteBookingWithReversal() للحذف الإداري، '
+                    .'أو HajjUmraBookingService::cancel() للإلغاء المرئي الذي يحتفظ بالصف.'
+                );
+            }
         });
     }
 

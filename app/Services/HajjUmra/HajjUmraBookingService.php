@@ -276,8 +276,15 @@ class HajjUmraBookingService
             return $transaction;
         }
 
-        $this->transactions->voidTransactionJournal($transaction);
-        $transaction->delete();
+        // ✦ Phase 2026-07-11 FIX: previously this called
+        //   `voidTransactionJournal($transaction); $transaction->delete();`
+        //   which destroyed the original `transactions` row AND its
+        //   `account_entries` — violating the project rule "the original
+        //   transaction + entries are never deleted or modified".
+        //   Now we use `reverseTransaction()` which ADDS inverse
+        //   account_entries on the SAME transaction_id and updates the
+        //   transaction notes prefix (`عكس: `). The original row stays.
+        $this->transactions->reverseTransaction($transaction);
 
         return $this->transactions->recordExpense([
             'amount' => $newAmount,
@@ -299,8 +306,10 @@ class HajjUmraBookingService
 
         $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
 
-        $this->transactions->voidTransactionJournal($transaction);
-        $transaction->delete();
+        // ✦ Phase 2026-07-11 FIX: same reverseTransaction-based pattern as
+        //   repostExpenseTransaction — do NOT destroy the original
+        //   transaction row. See the inline note there for rationale.
+        $this->transactions->reverseTransaction($transaction);
 
         return $this->transactions->recordIncome([
             'amount' => $newAmount,
@@ -388,21 +397,40 @@ class HajjUmraBookingService
 
             $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction']);
 
+            // ✦ Phase 2026-07-11 FIX (Q1+Q2): was:
+            //   foreach ($booking->payments as $payment) {
+            //       if ($payment->transaction) {
+            //           $this->transactions->voidTransactionJournal($payment->transaction);
+            //           $payment->transaction->delete();   // ← destructive
+            //       }
+            //   }
+            //   …same pattern for income + expense transactions
+            //
+            //   This destroyed the original `transactions` rows and their
+            //   `account_entries`, violating the project-wide rule that
+            //   "the original transaction + entries are never deleted or
+            //   modified — reversals are always ADDITIVE".
+            //
+            //   The replacement uses `TransactionService::reverseTransaction()`,
+            //   which adds inverse `account_entries` rows on the SAME
+            //   `transaction_id` and updates the transaction notes with a
+            //   `عكس: ` prefix. The original rows are preserved.
+            //
+            //   The booking row stays visible (status=Cancelled) per Q3 —
+            //   no soft-delete here. For admin-driven soft-delete with full
+            //   reversal, see `deleteBookingWithReversal()` below.
             foreach ($booking->payments as $payment) {
                 if ($payment->transaction) {
-                    $this->transactions->voidTransactionJournal($payment->transaction);
-                    $payment->transaction->delete();
+                    $this->transactions->reverseTransaction($payment->transaction);
                 }
             }
 
             if ($booking->incomeTransaction) {
-                $this->transactions->voidTransactionJournal($booking->incomeTransaction);
-                $booking->incomeTransaction->delete();
+                $this->transactions->reverseTransaction($booking->incomeTransaction);
             }
 
             if ($booking->expenseTransaction) {
-                $this->transactions->voidTransactionJournal($booking->expenseTransaction);
-                $booking->expenseTransaction->delete();
+                $this->transactions->reverseTransaction($booking->expenseTransaction);
             }
 
             $note = trim((string) $booking->notes);
@@ -413,16 +441,111 @@ class HajjUmraBookingService
             $booking->update([
                 'status' => HajjUmraStatus::Cancelled->value,
                 'notes' => $note,
-                'expense_transaction_id' => null,
-                'income_transaction_id' => null,
+                // Keep the *_transaction_id pointers — `reverseTransaction()` ADDS
+                // entries on the same transaction_id; the FK references stay valid.
+                // Previously these were nulled here, which left dangling
+                // references after the old destructive delete.
             ]);
 
-            Log::info('HajjUmra booking cancelled with journal reversal', [
+            Log::info('HajjUmra booking cancelled (additive reversal applied)', [
                 'booking_id' => $booking->id,
                 'reason' => $reason,
+                'payments_reversed' => $booking->payments->filter(fn ($p) => $p->transaction)->count(),
+                'income_reversed' => (bool) $booking->incomeTransaction,
+                'expense_reversed' => (bool) $booking->expenseTransaction,
             ]);
 
             return $this->find($booking->id);
+        });
+    }
+
+    /**
+     * Administrative soft-delete with full financial reversal.
+     *
+     * Mirrors the canonical `FlightBookingService::deleteBookingWithReversal()`
+     * pattern (same name, same shape, same invariants) for the HajjUmra
+     * module. Use this when an admin needs to fully remove a booking from
+     * active lists while:
+     *   ① posting additive `account_entries` reversals (never destroying
+     *      the original `transactions` / `account_entries` rows), AND
+     *   ② soft-deleting the booking row (hiding it from views/reports).
+     *
+     * For customer-initiated cancellation that should keep the booking row
+     * visible (status=Cancelled), use `cancel($booking, $reason)` instead.
+     *
+     * Idempotency: throws RuntimeException if the booking is already
+     * soft-deleted, matching the Flight pattern.
+     *
+     * @throws \RuntimeException on duplicates or when the guard is misconfigured
+     */
+    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
+    {
+        // Wrap in the canonical deletion gate so the model's `deleting` event
+        // allows the soft-delete. Same depth-counter shape as
+        // LedgerBalanceMutationGuard; per-model isolation comes free from
+        // ModelDeletionGuard trait's per-class statics (FlightBooking's gate
+        // cannot open HajjUmraBooking's gate and vice versa).
+        return HajjUmraBooking::run(function () use ($bookingId, $userId) {
+            return DB::transaction(function () use ($bookingId, $userId) {
+                // 1) Lock + reload with relations.
+                //    withTrashed() so an already-soft-deleted booking can be
+                //    located — we want a clean idempotency error, not "No query results".
+                $booking = HajjUmraBooking::query()
+                    ->withTrashed()
+                    ->with(['payments.transaction', 'expenseTransaction', 'incomeTransaction'])
+                    ->lockForUpdate()
+                    ->findOrFail($bookingId);
+
+                // 2) Idempotency guard — second call returns a clean Arabic error.
+                if ($booking->trashed()) {
+                    throw new \RuntimeException(
+                        'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                    );
+                }
+
+                $userIdEffective = $userId ?: (int) (Auth::id() ?: 1);
+
+                Log::info('HajjUmraBookingService::deleteBookingWithReversal — starting', [
+                    'booking_id' => $booking->id,
+                    'status' => $booking->status?->value ?? (string) $booking->status,
+                    'payments_count' => $booking->payments->count(),
+                    'has_income' => (bool) $booking->incomeTransaction,
+                    'has_expense' => (bool) $booking->expenseTransaction,
+                    'user_id' => $userIdEffective,
+                ]);
+
+                // 3) Reverse each payment transaction (additive — never destructive).
+                foreach ($booking->payments as $payment) {
+                    if ($payment->transaction) {
+                        $this->transactions->reverseTransaction($payment->transaction);
+                    }
+                }
+
+                // 4) Reverse the booking's income + expense transactions (additive).
+                if ($booking->incomeTransaction) {
+                    $this->transactions->reverseTransaction($booking->incomeTransaction);
+                }
+                if ($booking->expenseTransaction) {
+                    $this->transactions->reverseTransaction($booking->expenseTransaction);
+                }
+
+                // 5) Soft-delete the payments (uses new SoftDeletes trait).
+                //    The transactions themselves stay — only `account_entries`
+                //    inverses were added by reverseTransaction().
+                $booking->payments()->delete();
+
+                // 6) Soft-delete the booking row itself. Allowed because we are
+                //    inside HajjUmraBooking::run(...) which flipped the model's
+                //    deletion gate open for the canonical reversal flow.
+                $booking->delete();
+
+                Log::info('HajjUmraBookingService::deleteBookingWithReversal — complete', [
+                    'booking_id' => $booking->id,
+                    'user_id' => $userIdEffective,
+                ]);
+
+                return true;
+            });
         });
     }
 
