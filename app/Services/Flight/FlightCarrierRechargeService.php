@@ -8,12 +8,15 @@ use App\Models\Flight\AirlineTransaction;
 use App\Models\Flight\FlightCarrier;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\PrepaidLedgerService;
+use App\Support\Finance\DeadlockRetry;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class FlightCarrierRechargeService
 {
+    use DeadlockRetry;
+
     public function __construct(
         protected PrepaidLedgerService $prepaidLedgerService,
         protected LedgerClearingAccounts $ledgerClearingAccounts,
@@ -41,42 +44,14 @@ class FlightCarrierRechargeService
         float $amount,
         ?string $notes = null
     ): array {
-        $maxAttempts = 3;
-        $attempt = 0;
-
-        while (true) {
-            $attempt++;
-            try {
-                return $this->executeRechargeTransaction($carrier, $source, $amount, $notes);
-            } catch (\PDOException $e) {
-                $msg = $e->getMessage();
-
-                // أخطاء قابلة لإعادة المحاولة:
-                //  1020 — Record has changed since last read (snapshot conflict)
-                //  1213 — Deadlock found (extremely unlikely with our ID-ascending locks)
-                $isRetryable = str_contains($msg, '1020')
-                    || str_contains($msg, 'Record has changed')
-                    || str_contains($msg, '1213')
-                    || str_contains($msg, 'Deadlock');
-
-                if ($isRetryable && $attempt < $maxAttempts) {
-                    Log::warning('Recharge race conflict detected, retrying', [
-                        'attempt' => $attempt,
-                        'max_attempts' => $maxAttempts,
-                        'carrier_id' => $carrier->id,
-                        'source_id' => $source->id,
-                        'amount' => $amount,
-                        'error_code' => str_contains($msg, '1020') ? '1020-snapshot' : '1213-deadlock',
-                        'error_excerpt' => mb_substr($msg, 0, 200),
-                    ]);
-                    // backoff: 50ms, 100ms, 150ms between retries
-                    usleep(50000 * $attempt);
-                    continue;
-                }
-
-                throw $e;
-            }
-        }
+        return $this->withDeadlockRetry(
+            fn () => $this->executeRechargeTransaction($carrier, $source, $amount, $notes),
+            context: [
+                'carrier_id' => $carrier->id,
+                'source_id' => $source->id,
+                'amount' => $amount,
+            ],
+        );
     }
 
     /**
