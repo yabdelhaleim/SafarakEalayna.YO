@@ -2024,41 +2024,174 @@ class FlightBookingService
     }
 
     /**
-     * Soft delete a booking.
-     * Only allowed if status is pending and no payments exist.
+     * Delete a flight booking with full financial reversal.
      *
-     * @throws \Exception
+     * Project rule: deleting any financial entity is the combination of:
+     *  1) a Soft Delete (preserves the row in the DB but hides it from views), and
+     *  2) a Full Reversal of every accounting impact (creates new reversal rows
+     *     on `transactions` / `account_entries` — the ORIGINAL rows are
+     *     NEVER deleted or modified).
+     *
+     * Idempotency: if the booking is already soft-deleted, throws RuntimeException
+     * to prevent accidental double-reversal.
+     *
+     * @throws \RuntimeException if already deleted
+     * @throws \Throwable on any internal failure (DB::transaction wraps)
      */
-    public function deleteBooking(FlightBooking $booking): bool
+    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
     {
-        if ($booking->status !== FlightBookingStatus::PENDING) {
-            throw new \Exception('Only pending bookings can be deleted.');
-        }
+        // Wrap in the canonical deletion guard so the model's `deleting` event
+        // allows the soft-delete. The guard is composed via ModelDeletionGuard
+        // trait — shared with HajjUmraBooking (and any future SoftDeletes
+        // model that needs a controlled deletion entry point). Reviewers
+        // recognise the depth-counter shape from LedgerBalanceMutationGuard.
+        return FlightBooking::run(function () use ($bookingId, $userId) {
+            return DB::transaction(function () use ($bookingId, $userId) {
+            // 1) Lock + reload with relations.
+            //    Use withTrashed() so an already-soft-deleted booking can be located —
+            //    we want to throw a clean idempotency error, not "No query results".
+            $booking = FlightBooking::query()
+                ->withTrashed()
+                ->with(['payments', 'tickets', 'passengers', 'segments', 'refund'])
+                ->lockForUpdate()
+                ->findOrFail($bookingId);
 
-        if ($booking->payments()->exists()) {
-            throw new \Exception('Cannot delete booking with existing payments.');
-        }
+            // Idempotency guard
+            if ($booking->trashed()) {
+                throw new \RuntimeException(
+                    'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                );
+            }
 
-        try {
-            DB::transaction(function () use ($booking) {
-                $booking->delete();
+            $userIdEffective = $userId ?: (int) (Auth::id() ?: 1);
 
-                Log::info('Flight booking deleted', [
-                    'flight_booking_id' => $booking->id,
-                    'user_id' => Auth::id(),
-                ]);
-            });
+            Log::info('FlightBookingService::deleteBookingWithReversal — starting', [
+                'flight_booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'booking_status' => $booking->status?->value ?? (string) $booking->status,
+                'payments_count' => $booking->payments->count(),
+                'purchase_balance_source' => $booking->purchase_balance_source,
+                'sale_gl_transaction_id' => $booking->sale_gl_transaction_id,
+                'user_id' => $userIdEffective,
+            ]);
+
+            // 2) Reverse each payment (creates a new reversal journal transfer per payment)
+            foreach ($booking->payments as $payment) {
+                $this->reverseSinglePayment($payment, $userIdEffective);
+            }
+
+            // 3) Reverse the GL sale journal entry on customer ledger (if it exists)
+            //    Original: clearing → customer (recordSaleToCustomer)
+            //    Reverse:  customer → clearing (recordJournalTransfer)
+            if ($booking->sale_gl_transaction_id) {
+                $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                    $this->transactionService->recordJournalTransfer([
+                        'amount' => (float) $booking->selling_price,
+                        'from_account_id' => (int) $orig->to_account_id,   // customer
+                        'to_account_id' => (int) $orig->from_account_id,   // income clearing
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'عكس قيد مبيعات — حذف حجز #'.$booking->booking_number,
+                        'created_by' => $userIdEffective,
+                    ]);
+                }
+                $booking->forceFill(['sale_gl_transaction_id' => null])->save();
+            }
+
+            // 4) Reverse the purchase pool debit + prepaid GL COGS (reuse cancelBooking helpers,
+            //    passing penalty=0 since this is a full reversal — no cancellation fees).
+            $src = $booking->purchase_balance_source;
+            $zeroPenalty = 0.0;
+
+            if ($src === 'carrier' && $booking->flight_carrier_id && (float) $booking->purchase_price > 0) {
+                $this->creditBackFlightCarrier($booking, $zeroPenalty);
+            } elseif ($src === 'system' && $booking->flight_system_id && (float) $booking->purchase_price > 0) {
+                $this->creditBackFlightSystem($booking, $zeroPenalty);
+            } elseif ($src === 'group' && $booking->flight_group_id && (float) $booking->purchase_price > 0) {
+                $this->reverseGroupPurchase($booking, $zeroPenalty, $userIdEffective);
+            } elseif ($src === null) {
+                // Legacy rows without an explicit source flag
+                if ($booking->flight_carrier_id && (float) $booking->purchase_price > 0) {
+                    $this->creditBackFlightCarrier($booking, $zeroPenalty);
+                } elseif ($booking->flight_system_id && (float) $booking->purchase_price > 0) {
+                    $this->creditBackFlightSystem($booking, $zeroPenalty);
+                } elseif ($booking->flight_group_id && (float) $booking->purchase_price > 0) {
+                    $this->reverseGroupPurchase($booking, $zeroPenalty, $userIdEffective);
+                }
+            }
+
+            // 5) Mark tickets as cancelled (we don't soft-delete tickets; status update is enough)
+            FlightTicket::query()
+                ->where('flight_booking_id', $booking->id)
+                ->update(['status' => 'cancelled']);
+
+            // 6) Soft-delete payments (uses new SoftDeletes trait on FlightPayment)
+            $booking->payments()->delete();
+
+            // 7) Soft-delete the booking itself
+            $booking->delete();
+
+            Log::info('FlightBookingService::deleteBookingWithReversal — complete', [
+                'flight_booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'user_id' => $userIdEffective,
+            ]);
 
             return true;
-        } catch (\Exception $e) {
-            Log::error('FlightBookingService::deleteBooking failed', [
-                'error' => $e->getMessage(),
-                'user_id' => Auth::id(),
-                'flight_booking_id' => $booking->id,
-            ]);
-            throw $e;
+        });
+    });
+}
+
+    /**
+     * Reverse a single FlightPayment by creating a *new* (reversal) journal transfer.
+     *
+     * Original `addPayment` posts:  income_clearing (debit)  →  cash account (credit)
+     * This method posts the mirror: cash account (debit)   →  income_clearing (credit)
+     *
+     * Per project rule, the ORIGINAL Transaction and AccountEntry rows are NEVER touched —
+     * we create brand-new ones that net to zero against the original. The `transaction_id`
+     * on the FlightPayment row stays linked to the *original* (so the audit trail is clear);
+     * callers can find the reversal by `related_type=FlightPayment` + `related_id=`.
+     *
+     * Idempotency: if `$payment->transaction_id` is missing or the original Transaction
+     * cannot be found, this method silently no-ops (no GL change) — assumed that the
+     * original payment was never actually posted.
+     */
+    protected function reverseSinglePayment(FlightPayment $payment, int $userId): void
+    {
+        if (! $payment->transaction_id) {
+            return; // Nothing posted originally → nothing to reverse
         }
+
+        $originalTx = Transaction::query()->find($payment->transaction_id);
+        if (! $originalTx || ! $originalTx->from_account_id || ! $originalTx->to_account_id) {
+            return;
+        }
+
+        // Create the *reversal* journal transfer (mirror of the original)
+        $this->transactionService->recordJournalTransfer([
+            'amount' => (float) $originalTx->amount,
+            'from_account_id' => (int) $originalTx->to_account_id,    // cash account
+            'to_account_id' => (int) $originalTx->from_account_id,   // income clearing
+            'module' => TransactionModule::Flight->value,
+            'related_type' => FlightPayment::class,
+            'related_id' => $payment->id,
+            'notes' => 'عكس دفعة (حذف حجز) — دفعة #'.$payment->id.' — حجز #'.$payment->flight_booking_id,
+            'created_by' => $userId,
+            'allow_from_negative' => true,
+        ]);
+
+        Log::info('FlightBookingService::reverseSinglePayment', [
+            'flight_payment_id' => $payment->id,
+            'original_transaction_id' => $originalTx->id,
+            'amount' => (float) $originalTx->amount,
+            'user_id' => $userId,
+        ]);
     }
+
 
     /**
      * Ensures the customer has a ledger account. Creates one if missing.

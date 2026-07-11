@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\FlightPricing;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Finance\ModelDeletionGuard;
 use App\Traits\ClearsCache;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -74,7 +75,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class FlightBooking extends Model
 {
-    use SoftDeletes, ClearsCache;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard;
 
     protected function casts(): array
     {
@@ -104,7 +105,15 @@ class FlightBooking extends Model
     protected static function booted(): void
     {
         static::deleting(function (FlightBooking $booking) {
-            if (!app()->runningUnitTests()) {
+            // Allowed only when:
+            //   - we're inside FlightBooking::run() (canonical safe path
+            //     through FlightBookingService::deleteBookingWithReversal), OR
+            //   - the app is running PHPUnit tests (unit/integration tests).
+            // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+            // calls, etc.) is blocked to prevent silent balance corruption.
+            $bypassViaGuard = FlightBooking::isAllowed();
+
+            if (!app()->runningUnitTests() && ! $bypassViaGuard) {
                 throw new \RuntimeException('لا يمكن حذف حجز الطيران برمجياً لتجنب إفساد السجلات المالية. يرجى إلغاء الحجز (Cancel) لتسوية الأرصدة تلقائياً.');
             }
         });
