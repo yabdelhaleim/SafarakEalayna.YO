@@ -3,12 +3,17 @@
 namespace App\Filament\Admin\Resources\BusCompanies\RelationManagers;
 
 use App\Enums\BusInventoryPaymentType;
+use App\Models\Bus\BusInventory;
+use App\Services\Bus\BusInventoryService;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class InventoriesRelationManager extends RelationManager
 {
@@ -113,11 +118,88 @@ class InventoriesRelationManager extends RelationManager
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                // ✅ Unified deletion path — routes through BusInventoryService::deleteInventory(),
+                // which reverses the cash purchase expense (if Cash) AND wraps in
+                // BusInventory::run() so the ModelDeletionGuard's `deleting` observer
+                // allows the soft-delete. Direct `$record->delete()` is blocked.
+                Tables\Actions\Action::make('deleteInventory')
+                    ->label('حذف')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('حذف رحلة الباص')
+                    ->modalDescription(
+                        'سيتم حذف الرحلة (soft-delete) وعكس مصروف الشراء النقدي تلقائياً إن وُجد. '
+                        .'يجب ألّا تكون هناك حجوزات نشطة على هذه الرحلة.'
+                    )
+                    ->modalSubmitActionLabel('نعم، احذف الرحلة')
+                    ->action(function (BusInventory $record): void {
+                        try {
+                            app(BusInventoryService::class)->deleteInventory($record);
+
+                            Notification::make()
+                                ->title('تم حذف الرحلة')
+                                ->body('تم أرشفة الرحلة وعكس مصروف الشراء النقدي (إن وُجد).')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('فشل حذف الرحلة')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+
+                            throw $e;
+                        }
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    // ✅ Unified bulk deletion — same service delegation as the
+                    // single-record action. Per-record failures reported via Notification.
+                    BulkAction::make('deleteInventories')
+                        ->label('حذف المحدد')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('حذف الرحلات المحددة')
+                        ->modalDescription(
+                            'سيتم حذف الرحلات المحددة عبر BusInventoryService::deleteInventory(). '
+                            .'أي رحلة بها حجوزات نشطة ستفشل مع تقرير خطأ منفصل.'
+                        )
+                        ->modalSubmitActionLabel('نعم، احذف المحدد')
+                        ->action(function (Collection $records): void {
+                            $service = app(BusInventoryService::class);
+                            $success = 0;
+                            $failures = [];
+
+                            foreach ($records as $record) {
+                                try {
+                                    $service->deleteInventory($record);
+                                    $success++;
+                                } catch (\Throwable $e) {
+                                    $failures[] = [
+                                        'route' => $record->route,
+                                        'message' => $e->getMessage(),
+                                    ];
+                                }
+                            }
+
+                            if ($success > 0) {
+                                Notification::make()
+                                    ->title("تم حذف {$success} رحلة بنجاح")
+                                    ->success()
+                                    ->send();
+                            }
+
+                            foreach ($failures as $fail) {
+                                Notification::make()
+                                    ->title('فشل حذف: '.$fail['route'])
+                                    ->body($fail['message'])
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ]);
     }

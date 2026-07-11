@@ -4,15 +4,16 @@ namespace App\Filament\Admin\Resources\BusCompanies;
 
 use App\Filament\Admin\Concerns\BelongsToBusModuleNavigation;
 use App\Models\Bus\BusCompany;
+use App\Services\Bus\BusCompanyService;
 use BackedEnum;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
@@ -25,6 +26,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class BusCompanyResource extends Resource
@@ -195,12 +197,90 @@ class BusCompanyResource extends Resource
                         'tableFilters[company_id][value]' => $record->id,
                     ])),
                 EditAction::make(),
-                DeleteAction::make(),
+                // ✅ Unified deletion path — routes through BusCompanyService::deleteCompany(),
+                // which wraps in BusCompany::run() so the ModelDeletionGuard's `deleting`
+                // observer allows the soft-delete. Direct `$record->delete()` is blocked.
+                Action::make('deleteCompany')
+                    ->label('حذف')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('حذف شركة الباص')
+                    ->modalDescription(
+                        'سيتم حذف الشركة (soft-delete) ولن تظهر في القوائم. '
+                        .'يجب ألّا تكون هناك رحلات نشطة مرتبطة بها. '
+                        .'لا يمكن التراجع عن هذا الإجراء عبر الواجهة.'
+                    )
+                    ->modalSubmitActionLabel('نعم، احذف الشركة')
+                    ->action(function (BusCompany $record): void {
+                        try {
+                            app(BusCompanyService::class)->deleteCompany($record);
+
+                            Notification::make()
+                                ->title('تم حذف الشركة')
+                                ->body('تم أرشفة الشركة ولن تظهر في القوائم.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('فشل حذف الشركة')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+
+                            throw $e;
+                        }
+                    }),
             ])
             ->toolbarActions([
                 \Filament\Tables\Actions\CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    // ✅ Unified bulk deletion path — same service delegation as the
+                    // single-record action above. Per-record errors are reported via
+                    // Notification instead of aborting the whole batch.
+                    BulkAction::make('deleteCompanies')
+                        ->label('حذف المحدد')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('حذف شركات الباص المحددة')
+                        ->modalDescription(
+                            'سيتم حذف الشركات المحددة عبر BusCompanyService::deleteCompany(). '
+                            .'أي شركة بها رحلات نشطة ستفشل مع تقرير خطأ منفصل.'
+                        )
+                        ->modalSubmitActionLabel('نعم، احذف المحدد')
+                        ->action(function (Collection $records): void {
+                            $service = app(BusCompanyService::class);
+                            $success = 0;
+                            $failures = [];
+
+                            foreach ($records as $record) {
+                                try {
+                                    $service->deleteCompany($record);
+                                    $success++;
+                                } catch (\Throwable $e) {
+                                    $failures[] = [
+                                        'name' => $record->name,
+                                        'message' => $e->getMessage(),
+                                    ];
+                                }
+                            }
+
+                            if ($success > 0) {
+                                Notification::make()
+                                    ->title("تم حذف {$success} شركة بنجاح")
+                                    ->success()
+                                    ->send();
+                            }
+
+                            foreach ($failures as $fail) {
+                                Notification::make()
+                                    ->title('فشل حذف: '.$fail['name'])
+                                    ->body($fail['message'])
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ]);
     }

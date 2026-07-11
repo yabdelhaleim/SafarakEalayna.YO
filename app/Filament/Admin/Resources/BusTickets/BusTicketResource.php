@@ -3,14 +3,15 @@
 namespace App\Filament\Admin\Resources\BusTickets;
 
 use App\Models\BusTicket;
+use App\Services\BusTicketService;
 use BackedEnum;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
@@ -18,6 +19,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 class BusTicketResource extends Resource
 {
@@ -204,11 +206,88 @@ class BusTicketResource extends Resource
             ->defaultSort('departure_date', 'desc')
             ->recordActions([
                 \Filament\Tables\Actions\EditAction::make(),
-                \Filament\Tables\Actions\DeleteAction::make(),
+                // ✅ Unified deletion path — routes through BusTicketService::delete(),
+                // which wraps in BusTicket::run() so the ModelDeletionGuard's
+                // `deleting` observer allows the soft-delete. Even though this
+                // resource is hidden from navigation (`shouldRegisterNavigation=false`),
+                // the deletion entry point is still wired through the service to keep
+                // the same ModelDeletionGuard contract as the rest of the Bus module.
+                \Filament\Tables\Actions\Action::make('deleteTicket')
+                    ->label('حذف')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('حذف تذكرة الباص (قديم)')
+                    ->modalDescription(
+                        'سيتم حذف التذكرة (soft-delete) ولن تظهر في القوائم. '
+                        .'هذا الإجراء مخصّص للسجلات القديمة فقط.'
+                    )
+                    ->modalSubmitActionLabel('نعم، احذف التذكرة')
+                    ->action(function (BusTicket $record): void {
+                        try {
+                            app(BusTicketService::class)->delete($record);
+
+                            Notification::make()
+                                ->title('تم حذف التذكرة')
+                                ->body('تم أرشفة التذكرة ولن تظهر في القوائم.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('فشل حذف التذكرة')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+
+                            throw $e;
+                        }
+                    }),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    \Filament\Tables\Actions\DeleteBulkAction::make(),
+                    // ✅ Unified bulk deletion — same service delegation.
+                    BulkAction::make('deleteTickets')
+                        ->label('حذف المحدد')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('حذف التذاكر المحددة')
+                        ->modalDescription(
+                            'سيتم حذف التذاكر المحددة عبر BusTicketService::delete().'
+                        )
+                        ->modalSubmitActionLabel('نعم، احذف المحدد')
+                        ->action(function (Collection $records): void {
+                            $service = app(BusTicketService::class);
+                            $success = 0;
+                            $failures = [];
+
+                            foreach ($records as $record) {
+                                try {
+                                    $service->delete($record);
+                                    $success++;
+                                } catch (\Throwable $e) {
+                                    $failures[] = [
+                                        'name' => $record->passenger_name,
+                                        'message' => $e->getMessage(),
+                                    ];
+                                }
+                            }
+
+                            if ($success > 0) {
+                                Notification::make()
+                                    ->title("تم حذف {$success} تذكرة بنجاح")
+                                    ->success()
+                                    ->send();
+                            }
+
+                            foreach ($failures as $fail) {
+                                Notification::make()
+                                    ->title('فشل حذف: '.$fail['name'])
+                                    ->body($fail['message'])
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ]);
     }
