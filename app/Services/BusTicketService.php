@@ -20,9 +20,19 @@ class BusTicketService
         return $record->fresh();
     }
 
+    /**
+     * Soft-delete a legacy bus ticket record.
+     *
+     * Wrapped in `BusTicket::run()` so the model's new `deleting` observer
+     * (with `ModelDeletionGuard`) allows the soft-delete. Direct
+     * `$record->delete()` from outside any canonical path now throws.
+     *
+     * Idempotent: a second call returns false (Eloquent returns 0 when no
+     * row matches the soft-delete query), without throwing.
+     */
     public function delete(BusTicket $record): bool
     {
-        return (bool) $record->delete();
+        return BusTicket::run(fn () => (bool) $record->delete());
     }
 
     public function list(array $filters): LengthAwarePaginator

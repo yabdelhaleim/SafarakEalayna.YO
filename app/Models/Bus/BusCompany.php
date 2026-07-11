@@ -3,6 +3,7 @@
 namespace App\Models\Bus;
 
 use App\Models\User;
+use App\Support\Finance\ModelDeletionGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusCompany extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, ModelDeletionGuard;
 
     public function account(): BelongsTo
     {
@@ -34,7 +35,25 @@ class BusCompany extends Model
         ];
     }
 
-    
+    protected static function booted(): void
+    {
+        // Allowed only when:
+        //   - we're inside BusCompany::run() (canonical safe path through
+        //     BusCompanyService::deleteCompany()), OR
+        //   - the app is running PHPUnit tests (unit/integration tests).
+        // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+        // calls, etc.) is blocked to prevent silent balance corruption.
+        static::deleting(function (BusCompany $company) {
+            $bypassViaGuard = BusCompany::isAllowed();
+
+            if (! app()->runningUnitTests() && ! $bypassViaGuard) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف شركة الباص برمجياً لتجنب إفساد السجلات المالية. '
+                    .'يرجى استخدام BusCompanyService::deleteCompany() للحذف الإداري المعتمد.'
+                );
+            }
+        });
+    }
 
     public function createdBy(): BelongsTo
     {

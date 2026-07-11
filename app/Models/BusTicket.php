@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Finance\ModelDeletionGuard;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class BusTicket extends Model
 {
     use HasFactory;
-    use SoftDeletes;
+    use SoftDeletes, ModelDeletionGuard;
 
     protected $fillable = [
         'passenger_name',
@@ -50,6 +51,24 @@ class BusTicket extends Model
             $selling = (string) $model->selling_price;
             $ticketCount = max((int) $model->ticket_count, 1);
             $model->profit = bcmul(bcsub($selling, $purchase, 2), (string) $ticketCount, 2);
+        });
+
+        // Allowed only when:
+        //   - we're inside BusTicket::run() (canonical safe path through
+        //     BusTicketService::delete()), OR
+        //   - the app is running PHPUnit tests (unit/integration tests).
+        // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+        // calls, etc.) is blocked to prevent accidental loss of legacy ticket
+        // records that are referenced by old receipts / audit logs.
+        static::deleting(function (BusTicket $ticket) {
+            $bypassViaGuard = BusTicket::isAllowed();
+
+            if (! app()->runningUnitTests() && ! $bypassViaGuard) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف تذكرة الباص (قديم) برمجياً. '
+                    .'يرجى استخدام BusTicketService::delete() للحذف الإداري المعتمد.'
+                );
+            }
         });
     }
 

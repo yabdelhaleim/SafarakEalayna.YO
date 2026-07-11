@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Finance\ModelDeletionGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -36,7 +37,7 @@ use App\Traits\ClearsCache;
 ])]
 class BusBooking extends Model
 {
-    use SoftDeletes, ClearsCache;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard;
 
     protected function casts(): array
     {
@@ -49,6 +50,31 @@ class BusBooking extends Model
             'status' => BusBookingStatus::class,
             'payment_status' => BusPaymentStatus::class,
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Allowed only when:
+        //   - we're inside BusBooking::run() (canonical safe path through
+        //     BusBookingService::deleteBooking() / deleteBookingWithReversal()), OR
+        //   - the app is running PHPUnit tests (unit/integration tests).
+        // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+        // calls, etc.) is blocked to prevent silent balance corruption.
+        //
+        // The `cancelBooking()` flow is intentionally NOT in this allowlist —
+        // it must keep the booking row visible (status=Cancelled) to preserve
+        // the financial timeline.
+        static::deleting(function (BusBooking $booking) {
+            $bypassViaGuard = BusBooking::isAllowed();
+
+            if (! app()->runningUnitTests() && ! $bypassViaGuard) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف حجز الباص برمجياً لتجنب إفساد السجلات المالية. '
+                    .'يرجى استخدام BusBookingService::deleteBookingWithReversal() للحذف الإداري، '
+                    .'أو BusBookingService::cancelBooking() للإلغاء المرئي الذي يحتفظ بالصف.'
+                );
+            }
+        });
     }
 
     public function inventory(): BelongsTo

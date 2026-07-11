@@ -6,6 +6,7 @@ use App\Enums\BusInventoryPaymentType;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Finance\ModelDeletionGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -34,7 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusInventory extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, ModelDeletionGuard;
 
     protected function casts(): array
     {
@@ -52,8 +53,29 @@ class BusInventory extends Model
     protected static function booted(): void
     {
         static::deleting(function (BusInventory $inventory) {
+            // Allowed only when:
+            //   - we're inside BusInventory::run() (canonical safe path
+            //     through BusInventoryService::deleteInventory()), OR
+            //   - the app is running PHPUnit tests (unit/integration tests).
+            // Everything else (Filament `DeleteAction`, raw tinker, accidental API
+            // calls, etc.) is blocked to prevent silent balance corruption.
+            $bypassViaGuard = BusInventory::isAllowed();
+
+            if (! app()->runningUnitTests() && ! $bypassViaGuard) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف رحلة الباص برمجياً لتجنب إفساد السجلات المالية. '
+                    .'يرجى استخدام BusInventoryService::deleteInventory() للحذف الإداري المعتمد.'
+                );
+            }
+
+            // Complementary safety layer — keeps the existing business rule
+            // that an inventory cannot be deleted while bookings still
+            // reference it (the service-layer check is a duplicate safeguard).
             if ($inventory->bookings()->exists()) {
-                throw new \RuntimeException('لا يمكن حذف رحلة باص تحتوي على حجوزات نشطة. يرجى إلغاء الحجز أولاً أو أرشفة الرحلة.');
+                throw new \RuntimeException(
+                    'لا يمكن حذف رحلة باص تحتوي على حجوزات نشطة. '
+                    .'يرجى إلغاء الحجز أولاً أو أرشفة الرحلة.'
+                );
             }
         });
     }
