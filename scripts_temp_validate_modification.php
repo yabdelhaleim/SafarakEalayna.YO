@@ -205,14 +205,28 @@ try {
     ];
 
     // Snapshot AFTER booking (BEFORE modification) — this is our baseline
+    //
+    // Resolve the prepaid flight_carrier GL account ID — used to verify the
+    // Phase 1v2 GL reversal: prepaid GL must return to its pre-confirm balance.
+    $prepaidFlightCarrierId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+        ->prepaidAccountId('flight_carrier');
+
     $afterBooking = [
         'airline_account'        => (float) $airlineAccount->fresh()->balance,
+        'prepaid_gl'             => (float) \App\Models\Account::find($prepaidFlightCarrierId)->balance,
         'booking_departure_date' => $booking->fresh()->departure_date->toDateString(),
         'booking_destination'    => $booking->fresh()->destination,
         'modification_count'     => (int) $booking->fresh()->modification_count,
     ];
     $result['balances']['after_booking'] = $afterBooking;
     echo "[after_booking] " . json_encode($afterBooking) . "\n";
+
+    // ─────────────────────────────────────────────────────
+    // Purge the queue BEFORE creating the modification.
+    // Otherwise `queue:work --once` below would process OLD queued jobs
+    // (from previous test runs) instead of our new event, leading to false
+    // "modification accounting already processed" idempotency skips.
+    \Illuminate\Support\Facades\DB::table('jobs')->truncate();
 
     // ─────────────────────────────────────────────────────
     // Create modification request + CONFIRM it via the REAL service.
@@ -253,6 +267,7 @@ try {
     // Snapshot AFTER confirmation (BEFORE reversal) — should differ from after_booking
     $afterConfirm = [
         'airline_account'        => (float) $airlineAccount->fresh()->balance,
+        'prepaid_gl'             => (float) \App\Models\Account::find($prepaidFlightCarrierId)->balance,
         'booking_departure_date' => $booking->fresh()->departure_date->toDateString(),
         'booking_destination'    => $booking->fresh()->destination,
         'modification_count'     => (int) $booking->fresh()->modification_count,
@@ -262,6 +277,7 @@ try {
 
     $confirmDelta = [
         'airline_account'    => round($afterConfirm['airline_account']    - $afterBooking['airline_account'],    2),
+        'prepaid_gl'         => round($afterConfirm['prepaid_gl']         - $afterBooking['prepaid_gl'],         2),
         'departure_changed'  => ($afterConfirm['booking_departure_date'] !== $afterBooking['booking_departure_date']),
         'destination_changed'=> ($afterConfirm['booking_destination']    !== $afterBooking['booking_destination']),
         'count_changed'      => ($afterConfirm['modification_count']     !=  $afterBooking['modification_count']),
@@ -305,6 +321,7 @@ try {
     // Snapshot AFTER reversal — should match after_booking
     $afterReversal = [
         'airline_account'        => (float) $airlineAccount->balance,
+        'prepaid_gl'             => (float) \App\Models\Account::find($prepaidFlightCarrierId)->balance,
         'booking_departure_date' => $booking->departure_date->toDateString(),
         'booking_destination'    => $booking->destination,
         'modification_count'     => (int) $booking->modification_count,
@@ -314,6 +331,7 @@ try {
 
     $reversalDelta = [
         'airline_account'    => round($afterReversal['airline_account']    - $afterBooking['airline_account'],    2),
+        'prepaid_gl'         => round($afterReversal['prepaid_gl']         - $afterBooking['prepaid_gl'],         2),
         'departure_restored' => ($afterReversal['booking_departure_date'] === $afterBooking['booking_departure_date']),
         'dest_restored'      => ($afterReversal['booking_destination']    === $afterBooking['booking_destination']),
         'count_restored'     => ($afterReversal['modification_count']     ==  $afterBooking['modification_count']),
@@ -337,8 +355,10 @@ try {
     // ─────────────────────────────────────────────────────
     $result['verdict'] = [
         'airline_had_effect'        => ($confirmDelta['airline_account'] == -$airlineChangeFee),
+        'prepaid_gl_debited'        => ($confirmDelta['prepaid_gl'] < 0), // confirm consumes prepaid
         'booking_fields_updated'    => ($confirmDelta['departure_changed'] && $confirmDelta['destination_changed'] && $confirmDelta['count_changed']),
         'airline_account_restored'  => ($reversalDelta['airline_account'] == 0.0),
+        'prepaid_gl_restored'       => ($reversalDelta['prepaid_gl'] == 0.0), // NEW Phase 1v2 check
         'departure_restored'        => $reversalDelta['departure_restored'],
         'destination_restored'      => $reversalDelta['dest_restored'],
         'count_restored'            => $reversalDelta['count_restored'],
@@ -346,12 +366,13 @@ try {
         'idempotency_throws'        => $idempotencyOk,
     ];
 
-    $result['notes'][] = 'Known GAP (still present): AirlineAccount.balance is mutated directly (no paired GL reversal entry). This mirrors the confirmation flow which also debited directly (Phase 1v2 todo — see docs/ARCHITECTURE.md § 8.5).';
-    $result['notes'][] = 'Listener now works end-to-end (2026-07-11 fix): migration added "liability" + "revenue" to accounts.type enum, PHP AccountType enum gained Liability case, listener line 97 changed "treasury" → "cashbox". ModificationService::reverseConfirmation now uses AirlineAccount::credit() instead of direct mutation.';
+    $result['notes'][] = 'Phase 1v2 GAP RESOLVED (2026-07-11): the previous direct balance mutation was replaced with AirlineAccountDebitService::creditBackForModification() which posts a paired GL reversal entry on prepaid flight_carrier (via PrepaidLedgerService::refundCogs). The sub-ledger (AirlineAccount.balance) AND the GL (prepaid + expense contra) now both restore to zero on reversal — fully balanced double-entry accounting on both sides.';
 
     $result['success'] = $result['verdict']['airline_had_effect']
+        && $result['verdict']['prepaid_gl_debited']
         && $result['verdict']['booking_fields_updated']
         && $result['verdict']['airline_account_restored']
+        && $result['verdict']['prepaid_gl_restored']
         && $result['verdict']['departure_restored']
         && $result['verdict']['destination_restored']
         && $result['verdict']['count_restored']

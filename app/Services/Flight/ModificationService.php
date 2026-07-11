@@ -203,44 +203,45 @@ class ModificationService
             $booking = FlightBooking::lockForUpdate()->findOrFail($modification->booking_id);
 
             // ─────────────────────────────────────────────────────────────────
-            // GAP-AWARE REVERSAL: AirlineAccount.balance is mutated directly
-            // (no paired GL transaction existed at confirmation time either).
-            //   See docs/ARCHITECTURE.md § 8.5 for the larger AirlineAccount
-            //   protection task (Phase 1v2). Once that lands, this block
-            //   should ALSO post a paired GL journal entry (income_clearing ↔ carrier).
+            // REVERSAL FLOW (Phase 1v2):
+            //   Delegates to AirlineAccountDebitService::creditBackForModification()
+            //   which is the EXACT MIRROR of debitForModification():
+            //     ① AirlineAccount->credit()           (sub-ledger)
+            //     ② PrepaidLedgerService::refundCogs()  (GL reversal on prepaid flight_carrier)
+            //   Both wrapped in LedgerBalanceMutationGuard + DB::transaction.
             //
-            // Bug fix (2026-07-11): was using direct `$airlineAccount->balance = ...; ->save()`
-            // which collided with AirlineAccount::boot() guard and threw RuntimeException
-            // in production (only worked in tests due to app()->runningUnitTests() bypass).
-            // Now uses AirlineAccount::credit() which goes through mutateBalanceInternal()
-            // (sets internalBalanceUpdate flag → guard allows the save).
+            //   This closes the original GAP (docs/ARCHITECTURE.md § 8.5):
+            //   before, the reverse path only mutated AirlineAccount.balance
+            //   without posting a paired GL entry — leaving prepaid flight_carrier
+            //   under-consumed (asymmetric accounting).
             // ─────────────────────────────────────────────────────────────────
             if ($booking->airline_account_id) {
                 $airlineAccount = AirlineAccount::lockForUpdate()->find($booking->airline_account_id);
                 if ($airlineAccount) {
-                    // Use the snapshot (immutable) value when available — fall back to the live value.
-                    $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
-                    if ($fee > 0) {
-                        // Use the proper credit() method which:
-                        //   - sets internalBalanceUpdate flag (boot guard allows the save)
-                        //   - records an AirlineTransaction audit row (type=credit)
-                        $airlineAccount->credit(
-                            amount: $fee,
-                            description: 'عكس قيد تعديل تذكرة — تعديل #'.$modification->id.' — حجز #'.$booking->id,
-                            userId: $userId,
-                            bookingId: $booking->id,
-                        );
+                    try {
+                        $result = app(\App\Services\Flight\AirlineAccountDebitService::class)
+                            ->creditBackForModification(
+                                airlineAccount: $airlineAccount,
+                                booking: $booking,
+                                modification: $modification,
+                                userId: $userId,
+                            );
 
-                        Log::info('ModificationService::reverseConfirmation — AirlineAccount credited back', [
+                        Log::info('ModificationService::reverseConfirmation — AirlineAccount credited back + GL reversed', [
                             'modification_id' => $id,
                             'airline_account_id' => $airlineAccount->id,
-                            'amount' => $fee,
-                            'new_balance' => (float) $airlineAccount->fresh()->balance,
+                            'airline_tx_id' => $result['airline_tx_id'],
+                            'prepaid_tx_id' => $result['prepaid_tx_id'],
+                            'balance_after' => $result['balance_after'],
                         ]);
-                    } else {
-                        Log::info('ModificationService::reverseConfirmation — fee was 0, no balance change', [
+                    } catch (\App\Exceptions\InsufficientBalanceException $e) {
+                        // Unlikely on reversal side, but log defensively.
+                        Log::error('Phase 1v2: insufficient prepaid GL on reversal (should not happen)', [
                             'modification_id' => $id,
+                            'airline_account_id' => $airlineAccount->id,
+                            'error' => $e->getMessage(),
                         ]);
+                        throw $e;
                     }
                 } else {
                     Log::warning('ModificationService::reverseConfirmation — AirlineAccount record missing', [

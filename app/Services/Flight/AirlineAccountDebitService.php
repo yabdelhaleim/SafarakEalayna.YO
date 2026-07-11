@@ -99,4 +99,95 @@ class AirlineAccountDebitService
             });
         });
     }
+
+    /**
+     * Credit back the AirlineAccount after a ticket modification reversal +
+     * record a paired GL reversal entry on the prepaid flight_carrier GL.
+     *
+     * This is the EXACT MIRROR of `debitForModification()`:
+     *   - debitForModification(): AirlineAccount.balance -= X, prepaid -X, expense contra +X
+     *   - creditBackForModification(): AirlineAccount.balance += X, expense contra -X, prepaid +X
+     *
+     * Calling both in sequence on the same modification should net to zero on
+     * every account (sub-ledger AND GL), restoring the system to its
+     * pre-modification state.
+     *
+     * Used by `ModificationService::reverseConfirmation()` to close the
+     * original GAP (see docs/ARCHITECTURE.md § 8.5 + Phase 1v2).
+     *
+     * @return array{airline_tx_id: int, prepaid_tx_id: ?int, balance_after: float}
+     *
+     * @throws \RuntimeException لو الـ reverse guard فشل (idempotency / trashed)
+     */
+    public function creditBackForModification(
+        AirlineAccount $airlineAccount,
+        FlightBooking $booking,
+        TicketModification $modification,
+        int $userId,
+    ): array {
+        return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId) {
+            return DB::transaction(function () use ($airlineAccount, $booking, $modification, $userId) {
+                // ① Lock the airline account row (same as debit side)
+                AirlineAccount::query()
+                    ->whereKey($airlineAccount->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                // ② Credit the AirlineAccount (sub-ledger) — mirror of debit()
+                //    Uses mutateBalanceInternal internally → boot guard allows the save.
+                $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
+
+                if ($fee <= 0) {
+                    // Nothing was debited originally → nothing to reverse.
+                    Log::info('AirlineAccount creditBackForModification — fee is 0, no balance change', [
+                        'modification_id' => $modification->id,
+                        'airline_account_id' => $airlineAccount->id,
+                    ]);
+
+                    return [
+                        'airline_tx_id' => 0,
+                        'prepaid_tx_id' => null,
+                        'balance_after' => (float) $airlineAccount->fresh()->balance,
+                    ];
+                }
+
+                $airlineTx = $airlineAccount->credit(
+                    amount: $fee,
+                    description: 'عكس غرامة تعديل تذكرة #'.$booking->booking_reference,
+                    userId: $userId,
+                    bookingId: $booking->id,
+                );
+
+                // ③ Register paired GL reversal entry — mirror of consumeCogs()
+                //    This is the previously-missing piece (the original GAP).
+                //    Refund moves money OUT of expense contra and BACK INTO the
+                //    prepaid flight_carrier GL pool, restoring it to its pre-modification balance.
+                $prepaidTx = $this->prepaidLedgerService->refundCogs(
+                    prepaidKey: 'flight_carrier',
+                    module: TransactionModule::Flight,
+                    amount: $fee,
+                    notes: 'عكس غرامة تعديل تذكرة #'.$booking->booking_reference.' (AirlineAccount #'.$airlineAccount->id.')',
+                    relatedType: TicketModification::class,
+                    relatedId: $modification->id,
+                );
+
+                Log::info('Phase 1v2: AirlineAccount credit-back + GL reversal entries recorded', [
+                    'airline_account_id' => $airlineAccount->id,
+                    'booking_id' => $booking->id,
+                    'modification_id' => $modification->id,
+                    'amount' => $fee,
+                    'airline_tx_id' => $airlineTx->id,
+                    'prepaid_tx_id' => $prepaidTx?->id,
+                    'balance_after' => (float) $airlineAccount->fresh()->balance,
+                    'user_id' => $userId,
+                ]);
+
+                return [
+                    'airline_tx_id' => $airlineTx->id,
+                    'prepaid_tx_id' => $prepaidTx?->id,
+                    'balance_after' => (float) $airlineAccount->fresh()->balance,
+                ];
+            });
+        });
+    }
 }
