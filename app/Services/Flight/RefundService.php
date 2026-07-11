@@ -140,7 +140,10 @@ class RefundService
                 $treasury->credit((float) $refundRequest->refund_amount);
 
                 // توثيق الحركة المالية في حركات الخزينة
-                $treasury->transactions()->create([
+                // NOTE: الـ ledger_transaction_id + account_id يتم ربطهما بعد إنشاء
+                // الـ GL Transaction (في الأسفل) عبر ->linkToGl() — هذه هي الـ GAP
+                // اللي تم إغلاقها في هذا الـ commit.
+                $treasuryTransaction = $treasury->transactions()->create([
                     'transaction_type' => 'receipt',
                     'amount' => $refundRequest->refund_amount,
                     'currency' => $refundRequest->refund_currency,
@@ -234,7 +237,7 @@ class RefundService
                         }
                     }
 
-                    $this->transactionService->recordJournalTransfer([
+                    $glTransaction = $this->transactionService->recordJournalTransfer([
                         'amount' => $transferAmount,
                         'from_account_id' => $fromAccountId,
                         'to_account_id' => $account->id,
@@ -253,7 +256,14 @@ class RefundService
                         'from_account_id' => $fromAccountId,
                         'to_account_id' => $account->id,
                         'amount' => $transferAmount,
+                        'gl_transaction_id' => $glTransaction->id,
                     ]);
+
+                    // NEW (2026-07-11): اربط الـ TreasuryTransaction بالـ GL Transaction
+                    // عشان نقفل الـ desync (rows بدون ledger_transaction_id كانت orphan).
+                    // الـ Treasury::credit() عمل debit لـ Treasury.balance،
+                    // والـ recordJournalTransfer عمل credit للـ Account.balance (cashbox).
+                    $treasuryTransaction->linkToGl($glTransaction, $account->id);
                 }
             }
 
@@ -266,6 +276,207 @@ class RefundService
             $refundRequest->status = 'processed';
             $refundRequest->processed_at = now();
             $refundRequest->save();
+
+            return $refundRequest;
+        });
+    }
+
+    /**
+     * Reverse (delete with full financial reversal) a refund request.
+     *
+     * Project rule: deleting any financial entity is a combination of:
+     *  1) a Soft Delete (preserves the row, hides it from views/reports), and
+     *  2) a Full Reversal of every accounting impact (creates new reversal rows
+     *     on `transactions` / `account_entries` / `treasury_transactions` — the
+     *     ORIGINAL rows are NEVER deleted or modified).
+     *
+     * Branches:
+     *  - `airline_credit`: cancel the linked AirlineCredit voucher (no GL was ever posted).
+     *  - `agency_treasury`: reverse (a) the GL transfer prepaid→cashbox, (b) the carrier/system
+     *    balance debit, (c) the treasury receipt.
+     *
+     * Idempotency: throws RuntimeException if already soft-deleted (prevents double-reversal).
+     *
+     * Note on booking status: the original refund set $booking->status to REFUNDED /
+     * PARTIALLY_REFUNDED. This method does NOT revert that — the original refund still
+     * happened. Manual status management is recommended if there was only one refund.
+     *
+     * @throws \RuntimeException if already deleted, or if booking/carrier is missing
+     */
+    public function reverseRefundRequest(int $refundRequestId, int $userId): RefundRequest
+    {
+        return DB::transaction(function () use ($refundRequestId, $userId) {
+            // Use withTrashed() so an already-soft-deleted refund can be located —
+            // we want a clean idempotency error, not "No query results".
+            $refundRequest = RefundRequest::withTrashed()
+                ->lockForUpdate()
+                ->findOrFail($refundRequestId);
+
+            if ($refundRequest->trashed()) {
+                throw new \RuntimeException(
+                    'هذا الطلب محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                );
+            }
+
+            Log::info('RefundService::reverseRefundRequest — starting', [
+                'refund_request_id' => $refundRequestId,
+                'destination' => $refundRequest->destination,
+                'status' => $refundRequest->status,
+                'user_id' => $userId,
+            ]);
+
+            // If not yet processed — just soft-delete (no GL impact to reverse)
+            if ($refundRequest->status !== 'processed') {
+                $refundRequest->delete();
+                Log::info('RefundService::reverseRefundRequest — was unprocessed, soft-deleted only', [
+                    'refund_request_id' => $refundRequestId,
+                    'user_id' => $userId,
+                ]);
+                return $refundRequest;
+            }
+
+            if ($refundRequest->destination === 'airline_credit') {
+                // -- Cancel the AirlineCredit voucher (no GL reversal needed) --
+                $credit = $refundRequest->airlineCredit()->first();
+                if ($credit && ! $credit->trashed() && $credit->status !== 'cancelled') {
+                    $credit->cancelCredit();
+                    Log::info('RefundService::reverseRefundRequest — AirlineCredit cancelled', [
+                        'airline_credit_id' => $credit->id,
+                    ]);
+                }
+            } else {
+                // -- agency_treasury: reverse GL + carrier/system debit + treasury receipt --
+
+                $booking = FlightBooking::lockForUpdate()->findOrFail($refundRequest->flight_booking_id);
+                $prepaidKey = 'flight_system';
+                $debitSubLedgerAmount = (float) $refundRequest->refund_amount;
+
+                // (a) Reverse the FlightCarrier/System debit (credit back)
+                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
+                    $prepaidKey = 'flight_carrier';
+                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
+                    if ($carrier) {
+                        if (strtoupper($carrier->currency) === 'EGP') {
+                            $debitSubLedgerAmount = (float) $refundRequest->base_currency_refund;
+                        }
+                        $carrier->credit(
+                            amount: $debitSubLedgerAmount,
+                            description: 'عكس خصم ناقل — حذف طلب استرداد #'.$refundRequest->id,
+                            userId: $userId,
+                            bookingId: $booking->id,
+                        );
+                    }
+                } elseif ($booking->flight_system_id) {
+                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
+                    if ($system) {
+                        if (strtoupper($system->currency) === 'EGP') {
+                            $debitSubLedgerAmount = (float) $refundRequest->base_currency_refund;
+                        }
+                        $system->credit(
+                            amount: $debitSubLedgerAmount,
+                            description: 'عكس خصم نظام — حذف طلب استرداد #'.$refundRequest->id,
+                            userId: $userId,
+                            bookingId: $booking->id,
+                        );
+                    }
+                }
+
+                // (b) Reverse the GL journal transfer (cashbox → prepaid, opposite direction)
+                //     We re-resolve the destination Account the same way processRefundRequest does.
+                $treasury = $refundRequest->treasury_id ? Treasury::lockForUpdate()->find($refundRequest->treasury_id) : null;
+                $account = $treasury ? Account::where('name', $treasury->name)->first() : null;
+                if (! $account) {
+                    $account = Account::where('type', AccountType::Cashbox->value)
+                        ->where('currency', $refundRequest->refund_currency)
+                        ->whereIn('module_type', ['flights', 'tourism'])
+                        ->first();
+                }
+                if (! $account) {
+                    $account = Account::getModuleVault('flights');
+                }
+
+                $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
+
+                if ($fromAccountId && $account && $fromAccountId !== $account->id) {
+                    // Mirror the conversion logic in processRefundRequest
+                    $transferAmount = (float) $refundRequest->refund_amount;
+                    $fromAccount = Account::find($fromAccountId);
+                    if (($fromAccount && $fromAccount->currency === 'EGP') || ($account->currency === 'EGP')) {
+                        $transferAmount = (float) ($refundRequest->base_currency_refund ?? $refundRequest->refund_amount);
+                    }
+                    $convertedAmount = null;
+                    $exchangeRate = null;
+                    if ($fromAccount && $fromAccount->currency !== $account->currency) {
+                        if ($fromAccount->currency === 'EGP') {
+                            $convertedAmount = (float) $refundRequest->refund_amount;
+                            $exchangeRate = (float) $refundRequest->refund_exchange_rate;
+                        } else {
+                            $convertedAmount = (float) $refundRequest->base_currency_refund;
+                            $exchangeRate = (float) $refundRequest->refund_exchange_rate;
+                        }
+                    }
+
+                    // REVERSE: original was prepaid → cashbox; here cashbox → prepaid
+                    $glTransaction = $this->transactionService->recordJournalTransfer([
+                        'amount' => $transferAmount,
+                        'from_account_id' => $account->id,
+                        'to_account_id' => $fromAccountId,
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => RefundRequest::class,
+                        'related_id' => $refundRequest->id,
+                        'notes' => 'عكس قيد استرداد — حذف طلب #'.$refundRequest->id.
+                                   ' — حجز #'.$refundRequest->flight_booking_id,
+                        'created_by' => $userId,
+                        'converted_amount' => $convertedAmount,
+                        'exchange_rate' => $exchangeRate,
+                    ]);
+
+                    Log::info('RefundService::reverseRefundRequest — GL reversal posted', [
+                        'refund_request_id' => $refundRequestId,
+                        'gl_transaction_id' => $glTransaction->id,
+                    ]);
+                }
+
+                // (c) Reverse the Treasury receipt (debit the treasury + create compensating tx)
+                if ($treasury) {
+                    $amount = (float) $refundRequest->refund_amount;
+                    $treasury->debit($amount);
+
+                    // توثيق الحركة المالية العكسية
+                    // NOTE: الـ ledger_transaction_id + account_id يتم ربطهما عبر ->linkToGl()
+                    // بعد ما الـ GL Transaction يتعمل في الأعلى.
+                    $treasuryTransaction = $treasury->transactions()->create([
+                        'transaction_type' => 'debit',
+                        'amount' => $amount,
+                        'currency' => $refundRequest->refund_currency,
+                        'balance_before' => $treasury->current_balance + $amount,
+                        'balance_after' => $treasury->current_balance,
+                        'reason' => 'عكس استرجاع تذكرة طيران — طلب #'.$refundRequest->id,
+                        'flight_booking_id' => $refundRequest->flight_booking_id,
+                        'refund_request_id' => $refundRequest->id,
+                        'type' => 'debit',
+                        'exchange_rate' => $refundRequest->refund_exchange_rate,
+                        'base_amount' => $refundRequest->base_currency_refund,
+                        'description' => 'عكس قيد طلب استرداد #'.$refundRequest->id.' (مرتجع)',
+                        'agent_name' => $booking->agent_name ?: 'System',
+                    ]);
+
+                    // NEW (2026-07-11): اربط الـ TreasuryTransaction بالـ GL Transaction
+                    if (isset($glTransaction)) {
+                        $treasuryTransaction->linkToGl($glTransaction, $account->id ?? null);
+                    }
+                }
+            }
+
+            // 4) Soft delete the refund request itself
+            $refundRequest->delete();
+
+            Log::info('RefundService::reverseRefundRequest — complete', [
+                'refund_request_id' => $refundRequestId,
+                'destination' => $refundRequest->destination,
+                'user_id' => $userId,
+            ]);
 
             return $refundRequest;
         });

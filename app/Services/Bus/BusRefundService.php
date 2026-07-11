@@ -99,7 +99,7 @@ class BusRefundService
                 $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                 if ($clearingAccountId && $totalCostToReverse > 0) {
-                    $this->transactionService->recordJournalTransfer([
+                    $glTransaction = $this->transactionService->recordJournalTransfer([
                         'amount' => $totalCostToReverse,
                         'from_account_id' => $clearingAccountId, // Debit clearing (reverse)
                         'to_account_id' => $company->account_id, // Credit company (reverse/decrease debt)
@@ -135,7 +135,11 @@ class BusRefundService
                 $treasury->credit((float) $refundRequest->refund_amount);
 
                 // توثيق الحركة في حركات الخزينة
-                $treasury->transactions()->create([
+                // NOTE: الـ ledger_transaction_id + account_id يتم ربطهما عبر ->linkToGl()
+                // — الـ GL Transaction الموجود هنا هو قيد المورد (supplier side) لأن الـ Bus flow
+                // ما عندوش قيد GL مخصص للخزينة (نفس pattern الـ orphan القديم). للـ traceability
+                // نربط بأي حال، وده بيخلي الـ audit trail موجود بدل null.
+                $treasuryTransaction = $treasury->transactions()->create([
                     'transaction_type' => 'receipt',
                     'amount' => $refundRequest->refund_amount,
                     'currency' => $refundRequest->refund_currency,
@@ -149,6 +153,13 @@ class BusRefundService
                     'base_amount' => $refundRequest->base_currency_refund,
                     'description' => "إيداع استرجاع حجز باص #{$booking->id}",
                 ]);
+
+                // NEW (2026-07-11): اربط بالـ GL Transaction الموجود (supplier-side)
+                // لأن الـ Bus flow ما عندوش GL tx مخصص للخزينة — الحل الكامل هيتم
+                // في task منفصل لما يتم توحيد الـ supplier/treasury GL flow.
+                if (isset($glTransaction)) {
+                    $treasuryTransaction->linkToGl($glTransaction, $company?->account_id);
+                }
             }
 
             // 4. تحديث حالة الحجز
