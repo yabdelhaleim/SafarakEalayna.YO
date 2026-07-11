@@ -171,32 +171,29 @@ class VisaAgentDebtStatement extends Page implements HasTable
                     ])
                     ->action(function (VisaBooking $record, array $data): void {
                         try {
-                            \DB::transaction(function () use ($record, $data) {
-                                $payment = \App\Models\VisaPayment::create([
-                                    'visa_booking_id' => $record->id,
-                                    'amount' => (float) $data['amount'],
-                                    'account_id' => (int) $data['account_id'],
-                                    'payment_method' => 'cash',
-                                    'notes' => $data['notes'] ?? null,
-                                    'created_by' => auth()->id(),
-                                ]);
-
-                                // Create financial transaction
-                                $transaction = \App\Models\Transaction::create([
-                                    'type' => \App\Enums\TransactionType::Income->value,
-                                    'module' => \App\Enums\TransactionModule::Visa->value,
-                                    'amount' => (float) $data['amount'],
-                                    'account_id' => (int) $data['account_id'],
-                                    'date' => now(),
-                                    'notes' => 'سداد تأشيرة: ' . $record->customer->name,
-                                    'created_by' => auth()->id(),
-                                ]);
-
-                                $payment->update(['transaction_id' => $transaction->id]);
-                            });
+                            // Phase 2026-07-11 FIX:
+                            // The original wire here used raw Transaction::create()
+                            // with 'account_id' (which is NOT in Transaction::$fillable
+                            // and was silently dropped), created NO AccountEntry rows,
+                            // ran without lockForUpdate, and was wrapped only in a
+                            // raw DB::transaction with no LedgerBalanceMutationGuard.
+                            // Net effect: the booking's remaining_amount decreased in
+                            // the UI, but no cashbox / customer account balance moved,
+                            // and no entries appeared in customerStatement().
+                            //
+                            // Replaced with the canonical service-layer method
+                            // VisaBookingService::addDebtPayment() — it posts a
+                            // balanced recordIncome() (creating both cashbox + customer
+                            // AccountEntry rows) and creates the VisaPayment in the
+                            // same atomic transaction, with all the standard guards
+                            // (LedgerBalanceMutationGuard, lockForUpdate on the booking
+                            // via the income path's contra-account resolver).
+                            app(\App\Services\Visa\VisaBookingService::class)
+                                ->addDebtPayment($record, $data);
 
                             Notification::make()
                                 ->title('تم تسجيل السداد بنجاح')
+                                ->body('تم إنشاء قيد GL عكسي متوازن على الخزينة المحددة وحساب العميل.')
                                 ->success()
                                 ->send();
                         } catch (\Throwable $e) {
