@@ -13,6 +13,7 @@ use App\Services\Bus\BusBookingService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class BusBookingController extends Controller
 {
@@ -111,12 +112,26 @@ class BusBookingController extends Controller
         }
     }
 
+    /**
+     * Admin soft-delete with full financial reversal.
+     *
+     * Routes through `BusBookingService::deleteBookingWithReversal()` which
+     * handles payments + ledger reversal + soft-delete in one call — works
+     * regardless of booking status or whether payments exist (the old
+     * `'Only pending'` constraint has been removed, the old `'no payments'`
+     * constraint is now handled internally by `deleteBookingWithReversal`
+     * via per-payment reversals).
+     *
+     * Idempotent: throws a clean error if the booking is already soft-deleted.
+     */
     public function destroy(BusBooking $busBooking): JsonResponse
     {
         try {
-            $this->bookingService->deleteBooking($busBooking);
+            $this->bookingService->deleteBookingWithReversal($busBooking->id, Auth::id());
 
-            return ApiResponse::success('Booking deleted successfully.');
+            return ApiResponse::success(
+                'تم حذف الحجز وعكس جميع القيود المالية (مدفوعات + مديونيات) بنجاح.'
+            );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

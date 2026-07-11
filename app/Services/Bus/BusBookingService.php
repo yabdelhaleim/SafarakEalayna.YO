@@ -695,95 +695,116 @@ class BusBookingService
         ])->findOrFail($id);
     }
 
-    /**
-     * Soft delete a booking.
-     * Only allowed if status is pending.
-     * Returns tickets to inventory.
+/**
+     * Soft delete a booking (simple admin delete).
      *
-     * @throws \Exception
+     * Allowed for ANY status — the old `'Only pending'` constraint has been
+     * loosened per the Bus deletion contract (mirrors Flight/HajjUmra/Visa
+     * philosophy of separating cancel vs admin-delete).
+     *
+     * Still REQUIRES no payments to exist. If payments exist, callers must
+     * use `deleteBookingWithReversal()` instead — otherwise the customer
+     * ledger would end up with negative balance after sale-debt reversal.
+     *
+     * Performs additive ledger reversal:
+     *   ① Reverses company cost entry (recordJournalTransfer, expense clearing → company account).
+     *   ② Reverses customer sale debt (recordJournalTransfer, customer account → income clearing).
+     *   ③ Restores inventory tickets.
+     *   ④ Soft-deletes the booking row.
+     *
+     * Wrap is done via `BusBooking::run()` so the new `deleting` observer
+     * (with `ModelDeletionGuard`) allows the soft-delete. The observer
+     * still throws for direct `$booking->delete()` from outside any
+     * canonical path (Filament raw DeleteAction, accidental API hits,
+     * tinker mistakes).
+     *
+     * @throws \Exception if payments exist (caller must use deleteBookingWithReversal)
+     * @throws \RuntimeException if called outside BusBooking::run()
      */
     public function deleteBooking(BusBooking $booking): bool
     {
-        if ($booking->status !== BusBookingStatus::Pending) {
-            throw new \Exception('Only pending bookings can be deleted.');
-        }
-
         if ($booking->payments()->exists()) {
-            throw new \Exception('Cannot delete a booking that has payments.');
+            throw new \Exception(
+                'لا يمكن حذف هذا الحجز لوجود مدفوعات مرتبطة به. '
+                .'استخدم BusBookingService::deleteBookingWithReversal() للحذف الإداري الشامل مع عكس المدفوعات.'
+            );
         }
 
         try {
-            DB::transaction(function () use ($booking) {
-                $inventory = $booking->inventory()->lockForUpdate()->first();
+            return BusBooking::run(function () use ($booking) {
+                return DB::transaction(function () use ($booking) {
+                    $inventory = $booking->inventory()->lockForUpdate()->first();
 
-                // 🛡️ ACCOUNTING INTEGRITY (same guard as cancelBooking — inside transaction with lock)
-                $companyForCheck = $inventory->company;
-                if ($companyForCheck && $companyForCheck->account_id) {
-                    $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
-                    if ($costForThisBooking > 0) {
-                        $companyAccount = Account::lockForUpdate()->find($companyForCheck->account_id);
-                        if ($companyAccount && (float) $companyAccount->balance >= 0) {
-                            throw new \Exception(
-                                'لا يمكن حذف هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: '.
-                                number_format((float) $companyAccount->balance, 2).' ج.م). '.
-                                'قم بتسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
-                            );
+                    // 🛡️ ACCOUNTING INTEGRITY (same guard as cancelBooking — inside transaction with lock)
+                    $companyForCheck = $inventory->company;
+                    if ($companyForCheck && $companyForCheck->account_id) {
+                        $costForThisBooking = (float) ($inventory->cost_per_ticket ?? 0) * $booking->quantity;
+                        if ($costForThisBooking > 0) {
+                            $companyAccount = Account::lockForUpdate()->find($companyForCheck->account_id);
+                            if ($companyAccount && (float) $companyAccount->balance >= 0) {
+                                throw new \Exception(
+                                    'لا يمكن حذف هذا الحجز لأن دين الشركة تم تسديده بالفعل (رصيد الشركة: '.
+                                    number_format((float) $companyAccount->balance, 2).' ج.م). '.
+                                    'يرجى تسوية يدوية من خلال قسم المحاسبة لاسترداد المبلغ من الشركة أولاً.'
+                                );
+                            }
                         }
                     }
-                }
 
-                $inventory->increment('available_tickets', $booking->quantity);
-                $inventory->save();
+                    $inventory->increment('available_tickets', $booking->quantity);
+                    $inventory->save();
 
-                // ✅ Reverse company cost if it was recorded
-                $company = $inventory->company;
-                if ($company && $company->account_id) {
-                    $costPerTicket = $inventory->cost_per_ticket;
-                    $totalCost = $costPerTicket * $booking->quantity;
-                    $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
+                    // ✅ Reverse company cost if it was recorded
+                    $company = $inventory->company;
+                    if ($company && $company->account_id) {
+                        $costPerTicket = $inventory->cost_per_ticket;
+                        $totalCost = $costPerTicket * $booking->quantity;
+                        $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
-                    if ($clearingAccountId && $totalCost > 0) {
-                        $this->transactionService->recordJournalTransfer([
-                            'amount' => $totalCost,
-                            'from_account_id' => $clearingAccountId,
-                            'to_account_id' => $company->account_id,
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء تكلفة حجز باص #'.$booking->id,
-                            'allow_from_negative' => true,
-                        ]);
+                        if ($clearingAccountId && $totalCost > 0) {
+                            $this->transactionService->recordJournalTransfer([
+                                'amount' => $totalCost,
+                                'from_account_id' => $clearingAccountId,
+                                'to_account_id' => $company->account_id,
+                                'module' => TransactionModule::Bus->value,
+                                'related_type' => BusBooking::class,
+                                'related_id' => $booking->id,
+                                'notes' => 'حذف تكلفة حجز باص #'.$booking->id,
+                                'allow_from_negative' => true,
+                            ]);
+                        }
                     }
-                }
 
-                // ✅ Reverse sale to customer
-                $customer = $booking->customer;
-                if ($customer && $customer->account_id) {
-                    $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
-                    if ($clearingAccountId) {
-                        $this->transactionService->recordJournalTransfer([
-                            'amount' => $booking->total_price,
-                            'from_account_id' => $customer->account_id,
-                            'to_account_id' => $clearingAccountId,
-                            'module' => TransactionModule::Bus->value,
-                            'related_type' => BusBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'إلغاء مديونية حجز باص #'.$booking->id,
-                            'allow_from_negative' => true,
-                        ]);
+                    // ✅ Reverse sale to customer
+                    $customer = $booking->customer;
+                    if ($customer && $customer->account_id) {
+                        $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+                        if ($clearingAccountId) {
+                            $this->transactionService->recordJournalTransfer([
+                                'amount' => $booking->total_price,
+                                'from_account_id' => $customer->account_id,
+                                'to_account_id' => $clearingAccountId,
+                                'module' => TransactionModule::Bus->value,
+                                'related_type' => BusBooking::class,
+                                'related_id' => $booking->id,
+                                'notes' => 'حذف مديونية حجز باص #'.$booking->id,
+                                'allow_from_negative' => true,
+                            ]);
+                        }
                     }
-                }
 
-                $booking->delete();
+                    $booking->delete();
 
-                Log::info('Bus booking deleted', [
-                    'booking_id' => $booking->id,
-                    'inventory_id' => $inventory->id,
-                    'user_id' => Auth::id(),
-                ]);
+                    Log::info('Bus booking deleted (simple path)', [
+                        'booking_id' => $booking->id,
+                        'inventory_id' => $inventory->id,
+                        'status' => $booking->status?->value ?? (string) $booking->status,
+                        'user_id' => Auth::id(),
+                    ]);
+
+                    return true;
+                });
             });
-
-            return true;
         } catch (\Exception $e) {
             Log::error('BusBookingService::deleteBooking failed', [
                 'error' => $e->getMessage(),
@@ -794,6 +815,129 @@ class BusBookingService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Administrative soft-delete with full financial reversal.
+     *
+     * Mirrors the canonical `FlightBookingService::deleteBookingWithReversal()`
+     * and `HajjUmraBookingService::deleteBookingWithReversal()` /
+     * `VisaBookingService::deleteBookingWithReversal()` pattern. Use this
+     * when an admin needs to fully remove a booking from active lists while:
+     *   ① reversing EVERY payment transaction (additive — never destructive),
+     *   ② reversing company cost + customer sale ledger entries (additive),
+     *   ③ restoring inventory tickets,
+     *   ④ soft-deleting the payment rows (via new SoftDeletes trait),
+     *   ⑤ soft-deleting the booking row itself.
+     *
+     * Use this when `deleteBooking()` would refuse (booking has payments).
+     * For operational cancellation that keeps the booking visible, use
+     * `cancelBooking()` instead.
+     *
+     * Idempotency: throws RuntimeException if the booking is already
+     * soft-deleted (matches the Flight/HajjUmra/Visa pattern).
+     *
+     * @throws \RuntimeException on duplicates
+     * @throws \Exception if not inside BusBooking::run()
+     */
+    public function deleteBookingWithReversal(int $bookingId, ?int $userId = null): bool
+    {
+        return BusBooking::run(function () use ($bookingId, $userId) {
+            return DB::transaction(function () use ($bookingId, $userId) {
+                // 1) Lock + reload with relations (withTrashed so an already-
+                //    soft-deleted booking surfaces a clean error, not "No query results").
+                $booking = BusBooking::query()
+                    ->withTrashed()
+                    ->with(['inventory.company', 'customer', 'payments.transaction'])
+                    ->lockForUpdate()
+                    ->findOrFail($bookingId);
+
+                // 2) Idempotency guard — second call returns a clean Arabic error.
+                if ($booking->trashed()) {
+                    throw new \RuntimeException(
+                        'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                    );
+                }
+
+                $userIdEffective = $userId ?: (int) (Auth::id() ?: 1);
+
+                Log::info('BusBookingService::deleteBookingWithReversal — starting', [
+                    'booking_id' => $booking->id,
+                    'status' => $booking->status?->value ?? (string) $booking->status,
+                    'payments_count' => $booking->payments->count(),
+                    'user_id' => $userIdEffective,
+                ]);
+
+                // 3) Reverse every payment transaction (additive — never destructive).
+                foreach ($booking->payments as $payment) {
+                    if ($payment->transaction_id) {
+                        $tx = \App\Models\Transaction::find($payment->transaction_id);
+                        if ($tx) {
+                            $this->transactionService->reverseTransaction($tx);
+                        }
+                    }
+                }
+
+                // 4) Reverse the booking's ledger entries (company cost + customer sale debt).
+                $inventory = $booking->inventory;
+                $company = $inventory->company ?? null;
+
+                if ($company && $company->account_id) {
+                    $totalCost = (float) ($inventory->cost_per_ticket ?? 0) * (int) $booking->quantity;
+                    $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
+
+                    if ($clearingAccountId && $totalCost > 0) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $totalCost,
+                            'from_account_id' => $clearingAccountId,
+                            'to_account_id' => $company->account_id,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'عكس تكلفة حجز باص #'.$booking->id.' (حذف إداري شامل)',
+                            'allow_from_negative' => true,
+                        ]);
+                    }
+                }
+
+                $customer = $booking->customer;
+                if ($customer && $customer->account_id) {
+                    $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
+                    if ($clearingAccountId) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => (float) $booking->total_price,
+                            'from_account_id' => $customer->account_id,
+                            'to_account_id' => $clearingAccountId,
+                            'module' => TransactionModule::Bus->value,
+                            'related_type' => BusBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'عكس مديونية حجز باص #'.$booking->id.' (حذف إداري شامل)',
+                            'allow_from_negative' => true,
+                        ]);
+                    }
+                }
+
+                // 5) Restore inventory tickets (same as deleteBooking).
+                if ($inventory) {
+                    $inventory->increment('available_tickets', $booking->quantity);
+                }
+
+                // 6) Soft-delete the payment rows (requires SoftDeletes on bus_payments).
+                $booking->payments()->delete();
+
+                // 7) Soft-delete the booking row itself. Allowed because we are
+                //    inside BusBooking::run(...) which flipped the model's deletion
+                //    gate open for the canonical reversal flow.
+                $booking->delete();
+
+                Log::info('BusBookingService::deleteBookingWithReversal — complete', [
+                    'booking_id' => $booking->id,
+                    'user_id' => $userIdEffective,
+                ]);
+
+                return true;
+            });
+        });
     }
 
     /**

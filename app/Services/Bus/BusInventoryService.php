@@ -7,6 +7,7 @@ use App\Enums\BusInventoryPaymentType;
 use App\Enums\TransactionModule;
 use App\Models\Bus\BusCompanyPayment;
 use App\Models\Bus\BusInventory;
+use App\Models\Transaction;
 use App\Services\Finance\TransactionService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -304,10 +305,29 @@ class BusInventoryService
     }
 
     /**
-     * Soft delete an inventory batch.
-     * Only if no bookings exist for it.
+     * Soft delete an inventory batch with full financial reversal.
      *
-     * @throws \Exception
+     * Allowed only if no bookings exist for the inventory (the service-level
+     * `bookings()->count() > 0` check stays — the new `deleting` observer on
+     * `BusInventory` also keeps this as a complementary safety layer per the
+     * Bus deletion contract).
+     *
+     * Reversal flow when the inventory was paid in CASH (payment_type=Cash):
+     *   ① finds the original expense transaction stored at creation time
+     *      (`inventory->transaction_id`),
+     *   ② calls `TransactionService::reverseTransaction($tx)` — adds inverse
+     *      `account_entries` on the SAME transaction_id (additive — never
+     *      destructive). The original transaction row stays.
+     * This restores the cashbox balance that was debited at creation time,
+     * fixing the previous silent financial leak.
+     *
+     * Wrap is done via `BusInventory::run()` so the new `deleting` observer
+     * (with `ModelDeletionGuard`) allows the soft-delete. The observer
+     * still throws for direct `$inventory->delete()` from outside any
+     * canonical path.
+     *
+     * @throws \Exception if bookings exist or reversal fails
+     * @throws \RuntimeException if called outside BusInventory::run()
      */
     public function deleteInventory(BusInventory $inventory): bool
     {
@@ -316,16 +336,43 @@ class BusInventoryService
         }
 
         try {
-            DB::transaction(function () use ($inventory) {
-                $inventory->delete();
+            return BusInventory::run(function () use ($inventory) {
+                return DB::transaction(function () use ($inventory) {
+                    // 🛡️ Reverse the cash purchase expense (only when payment_type=Cash
+                    //    and a transaction_id was stored at creation time).
+                    //    For payment_type=Deferred, there is no expense to reverse
+                    //    (the cost sits in BusCompanyPayment when later paid).
+                    if ($inventory->payment_type === BusInventoryPaymentType::Cash && $inventory->transaction_id) {
+                        $tx = Transaction::find($inventory->transaction_id);
+                        if ($tx) {
+                            $this->transactionService->reverseTransaction($tx);
 
-                Log::info('Bus inventory deleted', [
-                    'inventory_id' => $inventory->id,
-                    'user_id' => Auth::id(),
-                ]);
+                            Log::info('Bus inventory cash expense reversed on delete', [
+                                'inventory_id' => $inventory->id,
+                                'transaction_id' => $tx->id,
+                                'amount' => (float) $tx->amount,
+                                'user_id' => Auth::id(),
+                            ]);
+                        }
+                    }
+
+                    // Soft-delete the inventory row. Allowed because we are inside
+                    // BusInventory::run(...) which flipped the model's deletion gate
+                    // open for the canonical reversal flow.
+                    $inventory->delete();
+
+                    Log::info('Bus inventory deleted', [
+                        'inventory_id' => $inventory->id,
+                        'payment_type' => $inventory->payment_type instanceof BusInventoryPaymentType
+                            ? $inventory->payment_type->value
+                            : (string) $inventory->payment_type,
+                        'cash_expense_reversed' => (bool) ($inventory->payment_type === BusInventoryPaymentType::Cash && $inventory->transaction_id),
+                        'user_id' => Auth::id(),
+                    ]);
+
+                    return true;
+                });
             });
-
-            return true;
         } catch (\Exception $e) {
             Log::error('BusInventoryService::deleteInventory failed', [
                 'error' => $e->getMessage(),

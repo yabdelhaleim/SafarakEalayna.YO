@@ -144,7 +144,21 @@ class BusCompanyService
      * Soft delete a bus company.
      * Only if no active inventories linked.
      *
-     * @throws \Exception
+     * GL-safe by construction:
+     *   - `ensureCompanyAccount()` does NOT post any transactions on creation.
+     *   - Booking cost entries (recorded against `company->account_id`) are
+     *     reversed by `BusBookingService::deleteBooking` /
+     *     `deleteBookingWithReversal` before a company can be deleted.
+     *   - `BusInventory` cash expenses go to the cashbox/vault account
+     *     (`from_account_id = account_id`), NOT to the company account.
+     *
+     * Wrap is done via `BusCompany::run()` so the new `deleting` observer
+     * (with `ModelDeletionGuard`) allows the soft-delete. The observer
+     * still throws for direct `$company->delete()` from outside any
+     * canonical path.
+     *
+     * @throws \Exception if active inventories exist
+     * @throws \RuntimeException if called outside BusCompany::run()
      */
     public function deleteCompany(BusCompany $company): bool
     {
@@ -159,16 +173,18 @@ class BusCompanyService
         }
 
         try {
-            DB::transaction(function () use ($company) {
-                $company->delete();
+            return BusCompany::run(function () use ($company) {
+                return DB::transaction(function () use ($company) {
+                    $company->delete();
 
-                Log::info('Bus company deleted', [
-                    'company_id' => $company->id,
-                    'deleted_by' => Auth::id(),
-                ]);
+                    Log::info('Bus company deleted', [
+                        'company_id' => $company->id,
+                        'deleted_by' => Auth::id(),
+                    ]);
+
+                    return true;
+                });
             });
-
-            return true;
         } catch (\Exception $e) {
             Log::error('BusCompanyService::deleteCompany failed', [
                 'error' => $e->getMessage(),
