@@ -8,9 +8,12 @@ use App\Models\Treasury;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BusRefundRequest extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'bus_booking_id',
         'company_id',
