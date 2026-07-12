@@ -202,7 +202,13 @@
             v-for="(perf, mod) in dbStats.performance"
             :key="mod"
             v-show="(perf.profit !== 0 || perf.income !== 0 || perf.cogs || perf.expense) && availableModules.some(m => m.value === mod)"
-            class="rounded-2xl border border-white/5 bg-white/[0.02] p-5"
+            class="group/card cursor-pointer rounded-2xl border border-white/5 bg-white/[0.02] p-5 transition-all hover:border-amber-500/40 hover:bg-white/[0.04]"
+            role="button"
+            tabindex="0"
+            :title="`اضغط لعرض تفاصيل الربح لـ ${getModuleLabel(mod)}`"
+            @click="openProfitDrilldown(mod)"
+            @keydown.enter.prevent="openProfitDrilldown(mod)"
+            @keydown.space.prevent="openProfitDrilldown(mod)"
           >
             <div class="mb-4 flex items-center justify-between gap-3">
               <div class="flex items-center gap-3">
@@ -214,12 +220,15 @@
                   <p class="text-base font-black text-text-main">صافي الربح</p>
                 </div>
               </div>
-              <span
-                class="font-mono text-xl font-black"
-                :class="perf.profit >= 0 ? 'text-success' : 'text-error'"
-              >
-                {{ formatCurrency(perf.profit) }}
-              </span>
+              <div class="flex items-center gap-2">
+                <ArrowUpRight class="h-4 w-4 text-text-muted opacity-0 transition-opacity group-hover/card:opacity-100" />
+                <span
+                  class="font-mono text-xl font-black"
+                  :class="perf.profit >= 0 ? 'text-success' : 'text-error'"
+                >
+                  {{ formatCurrency(perf.profit) }}
+                </span>
+              </div>
             </div>
             <div class="grid grid-cols-1 gap-3 border-t border-white/5 pt-4 sm:grid-cols-3">
               <div class="rounded-xl bg-success/10 p-3">
@@ -675,6 +684,211 @@
       </div>
     </div>
   </teleport>
+
+  <!-- ── Profit drill-down modal (Phase 2) ────────────────────────────── -->
+  <!-- Opened by clicking a "ربحية الأقسام" card. Reuses the existing -->
+  <!-- <teleport to="body"> + z-[200] + backdrop-blur pattern from the -->
+  <!-- Create/Edit modals above. Two tabs: "يومي" (per-day table) and -->
+  <!-- "أعلى الكيانات" (top-20 entities by GL profit for the module). -->
+  <teleport to="body">
+    <div
+      v-if="showProfitDrilldown"
+      class="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-300"
+      @click.self="closeProfitDrilldown"
+    >
+      <div
+        class="flight-panel max-h-[90vh] w-full max-w-3xl overflow-hidden !p-0 shadow-[0_0_50px_rgba(0,0,0,0.5)] border-white/10 animate-in zoom-in-95 duration-300 flex flex-col"
+        role="dialog"
+        aria-labelledby="profit-drilldown-heading"
+        @click.stop
+      >
+        <!-- Header -->
+        <div class="flex items-center justify-between gap-3 border-b border-white/5 px-6 py-5">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="rounded-xl bg-gold/10 p-2.5 text-gold shrink-0">
+              <component :is="getModuleIcon(drilldownModule)" class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h3 id="profit-drilldown-heading" class="truncate text-xl font-black text-text-main">
+                تحليل ربحية: {{ drilldownModule ? getModuleLabel(drilldownModule) : '' }}
+              </h3>
+              <p class="text-xs font-bold text-text-muted">
+                الفترة: من بداية الشهر حتى اليوم · مصدر البيانات: دليل الأستاذ (GL)
+              </p>
+            </div>
+          </div>
+          <button
+            @click="closeProfitDrilldown"
+            class="p-2 hover:bg-white/5 rounded-full transition-colors text-text-muted shrink-0"
+            aria-label="إغلاق"
+          >
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Tab strip (mirrors AccountStatement.vue:127–146) -->
+        <div class="flex border-b border-white/5 bg-white/[0.02]">
+          <button
+            type="button"
+            @click="switchDrilldownTab('day')"
+            class="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-black transition-colors"
+            :class="drilldownTab === 'day' ? 'text-gold border-b-2 border-gold bg-gold/5' : 'text-text-muted hover:text-text-main'"
+          >
+            <BarChart3 class="h-4 w-4" />
+            يومي
+          </button>
+          <button
+            type="button"
+            @click="switchDrilldownTab('entity')"
+            class="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-black transition-colors"
+            :class="drilldownTab === 'entity' ? 'text-gold border-b-2 border-gold bg-gold/5' : 'text-text-muted hover:text-text-main'"
+          >
+            <Trophy class="h-4 w-4" />
+            أعلى الكيانات
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <!-- Error state -->
+          <div v-if="drilldownError" class="rounded-xl border border-error/30 bg-error/10 p-4 text-center text-sm font-bold text-error">
+            {{ drilldownError }}
+          </div>
+
+          <!-- ── DAY TAB ─────────────────────────────────────────── -->
+          <template v-else-if="drilldownTab === 'day'">
+            <div v-if="drilldownLoading" class="space-y-3">
+              <div v-for="i in 5" :key="i" class="flex gap-3">
+                <TextLineSkeleton class="h-10 flex-1" />
+                <TextLineSkeleton class="h-10 w-24" />
+                <TextLineSkeleton class="h-10 w-24" />
+                <TextLineSkeleton class="h-10 w-24" />
+                <TextLineSkeleton class="h-10 w-24" />
+              </div>
+            </div>
+            <div v-else-if="!drilldownByDay || !drilldownByDay.by_day || drilldownByDay.by_day.length === 0" class="py-10 text-center text-sm font-bold text-text-muted">
+              لا توجد حركات لهذا الموديول في الفترة المحددة.
+            </div>
+            <div v-else>
+              <!-- Totals strip -->
+              <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div class="rounded-xl bg-success/10 p-3">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-success/80">إجمالي المبيعات</p>
+                  <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(drilldownByDay.totals.income) }}</p>
+                </div>
+                <div class="rounded-xl bg-amber-500/10 p-3">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">تكلفة الحجوزات</p>
+                  <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(drilldownByDay.totals.cogs) }}</p>
+                </div>
+                <div class="rounded-xl bg-error/10 p-3">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-error/80">مصروفات تشغيلية</p>
+                  <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(drilldownByDay.totals.expense) }}</p>
+                </div>
+                <div class="rounded-xl p-3" :class="drilldownByDay.totals.profit >= 0 ? 'bg-success/10' : 'bg-error/10'">
+                  <p class="text-[10px] font-bold uppercase tracking-wider" :class="drilldownByDay.totals.profit >= 0 ? 'text-success/80' : 'text-error/80'">صافي الربح</p>
+                  <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(drilldownByDay.totals.profit) }}</p>
+                </div>
+              </div>
+              <!-- Per-day table -->
+              <div class="overflow-hidden rounded-xl border border-white/5">
+                <table class="w-full text-right border-collapse">
+                  <thead>
+                    <tr class="bg-white/5 text-xs font-black uppercase tracking-wider text-text-muted">
+                      <th class="px-4 py-2.5">التاريخ</th>
+                      <th class="px-4 py-2.5">المبيعات</th>
+                      <th class="px-4 py-2.5">التكلفة</th>
+                      <th class="px-4 py-2.5">مصروفات</th>
+                      <th class="px-4 py-2.5">الربح</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in drilldownByDay.by_day" :key="row.date" class="border-t border-white/5 hover:bg-white/[0.02]">
+                      <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatDateShort(row.date) }}</td>
+                      <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(row.income) }}</td>
+                      <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(row.cogs) }}</td>
+                      <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(row.expense) }}</td>
+                      <td class="px-4 py-2.5 font-mono text-sm font-black" :class="row.profit >= 0 ? 'text-success' : 'text-error'">
+                        {{ formatCurrency(row.profit) }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+
+          <!-- ── ENTITY TAB ───────────────────────────────────────── -->
+          <template v-else-if="drilldownTab === 'entity'">
+            <div v-if="drilldownLoading" class="space-y-3">
+              <div v-for="i in 6" :key="i" class="flex gap-3">
+                <TextLineSkeleton class="h-10 flex-1" />
+                <TextLineSkeleton class="h-10 w-28" />
+              </div>
+            </div>
+            <div v-else-if="!drilldownEntities || !drilldownEntities.entity_types || drilldownEntities.entity_types.length === 0" class="py-10 text-center text-sm font-bold text-text-muted">
+              لا توجد بيانات كيانات لهذا الموديول في الفترة المحددة.
+            </div>
+            <div v-else>
+              <!-- Sub-tabs when the module has multiple entity types (e.g. flight) -->
+              <div v-if="drilldownEntities.entity_types.length > 1" class="mb-4 flex flex-wrap gap-2">
+                <button
+                  v-for="et in drilldownEntities.entity_types"
+                  :key="et.entity_type"
+                  type="button"
+                  @click="switchDrilldownEntityTab(et.entity_type)"
+                  class="rounded-full px-3 py-1.5 text-xs font-black transition-colors"
+                  :class="drilldownEntityTab === et.entity_type ? 'bg-gold text-black' : 'bg-white/5 text-text-muted hover:bg-white/10'"
+                >
+                  {{ et.entity_type_label }}
+                </button>
+              </div>
+
+              <template v-for="et in drilldownEntities.entity_types" :key="et.entity_type">
+                <div v-if="drilldownEntityTab === et.entity_type">
+                  <div v-if="et.entity_types_count_label_visible !== false" class="mb-3 flex items-center gap-2 text-xs font-bold text-text-muted">
+                    <span>{{ et.entity_type_label }}</span>
+                    <span>·</span>
+                    <span>{{ et.items.length }} كيان</span>
+                  </div>
+                  <div v-if="et.items.length === 0" class="py-8 text-center text-sm font-bold text-text-muted">
+                    لا توجد كيانات ضمن هذا التصنيف في الفترة المحددة.
+                  </div>
+                  <div v-else class="overflow-hidden rounded-xl border border-white/5">
+                    <table class="w-full text-right border-collapse">
+                      <thead>
+                        <tr class="bg-white/5 text-xs font-black uppercase tracking-wider text-text-muted">
+                          <th class="px-4 py-2.5">#</th>
+                          <th class="px-4 py-2.5">{{ et.entity_type_label }}</th>
+                          <th class="px-4 py-2.5">المبيعات</th>
+                          <th class="px-4 py-2.5">التكلفة</th>
+                          <th class="px-4 py-2.5">مصروفات</th>
+                          <th class="px-4 py-2.5">الربح</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(item, idx) in et.items" :key="item.entity_id" class="border-t border-white/5 hover:bg-white/[0.02]">
+                          <td class="px-4 py-2.5 font-mono text-xs text-text-muted">{{ idx + 1 }}</td>
+                          <td class="px-4 py-2.5 text-sm font-bold text-text-main truncate max-w-[260px]" :title="item.entity_label">
+                            {{ item.entity_label }}
+                          </td>
+                          <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(item.income) }}</td>
+                          <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(item.cogs) }}</td>
+                          <td class="px-4 py-2.5 font-mono text-sm font-bold text-text-main">{{ formatCurrency(item.expense) }}</td>
+                          <td class="px-4 py-2.5 font-mono text-sm font-black" :class="item.profit >= 0 ? 'text-success' : 'text-error'">
+                            {{ formatCurrency(item.profit) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </teleport>
 </div>
 </template>
 
@@ -700,6 +914,10 @@ import {
   FileText,
   Pen,
   X,
+  ArrowUpRight,
+  TrendingUp,
+  BarChart3,
+  Trophy,
 } from 'lucide-vue-next'
 import { useAsyncState } from '@/composables/useAsyncState';
 import {
@@ -723,6 +941,103 @@ const financeStore = useFinanceStore()
 const activeTab = ref('all')
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
+
+// ── Profit drill-down modal state (Phase 2) ──────────────────────────────
+// Backs the "تحليل الربح" modal that opens when the operator clicks a
+// "ربحية الأقسام" card. Two tabs:
+//   'day'    → GET /api/v1/reports/profit-by-day?module=&from_date=&to_date=
+//   'entity' → GET /api/v1/reports/profit-entity-top?module=&limit=20
+// Both endpoints wrap the same GL engine that backs the Filament dashboard
+// widgets and the stats.performance ride-along payload — so the numbers
+// in the modal will agree to the cent with the card that opened it.
+const showProfitDrilldown = ref(false)
+const drilldownModule = ref(null)            // 'flight' | 'bus' | ...
+const drilldownTab = ref('day')              // 'day' | 'entity'
+const drilldownLoading = ref(false)
+const drilldownError = ref('')
+const drilldownByDay = ref(null)             // response.data of /profit-by-day
+const drilldownEntities = ref(null)          // response.data of /profit-entity-top
+const drilldownEntityTab = ref(null)         // currently-displayed entity_type (flight has 2)
+
+function openProfitDrilldown(mod) {
+  drilldownModule.value = mod
+  drilldownTab.value = 'day'
+  drilldownError.value = ''
+  showProfitDrilldown.value = true
+  loadDrilldown()
+}
+
+function closeProfitDrilldown() {
+  showProfitDrilldown.value = false
+  drilldownModule.value = null
+  drilldownByDay.value = null
+  drilldownEntities.value = null
+  drilldownError.value = ''
+  drilldownEntityTab.value = null
+}
+
+async function loadDrilldown() {
+  if (!drilldownModule.value) return
+  const mod = drilldownModule.value
+  // Period matches the card exactly (current month-to-date) so the totals
+  // in the modal equal the number the operator clicked. Phase 2 keeps the
+  // period fixed; Phase 3 will add an in-modal date range picker.
+  const today = new Date()
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  const fmt = (d) => {
+    const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  }
+  const fromDate = fmt(firstOfMonth)
+  const toDate   = fmt(today)
+
+  drilldownLoading.value = true
+  drilldownError.value = ''
+  try {
+    if (drilldownTab.value === 'day') {
+      const { data } = await axios.get('/api/v1/reports/profit-by-day', {
+        params: { module: mod, from_date: fromDate, to_date: toDate },
+      })
+      drilldownByDay.value = data?.data ?? data
+    } else {
+      const { data } = await axios.get('/api/v1/reports/profit-entity-top', {
+        params: { module: mod, limit: 20 },
+      })
+      drilldownEntities.value = data?.data ?? data
+      // For modules with multiple entity_types (e.g. flight → flight_system
+      // + flight_carrier), default the visible tab to the first one.
+      const types = drilldownEntities.value?.entity_types ?? []
+      if (types.length && (!drilldownEntityTab.value || !types.find((t) => t.entity_type === drilldownEntityTab.value))) {
+        drilldownEntityTab.value = types[0].entity_type
+      }
+    }
+  } catch (e) {
+    drilldownError.value = e?.response?.data?.message || e?.message || 'فشل تحميل البيانات'
+    if (drilldownTab.value === 'day') drilldownByDay.value = null
+    else drilldownEntities.value = null
+  } finally {
+    drilldownLoading.value = false
+  }
+}
+
+function switchDrilldownTab(tab) {
+  if (drilldownTab.value === tab) return
+  drilldownTab.value = tab
+  if ((tab === 'day' && !drilldownByDay.value) || (tab === 'entity' && !drilldownEntities.value)) {
+    loadDrilldown()
+  }
+}
+
+function switchDrilldownEntityTab(entityType) {
+  drilldownEntityTab.value = entityType
+}
+
+function formatDateShort(dateStr) {
+  // YYYY-MM-DD → DD/MM
+  if (!dateStr || typeof dateStr !== 'string') return dateStr
+  const parts = dateStr.split('-')
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr
+}
 const editAccount = ref(null)
 
 const filters = ref({
