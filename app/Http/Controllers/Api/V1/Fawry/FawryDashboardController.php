@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Fawry;
 
 use App\Enums\AccountType;
+use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
@@ -45,7 +46,24 @@ class FawryDashboardController extends Controller
         $stats['total_liquidity'] = $stats['cashboxes']['balance'] + $stats['banks']['balance'] + $stats['wallets']['balance'];
 
         // 3. Customers Debt (مديونية العملاء)
-        $stats['customers_debt'] = (float) FawryTransaction::sum(DB::raw('selling_price - amount'));
+        //
+        // Phase A fix: source from the GL ledger (account_entries), NOT from
+        // fawry_transactions.selling_price/amount columns. The two diverge
+        // the moment `updateTransaction()` reposts the ledger after a price
+        // change — the model gets the new value but if we read from the
+        // model we'd silently inflate / deflate the debt number.
+        //
+        // Logic: for each customer account that has at least one Fawry
+        // transaction (TransactionModule::Fawry), sum (credit - debit) on
+        // its account_entries where the underlying transactions have
+        // module='fawry'. Positive = customer owes us (receivable).
+        $stats['customers_debt'] = (float) DB::table('account_entries')
+            ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
+            ->join('accounts', 'account_entries.account_id', '=', 'accounts.id')
+            ->where('accounts.type', AccountType::Customer->value)
+            ->where('transactions.module', TransactionModule::Fawry->value)
+            ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
+            ->value('debt') ?? 0.0;
 
         // 4. Machines Info (ماكينات الشحن)
         $stats['machines'] = [
