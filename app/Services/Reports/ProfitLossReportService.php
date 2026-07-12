@@ -113,9 +113,14 @@ class ProfitLossReportService
             }
         }
 
-        $totalRevenues = max(0, round($totalRevenues, 2));
-        $totalCogs = max(0, round($totalCogs, 2));
-        $totalExpenses = max(0, round($totalExpenses, 2));
+        // Note: revenue/cogs/expense totals are NOT floored at zero. A
+        // period where refunds exceed revenue will surface as a negative
+        // total — which is the correct accounting reality. Vue consumers
+        // (ProfitLoss.vue, Dashboard.vue) render these via the
+        // >= 0 ? success : error conditional class.
+        $totalRevenues = round($totalRevenues, 2);
+        $totalCogs = round($totalCogs, 2);
+        $totalExpenses = round($totalExpenses, 2);
         $grossProfit = round($totalRevenues - $totalCogs, 2);
         $netProfit = round($totalRevenues - $totalCogs - $totalExpenses, 2);
 
@@ -239,9 +244,14 @@ class ProfitLossReportService
 
         $breakdown = [];
         foreach ($allModules as $mod) {
-            $income = round(max(0, $incomeByModule[$mod] ?? 0.0), 2);
-            $cogs = round(max(0, $cogsByModule[$mod] ?? 0.0), 2);
-            $expense = round(max(0, $expenseByModule[$mod] ?? 0.0), 2);
+            // Note: per-module income/cogs/expense are NOT floored at zero. A
+            // module with refunds > revenue will surface as negative
+            // income — correct accounting reality. The "ربحية الأقسام"
+            // cards in AccountsIndex.vue (and the new drill-down modal)
+            // render these via the >= 0 conditional class.
+            $income = round($incomeByModule[$mod] ?? 0.0, 2);
+            $cogs = round($cogsByModule[$mod] ?? 0.0, 2);
+            $expense = round($expenseByModule[$mod] ?? 0.0, 2);
             if ($income <= 0 && $cogs <= 0 && $expense <= 0) {
                 continue;
             }
@@ -600,9 +610,16 @@ class ProfitLossReportService
             if (abs($sum) < 0.00001) {
                 continue;
             }
+            // Note: amount is NOT floored at zero. The refunds list may
+            // legitimately carry negative amounts when net refund flows
+            // exceed revenue for the period (correct accounting reality).
+            // ProfitLoss.vue renders these via formatCurrency (which
+            // emits a leading minus sign for negatives) but uses
+            // category-based color (amber for refunds, etc.) — the
+            // sign does NOT flip the color, the category does.
             $list[] = [
                 'name' => $prefix.' '.$this->moduleLabel($module),
-                'amount' => round(max(0, $sum), 2),
+                'amount' => round($sum, 2),
                 'module' => $module,
             ];
         }
@@ -732,9 +749,14 @@ class ProfitLossReportService
 
         $result = [];
         foreach ($daily as $d) {
-            $d['income'] = round(max(0, $d['income']), 2);
-            $d['cogs'] = round(max(0, $d['cogs']), 2);
-            $d['expense'] = round(max(0, $d['expense']), 2);
+            // Note: by_day income/cogs/expense are NOT floored at zero. A day
+            // where refunds exceed revenue surfaces as negative income
+            // and negative profit — the new profit drill-down modal in
+            // AccountsIndex.vue renders these via the >= 0 conditional
+            // class (red background, red text).
+            $d['income']  = round($d['income'], 2);
+            $d['cogs']    = round($d['cogs'], 2);
+            $d['expense'] = round($d['expense'], 2);
             $d['profit'] = round($d['income'] - $d['cogs'] - $d['expense'], 2);
             $result[] = $d;
         }
@@ -868,11 +890,16 @@ class ProfitLossReportService
 
         $result = [];
         foreach ($buckets as $id => $b) {
+            // Note: per-entity income/cogs/expense are NOT floored at zero.
+            // An entity (carrier / system / company / provider / customer)
+            // with net refunds > revenue surfaces as negative profit —
+            // the drill-down modal's "أعلى الكيانات" tab renders these
+            // via the >= 0 conditional class (red text).
             $result[] = [
                 'entity_id' => (int) $id,
-                'income' => round(max(0, $b['income']), 2),
-                'cogs' => round(max(0, $b['cogs']), 2),
-                'expense' => round(max(0, $b['expense']), 2),
+                'income' => round($b['income'], 2),
+                'cogs' => round($b['cogs'], 2),
+                'expense' => round($b['expense'], 2),
                 'profit' => round($b['income'] - $b['cogs'] - $b['expense'], 2),
             ];
         }
