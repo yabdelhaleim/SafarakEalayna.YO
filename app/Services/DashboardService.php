@@ -419,6 +419,12 @@ class DashboardService
     /**
      * Vue dashboard: حجوزات الباصات بنفس فكرة نطاق التاريخ (بدون فلاتر شركة طيران).
      *
+     * Profit figures sourced from the GL via
+     * {@see ProfitLossReportService::getDailyProfitByModule()} and
+     * {@see ProfitLossReportService::getProfitByEntity()} (with a 2-hop
+     * lookup through bus_inventories for per-company profit). Booking
+     * counts, revenue, status counts, etc. remain on the BusBooking model.
+     *
      * @return array<string, mixed>
      */
     protected function buildBusOperationsDashboard(string $from, string $to): array
@@ -430,23 +436,20 @@ class DashboardService
 
         $bookingQuery = BusBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
 
-        // Merge range queries
+        // Range counts + revenue (operational, stays on model)
         $rangeStats = (clone $bookingQuery)
             ->selectRaw("
                 COUNT(*) as total_bookings,
                 COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue,
-                COALESCE(SUM(CASE WHEN status != ? THEN profit ELSE 0 END), 0) as profit,
                 COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) as cancelled
             ", [
                 BusBookingStatus::Cancelled->value,
                 BusBookingStatus::Cancelled->value,
-                BusBookingStatus::Cancelled->value
             ])
             ->first();
 
         $totalBookingsRange = (int) $rangeStats->total_bookings;
         $revenueRange = (float) $rangeStats->revenue;
-        $profitRange = (float) $rangeStats->profit;
         $cancelled = (int) $rangeStats->cancelled;
 
         $pendingPayments = (float) BusBooking::query()
@@ -455,31 +458,38 @@ class DashboardService
             ->selectRaw('COALESCE(SUM(total_price - paid_amount), 0) as aggregate')
             ->value('aggregate');
 
-        // Merge today stats query
+        // Today counts + revenue (operational, stays on model)
         $todayStats = BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
             ->selectRaw("
                 COUNT(*) as count,
-                COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue,
-                COALESCE(SUM(CASE WHEN status != ? THEN profit ELSE 0 END), 0) as profit
-            ", [BusBookingStatus::Cancelled->value, BusBookingStatus::Cancelled->value])
+                COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue
+            ", [BusBookingStatus::Cancelled->value])
             ->first();
 
         $todayBookings = (int) $todayStats->count;
         $todayRevenue = (float) $todayStats->revenue;
-        $todayProfit = (float) $todayStats->profit;
 
-        // Merge yesterday stats query
+        // Yesterday counts + revenue (operational, stays on model)
         $yesterdayStats = BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
             ->selectRaw("
                 COUNT(*) as count,
-                COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue,
-                COALESCE(SUM(CASE WHEN status != ? THEN profit ELSE 0 END), 0) as profit
-            ", [BusBookingStatus::Cancelled->value, BusBookingStatus::Cancelled->value])
+                COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue
+            ", [BusBookingStatus::Cancelled->value])
             ->first();
 
         $yesterdayBookings = (int) $yesterdayStats->count;
         $yesterdayRevenue = (float) $yesterdayStats->revenue;
-        $yesterdayProfit = (float) $yesterdayStats->profit;
+
+        // 🛡️ GL-based profit (Phase 1 Dashboard unification)
+        // Range / today / yesterday all read from the ledger.
+        $plService = app(ProfitLossReportService::class);
+        $rangeGl = $plService->getDailyProfitByModule('bus', ['from_date' => $from, 'to_date' => $to]);
+        $todayGl = $plService->getDailyProfitByModule('bus', ['from_date' => $today, 'to_date' => $today]);
+        $yesterdayGl = $plService->getDailyProfitByModule('bus', ['from_date' => $yesterday, 'to_date' => $yesterday]);
+
+        $profitRange = (float) array_sum(array_column($rangeGl, 'profit'));
+        $todayProfit = (float) array_sum(array_column($todayGl, 'profit'));
+        $yesterdayProfit = (float) array_sum(array_column($yesterdayGl, 'profit'));
 
         $activeCompanies = (int) BusBooking::query()
             ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
@@ -487,20 +497,32 @@ class DashboardService
             ->selectRaw('COUNT(DISTINCT bus_inventories.company_id) as c')
             ->value('c');
 
-        $companyRows = DB::table('bus_bookings')
+        // Per-company booking counts (operational, stays on model)
+        $companyCountRows = DB::table('bus_bookings')
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->join('bus_companies', 'bus_inventories.company_id', '=', 'bus_companies.id')
             ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('bus_companies.id', 'bus_companies.name')
-            ->selectRaw('bus_companies.id as company_id, bus_companies.name as company_name, COUNT(bus_bookings.id) as booking_count, SUM(bus_bookings.total_price) as revenue_sum, SUM(bus_bookings.profit) as profit_sum')
-            ->orderByDesc('profit_sum')
-            ->limit(8)
-            ->get();
+            ->selectRaw('bus_companies.id as company_id, bus_companies.name as company_name, COUNT(bus_bookings.id) as booking_count, SUM(bus_bookings.total_price) as revenue_sum')
+            ->orderByDesc('revenue_sum')
+            ->get()
+            ->keyBy('company_id');
 
-        $busCompanyPerformance = $companyRows->map(function ($r) {
+        // 🛡️ GL-based per-company profit (2-hop: bus_bookings → bus_inventories → bus_companies.company_id)
+        $companyProfitByEntity = $plService->getProfitByEntity(
+            'bus',
+            \App\Models\Bus\BusBooking::class,
+            'company_id',
+            ['table' => 'bus_inventories', 'fk' => 'inventory_id'],
+            ['from_date' => $from, 'to_date' => $to]
+        );
+        $companyProfitMap = collect($companyProfitByEntity)->keyBy('entity_id');
+
+        $busCompanyPerformance = $companyCountRows->map(function ($r) use ($companyProfitMap) {
             $rev = (float) $r->revenue_sum;
-            $profit = (float) $r->profit_sum;
+            $glEntry = $companyProfitMap->get((int) $r->company_id);
+            $profit = $glEntry ? (float) $glEntry['profit'] : 0.0;
 
             return [
                 'id' => (int) $r->company_id,
@@ -510,7 +532,7 @@ class DashboardService
                 'profit' => $profit,
                 'profit_margin' => $rev > 0 ? round(($profit / $rev) * 100, 1) : 0,
             ];
-        })->values()->all();
+        })->sortByDesc('profit')->take(8)->values()->all();
 
         $bookingsChart = [];
         $revenueChart = [];
@@ -520,22 +542,28 @@ class DashboardService
             $end = $start->copy();
         }
         $days = min(14, $start->diffInDays($end) + 1);
+
+        // Per-day counts + revenue (operational, stays on model)
         $busStats = BusBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue, SUM(profit) as profit')
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue')
             ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('date')
             ->get()
             ->keyBy('date');
 
+        // 🛡️ GL-based per-day profit (already computed as $rangeGl above)
+        $glByDate = collect($rangeGl)->keyBy('date');
+
         for ($i = 0; $i < $days; $i++) {
             $d = $start->copy()->addDays($i)->toDateString();
             Carbon::setLocale('ar');
             $label = Carbon::parse($d)->translatedFormat('D j M');
-            
+
             $stat = $busStats->get($d);
             $cnt = $stat ? (int) $stat->count : 0;
             $rev = $stat ? (float) $stat->revenue : 0.0;
-            $prof = $stat ? (float) $stat->profit : 0.0;
+            $glEntry = $glByDate->get($d);
+            $prof = $glEntry ? (float) $glEntry['profit'] : 0.0;
 
             $bookingsChart[] = ['label' => $label, 'count' => $cnt];
             $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
@@ -601,10 +629,18 @@ class DashboardService
 
     /**
      * Data for the Vue airline operations dashboard (no mock values).
+     *
+     * All profit figures are sourced from the GL via
+     * {@see ProfitLossReportService::getDailyProfitByModule()} and
+     * {@see ProfitLossReportService::getProfitByEntity()}. Booking
+     * counts, revenue, status counts, etc. remain sourced from the
+     * FlightBooking model (those are operational fields, not financial).
      */
     protected function buildAirlineOperationsDashboard(string $from, string $to, ?string $carrierId, ?string $systemType): array
     {
         $today = now()->toDateString();
+        $yesterday = Carbon::parse($today)->subDay()->toDateString();
+        $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
         $bookingQuery = FlightBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
         if ($carrierId) {
@@ -618,18 +654,17 @@ class DashboardService
             }
         }
 
+        // Range counts + revenue (operational, stays on model)
         $rangeStats = (clone $bookingQuery)
             ->selectRaw("
                 COUNT(*) as total_bookings,
                 COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit,
                 COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) as cancelled
             ")
             ->first();
 
         $totalBookingsRange = (int) $rangeStats->total_bookings;
         $revenueRange = (float) $rangeStats->revenue;
-        $profitRange = (float) $rangeStats->profit;
         $cancelled = (int) $rangeStats->cancelled;
 
         $todayBookings = FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
@@ -645,29 +680,30 @@ class DashboardService
             ->whereRaw("selling_price - {$paidSub} > 0.01")
             ->sum(DB::raw("selling_price - {$paidSub}"));
 
-        $yesterday = Carbon::parse($today)->subDay()->toDateString();
         $todayBookingsYesterday = FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->count();
-        $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
-        // Merge today stats
+        // Today / yesterday revenue (operational, stays on model)
         $todayStats = FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
-            ->selectRaw("
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw('COALESCE(SUM(selling_price), 0) as revenue')
             ->first();
         $todayRevenue = (float) $todayStats->revenue;
-        $todayProfit = (float) $todayStats->profit;
 
-        // Merge yesterday stats
         $yesterdayStats = FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
-            ->selectRaw("
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw('COALESCE(SUM(selling_price), 0) as revenue')
             ->first();
         $yesterdayRevenue = (float) $yesterdayStats->revenue;
-        $yesterdayProfit = (float) $yesterdayStats->profit;
+
+        // 🛡️ GL-based profit — Phase 1 Dashboard unification:
+        // Range / today / yesterday / per-day all read from the ledger
+        // (ProfitLossReportService), not from `flight_bookings.profit`.
+        $plService = app(ProfitLossReportService::class);
+        $rangeGl = $plService->getDailyProfitByModule('flight', ['from_date' => $from, 'to_date' => $to]);
+        $todayGl = $plService->getDailyProfitByModule('flight', ['from_date' => $today, 'to_date' => $today]);
+        $yesterdayGl = $plService->getDailyProfitByModule('flight', ['from_date' => $yesterday, 'to_date' => $yesterday]);
+
+        $profitRange = (float) array_sum(array_column($rangeGl, 'profit'));
+        $todayProfit = (float) array_sum(array_column($todayGl, 'profit'));
+        $yesterdayProfit = (float) array_sum(array_column($yesterdayGl, 'profit'));
 
         $cancelled = (clone $bookingQuery)->where('status', 'CANCELLED')->count();
 
@@ -705,25 +741,34 @@ class DashboardService
 
         $carrierCards = array_merge($systemCards, $carrierCardsList);
 
-        // Fetch all system stats in one query
-        $systemStats = FlightBooking::query()
+        // Fetch booking counts per flight_system_id (operational, stays on model)
+        $systemBookingStats = FlightBooking::query()
             ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->when($carrierId, fn ($b) => $b->where('flight_carrier_id', (int) $carrierId))
             ->groupBy('flight_system_id')
-            ->selectRaw("
-                flight_system_id,
-                COUNT(*) as count,
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw('flight_system_id, COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
             ->get()
             ->keyBy('flight_system_id');
 
-        $systemPerformanceList = $systems->map(function (FlightSystem $s) use ($systemStats) {
-            $stat = $systemStats->get($s->id);
+        // 🛡️ GL-based per-system profit (Phase 1)
+        // The entity lookup is per-system (flight_system_id on flight_bookings).
+        // The `carrierId` and `systemType` filters can't be applied at the GL
+        // layer (the GL doesn't know which carrier_id a booking belongs to
+        // except via the related_id hop) — so the per-system table reflects
+        // ALL flight module profit when no carrier filter is set. With a
+        // carrier filter, the user is asking for a single carrier's view
+        // and the per-system table is omitted (KPIs still apply the filter).
+        $systemProfitByEntity = $carrierId === null
+            ? $plService->getProfitByEntity('flight', FlightBooking::class, 'flight_system_id', null, ['from_date' => $from, 'to_date' => $to])
+            : [];
+        $systemProfitMap = collect($systemProfitByEntity)->keyBy('entity_id');
+
+        $systemPerformanceList = $systems->map(function (FlightSystem $s) use ($systemBookingStats, $systemProfitMap) {
+            $stat = $systemBookingStats->get($s->id);
             $bookings = $stat ? (int) $stat->count : 0;
             $revSum = $stat ? (float) $stat->revenue : 0.0;
-            $profitSum = $stat ? (float) $stat->profit : 0.0;
+            $glEntry = $systemProfitMap->get($s->id);
+            $profitSum = $glEntry ? (float) $glEntry['profit'] : 0.0;
 
             return [
                 'id' => 'sys_'.$s->id,
@@ -735,25 +780,27 @@ class DashboardService
             ];
         });
 
-        // Fetch all carrier stats in one query
-        $carrierStats = FlightBooking::query()
+        // Per-carrier counts (operational, stays on model)
+        $carrierBookingStats = FlightBooking::query()
             ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->when($systemType !== null && $systemType !== '', fn ($b) => is_numeric($systemType) ? $b->where('flight_system_id', (int) $systemType) : $b->where('system_type', $systemType))
             ->groupBy('flight_carrier_id')
-            ->selectRaw("
-                flight_carrier_id,
-                COUNT(*) as count,
-                COALESCE(SUM(selling_price), 0) as revenue,
-                COALESCE(SUM(profit), 0) as profit
-            ")
+            ->selectRaw('flight_carrier_id, COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
             ->get()
             ->keyBy('flight_carrier_id');
 
-        $carrierPerformanceList = $carriers->map(function (FlightCarrier $c) use ($carrierStats) {
-            $stat = $carrierStats->get($c->id);
+        // 🛡️ GL-based per-carrier profit
+        $carrierProfitByEntity = $systemType === null
+            ? $plService->getProfitByEntity('flight', FlightBooking::class, 'flight_carrier_id', null, ['from_date' => $from, 'to_date' => $to])
+            : [];
+        $carrierProfitMap = collect($carrierProfitByEntity)->keyBy('entity_id');
+
+        $carrierPerformanceList = $carriers->map(function (FlightCarrier $c) use ($carrierBookingStats, $carrierProfitMap) {
+            $stat = $carrierBookingStats->get($c->id);
             $bookings = $stat ? (int) $stat->count : 0;
             $revSum = $stat ? (float) $stat->revenue : 0.0;
-            $profitSum = $stat ? (float) $stat->profit : 0.0;
+            $glEntry = $carrierProfitMap->get($c->id);
+            $profitSum = $glEntry ? (float) $glEntry['profit'] : 0.0;
 
             return [
                 'id' => 'car_'.$c->id,
@@ -779,13 +826,18 @@ class DashboardService
             $end = $start->copy();
         }
         $days = min(14, $start->diffInDays($end) + 1);
+
+        // Per-day counts (operational, stays on model)
         $flightStats = FlightBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue, SUM(profit) as profit')
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue')
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->groupBy('date')
             ->get()
             ->keyBy('date');
+
+        // 🛡️ GL-based per-day profit (already computed above as $rangeGl)
+        $glByDate = collect($rangeGl)->keyBy('date');
 
         for ($i = 0; $i < $days; $i++) {
             $d = $start->copy()->addDays($i)->toDateString();
@@ -795,14 +847,15 @@ class DashboardService
             $stat = $flightStats->get($d);
             $cnt = $stat ? (int) $stat->count : 0;
             $rev = $stat ? (float) $stat->revenue : 0.0;
-            $prof = $stat ? (float) $stat->profit : 0.0;
+            $glEntry = $glByDate->get($d);
+            $prof = $glEntry ? (float) $glEntry['profit'] : 0.0;
 
             $bookingsChart[] = ['label' => $label, 'count' => $cnt];
             $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
         }
 
         $topRoutes = FlightBooking::query()
-            ->selectRaw('from_airport, to_airport, COUNT(*) as c, SUM(selling_price) as revenue, SUM(profit) as profit')
+            ->selectRaw('from_airport, to_airport, COUNT(*) as c, SUM(selling_price) as revenue')
             ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->whereNotNull('from_airport')
             ->whereNotNull('to_airport')
@@ -817,7 +870,6 @@ class DashboardService
                 'to' => $r->to_airport,
                 'bookings' => (int) $r->c,
                 'revenue' => (float) $r->revenue,
-                'profit' => (float) $r->profit,
             ])
             ->all();
 
