@@ -172,7 +172,15 @@ class OnlineTransactionResource extends Resource
 
                             Select::make('account_id')
                                 ->label('حساب التحصيل')
-                                ->relationship('account', 'name', fn ($q) => $q->where('is_active', true))
+                                // ✅ Phase 9 fix: restrict to Online-module accounts only.
+                                //    Without this filter, users could pick any active
+                                //    account across modules (bus/flights/visas/...), causing
+                                //    cross-module financial pollution (the chosen vault would
+                                //    be debited for an Online transaction even though it
+                                //    belongs to another module's ledger).
+                                ->relationship('account', 'name', fn ($q) => $q
+                                    ->where('is_active', true)
+                                    ->where('module_type', 'online'))
                                 ->getOptionLabelFromRecordUsing(fn (Account $record): string => filled($record->name)
                                     ? $record->name
                                     : 'حساب #'.$record->getKey())
