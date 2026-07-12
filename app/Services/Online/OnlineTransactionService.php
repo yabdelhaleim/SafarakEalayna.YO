@@ -185,7 +185,16 @@ class OnlineTransactionService
                     $data['customer_phone'] = $customerPhone;
                 }
 
-                if (isset($data['purchase_price']) || isset($data['selling_price'])) {
+                // Detect ACTUAL changes (vs same value) — used to gate the
+                // ledger repost so we don't waste DB writes on no-op edits.
+                $sellingChanged = array_key_exists('selling_price', $data)
+                    && (float) $data['selling_price'] !== (float) $tx->selling_price;
+                $purchaseChanged = array_key_exists('purchase_price', $data)
+                    && (float) $data['purchase_price'] !== (float) $tx->purchase_price;
+                $amountPaidChanged = array_key_exists('amount_paid', $data)
+                    && (float) $data['amount_paid'] !== (float) $tx->amount_paid;
+
+                if ($sellingChanged || $purchaseChanged) {
                     $purchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
                     $selling = (float) ($data['selling_price'] ?? $tx->selling_price);
                     $data['profit'] = $selling - $purchase;
@@ -193,8 +202,43 @@ class OnlineTransactionService
 
                 $tx->fill($data)->save();
 
+                // 🛡️ ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
+                // HajjUmraBookingService / VisaBookingService Phase 8):
+                // when prices or amount_paid change, the OLD ledger entries
+                // must be reversed (additive — never destructive) and NEW
+                // entries posted with the corrected amounts. Skipped for
+                // non-Completed transactions since postFinancialEntries
+                // never posted anything for them in the first place.
+                if ($tx->status === OnlineTransactionStatus::Completed) {
+                    if ($sellingChanged) {
+                        $newSelling = (float) ($data['selling_price'] ?? $tx->selling_price);
+                        $newIncome = $this->repostIncomeTransaction($tx, $newSelling);
+                        if ($newIncome) {
+                            $tx->income_transaction_id = $newIncome->id;
+                            $tx->save();
+                        }
+                    }
+
+                    if ($purchaseChanged) {
+                        $newPurchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
+                        $newExpense = $this->repostExpenseTransaction($tx, $newPurchase);
+                        if ($newExpense) {
+                            $tx->expense_transaction_id = $newExpense->id;
+                            $tx->save();
+                        }
+                    }
+
+                    if ($amountPaidChanged) {
+                        $newAmountPaid = (float) ($data['amount_paid'] ?? $tx->amount_paid);
+                        $this->repostCashPaymentTransaction($tx, $newAmountPaid);
+                    }
+                }
+
                 Log::info('Online transaction updated', [
                     'online_transaction_id' => $tx->id,
+                    'selling_changed' => $sellingChanged,
+                    'purchase_changed' => $purchaseChanged,
+                    'amount_paid_changed' => $amountPaidChanged,
                     'updated_by' => Auth::id(),
                 ]);
 
@@ -218,6 +262,158 @@ class OnlineTransactionService
                 'input' => $data,
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Repost the main income transaction when selling_price changes.
+     *
+     * Mirrors `HajjUmraBookingService::repostIncomeTransaction` /
+     * `VisaBookingService::repostIncomeTransaction` (Phase 8): reverse the
+     * old transaction (additive — never destructive), then post a fresh
+     * income with the new amount. Returns the new transaction, or the
+     * unchanged old one if amount matches.
+     *
+     * Resolves the destination account the same way `postFinancialEntries`
+     * does: customer account if customer_id is set, otherwise $tx->account_id
+     * (direct cashbox deposit for anonymous customers).
+     */
+    protected function repostIncomeTransaction(OnlineTransaction $tx, float $newSelling): ?Transaction
+    {
+        if (! $tx->income_transaction_id) {
+            return null;
+        }
+
+        $oldTx = Transaction::find($tx->income_transaction_id);
+        if (! $oldTx) {
+            return null;
+        }
+
+        $oldAmount = (float) $oldTx->amount;
+        if (abs($oldAmount - $newSelling) < 0.000001) {
+            return $oldTx; // no-op
+        }
+
+        $this->transactionService->reverseTransaction($oldTx);
+
+        if ($tx->customer_id) {
+            $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
+
+            return $this->transactionService->recordIncome([
+                'amount' => $newSelling,
+                'to_account_id' => $customerAccount->id,
+                'module' => TransactionModule::Online->value,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => 'إعادة تسجيل مديونية العميل (تعديل سعر) — '.$tx->customer_name,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+        }
+
+        return $this->transactionService->recordIncome([
+            'amount' => $newSelling,
+            'to_account_id' => $tx->account_id,
+            'module' => TransactionModule::Online->value,
+            'related_type' => OnlineTransaction::class,
+            'related_id' => $tx->id,
+            'notes' => 'إعادة تسجيل معاملة أونلاين (تعديل سعر، بدون عميل مسجل) — '.$tx->customer_name,
+            'created_by' => Auth::id() ?? 1,
+        ]);
+    }
+
+    /**
+     * Repost the expense transaction when purchase_price changes.
+     *
+     * Mirrors `HajjUmraBookingService::repostExpenseTransaction` /
+     * `VisaBookingService::repostExpenseTransaction` (Phase 8): reverse the
+     * old transaction (additive — never destructive), then post a fresh
+     * expense with the new amount.
+     *
+     * Resolves the source account the same way `postFinancialEntries` does:
+     * provider's `default_purchase_account_id` if set, otherwise $tx->account_id.
+     */
+    protected function repostExpenseTransaction(OnlineTransaction $tx, float $newPurchase): ?Transaction
+    {
+        if (! $tx->expense_transaction_id) {
+            return null;
+        }
+
+        $oldTx = Transaction::find($tx->expense_transaction_id);
+        if (! $oldTx) {
+            return null;
+        }
+
+        $oldAmount = (float) $oldTx->amount;
+        if (abs($oldAmount - $newPurchase) < 0.000001) {
+            return $oldTx; // no-op
+        }
+
+        $provider = $tx->provider_id ? OnlineServiceProvider::find($tx->provider_id) : null;
+        $sourceAccountId = $provider?->default_purchase_account_id ?: $tx->account_id;
+
+        $this->transactionService->reverseTransaction($oldTx);
+
+        return $this->transactionService->recordExpense([
+            'amount' => $newPurchase,
+            'from_account_id' => $sourceAccountId,
+            'module' => TransactionModule::Online->value,
+            'related_type' => OnlineTransaction::class,
+            'related_id' => $tx->id,
+            'notes' => 'إعادة تسجيل تكلفة خدمة أونلاين (تعديل سعر) — '.$tx->customer_name,
+            'created_by' => Auth::id() ?? 1,
+        ]);
+    }
+
+    /**
+     * Repost the cash payment transaction when amount_paid changes.
+     *
+     * The cash payment is the OPTIONAL second income transaction created
+     * in `postFinancialEntries` when `customer_id` is set AND `amount_paid > 0`.
+     * Its transaction_id is NOT stored on $tx, so we locate it via the
+     * account pair that uniquely identifies it:
+     *   - from_account_id = customer account (cash LEAVES customer debt)
+     *   - to_account_id = $tx->account_id (cash ARRIVES in vault)
+     *
+     * (Note: TransactionService internally stores ALL double-entry
+     * transactions as `type=transfer` — the income/expense semantic lives
+     * in the from/to direction, NOT in the `type` column. So we must
+     * filter by the account pair, not by `type`.)
+     *
+     * Handles all 4 transitions (X→Y where X and Y can be 0):
+     *   X>0, Y>0: reverse old + create new
+     *   X>0, Y=0: reverse old only
+     *   X=0, Y>0: create new only
+     *   X=0, Y=0: no-op
+     */
+    protected function repostCashPaymentTransaction(OnlineTransaction $tx, float $newAmountPaid): void
+    {
+        if (! $tx->customer_id) {
+            return; // Cash payment only exists for customer-based transactions
+        }
+
+        $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
+
+        $cashPaymentTx = Transaction::where('related_type', OnlineTransaction::class)
+            ->where('related_id', $tx->id)
+            ->where('from_account_id', $customerAccount->id)
+            ->where('to_account_id', $tx->account_id)
+            ->first();
+
+        if ($cashPaymentTx) {
+            $this->transactionService->reverseTransaction($cashPaymentTx);
+        }
+
+        if ($newAmountPaid > 0.001) {
+            $this->transactionService->recordIncome([
+                'amount' => $newAmountPaid,
+                'to_account_id' => $tx->account_id,
+                'contra_account_id' => $customerAccount->id,
+                'module' => TransactionModule::Online->value,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => 'إعادة تسجيل سداد جزئي (تعديل) — '.$tx->customer_name,
+                'created_by' => Auth::id() ?? 1,
+            ]);
         }
     }
 
