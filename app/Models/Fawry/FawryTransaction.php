@@ -12,11 +12,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Finance\ModelProfitMutationGuard;
 use App\Traits\ClearsCache;
 
 class FawryTransaction extends Model
 {
-    use HasFactory, SoftDeletes, ClearsCache;
+    use HasFactory, SoftDeletes, ClearsCache, ModelProfitMutationGuard;
 
     protected $fillable = [
         'client_id',
@@ -53,9 +54,39 @@ class FawryTransaction extends Model
 
     protected static function booted(): void
     {
+        // Profit-column guard: `profit` is a derived figure
+        // (selling_price − fawry_price) and is auto-computed on create by
+        // this model's own creating observer (when empty), and on update by
+        // FawryTransactionService::updateTransaction. External writes
+        // (Filament, tinker, controllers, stray `->save()`) are blocked;
+        // the canonical writers are allowed via FawryTransaction::run().
+        static::saving(function (FawryTransaction $transaction): void {
+            if (! $transaction->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (FawryTransaction::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في معاملة فوري مباشرةً. '
+                .'استخدم FawryTransactionService::createTransaction / updateTransaction.'
+            );
+        });
+
+        // Auto-compute observer — canonical authoritative writer of `profit`
+        // on create (only when not already set). Wrapped in
+        // FawryTransaction::run() so the guard above sees isAllowed()=true.
         static::creating(function ($transaction) {
             if (empty($transaction->profit)) {
-                $transaction->profit = $transaction->selling_price - $transaction->fawry_price;
+                FawryTransaction::run(function () use ($transaction): void {
+                    $transaction->profit = $transaction->selling_price - $transaction->fawry_price;
+                });
             }
         });
     }
