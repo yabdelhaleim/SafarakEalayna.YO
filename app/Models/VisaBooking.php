@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\VisaStatus;
 use App\Support\Finance\ModelDeletionGuard;
+use App\Support\Finance\ModelProfitMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use App\Traits\ClearsCache;
 
 class VisaBooking extends Model
 {
-    use HasFactory, SoftDeletes, ClearsCache, ModelDeletionGuard;
+    use HasFactory, SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected $fillable = [
         'customer_id',
@@ -69,6 +70,28 @@ class VisaBooking extends Model
                     .'أو VisaBookingService::cancel() للإلغاء المرئي الذي يحتفظ بالصف.'
                 );
             }
+        });
+
+        // Profit-column guard: `profit` is a derived figure
+        // (selling + service_fee − purchase) and must be set only via
+        // VisaBookingService::create / update.
+        static::saving(function (VisaBooking $booking): void {
+            if (! $booking->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (VisaBooking::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في حجز التأشيرة مباشرةً. '
+                .'استخدم VisaBookingService::create / update.'
+            );
         });
     }
 

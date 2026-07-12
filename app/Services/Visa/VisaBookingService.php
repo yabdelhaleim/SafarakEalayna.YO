@@ -124,7 +124,10 @@ class VisaBookingService
 
             $createdBy = Auth::id() ?? ($data['employee_id'] ?? null);
 
-            $booking = VisaBooking::create([
+            // Wrapped in VisaBooking::run() so the ModelProfitMutationGuard lets
+            // the canonical `profit` write through.
+            $booking = VisaBooking::run(function () use ($customer, $detail, $data, $purchase, $selling, $serviceFee, $profit, $accountId, $createdBy) {
+                return VisaBooking::create([
                 'customer_id' => $customer->id,
                 'visa_detail_id' => $detail->id,
                 'module' => TransactionModule::Visa->value,
@@ -140,6 +143,7 @@ class VisaBookingService
                 'employee_id' => $data['employee_id'] ?? $createdBy,
                 'created_by' => $createdBy,
             ]);
+            });
 
             $customerAccount = $this->ensureCustomerAccount($customer->id);
 
@@ -211,7 +215,11 @@ class VisaBookingService
                 $hasPriceChange = true;
             }
 
-            $booking->update($fields);
+            // Wrapped in VisaBooking::run() so the ModelProfitMutationGuard
+            // lets the canonical `profit` write through.
+            VisaBooking::run(function () use ($booking, $fields) {
+                $booking->update($fields);
+            });
 
             if (! empty($data['visa_details']) && is_array($data['visa_details']) && $booking->visaDetail) {
                 $detailPayload = collect($data['visa_details'])
