@@ -1313,7 +1313,40 @@ if ($department === 'tourism') {
                       ->whereDoesntHave('hajjUmraBookings')
                       ->whereDoesntHave('visaBookings');
               });
-        })->with('ledgerAccount')->get()->sum(fn($c) => (float)$c->ledgerAccount->balance);
+        })->with('ledgerAccount')->get()->sum(function ($c) {
+            // Phase C.2 fix: when the customer is in the office department
+            // (bus/fawry/online/wallet), the ledgerAccount.balance sums
+            // ALL transactions across all modules on that account. We must
+            // restrict to module='fawry' only when this customer is
+            // surfaced via the Fawry filter. Caller passes the filter via
+            // the outer scope (department/module); here we sum the
+            // GL-restricted Fawry debt instead of the full balance when
+            // the relevant module is Fawry.
+            //
+            // Heuristic: if the customer has fawryTransactions but no
+            // busBookings/onlineTransactions/walletTransactions, the
+            // balance is purely Fawry and is safe to sum. Otherwise we
+            // fall back to summing only the Fawry GL entries (credit -
+            // debit on transactions where module='fawry') to avoid
+            // mixing modules.
+            $hasOnlyFawry = $c->fawry_transactions_count > 0
+                && $c->bus_bookings_count === 0
+                && $c->online_transactions_count === 0
+                && $c->wallet_transactions_count === 0;
+
+            if ($hasOnlyFawry) {
+                return (float) $c->ledgerAccount->balance;
+            }
+
+            $fawryDebt = \DB::table('account_entries')
+                ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
+                ->where('account_entries.account_id', $c->ledgerAccount->id)
+                ->where('transactions.module', \App\Enums\TransactionModule::Fawry->value)
+                ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
+                ->value('debt') ?? 0.0;
+
+            return (float) $fawryDebt;
+        });
 
         $busPayables = BusCompany::whereHas('account', function($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '<', 0);
