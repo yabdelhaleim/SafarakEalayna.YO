@@ -477,14 +477,14 @@ class FinancialReportService
                             ->whereDoesntHave('onlineTransactions')
                             ->whereDoesntHave('walletTransactions')
                             ->whereDoesntHave('ledgerAccount', function ($sub) {
-                                $sub->whereIn('module_type', ['flights', 'bus', 'hajj_umra', 'visas', 'fawry', 'online', 'wallet']);
+                                $sub->whereIn('module_type', ['flights', 'bus', 'hajj_umra', 'visas', 'fawry', 'online', 'wallet_transfer']);
                             });
                         break;
                     case 'wallet':
                         $customerQuery->where(function ($q) {
                             $q->whereHas('walletTransactions')
                                 ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'wallet');
+                                    $sub->where('module_type', 'wallet_transfer');
                                 });
                         });
                         break;
@@ -506,7 +506,7 @@ class FinancialReportService
                             ->orWhereHas('onlineTransactions')
                             ->orWhereHas('walletTransactions')
                             ->orWhereHas('ledgerAccount', function ($sub) {
-                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet']);
+                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet_transfer']);
                             })
                             ->orWhere(function ($sub) {
                                 $sub->whereDoesntHave('hajjUmraBookings')
@@ -548,7 +548,7 @@ class FinancialReportService
                         $custDept = 'tourism';
                         $custMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : $accModule);
                         $deptFromAccount = true;
-                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet'])) {
+                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet_transfer'])) {
                         $custDept = 'office';
                         $custMod = $accModule === 'office' ? 'general' : $accModule;
                         $deptFromAccount = true;
@@ -675,11 +675,11 @@ class FinancialReportService
                     }
                     if ($department) {
                         $q->orWhereHas('account', function ($sub) use ($department) {
-                            if ($department === 'tourism') {
-                                $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
-                            } else {
-                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet']);
-                            }
+if ($department === 'tourism') {
+                            $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
+                        } else {
+                            $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet_transfer']);
+                        }
                         });
                     } elseif ($module) {
                         $q->orWhereHas('account', function ($sub) use ($module) {
@@ -715,7 +715,7 @@ class FinancialReportService
                     if (in_array($accModule, ['tourism', 'flights', 'hajj_umra', 'visas'])) {
                         $supDept = 'tourism';
                         $supMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : ($accModule === 'visas' ? 'visa' : $accModule));
-                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet'])) {
+                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet_transfer'])) {
                         $supDept = 'office';
                         $supMod = $accModule === 'office' ? 'general' : $accModule;
                     }
