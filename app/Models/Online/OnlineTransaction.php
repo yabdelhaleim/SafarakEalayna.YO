@@ -13,11 +13,12 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Finance\ModelProfitMutationGuard;
 use App\Traits\ClearsCache;
 
 class OnlineTransaction extends Model
 {
-    use SoftDeletes, ClearsCache;
+    use SoftDeletes, ClearsCache, ModelProfitMutationGuard;
 
     protected $fillable = [
         'service_type_id',
@@ -52,8 +53,36 @@ class OnlineTransaction extends Model
 
     protected static function booted(): void
     {
+        // Profit-column guard: `profit` is auto-computed by this model's own
+        // saving observer below. External writes (Filament, tinker, controllers,
+        // stray `->save()`) are blocked; the model's own observer is allowed
+        // via OnlineTransaction::run() below.
+        static::saving(function (OnlineTransaction $tx): void {
+            if (! $tx->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (OnlineTransaction::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في معاملة الخدمات الإلكترونية مباشرةً. '
+                .'يُحسب تلقائياً من selling_price − purchase_price.'
+            );
+        });
+
+        // Auto-compute observer — canonical authoritative writer of `profit`.
+        // Wrapped in OnlineTransaction::run() so the guard above sees
+        // isAllowed()=true.
         static::saving(function (self $tx): void {
-            $tx->profit = (float) $tx->selling_price - (float) $tx->purchase_price;
+            OnlineTransaction::run(function () use ($tx): void {
+                $tx->profit = (float) $tx->selling_price - (float) $tx->purchase_price;
+            });
         });
 
         static::deleting(function (OnlineTransaction $transaction) {
