@@ -222,6 +222,7 @@ Route::prefix('v1')->middleware([
             Route::post('/', [RefundController::class, 'store']);
             Route::get('/{id}', [RefundController::class, 'show']);
             Route::post('/{id}/process', [RefundController::class, 'process']);
+            Route::delete('/{id}', [RefundController::class, 'destroy']);
         });
 
         // Ticket Modification System API
@@ -231,6 +232,7 @@ Route::prefix('v1')->middleware([
             Route::patch('/{id}/status', [ModificationController::class, 'updateStatus']);
             Route::post('/{id}/confirm', [ModificationController::class, 'confirm']);
             Route::post('/{id}/reconcile', [ModificationController::class, 'reconcile']);
+            Route::delete('/{id}', [ModificationController::class, 'destroy']);
         });
 
         Route::get('bookings/{id}/modifications', [ModificationController::class, 'bookingModifications']);
@@ -407,6 +409,8 @@ Route::prefix('v1')->middleware([
         Route::get('debts', [FinancialReportController::class, 'debtsReport']);
         Route::get('summary', [FinancialReportController::class, 'financialSummary']);
         Route::get('profit-by-module', [FinancialReportController::class, 'profitByModule']);
+        Route::get('profit-by-day', [FinancialReportController::class, 'profitByDay']);
+        Route::get('profit-entity-top', [FinancialReportController::class, 'profitEntityTop']);
         Route::get('cash-flow-realtime', [FinancialReportController::class, 'cashFlowRealtime']);
         Route::get('customer-ledger-balances', [FinancialReportController::class, 'customerLedgerBalances']);
         Route::get('bank-ledger-reconciliation', [FinancialReportController::class, 'bankLedgerReconciliation']);
