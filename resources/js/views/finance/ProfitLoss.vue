@@ -200,6 +200,13 @@
             </div>
           </div>
           <div class="flex justify-between font-black text-white mt-5 border-t border-emerald-500/30 pt-4 text-lg relative z-10">
+            <!-- totalRevenues is by definition non-negative in normal
+                 accounting (income flows in only), even though the
+                 engine no longer floors negatives defensively. Kept
+                 hardcoded emerald to preserve the green section
+                 header semantics; if a refund-only period ever
+                 surfaces a negative total, formatCurrency will render
+                 it with a leading minus. -->
             <span>إجمالي الإيرادات</span>
             <span class="text-emerald-400">{{ formatCurrency(reportData.totalRevenues) }}</span>
           </div>
@@ -221,6 +228,9 @@
             </div>
           </div>
           <div class="flex justify-between font-black text-white mt-5 border-t border-orange-500/30 pt-4 text-lg relative z-10">
+            <!-- totalCogs is by definition non-negative (cost flows out
+                 only). Kept hardcoded orange; formatCurrency handles
+                 negatives if they ever surface. -->
             <span>إجمالي تكلفة المبيعات</span>
             <span class="text-orange-400">{{ formatCurrency(reportData.totalCogs) }}</span>
           </div>
@@ -276,6 +286,9 @@
             </div>
           </div>
           <div class="flex justify-between font-black text-white mt-5 border-t border-rose-500/30 pt-4 text-lg relative z-10">
+            <!-- totalExpenses is by definition non-negative (expense
+                 flows out only). Kept hardcoded rose; formatCurrency
+                 handles negatives if they ever surface. -->
             <span>إجمالي المصروفات</span>
             <span class="text-rose-400">{{ formatCurrency(reportData.totalExpenses) }}</span>
           </div>
