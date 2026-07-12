@@ -128,7 +128,11 @@ class HajjUmraBookingService
 
             $createdBy = Auth::id() ?? ($data['employee_id'] ?? null);
 
-            $booking = HajjUmraBooking::create([
+            // Wrapped in HajjUmraBooking::run() so the ModelProfitMutationGuard lets
+            // the canonical `profit` write through — see HajjUmraBooking::booted()
+            // saving observer.
+            $booking = HajjUmraBooking::run(function () use ($customer, $program, $data, $purchase, $companionPurchase, $selling, $companionSelling, $profit, $accountId, $createdBy, $accommodationExtra) {
+                return HajjUmraBooking::create([
                 'customer_id' => $customer->id,
                 'companion_customer_id' => $data['companion_customer_id'] ?? null,
                 'program_id' => $program->id,
@@ -150,6 +154,7 @@ class HajjUmraBookingService
                 'employee_id' => $data['employee_id'] ?? $createdBy,
                 'created_by' => $createdBy,
             ]);
+            });
 
             $customerAccount = $this->ensureCustomerAccount($customer->id);
 
@@ -353,7 +358,11 @@ class HajjUmraBookingService
             $fields['accommodation_extra_charge'] = $accommodationExtra;
             $fields['profit'] = $profit;
 
-            $booking->update($fields);
+            // Wrapped in HajjUmraBooking::run() so the ModelProfitMutationGuard
+            // lets the canonical `profit` write through.
+            HajjUmraBooking::run(function () use ($booking, $fields) {
+                $booking->update($fields);
+            });
 
             // Update passengers if provided
             if (array_key_exists('passengers', $data) && is_array($data['passengers'])) {

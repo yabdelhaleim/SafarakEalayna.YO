@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\HajjUmraStatus;
 use App\Models\HajjUmra\UmrahSupplier;
 use App\Support\Finance\ModelDeletionGuard;
+use App\Support\Finance\ModelProfitMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use App\Traits\ClearsCache;
 
 class HajjUmraBooking extends Model
 {
-    use HasFactory, SoftDeletes, ClearsCache, ModelDeletionGuard;
+    use HasFactory, SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected $fillable = [
         'customer_id',
@@ -79,6 +80,28 @@ class HajjUmraBooking extends Model
                     .'أو HajjUmraBookingService::cancel() للإلغاء المرئي الذي يحتفظ بالصف.'
                 );
             }
+        });
+
+        // Profit-column guard: `profit` is a derived figure
+        // (selling+companion+accommodation − purchase−companion) and must be
+        // set only via HajjUmraBookingService::create / update.
+        static::saving(function (HajjUmraBooking $booking): void {
+            if (! $booking->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (HajjUmraBooking::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في حجز الحج والعمرة مباشرةً. '
+                .'استخدم HajjUmraBookingService::create / update.'
+            );
         });
     }
 
