@@ -244,8 +244,11 @@ class FlightBookingService
                 // Step 2: Generate unique booking number
                 $bookingNumber = $this->generateBookingNumber();
 
-                // Step 3: Create booking record
-                $booking = FlightBooking::create([
+                // Step 3: Create booking record (wrapped in ::run() so the
+                // ModelProfitMutationGuard lets the canonical 'profit' write
+                // through — see FlightBooking::booted() saving observer).
+                $booking = FlightBooking::run(function () use ($data, $bookingNumber, $purchasePriceEGP, $sellingPrice, $sellingPriceEGP, $exchangeRate, $currency, $profit, $settlementSnapshot, $purchaseBalanceSource, $userId) {
+                    return FlightBooking::create([
                     'customer_id' => $data['customer_id'],
                     'employee_id' => $data['employee_id'] ?? null,
                     'booking_reference' => "FLT-{$bookingNumber}",
@@ -301,6 +304,7 @@ class FlightBookingService
                     'booking_exchange_rate' => $exchangeRate,
                     'base_currency_amount' => $sellingPriceEGP,
                 ]);
+                });
 
                 Log::info('Flight booking created', [
                     'flight_booking_id' => $booking->id,
@@ -1395,7 +1399,9 @@ class FlightBookingService
                 }
 
                 if ($updates !== []) {
-                    $booking->update($updates);
+                    FlightBooking::run(function () use ($booking, $updates) {
+                        $booking->update($updates);
+                    });
                 }
 
                 Log::info('Flight booking updated', [
@@ -1447,11 +1453,13 @@ class FlightBookingService
         try {
             $profit = $sellingPrice - $purchasePrice;
 
-            $booking->update([
-                'purchase_price' => $purchasePrice,
-                'selling_price' => $sellingPrice,
-                'profit' => $profit,
-            ]);
+            FlightBooking::run(function () use ($booking, $purchasePrice, $sellingPrice, $profit) {
+                $booking->update([
+                    'purchase_price' => $purchasePrice,
+                    'selling_price' => $sellingPrice,
+                    'profit' => $profit,
+                ]);
+            });
 
             Log::info('Flight booking prices updated', [
                 'flight_booking_id' => $booking->id,

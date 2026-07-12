@@ -11,6 +11,7 @@ use App\Models\FlightPricing;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
+use App\Support\Finance\ModelProfitMutationGuard;
 use App\Traits\ClearsCache;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -75,7 +76,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class FlightBooking extends Model
 {
-    use SoftDeletes, ClearsCache, ModelDeletionGuard;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected function casts(): array
     {
@@ -116,6 +117,28 @@ class FlightBooking extends Model
             if (!app()->runningUnitTests() && ! $bypassViaGuard) {
                 throw new \RuntimeException('لا يمكن حذف حجز الطيران برمجياً لتجنب إفساد السجلات المالية. يرجى إلغاء الحجز (Cancel) لتسوية الأرصدة تلقائياً.');
             }
+        });
+
+        // Profit-column guard: `profit` is a derived figure (selling − purchase)
+        // and must be set only via FlightBookingService::createBooking /
+        // updateBooking / updatePrices. Wraps both create + update in one place.
+        static::saving(function (FlightBooking $booking): void {
+            if (! $booking->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (FlightBooking::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في حجز الطيران مباشرةً. '
+                .'استخدم FlightBookingService::createBooking / updateBooking / updatePrices.'
+            );
         });
     }
 
