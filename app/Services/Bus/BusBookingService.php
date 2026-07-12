@@ -199,20 +199,25 @@ class BusBookingService
                     $employeeId = Employee::query()->orderBy('id')->value('id');
                 }
 
-                $booking = BusBooking::create([
-                    'inventory_id' => $inventory->id,
-                    'customer_id' => $customerId,
-                    'employee_id' => $employeeId,
-                    'quantity' => $data['quantity'],
-                    'unit_price' => $unitPrice,
-                    'total_price' => $totalPrice,
-                    'paid_amount' => 0,
-                    'payment_status' => BusPaymentStatus::Pending,
-                    'profit' => $profit,
-                    'status' => BusBookingStatus::Pending,
-                    'notes' => $data['notes'] ?? null,
-                    'created_by' => Auth::id(),
-                ]);
+                // Wrapped in BusBooking::run() so the ModelProfitMutationGuard lets
+                // the canonical `profit` write through — see BusBooking::booted()
+                // saving observer.
+                $booking = BusBooking::run(function () use ($inventory, $customerId, $employeeId, $data, $unitPrice, $totalPrice, $profit) {
+                    return BusBooking::create([
+                        'inventory_id' => $inventory->id,
+                        'customer_id' => $customerId,
+                        'employee_id' => $employeeId,
+                        'quantity' => $data['quantity'],
+                        'unit_price' => $unitPrice,
+                        'total_price' => $totalPrice,
+                        'paid_amount' => 0,
+                        'payment_status' => BusPaymentStatus::Pending,
+                        'profit' => $profit,
+                        'status' => BusBookingStatus::Pending,
+                        'notes' => $data['notes'] ?? null,
+                        'created_by' => Auth::id(),
+                    ]);
+                });
 
                 // ✅ Record company debt (cost) if company exists
                 $company = $inventory->company;

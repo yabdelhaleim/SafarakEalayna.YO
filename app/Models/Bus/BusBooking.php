@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
+use App\Support\Finance\ModelProfitMutationGuard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -37,7 +38,7 @@ use App\Traits\ClearsCache;
 ])]
 class BusBooking extends Model
 {
-    use SoftDeletes, ClearsCache, ModelDeletionGuard;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected function casts(): array
     {
@@ -74,6 +75,27 @@ class BusBooking extends Model
                     .'أو BusBookingService::cancelBooking() للإلغاء المرئي الذي يحتفظ بالصف.'
                 );
             }
+        });
+
+        // Profit-column guard: `profit` is a derived figure ((selling − cost) × qty)
+        // and must be set only via BusBookingService::createBooking.
+        static::saving(function (BusBooking $booking): void {
+            if (! $booking->isDirty('profit')) {
+                return;
+            }
+            if (\App\Support\Finance\LedgerBalanceMutationGuard::isAllowed()) {
+                return;
+            }
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (BusBooking::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException(
+                'لا يمكن تعديل عمود profit في حجز الباص مباشرةً. '
+                .'استخدم BusBookingService::createBooking.'
+            );
         });
     }
 
