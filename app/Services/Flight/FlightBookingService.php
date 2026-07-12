@@ -247,7 +247,7 @@ class FlightBookingService
                 // Step 3: Create booking record (wrapped in ::run() so the
                 // ModelProfitMutationGuard lets the canonical 'profit' write
                 // through — see FlightBooking::booted() saving observer).
-                $booking = FlightBooking::run(function () use ($data, $bookingNumber, $purchasePriceEGP, $sellingPrice, $sellingPriceEGP, $exchangeRate, $currency, $profit, $settlementSnapshot, $purchaseBalanceSource, $userId) {
+                $booking = FlightBooking::runProfitMutation(function () use ($data, $bookingNumber, $purchasePriceEGP, $sellingPrice, $sellingPriceEGP, $exchangeRate, $currency, $profit, $settlementSnapshot, $purchaseBalanceSource, $userId) {
                     return FlightBooking::create([
                     'customer_id' => $data['customer_id'],
                     'employee_id' => $data['employee_id'] ?? null,
@@ -1399,7 +1399,7 @@ class FlightBookingService
                 }
 
                 if ($updates !== []) {
-                    FlightBooking::run(function () use ($booking, $updates) {
+                    FlightBooking::runProfitMutation(function () use ($booking, $updates) {
                         $booking->update($updates);
                     });
                 }
@@ -1453,7 +1453,7 @@ class FlightBookingService
         try {
             $profit = $sellingPrice - $purchasePrice;
 
-            FlightBooking::run(function () use ($booking, $purchasePrice, $sellingPrice, $profit) {
+            FlightBooking::runProfitMutation(function () use ($booking, $purchasePrice, $sellingPrice, $profit) {
                 $booking->update([
                     'purchase_price' => $purchasePrice,
                     'selling_price' => $sellingPrice,

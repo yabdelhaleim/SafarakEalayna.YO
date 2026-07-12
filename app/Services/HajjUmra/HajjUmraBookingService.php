@@ -128,10 +128,10 @@ class HajjUmraBookingService
 
             $createdBy = Auth::id() ?? ($data['employee_id'] ?? null);
 
-            // Wrapped in HajjUmraBooking::run() so the ModelProfitMutationGuard lets
+            // Wrapped in HajjUmraBooking::runProfitMutation() so the ModelProfitMutationGuard lets
             // the canonical `profit` write through — see HajjUmraBooking::booted()
             // saving observer.
-            $booking = HajjUmraBooking::run(function () use ($customer, $program, $data, $purchase, $companionPurchase, $selling, $companionSelling, $profit, $accountId, $createdBy, $accommodationExtra) {
+            $booking = HajjUmraBooking::runProfitMutation(function () use ($customer, $program, $data, $purchase, $companionPurchase, $selling, $companionSelling, $profit, $accountId, $createdBy, $accommodationExtra) {
                 return HajjUmraBooking::create([
                 'customer_id' => $customer->id,
                 'companion_customer_id' => $data['companion_customer_id'] ?? null,
@@ -358,9 +358,9 @@ class HajjUmraBookingService
             $fields['accommodation_extra_charge'] = $accommodationExtra;
             $fields['profit'] = $profit;
 
-            // Wrapped in HajjUmraBooking::run() so the ModelProfitMutationGuard
+            // Wrapped in HajjUmraBooking::runProfitMutation() so the ModelProfitMutationGuard
             // lets the canonical `profit` write through.
-            HajjUmraBooking::run(function () use ($booking, $fields) {
+            HajjUmraBooking::runProfitMutation(function () use ($booking, $fields) {
                 $booking->update($fields);
             });
 

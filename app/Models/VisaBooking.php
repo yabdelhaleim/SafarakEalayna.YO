@@ -85,7 +85,7 @@ class VisaBooking extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (VisaBooking::isAllowed()) {
+            if (VisaBooking::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(

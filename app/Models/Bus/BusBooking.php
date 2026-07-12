@@ -89,7 +89,7 @@ class BusBooking extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (BusBooking::isAllowed()) {
+            if (BusBooking::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(

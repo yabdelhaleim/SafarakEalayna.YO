@@ -95,7 +95,7 @@ class HajjUmraBooking extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (HajjUmraBooking::isAllowed()) {
+            if (HajjUmraBooking::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(

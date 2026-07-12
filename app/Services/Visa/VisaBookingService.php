@@ -124,9 +124,9 @@ class VisaBookingService
 
             $createdBy = Auth::id() ?? ($data['employee_id'] ?? null);
 
-            // Wrapped in VisaBooking::run() so the ModelProfitMutationGuard lets
+            // Wrapped in VisaBooking::runProfitMutation() so the ModelProfitMutationGuard lets
             // the canonical `profit` write through.
-            $booking = VisaBooking::run(function () use ($customer, $detail, $data, $purchase, $selling, $serviceFee, $profit, $accountId, $createdBy) {
+            $booking = VisaBooking::runProfitMutation(function () use ($customer, $detail, $data, $purchase, $selling, $serviceFee, $profit, $accountId, $createdBy) {
                 return VisaBooking::create([
                 'customer_id' => $customer->id,
                 'visa_detail_id' => $detail->id,
@@ -215,9 +215,9 @@ class VisaBookingService
                 $hasPriceChange = true;
             }
 
-            // Wrapped in VisaBooking::run() so the ModelProfitMutationGuard
+            // Wrapped in VisaBooking::runProfitMutation() so the ModelProfitMutationGuard
             // lets the canonical `profit` write through.
-            VisaBooking::run(function () use ($booking, $fields) {
+            VisaBooking::runProfitMutation(function () use ($booking, $fields) {
                 $booking->update($fields);
             });
 

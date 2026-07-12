@@ -323,11 +323,11 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
                     $data['profit'] = $sellingPrice - $fawryPrice;
                 }
 
-                // Wrapped in FawryTransaction::run() so the
+                // Wrapped in FawryTransaction::runProfitMutation() so the
                 // ModelProfitMutationGuard lets the canonical `profit` write
                 // through (only matters when $data['profit'] was just set
                 // above, but wrapping unconditionally keeps the gate simple).
-                FawryTransaction::run(function () use ($transaction, $data) {
+                FawryTransaction::runProfitMutation(function () use ($transaction, $data) {
                     $transaction->update($data);
                 });
 

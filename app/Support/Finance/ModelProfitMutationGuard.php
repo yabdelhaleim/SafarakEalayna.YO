@@ -34,7 +34,7 @@ namespace App\Support\Finance;
  *      the gate is per-model and self-contained. No global lock.
  *
  *   3. The canonical service path wraps its profit-writing operations
- *      inside `ModelClass::run(...)` to flip the gate briefly open.
+ *      inside `ModelClass::runProfitMutation(...)` to flip the gate briefly open.
  *
  * Usage:
  *
@@ -46,7 +46,7 @@ namespace App\Support\Finance;
  *               if (! $booking->isDirty('profit')) return;
  *               if (LedgerBalanceMutationGuard::isAllowed()) return;
  *               if (app()->runningUnitTests()) return;
- *               if (static::isAllowed()) return;
+ *               if (static::isProfitMutationAllowed()) return;
  *               throw new \RuntimeException(
  *                   'لا يمكن تعديل عمود profit في حجز الطيران مباشرةً. '
  *                   .'استخدم FlightBookingService::createBooking/updateBooking/updatePrices.'
@@ -56,11 +56,17 @@ namespace App\Support\Finance;
  *   }
  *
  *   FlightBookingService::updatePrices(...) {
- *       FlightBooking::run(function () use ($booking, $sellingPrice, $purchasePrice) {
+ *       FlightBooking::runProfitMutation(function () use ($booking, $sellingPrice, $purchasePrice) {
  *           $profit = $sellingPrice - $purchasePrice;
  *           $booking->update(['profit' => $profit, ...]);
  *       });
  *   }
+ *
+ * Note on method naming: the methods are explicitly named
+ * `runProfitMutation()` and `isProfitMutationAllowed()` (not `run` /
+ * `isAllowed`) so that models composing BOTH this trait and
+ * `ModelDeletionGuard` do NOT collide on the shared method names. Each
+ * gate still uses its own per-class depth counter.
  *
  * Origin: introduced during the Phase 5 profit-column hardening pass. Mirrors
  * `App\Support\Finance\ModelDeletionGuard` (the established pattern for
@@ -85,7 +91,7 @@ trait ModelProfitMutationGuard
      * @param  callable(): T  $callback
      * @return T
      */
-    public static function run(callable $callback): mixed
+    public static function runProfitMutation(callable $callback): mixed
     {
         ++self::$profitDepth;
         try {
@@ -96,12 +102,12 @@ trait ModelProfitMutationGuard
     }
 
     /**
-     * Returns true iff we are currently inside `static::run(...)`.
+     * Returns true iff we are currently inside `static::runProfitMutation(...)`.
      *
      * Models' `saving` observers call this to allow the canonical service
      * to write the `profit` column without tripping the guard.
      */
-    public static function isAllowed(): bool
+    public static function isProfitMutationAllowed(): bool
     {
         return self::$profitDepth > 0;
     }

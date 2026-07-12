@@ -199,10 +199,10 @@ class BusBookingService
                     $employeeId = Employee::query()->orderBy('id')->value('id');
                 }
 
-                // Wrapped in BusBooking::run() so the ModelProfitMutationGuard lets
+                // Wrapped in BusBooking::runProfitMutation() so the ModelProfitMutationGuard lets
                 // the canonical `profit` write through — see BusBooking::booted()
                 // saving observer.
-                $booking = BusBooking::run(function () use ($inventory, $customerId, $employeeId, $data, $unitPrice, $totalPrice, $profit) {
+                $booking = BusBooking::runProfitMutation(function () use ($inventory, $customerId, $employeeId, $data, $unitPrice, $totalPrice, $profit) {
                     return BusBooking::create([
                         'inventory_id' => $inventory->id,
                         'customer_id' => $customerId,

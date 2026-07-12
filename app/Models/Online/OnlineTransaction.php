@@ -56,7 +56,7 @@ class OnlineTransaction extends Model
         // Profit-column guard: `profit` is auto-computed by this model's own
         // saving observer below. External writes (Filament, tinker, controllers,
         // stray `->save()`) are blocked; the model's own observer is allowed
-        // via OnlineTransaction::run() below.
+        // via OnlineTransaction::runProfitMutation() below.
         static::saving(function (OnlineTransaction $tx): void {
             if (! $tx->isDirty('profit')) {
                 return;
@@ -67,7 +67,7 @@ class OnlineTransaction extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (OnlineTransaction::isAllowed()) {
+            if (OnlineTransaction::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(
@@ -77,10 +77,10 @@ class OnlineTransaction extends Model
         });
 
         // Auto-compute observer — canonical authoritative writer of `profit`.
-        // Wrapped in OnlineTransaction::run() so the guard above sees
-        // isAllowed()=true.
+        // Wrapped in OnlineTransaction::runProfitMutation() so the guard above
+        // sees isProfitMutationAllowed()=true.
         static::saving(function (self $tx): void {
-            OnlineTransaction::run(function () use ($tx): void {
+            OnlineTransaction::runProfitMutation(function () use ($tx): void {
                 $tx->profit = (float) $tx->selling_price - (float) $tx->purchase_price;
             });
         });

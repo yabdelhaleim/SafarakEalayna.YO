@@ -132,7 +132,7 @@ class FlightBooking extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (FlightBooking::isAllowed()) {
+            if (FlightBooking::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(

@@ -50,7 +50,7 @@ class BusTicket extends Model
         // Profit-column guard: `profit` is a derived figure ((selling − purchase) × ticket_count)
         // and is auto-computed by this model's own saving observer. External writes
         // (Filament, tinker, controllers, stray `->save()`) are blocked; the model's
-        // own observer is allowed via BusTicket::run() below.
+        // own observer is allowed via BusTicket::runProfitMutation() below.
         static::saving(function (BusTicket $ticket): void {
             if (! $ticket->isDirty('profit')) {
                 return;
@@ -61,7 +61,7 @@ class BusTicket extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (BusTicket::isAllowed()) {
+            if (BusTicket::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(
@@ -71,12 +71,13 @@ class BusTicket extends Model
         });
 
         // Auto-compute observer — canonical authoritative writer of `profit`.
-        // Wrapped in BusTicket::run() so the guard above sees isAllowed()=true.
+        // Wrapped in BusTicket::runProfitMutation() so the guard above sees
+        // isProfitMutationAllowed()=true.
         static::saving(function (self $model): void {
             $purchase = (string) $model->purchase_price;
             $selling = (string) $model->selling_price;
             $ticketCount = max((int) $model->ticket_count, 1);
-            BusTicket::run(function () use ($model, $selling, $purchase, $ticketCount): void {
+            BusTicket::runProfitMutation(function () use ($model, $selling, $purchase, $ticketCount): void {
                 $model->profit = bcmul(bcsub($selling, $purchase, 2), (string) $ticketCount, 2);
             });
         });

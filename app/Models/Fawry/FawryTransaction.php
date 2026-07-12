@@ -59,7 +59,7 @@ class FawryTransaction extends Model
         // this model's own creating observer (when empty), and on update by
         // FawryTransactionService::updateTransaction. External writes
         // (Filament, tinker, controllers, stray `->save()`) are blocked;
-        // the canonical writers are allowed via FawryTransaction::run().
+        // the canonical writers are allowed via FawryTransaction::runProfitMutation().
         static::saving(function (FawryTransaction $transaction): void {
             if (! $transaction->isDirty('profit')) {
                 return;
@@ -70,7 +70,7 @@ class FawryTransaction extends Model
             if (app()->runningUnitTests()) {
                 return;
             }
-            if (FawryTransaction::isAllowed()) {
+            if (FawryTransaction::isProfitMutationAllowed()) {
                 return;
             }
             throw new \RuntimeException(
@@ -81,10 +81,11 @@ class FawryTransaction extends Model
 
         // Auto-compute observer — canonical authoritative writer of `profit`
         // on create (only when not already set). Wrapped in
-        // FawryTransaction::run() so the guard above sees isAllowed()=true.
+        // FawryTransaction::runProfitMutation() so the guard above sees
+        // isProfitMutationAllowed()=true.
         static::creating(function ($transaction) {
             if (empty($transaction->profit)) {
-                FawryTransaction::run(function () use ($transaction): void {
+                FawryTransaction::runProfitMutation(function () use ($transaction): void {
                     $transaction->profit = $transaction->selling_price - $transaction->fawry_price;
                 });
             }
