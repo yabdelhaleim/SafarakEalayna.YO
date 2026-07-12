@@ -133,7 +133,7 @@
         </div>
         <div>
           <p class="text-xs font-bold text-text-muted uppercase">صافي التدفق</p>
-          <h3 class="text-2xl font-black text-gold">{{ formatCurrency(store.stats.net_profit) }}</h3>
+          <h3 class="text-2xl font-black" :class="(store.stats.net_profit ?? 0) >= 0 ? 'text-gold' : 'text-error'">{{ formatCurrency(store.stats.net_profit) }}</h3>
         </div>
       </div>
     </div>

@@ -148,14 +148,18 @@
             </div>
 
             <!-- الأرباح -->
-            <div class="rounded-xl border border-success/10 bg-success/5 p-4 flex flex-col justify-between min-h-[120px]">
+            <div class="rounded-xl border p-4 flex flex-col justify-between min-h-[120px]"
+                 :class="(Number(getCapitalValue('tourism', 'profit')) || 0) >= 0 ? 'border-success/10 bg-success/5' : 'border-error/10 bg-error/5'">
               <div>
-                <div class="text-[10px] font-bold text-success mb-1">صافي الأرباح</div>
-                <div class="font-mono text-2xl font-black text-success tracking-tight">
+                <div class="text-[10px] font-bold mb-1"
+                     :class="(Number(getCapitalValue('tourism', 'profit')) || 0) >= 0 ? 'text-success' : 'text-error'">صافي الأرباح</div>
+                <div class="font-mono text-2xl font-black tracking-tight"
+                     :class="(Number(getCapitalValue('tourism', 'profit')) || 0) >= 0 ? 'text-success' : 'text-error'">
                   {{ formatAmount(getCapitalValue('tourism', 'profit'), selectedCurrency) }}
                 </div>
               </div>
-              <div class="text-[9px] text-success/70 mt-2 font-medium">خلال الفترة المحددة</div>
+              <div class="text-[9px] mt-2 font-medium"
+                   :class="(Number(getCapitalValue('tourism', 'profit')) || 0) >= 0 ? 'text-success/70' : 'text-error/70'">خلال الفترة المحددة</div>
             </div>
 
             <!-- المصروفات -->
@@ -210,10 +214,13 @@
             </div>
 
             <!-- الأرباح -->
-            <div class="rounded-xl border border-success/10 bg-success/5 p-4 flex flex-col justify-between min-h-[120px]">
+            <div class="rounded-xl border p-4 flex flex-col justify-between min-h-[120px]"
+                 :class="(Number(getCapitalValue('office', 'profit')) || 0) >= 0 ? 'border-success/10 bg-success/5' : 'border-error/10 bg-error/5'">
               <div>
-                <div class="text-[10px] font-bold text-success mb-1">صافي الأرباح</div>
-                <div class="font-mono text-2xl font-black text-success tracking-tight">
+                <div class="text-[10px] font-bold mb-1"
+                     :class="(Number(getCapitalValue('office', 'profit')) || 0) >= 0 ? 'text-success' : 'text-error'">صافي الأرباح</div>
+                <div class="font-mono text-2xl font-black tracking-tight"
+                     :class="(Number(getCapitalValue('office', 'profit')) || 0) >= 0 ? 'text-success' : 'text-error'">
                   {{ formatAmount(getCapitalValue('office', 'profit'), selectedCurrency) }}
                 </div>
               </div>

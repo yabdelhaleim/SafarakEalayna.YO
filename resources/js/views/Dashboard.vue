@@ -92,7 +92,7 @@
           </div>
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
-            <div class="text-sm font-black text-amber-400 font-mono">{{ formatCurrency(tourismSummary.total_profit) }}</div>
+            <div class="text-sm font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-amber-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
           </div>
         </button>
 
@@ -115,7 +115,7 @@
           </div>
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
-            <div class="text-sm font-black text-sky-400 font-mono">{{ formatCurrency(officeSummary.total_profit) }}</div>
+            <div class="text-sm font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-sky-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
           </div>
         </button>
 
@@ -233,8 +233,8 @@
 
         <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/20 rounded-2xl p-5 relative overflow-hidden">
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💰</div>
-          <div class="text-xs font-bold text-emerald-400 mb-1">صافي أرباح قطاع السياحة</div>
-          <div class="text-3xl font-black text-emerald-400 font-mono">{{ formatCurrency(tourismSummary.total_profit) }}</div>
+          <div class="text-xs font-bold mb-1" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح قطاع السياحة</div>
+          <div class="text-3xl font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
           <div class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>ربح الطيران: {{ formatCompactNumber(tourismSummary.flights.profit) }}</span>
             <span>ربح الحج: {{ formatCompactNumber(tourismSummary.hajj.profit) }}</span>
@@ -343,7 +343,7 @@
               <div class="space-y-2">
                 <div v-for="(route, i) in topRoutes.slice(0, 4)" :key="i" class="flex items-center justify-between text-xs p-2 bg-white/5 rounded-xl">
                   <span class="font-bold text-white">{{ route.from }} → {{ route.to }}</span>
-                  <span class="text-emerald-400 font-mono font-bold">{{ formatCurrency(route.profit) }}</span>
+                  <span class="font-mono font-bold" :class="(route.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(route.profit) }}</span>
                 </div>
               </div>
             </div>
@@ -356,7 +356,7 @@
               <div class="space-y-2">
                 <div v-for="c in carrierPerformance.slice(0, 3)" :key="c.id" class="flex items-center justify-between text-xs p-2 bg-white/5 rounded-xl">
                   <span class="text-gray-300 font-medium truncate max-w-[120px]">{{ c.name }}</span>
-                  <span class="text-amber-400 font-bold font-mono">{{ formatCurrency(c.profit) }}</span>
+                  <span class="font-bold font-mono" :class="(c.profit ?? 0) >= 0 ? 'text-amber-400' : 'text-rose-400'">{{ formatCurrency(c.profit) }}</span>
                 </div>
               </div>
             </div>
@@ -387,7 +387,7 @@
           </div>
           <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
             <div class="text-xs text-gray-400">أرباح الحج والعمرة</div>
-            <div class="text-2xl font-black text-emerald-400 mt-1 font-mono">{{ formatCurrency(tourismSummary.hajj.profit) }}</div>
+            <div class="text-2xl font-black mt-1 font-mono" :class="(tourismSummary.hajj.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.hajj.profit) }}</div>
           </div>
           <div class="p-4 bg-white/5 rounded-2xl border border-white/5">
             <div class="text-xs text-gray-400">عدد البرامج المحجوزة</div>
@@ -417,8 +417,8 @@
 
         <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-sky-500/20 rounded-2xl p-5 relative overflow-hidden">
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💎</div>
-          <div class="text-xs font-bold text-emerald-400 mb-1">صافي أرباح حسابات المكتب</div>
-          <div class="text-3xl font-black text-emerald-400 font-mono">{{ formatCurrency(officeSummary.total_profit) }}</div>
+          <div class="text-xs font-bold mb-1" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح حسابات المكتب</div>
+          <div class="text-3xl font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
           <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
             <span>ربح المحافظ: {{ formatCompactNumber(officeSummary.wallet.profit) }}</span>
@@ -488,7 +488,7 @@
               <div v-else class="space-y-2">
                 <div v-for="c in busCompanyPerformance.slice(0, 3)" :key="'bcp-'+c.id" class="flex items-center justify-between text-xs p-2 bg-white/5 rounded-xl">
                   <span class="text-white font-bold truncate max-w-[120px]">{{ c.name }}</span>
-                  <span class="text-emerald-400 font-mono font-bold">{{ formatCurrency(c.profit) }}</span>
+                  <span class="font-mono font-bold" :class="(c.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(c.profit) }}</span>
                 </div>
               </div>
             </div>
@@ -526,7 +526,7 @@
               </div>
               <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
                 <span class="text-gray-400">الربح الصافي المحقق</span>
-                <span class="font-bold text-emerald-400 font-mono">{{ formatCurrency(officeSummary.fawry.profit) }}</span>
+                <span class="font-bold font-mono" :class="(officeSummary.fawry.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.fawry.profit) }}</span>
               </div>
             </div>
           </div>
@@ -554,7 +554,7 @@
               </div>
               <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
                 <span class="text-gray-400">الربح الصافي المحقق</span>
-                <span class="font-bold text-emerald-400 font-mono">{{ formatCurrency(officeSummary.online.profit) }}</span>
+                <span class="font-bold font-mono" :class="(officeSummary.online.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.online.profit) }}</span>
               </div>
             </div>
           </div>
@@ -582,7 +582,7 @@
               </div>
               <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
                 <span class="text-gray-400">الربح الصافي المحقق</span>
-                <span class="font-bold text-emerald-400 font-mono">{{ formatCurrency(officeSummary.wallet.profit) }}</span>
+                <span class="font-bold font-mono" :class="(officeSummary.wallet.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.wallet.profit) }}</span>
               </div>
             </div>
           </div>
