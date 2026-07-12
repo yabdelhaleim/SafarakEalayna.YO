@@ -161,7 +161,61 @@ class WalletTransactionService
     {
         try {
             return DB::transaction(function () use ($transaction, $data) {
+                // Detect ACTUAL changes (vs same value) — used to gate the
+                // ledger repost so we don't waste DB writes on no-op edits.
+                // Mirrors OnlineTransactionService Phase 9 / HajjUmra Phase 8.
+                $amountChanged = array_key_exists('amount', $data)
+                    && (float) $data['amount'] !== (float) $transaction->amount;
+                $serviceFeeChanged = array_key_exists('service_fee', $data)
+                    && (float) $data['service_fee'] !== (float) $transaction->service_fee;
+                $amountPaidChanged = array_key_exists('amount_paid', $data)
+                    && (float) $data['amount_paid'] !== (float) $transaction->amount_paid;
+                $walletAccountChanged = array_key_exists('wallet_account_id', $data)
+                    && (int) $data['wallet_account_id'] !== (int) $transaction->wallet_account_id;
+                $cashAccountChanged = array_key_exists('cash_account_id', $data)
+                    && (int) $data['cash_account_id'] !== (int) $transaction->cash_account_id;
+
+                $amountOrFeeChanged = $amountChanged || $serviceFeeChanged;
+                $anyLedgerAffectingChange = $amountOrFeeChanged || $amountPaidChanged
+                    || $walletAccountChanged || $cashAccountChanged;
+
+                // Compute the new totals BEFORE the model update so we can
+                // re-derive total_amount (Send: amount+fee, Receive: amount-fee).
+                if ($amountOrFeeChanged) {
+                    $newAmount = (float) ($data['amount'] ?? $transaction->amount);
+                    $newFee = (float) ($data['service_fee'] ?? $transaction->service_fee);
+                    $type = $transaction->type instanceof WalletTransactionType
+                        ? $transaction->type
+                        : WalletTransactionType::from((string) $transaction->type);
+                    $data['total_amount'] = match ($type) {
+                        WalletTransactionType::Send => $newAmount + $newFee,
+                        WalletTransactionType::Receive => $newAmount - $newFee,
+                    };
+                }
+
                 $transaction->update($data);
+
+                // 🛡️ ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
+                // OnlineTransactionService / HajjUmraBookingService /
+                // VisaBookingService): when amount/service_fee/accounts/
+                // amount_paid change, the OLD ledger entries must be
+                // reversed (additive — never destructive) and NEW entries
+                // posted with the corrected values. Without this, the
+                // model would show the new amounts while the linked
+                // Transaction / AccountEntry rows stayed at the old values
+                // — silent data drift between model and ledger.
+                if ($anyLedgerAffectingChange) {
+                    $newMain = $this->repostMainTransactions($transaction);
+                    if ($newMain !== null) {
+                        [$newIncome, $newExpense] = $newMain;
+                        $transaction->update([
+                            'income_transaction_id' => $newIncome->id,
+                            'expense_transaction_id' => $newExpense->id,
+                        ]);
+                    }
+
+                    $this->repostSettlementTransaction($transaction);
+                }
 
                 return $transaction->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
@@ -176,6 +230,159 @@ class WalletTransactionService
                 'input' => $data,
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Repost the main income + expense transactions when amount, fee, or
+     * the wallet/cash account IDs change.
+     *
+     * Mirrors `OnlineTransactionService::repostIncomeTransaction` /
+     * `repostExpenseTransaction` (Phase 9): reverse the old transactions
+     * (additive — never destructive), then post a fresh pair using the
+     * new amounts and the new account IDs. The 3rd optional settlement
+     * transaction (amount_paid) is handled separately by
+     * `repostSettlementTransaction()`.
+     *
+     * IMPORTANT: only the MAIN pair is reposted here — calling
+     * `accountForSend` / `accountForReceive` (which both post the
+     * settlement too) would cause `repostSettlementTransaction` to
+     * double-post a settlement. Instead, we use the lean helpers
+     * `postMainSendPair` / `postMainReceivePair` and let the settlement
+     * helper own the settlement lifecycle.
+     *
+     * Returns the new [income, expense] transaction pair, or null if the
+     * source transaction is missing both ledger links.
+     */
+    protected function repostMainTransactions(WalletTransaction $transaction): ?array
+    {
+        if (! $transaction->income_transaction_id || ! $transaction->expense_transaction_id) {
+            return null;
+        }
+
+        $oldIncome = Transaction::find($transaction->income_transaction_id);
+        $oldExpense = Transaction::find($transaction->expense_transaction_id);
+        if (! $oldIncome || ! $oldExpense) {
+            return null;
+        }
+
+        $type = $transaction->type instanceof WalletTransactionType
+            ? $transaction->type
+            : WalletTransactionType::from((string) $transaction->type);
+
+        $amount = (float) $transaction->amount;
+        $fee = (float) $transaction->service_fee;
+
+        $walletTypeName = $transaction->walletType?->name ?? '';
+        $customerName = $transaction->customer_name ?: '—';
+        $createdBy = $transaction->created_by ?? Auth::id() ?? 1;
+
+        // Reverse old pair BEFORE posting new — guarantees the ledger has
+        // a stable audit trail even if something fails mid-flight (the
+        // outer DB::transaction wraps the whole thing so a failure rolls
+        // back cleanly).
+        $this->transactionService->reverseTransaction($oldIncome);
+        $this->transactionService->reverseTransaction($oldExpense);
+
+        // Recreate ONLY the main pair — settlement is the settlement
+        // helper's responsibility.
+        return match ($type) {
+            WalletTransactionType::Send => $this->postMainSendPair(
+                $transaction, $amount, $fee, $walletTypeName, $customerName, $createdBy
+            ),
+            WalletTransactionType::Receive => $this->postMainReceivePair(
+                $transaction, $amount, $fee, $walletTypeName, $customerName, $createdBy
+            ),
+        };
+    }
+
+    /**
+     * Repost the optional settlement transaction (3rd ledger row created
+     * when customer_id is set AND amount_paid > 0).
+     *
+     * The settlement transaction is NOT stored on the model — it is
+     * identified by the account pair:
+     *   - Send:    cash_account_id (TO) ← customer_account (CONTRA)
+     *   - Receive: cash_account_id (FROM) ← customer_account (CONTRA)
+     *
+     * Handles all 4 transitions (X→Y where X and Y can be 0):
+     *   X>0, Y>0: reverse old + create new
+     *   X>0, Y=0: reverse old only
+     *   X=0, Y>0: create new only
+     *   X=0, Y=0: no-op
+     *
+     * (Note: TransactionService internally stores ALL double-entry
+     * transactions as `type=transfer` — the income/expense semantic
+     * lives in the from/to direction, NOT in the `type` column. So we
+     * must filter by the account pair, not by `type`.)
+     */
+    protected function repostSettlementTransaction(WalletTransaction $transaction): void
+    {
+        if (! $transaction->customer_id) {
+            return; // settlement only exists for customer-based transactions
+        }
+
+        $customerAccount = $this->ensureCustomerAccount((int) $transaction->customer_id);
+
+        $type = $transaction->type instanceof WalletTransactionType
+            ? $transaction->type
+            : WalletTransactionType::from((string) $transaction->type);
+
+        // For both Send and Receive, the settlement involves the cash
+        // account and the customer account. The pair uniquely identifies
+        // the settlement row (the main income/expense use wallet_account
+        // or customer_account alone, never cash+customer together).
+        $settlement = Transaction::where('related_type', WalletTransaction::class)
+            ->where('related_id', $transaction->id)
+            ->where(function ($q) use ($transaction, $customerAccount) {
+                $q->where(function ($sub) use ($transaction, $customerAccount) {
+                    $sub->where('from_account_id', $transaction->cash_account_id)
+                        ->where('to_account_id', $customerAccount->id);
+                })->orWhere(function ($sub) use ($transaction, $customerAccount) {
+                    $sub->where('from_account_id', $customerAccount->id)
+                        ->where('to_account_id', $transaction->cash_account_id);
+                });
+            })
+            ->first();
+
+        if ($settlement) {
+            $this->transactionService->reverseTransaction($settlement);
+        }
+
+        $amountPaid = (float) $transaction->amount_paid;
+        if ($amountPaid < 0.001) {
+            return;
+        }
+
+        $walletTypeName = $transaction->walletType?->name ?? '';
+        $customerName = $transaction->customer_name ?: '—';
+        $createdBy = $transaction->created_by ?? Auth::id() ?? 1;
+
+        // Re-emit the same settlement entry that the original
+        // accountForSend / accountForReceive would have posted.
+        if ($type === WalletTransactionType::Send) {
+            $this->transactionService->recordIncome([
+                'amount' => $amountPaid,
+                'to_account_id' => $transaction->cash_account_id,
+                'contra_account_id' => $customerAccount->id,
+                'module' => TransactionModule::Wallet->value,
+                'related_type' => WalletTransaction::class,
+                'related_id' => $transaction->id,
+                'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
+                'created_by' => $createdBy,
+            ]);
+        } else {
+            // Receive
+            $this->transactionService->recordExpense([
+                'amount' => $amountPaid,
+                'from_account_id' => $transaction->cash_account_id,
+                'contra_account_id' => $customerAccount->id,
+                'module' => TransactionModule::Wallet->value,
+                'related_type' => WalletTransaction::class,
+                'related_id' => $transaction->id,
+                'notes' => "إعادة تسجيل دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
+                'created_by' => $createdBy,
+            ]);
         }
     }
 
@@ -197,13 +404,36 @@ class WalletTransactionService
         string $customerName,
         int $createdBy
     ): array {
+        [$income, $expense] = $this->postMainSendPair(
+            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+        );
+
+        $this->postSettlementSend(
+            $record, (float) $record->amount_paid, $walletTypeName, $customerName, $createdBy
+        );
+
+        return [$income, $expense];
+    }
+
+    /**
+     * Post only the main income + expense pair for a Send transaction.
+     * Settlement is intentionally NOT posted here — that is handled by
+     * postSettlementSend() so that repost flows can update the main pair
+     * independently of the settlement (and vice-versa).
+     */
+    protected function postMainSendPair(
+        WalletTransaction $record,
+        float $amount,
+        float $fee,
+        string $walletTypeName,
+        string $customerName,
+        int $createdBy
+    ): array {
         $totalAmount = $amount + $fee;
-        $amountPaid = (float) $record->amount_paid;
 
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-            // 1. مديونية العميل بالقيمة الإجمالية
             $income = $this->transactionService->recordIncome([
                 'amount' => $totalAmount,
                 'to_account_id' => $customerAccount->id,
@@ -214,7 +444,6 @@ class WalletTransactionService
                 'created_by' => $createdBy,
             ]);
 
-            // 2. خصم الرصيد من المحفظة
             $expense = $this->transactionService->recordExpense([
                 'amount' => $amount,
                 'from_account_id' => $record->wallet_account_id,
@@ -225,46 +454,68 @@ class WalletTransactionService
                 'created_by' => $createdBy,
             ]);
 
-            // 3. سداد جزء من المبلغ نقدياً (دفعة اليوم)
-            if ($amountPaid > 0) {
-                $this->transactionService->recordIncome([
-                    'amount' => $amountPaid,
-                    'to_account_id' => $record->cash_account_id,
-                    'contra_account_id' => $customerAccount->id,
-                    'module' => TransactionModule::Wallet->value,
-                    'related_type' => WalletTransaction::class,
-                    'related_id' => $record->id,
-                    'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
-                    'created_by' => $createdBy,
-                ]);
-            }
-        } else {
-            // عميل سفري (نقدي فوري)
-            $income = $this->transactionService->recordIncome([
-                'amount' => $totalAmount,
-                'to_account_id' => $record->cash_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: استلام نقدي {$amount} + خدمة {$fee}",
-                'created_by' => $createdBy,
-            ]);
-
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم من المحفظة {$amount}",
-                'created_by' => $createdBy,
-            ]);
+            return [$income, $expense];
         }
+
+        // Anonymous customer (نقدي فوري): no settlement, no customer account
+        $income = $this->transactionService->recordIncome([
+            'amount' => $totalAmount,
+            'to_account_id' => $record->cash_account_id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: استلام نقدي {$amount} + خدمة {$fee}",
+            'created_by' => $createdBy,
+        ]);
+
+        $expense = $this->transactionService->recordExpense([
+            'amount' => $amount,
+            'from_account_id' => $record->wallet_account_id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم من المحفظة {$amount}",
+            'created_by' => $createdBy,
+        ]);
 
         return [$income, $expense];
     }
 
     /**
+     * Post only the optional settlement transaction for a Send with a
+     * registered customer when amount_paid > 0. Idempotent — if amount_paid
+     * is 0 or the customer has no registered account, this is a no-op.
+     */
+    protected function postSettlementSend(
+        WalletTransaction $record,
+        float $amountPaid,
+        string $walletTypeName,
+        string $customerName,
+        int $createdBy
+    ): void {
+        if (! $record->customer_id) {
+            return;
+        }
+
+        if ($amountPaid < 0.001) {
+            return;
+        }
+
+        $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+
+        $this->transactionService->recordIncome([
+            'amount' => $amountPaid,
+            'to_account_id' => $record->cash_account_id,
+            'contra_account_id' => $customerAccount->id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
+            'created_by' => $createdBy,
+        ]);
+    }
+
+/**
      * استقبال رصيد من العميل:
      *   أ) في حال اختيار عميل مسجل:
      *      1. نسجل زيادة الرصيد بمحفظتنا بقيمة amount (Income للمحفظة).
@@ -281,13 +532,36 @@ class WalletTransactionService
         string $customerName,
         int $createdBy
     ): array {
+        [$income, $expense] = $this->postMainReceivePair(
+            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+        );
+
+        $this->postSettlementReceive(
+            $record, (float) $record->amount_paid, $walletTypeName, $customerName, $createdBy
+        );
+
+        return [$income, $expense];
+    }
+
+    /**
+     * Post only the main income + expense pair for a Receive transaction.
+     * Settlement is intentionally NOT posted here — handled by
+     * postSettlementReceive() so the repost flow can update main pair and
+     * settlement independently.
+     */
+    protected function postMainReceivePair(
+        WalletTransaction $record,
+        float $amount,
+        float $fee,
+        string $walletTypeName,
+        string $customerName,
+        int $createdBy
+    ): array {
         $totalAmount = $amount - $fee;
-        $amountPaid = (float) $record->amount_paid;
 
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-            // 1. زيادة الرصيد بمحفظتنا
             $income = $this->transactionService->recordIncome([
                 'amount' => $amount,
                 'to_account_id' => $record->wallet_account_id,
@@ -298,7 +572,6 @@ class WalletTransactionService
                 'created_by' => $createdBy,
             ]);
 
-            // 2. مستحق للعميل
             $expense = $this->transactionService->recordExpense([
                 'amount' => $totalAmount,
                 'from_account_id' => $customerAccount->id,
@@ -309,43 +582,65 @@ class WalletTransactionService
                 'created_by' => $createdBy,
             ]);
 
-            // 3. لو تم تسليم العميل كاش الآن
-            if ($amountPaid > 0) {
-                $this->transactionService->recordExpense([
-                    'amount' => $amountPaid,
-                    'from_account_id' => $record->cash_account_id,
-                    'contra_account_id' => $customerAccount->id,
-                    'module' => TransactionModule::Wallet->value,
-                    'related_type' => WalletTransaction::class,
-                    'related_id' => $record->id,
-                    'notes' => "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}",
-                    'created_by' => $createdBy,
-                ]);
-            }
-        } else {
-            // عميل سفري (نقدي فوري)
-            $income = $this->transactionService->recordIncome([
-                'amount' => $amount,
-                'to_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام محفظة {$amount}",
-                'created_by' => $createdBy,
-            ]);
-
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $totalAmount,
-                'from_account_id' => $record->cash_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}",
-                'created_by' => $createdBy,
-            ]);
+            return [$income, $expense];
         }
 
+        // Anonymous customer
+        $income = $this->transactionService->recordIncome([
+            'amount' => $amount,
+            'to_account_id' => $record->wallet_account_id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام محفظة {$amount}",
+            'created_by' => $createdBy,
+        ]);
+
+        $expense = $this->transactionService->recordExpense([
+            'amount' => $totalAmount,
+            'from_account_id' => $record->cash_account_id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}",
+            'created_by' => $createdBy,
+        ]);
+
         return [$income, $expense];
+    }
+
+    /**
+     * Post only the optional settlement transaction for a Receive with a
+     * registered customer when amount_paid > 0. Idempotent — if amount_paid
+     * is 0 or the customer has no registered account, this is a no-op.
+     */
+    protected function postSettlementReceive(
+        WalletTransaction $record,
+        float $amountPaid,
+        string $walletTypeName,
+        string $customerName,
+        int $createdBy
+    ): void {
+        if (! $record->customer_id) {
+            return;
+        }
+
+        if ($amountPaid < 0.001) {
+            return;
+        }
+
+        $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+
+        $this->transactionService->recordExpense([
+            'amount' => $amountPaid,
+            'from_account_id' => $record->cash_account_id,
+            'contra_account_id' => $customerAccount->id,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $record->id,
+            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}",
+            'created_by' => $createdBy,
+        ]);
     }
 
     public function deleteTransaction(WalletTransaction $transaction): bool
@@ -387,6 +682,23 @@ class WalletTransactionService
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
             if ($account) {
+                // Phase 8 fix: CustomerLedgerObserver creates a generic
+                // 'office'-tagged account the moment a Customer row is
+                // inserted. When that customer is later used by a wallet
+                // transaction, we re-tag the account to 'wallet_transfer'
+                // so it surfaces in the TransferDashboardController stats
+                // and TransferAccounts/* resources (which filter strictly
+                // by module_type='wallet_transfer'). The re-tag is wrapped
+                // in LedgerBalanceMutationGuard because touching `balance`
+                // — even to confirm 0.00 — would otherwise trip the
+                // `Account::updating` boot guard.
+                if ($account->module_type !== 'wallet_transfer') {
+                    LedgerBalanceMutationGuard::run(function () use ($account) {
+                        $account->module_type = 'wallet_transfer';
+                        $account->save();
+                    });
+                }
+
                 return $account;
             }
         }
@@ -399,7 +711,7 @@ class WalletTransactionService
                 'currency' => 'EGP',
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
-                'module_type' => 'wallet',
+                'module_type' => 'wallet_transfer',
                 'is_module_vault' => false,
                 'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                 'created_by' => Auth::id() ?? 1,
