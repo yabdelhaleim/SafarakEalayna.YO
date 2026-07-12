@@ -681,6 +681,22 @@ class VisaBookingService
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
             if ($account) {
+                // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
+                // 'office'-tagged account the moment a Customer row is
+                // inserted. When that customer is later used in a Visa
+                // booking flow we re-tag the account to 'visas' so it
+                // surfaces in the strict module_type='visas' queries
+                // (TreasuryService line 529). Wrapped in
+                // LedgerBalanceMutationGuard because touching `balance`
+                // — even to confirm 0.00 — would otherwise trip the
+                // Account::updating boot guard.
+                if ($account->module_type !== 'visas') {
+                    LedgerBalanceMutationGuard::run(function () use ($account) {
+                        $account->module_type = 'visas';
+                        $account->save();
+                    });
+                }
+
                 return $account;
             }
         }
