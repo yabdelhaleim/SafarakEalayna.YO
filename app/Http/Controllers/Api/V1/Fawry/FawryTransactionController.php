@@ -193,7 +193,20 @@ class FawryTransactionController extends Controller
 
             $records = $query->get();
 
-            // Fetch fawry ledger balance for each client using eager loaded aggregate query to prevent N+1 queries
+            // Fetch fawry ledger balance for each REGISTERED client using an
+            // eager-loaded aggregate query (avoids N+1). Walk-in clients
+            // (client_id IS NULL) have no Customer row and no ledger
+            // account, so their debt must come from the fawry_transactions
+            // columns (the only source of truth for walk-ins). For
+            // registered clients we prefer the GL debt (account_entries
+            // credit - debit where module='fawry') so the displayed debt
+            // matches the actual ledger even after repost.
+            //
+            // Phase A3 hardening: initialize $accountBalances[$clientId]=0.0
+            // for every registered client that has an account, so the
+            // `isset()` check below always resolves to GL even if there
+            // are zero Fawry-related entries yet. The walk-in fallback
+            // remains column-based (documented limitation).
             $clientIds = $records->pluck('client_id')->filter()->unique();
             $customerAccounts = Customer::whereIn('id', $clientIds)
                 ->pluck('account_id', 'id')
@@ -214,18 +227,24 @@ class FawryTransactionController extends Controller
 
                 foreach ($customerAccounts as $clientId => $accountId) {
                     $bal = $balances->get($accountId);
-                    if ($bal) {
-                        $accountBalances[$clientId] = (float) $bal->total_credit - (float) $bal->total_debit;
-                    } else {
-                        $accountBalances[$clientId] = 0.0;
-                    }
+                    // GL path — even if 0 entries, register the key so
+                    // the registered-client branch below is selected.
+                    $accountBalances[$clientId] = $bal
+                        ? (float) $bal->total_credit - (float) $bal->total_debit
+                        : 0.0;
                 }
             }
 
             $formatted = $records->map(function ($r) use ($accountBalances) {
                 $totalSales = (float) $r->total_sales;
 
-                if ($r->client_id && isset($accountBalances[$r->client_id])) {
+                // REGISTERED client (has client_id AND a customer account):
+                // use the GL balance — authoritative, survives repost.
+                // WALK-IN client (client_id IS NULL) OR registered but no
+                // account_id yet: use the model columns. Walk-ins have no
+                // GL because their income goes directly to the settlement
+                // account; the columns are the only record of what they owe.
+                if ($r->client_id !== null && array_key_exists($r->client_id, $accountBalances)) {
                     $totalDebt = $accountBalances[$r->client_id];
                     $totalPaid = $totalSales - $totalDebt;
                 } else {
