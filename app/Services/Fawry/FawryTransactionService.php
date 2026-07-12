@@ -72,7 +72,7 @@ class FawryTransactionService
         return $query->orderBy('created_at', 'desc')->paginate($perPage);
     }
 
-    public function createTransaction(array $data): FawryTransaction
+public function createTransaction(array $data): FawryTransaction
     {
         // 4. SETTLEMENT ACCOUNT VALIDATION
         if (empty($data['account_id']) || ! ($accountToCheck = Account::find($data['account_id'])) || ! $accountToCheck->is_active) {
@@ -144,70 +144,18 @@ class FawryTransactionService
                     );
                 }
 
-                $expenseTransactionId = null;
-                if ((float) $data['fawry_price'] > 0) {
-                    $expenseAccountId = $machine
-                        ? app(LedgerClearingAccounts::class)->prepaidAccountId('fawry')
-                        : $data['account_id'];
-
-                    if ($expenseAccountId) {
-                        $expenseTransaction = $this->transactionService->recordExpense([
-                            'amount' => $data['fawry_price'],
-                            'from_account_id' => $expenseAccountId,
-                            'module' => TransactionModule::Fawry->value,
-                            'related_type' => FawryTransaction::class,
-                            'related_id' => $fawryTransaction->id,
-                            'notes' => "تكلفة عملية فوري - {$operationLabel}: {$clientName}",
-                            'created_by' => $createdBy,
-                        ]);
-                        $expenseTransactionId = $expenseTransaction->id;
-                    }
-                }
-
-                $incomeTransactionId = null;
-
-                if (! empty($data['client_id'])) {
-                    // Record sale to customer (Receivables / Debt)
-                    $customerAccount = $this->ensureCustomerAccount((int) $data['client_id']);
-
-                    // The sale income goes into customer account
-                    $saleIncomeTransaction = $this->transactionService->recordIncome([
-                        'amount' => $data['selling_price'],
-                        'to_account_id' => $customerAccount->id,
-                        'module' => TransactionModule::Fawry->value,
-                        'related_type' => FawryTransaction::class,
-                        'related_id' => $fawryTransaction->id,
-                        'notes' => "تحصيل فوري (مديونية) - {$operationLabel}: {$clientName}",
-                        'created_by' => $createdBy,
-                    ]);
-                    $incomeTransactionId = $saleIncomeTransaction->id;
-
-                    // If they paid anything now:
-                    if ((float) $data['amount'] > 0) {
-                        $this->transactionService->recordIncome([
-                            'amount' => $data['amount'],
-                            'to_account_id' => $data['account_id'],
-                            'contra_account_id' => $customerAccount->id,
-                            'module' => TransactionModule::Fawry->value,
-                            'related_type' => FawryTransaction::class,
-                            'related_id' => $fawryTransaction->id,
-                            'notes' => "سداد جزء من عملية فوري - {$operationLabel}: {$clientName}",
-                            'created_by' => $createdBy,
-                        ]);
-                    }
-                } else {
-                    // Walk-in client: directly pays treasury account
-                    $incomeTransaction = $this->transactionService->recordIncome([
-                        'amount' => $data['selling_price'],
-                        'to_account_id' => $data['account_id'],
-                        'module' => TransactionModule::Fawry->value,
-                        'related_type' => FawryTransaction::class,
-                        'related_id' => $fawryTransaction->id,
-                        'notes' => "تحصيل فوري - {$operationLabel}: {$clientName}",
-                        'created_by' => $createdBy,
-                    ]);
-                    $incomeTransactionId = $incomeTransaction->id;
-                }
+                [$incomeTransactionId, $expenseTransactionId] = $this->postLedgerEntries(
+                    fawryTransaction: $fawryTransaction,
+                    clientId: $data['client_id'] ?? null,
+                    accountId: $data['account_id'],
+                    fawryPrice: (float) $data['fawry_price'],
+                    sellingPrice: (float) $data['selling_price'],
+                    amountPaid: (float) $data['amount'],
+                    hasMachine: $machine !== null,
+                    createdBy: $createdBy,
+                    operationLabel: $operationLabel,
+                    clientName: $clientName,
+                );
 
                 $updates = [];
                 if ($incomeTransactionId) {
@@ -251,17 +199,194 @@ class FawryTransactionService
         }
     }
 
-    public function updateTransaction(FawryTransaction $transaction, array $data): FawryTransaction
+    /**
+     * Post the GL ledger entries (expense + sale income + optional settlement)
+     * for a Fawry transaction. Used by both createTransaction and the
+     * repost flow in updateTransaction.
+     *
+     * The optional settlement is the 3rd row created when:
+     *   - client_id is set (registered customer)
+     *   - amount > 0 (partial on-the-spot payment)
+     * It is identified by account pair (customer_account ↔ settlement_account)
+     * — there is NO `settlement_transaction_id` column on the model.
+     *
+     * Returns [int|null $incomeId, int|null $expenseId] for caller to write
+     * back to $fawryTransaction pointers.
+     *
+     * @return array{0: int|null, 1: int|null}
+     */
+    protected function postLedgerEntries(
+        FawryTransaction $fawryTransaction,
+        ?int $clientId,
+        int $accountId,
+        float $fawryPrice,
+        float $sellingPrice,
+        float $amountPaid,
+        bool $hasMachine,
+        int $createdBy,
+        string $operationLabel,
+        string $clientName,
+    ): array {
+        // 1) Expense: تكلفة Fawry (من prepaid إذا ماكينة، أو من settlement account إذا بدون)
+        $expenseTransactionId = null;
+        if ($fawryPrice > 0) {
+            $expenseAccountId = $hasMachine
+                ? app(LedgerClearingAccounts::class)->prepaidAccountId('fawry')
+                : $accountId;
+
+            if ($expenseAccountId) {
+                $expenseTransaction = $this->transactionService->recordExpense([
+                    'amount' => $fawryPrice,
+                    'from_account_id' => $expenseAccountId,
+                    'module' => TransactionModule::Fawry->value,
+                    'related_type' => FawryTransaction::class,
+                    'related_id' => $fawryTransaction->id,
+                    'notes' => "تكلفة عملية فوري - {$operationLabel}: {$clientName}",
+                    'created_by' => $createdBy,
+                ]);
+                $expenseTransactionId = $expenseTransaction->id;
+            }
+        }
+
+        // 2) Sale income + optional settlement
+        $incomeTransactionId = null;
+        if (! empty($clientId)) {
+            $customerAccount = $this->ensureCustomerAccount($clientId);
+
+            $saleIncomeTransaction = $this->transactionService->recordIncome([
+                'amount' => $sellingPrice,
+                'to_account_id' => $customerAccount->id,
+                'module' => TransactionModule::Fawry->value,
+                'related_type' => FawryTransaction::class,
+                'related_id' => $fawryTransaction->id,
+                'notes' => "تحصيل فوري (مديونية) - {$operationLabel}: {$clientName}",
+                'created_by' => $createdBy,
+            ]);
+            $incomeTransactionId = $saleIncomeTransaction->id;
+
+            // Settlement: تحصيل جزئي من العميل → الخزينة
+            if ($amountPaid > 0) {
+                $this->transactionService->recordIncome([
+                    'amount' => $amountPaid,
+                    'to_account_id' => $accountId,
+                    'contra_account_id' => $customerAccount->id,
+                    'module' => TransactionModule::Fawry->value,
+                    'related_type' => FawryTransaction::class,
+                    'related_id' => $fawryTransaction->id,
+                    'notes' => "سداد جزء من عملية فوري - {$operationLabel}: {$clientName}",
+                    'created_by' => $createdBy,
+                ]);
+            }
+        } else {
+            // Walk-in client: البيع مباشرة على الخزينة (لا يوجد settlement منفصل)
+            $walkInIncome = $this->transactionService->recordIncome([
+                'amount' => $sellingPrice,
+                'to_account_id' => $accountId,
+                'module' => TransactionModule::Fawry->value,
+                'related_type' => FawryTransaction::class,
+                'related_id' => $fawryTransaction->id,
+                'notes' => "تحصيل فوري - {$operationLabel}: {$clientName}",
+                'created_by' => $createdBy,
+            ]);
+            $incomeTransactionId = $walkInIncome->id;
+        }
+
+        return [$incomeTransactionId, $expenseTransactionId];
+    }
+
+public function updateTransaction(FawryTransaction $transaction, array $data): FawryTransaction
     {
         try {
             return DB::transaction(function () use ($transaction, $data) {
-                if (isset($data['selling_price']) || isset($data['fawry_price'])) {
-                    $fawryPrice = $data['fawry_price'] ?? $transaction->fawry_price;
-                    $sellingPrice = $data['selling_price'] ?? $transaction->selling_price;
+                // Detect ACTUAL changes (vs same value) — used to gate the
+                // ledger repost so we don't waste DB writes on no-op edits.
+                // Mirrors OnlineTransactionService Phase 9 / HajjUmra Phase 8
+                // pattern. The 4 fields below all have a GL impact; any
+                // change requires reversing the old entries (additive) and
+                // re-posting with the new values.
+                $sellingChanged = array_key_exists('selling_price', $data)
+                    && (float) $data['selling_price'] !== (float) $transaction->selling_price;
+                $fawryPriceChanged = array_key_exists('fawry_price', $data)
+                    && (float) $data['fawry_price'] !== (float) $transaction->fawry_price;
+                $amountChanged = array_key_exists('amount', $data)
+                    && (float) $data['amount'] !== (float) $transaction->amount;
+                $accountChanged = array_key_exists('account_id', $data)
+                    && (int) $data['account_id'] !== (int) $transaction->account_id;
+
+                $priceOrAccountChanged = $sellingChanged || $fawryPriceChanged || $accountChanged;
+                $anyLedgerAffectingChange = $priceOrAccountChanged || $amountChanged;
+
+                // Recompute profit if selling/fawry price changed.
+                if ($sellingChanged || $fawryPriceChanged) {
+                    $fawryPrice = (float) ($data['fawry_price'] ?? $transaction->fawry_price);
+                    $sellingPrice = (float) ($data['selling_price'] ?? $transaction->selling_price);
                     $data['profit'] = $sellingPrice - $fawryPrice;
                 }
 
                 $transaction->update($data);
+
+                // 🛡️ ACCOUNTING INTEGRITY (Phase A fix — same pattern as
+                // OnlineTransactionService Phase 9 / HajjUmraBookingService
+                // Phase 8): when selling_price / fawry_price / amount /
+                // account_id change, the OLD ledger entries must be reversed
+                // (additive — never destructive) and NEW entries posted
+                // with the corrected values. Skipping this would leave the
+                // model and the GL desynced silently.
+                if ($anyLedgerAffectingChange) {
+                    // Reverse all linked GL transactions (including the
+                    // optional settlement that is NOT stored on the model —
+                    // identified by account pair).
+                    $linked = Transaction::where('related_type', FawryTransaction::class)
+                        ->where('related_id', $transaction->id)
+                        ->get();
+
+                    foreach ($linked as $linkedTx) {
+                        $this->transactionService->reverseTransaction($linkedTx);
+                    }
+
+                    // Resolve the operation label (re-query — model may have
+                    // changed operation_type, though we don't yet repost on
+                    // that field; cheap to recompute anyway).
+                    $operationType = $transaction->operation_type
+                        ? FawryOperationType::where('code', $transaction->operation_type)->first()
+                        : null;
+                    $operationLabel = $operationType?->name_ar ?? (string) $transaction->operation_type;
+                    $clientName = (string) $transaction->client_name;
+                    $createdBy = Auth::id() ?? (int) ($transaction->created_by_user_id ?? 1);
+
+                    [$newIncomeId, $newExpenseId] = $this->postLedgerEntries(
+                        fawryTransaction: $transaction->fresh(),
+                        clientId: $transaction->client_id ? (int) $transaction->client_id : null,
+                        accountId: (int) $transaction->account_id,
+                        fawryPrice: (float) $transaction->fawry_price,
+                        sellingPrice: (float) $transaction->selling_price,
+                        amountPaid: (float) $transaction->amount,
+                        hasMachine: ! empty($transaction->fawry_machine_id),
+                        createdBy: $createdBy,
+                        operationLabel: $operationLabel,
+                        clientName: $clientName,
+                    );
+
+                    $updates = [];
+                    if ($newIncomeId) {
+                        $updates['income_transaction_id'] = $newIncomeId;
+                    }
+                    if ($newExpenseId) {
+                        $updates['expense_transaction_id'] = $newExpenseId;
+                    }
+                    if (! empty($updates)) {
+                        $transaction->update($updates);
+                    }
+                }
+
+                Log::info('Fawry transaction updated', [
+                    'fawry_transaction_id' => $transaction->id,
+                    'selling_changed' => $sellingChanged,
+                    'fawry_price_changed' => $fawryPriceChanged,
+                    'amount_changed' => $amountChanged,
+                    'account_changed' => $accountChanged,
+                    'updated_by' => Auth::id(),
+                ]);
 
                 return $transaction->fresh([
                     'client',
@@ -275,7 +400,7 @@ class FawryTransactionService
                     'machine',
                 ]);
             });
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             Log::error('FawryTransactionService::updateTransaction failed', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id(),
