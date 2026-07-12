@@ -22,8 +22,6 @@ final class AccountModuleDivision
         'visa' => 'visas',
         'hajj' => 'hajj_umra',
         'umrah' => 'hajj_umra',
-        'wallet' => 'wallet_transfer',
-        'wallets' => 'wallet_transfer',
     ];
 
     public static function applyLiquidityTreasuryScope(Builder $query): void
@@ -134,11 +132,6 @@ final class AccountModuleDivision
             if ($legacyKey !== false) {
                 $q->orWhere('module', $legacyKey)
                     ->orWhere('module_type', $legacyKey);
-            }
-
-            if (in_array($module, ['wallet', 'wallet_transfer', 'wallets'], true)) {
-                $q->orWhereIn('module_type', ['wallet_transfer', 'wallet', 'wallets'])
-                    ->orWhereIn('module', ['wallet_transfer', 'wallet', 'wallets']);
             }
         });
     }
