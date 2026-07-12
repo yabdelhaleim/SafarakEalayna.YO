@@ -955,6 +955,21 @@ class BusBookingService
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
             if ($account) {
+                // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
+                // 'office'-tagged account the moment a Customer row is
+                // inserted. When that customer is later used in a Bus
+                // booking flow we re-tag the account to 'bus' so it surfaces
+                // in the strict module_type='bus' queries (e.g. TreasuryService
+                // line 718). Wrapped in LedgerBalanceMutationGuard because
+                // touching `balance` — even to confirm 0.00 — would otherwise
+                // trip the Account::updating boot guard.
+                if ($account->module_type !== 'bus') {
+                    LedgerBalanceMutationGuard::run(function () use ($account) {
+                        $account->module_type = 'bus';
+                        $account->save();
+                    });
+                }
+
                 return $account;
             }
         }

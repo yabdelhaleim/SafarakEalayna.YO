@@ -213,6 +213,22 @@ class BusCompanyService
         if ($company->account_id) {
             $account = Account::find($company->account_id);
             if ($account) {
+                // Phase 1.Bend3 fix: re-tag the company account to 'bus'
+                // so it surfaces in the strict module_type='bus' queries.
+                // (There is no BusCompanyObserver that pre-creates the
+                // account, but a BusCompany may be imported / migrated with
+                // an existing account tagged to another module — this keeps
+                // the gate consistent with the customer-account flow.)
+                // Wrapped in LedgerBalanceMutationGuard because touching
+                // `balance` — even to confirm 0.00 — would otherwise trip
+                // the Account::updating boot guard.
+                if ($account->module_type !== 'bus') {
+                    LedgerBalanceMutationGuard::run(function () use ($account) {
+                        $account->module_type = 'bus';
+                        $account->save();
+                    });
+                }
+
                 return $account;
             }
         }
