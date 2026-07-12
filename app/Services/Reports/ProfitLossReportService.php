@@ -648,4 +648,300 @@ class ProfitLossReportService
             default => 'أخرى ('.$module.')',
         };
     }
+
+    /**
+     * Per-day profit/cogs/expense breakdown filtered by a single module.
+     *
+     * Same classification engine as `report()` / `moduleBreakdown()`, but
+     * buckets by `DATE(t.created_at)` instead of by module. Used by
+     * DashboardService to render daily charts on per-module dashboards
+     * (flight / bus / etc.) without falling back to the `model.profit`
+     * column — keeping the GL as the single source of truth.
+     *
+     * @param  array{from_date?: string, to_date?: string}  $filters
+     * @return list<array{date: string, income: float, cogs: float, expense: float, profit: float}>
+     */
+    public function getDailyProfitByModule(string $module, array $filters = []): array
+    {
+        $moduleKey = $this->normalizeModuleKey($module);
+        $maps = $this->clearingAccounts->moduleAccountMaps();
+        $incomeClearing = $maps['income'];
+        $expenseClearing = $maps['expense'];
+        $prepaidAccounts = $this->clearingAccounts->prepaidAccountIdMap();
+        $allClearingIds = array_values(array_unique(array_merge(
+            array_keys($incomeClearing),
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
+        )));
+
+        $query = DB::table('transactions as t')
+            ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
+            ->select([
+                't.id',
+                't.type',
+                't.module',
+                't.amount',
+                't.created_at',
+                't.from_account_id',
+                't.to_account_id',
+                'to_acc.type as to_account_type',
+                'to_acc.name as to_account_name',
+                'to_acc.module_type as to_account_module_type',
+                'from_acc.module_type as from_account_module_type',
+                'tr.converted_amount',
+                'tr.from_currency',
+                'tr.to_currency',
+            ]);
+
+        $this->applyDateFilters($query, $filters);
+        $this->applyRelevanceFilter($query, $allClearingIds);
+        $query->where('t.module', $moduleKey);
+
+        $daily = [];
+
+        foreach ($query->orderBy('t.id')->cursor() as $tx) {
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            if ($classification === null) {
+                continue;
+            }
+
+            $amount = $this->resolveAmountEGP($tx);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $date = substr((string) $tx->created_at, 0, 10); // 'YYYY-MM-DD'
+            if (! isset($daily[$date])) {
+                $daily[$date] = ['date' => $date, 'income' => 0.0, 'cogs' => 0.0, 'expense' => 0.0];
+            }
+
+            if ($classification === 'revenue') {
+                $daily[$date]['income'] += $amount;
+            } elseif ($classification === 'revenue_reversal' || $classification === 'refund') {
+                $daily[$date]['income'] -= $amount;
+            } elseif ($classification === 'cogs') {
+                $daily[$date]['cogs'] += $amount;
+            } elseif ($classification === 'cogs_reversal') {
+                $daily[$date]['cogs'] -= $amount;
+            } elseif ($classification === 'operating_expense') {
+                $daily[$date]['expense'] += $amount;
+            }
+        }
+
+        $result = [];
+        foreach ($daily as $d) {
+            $d['income'] = round(max(0, $d['income']), 2);
+            $d['cogs'] = round(max(0, $d['cogs']), 2);
+            $d['expense'] = round(max(0, $d['expense']), 2);
+            $d['profit'] = round($d['income'] - $d['cogs'] - $d['expense'], 2);
+            $result[] = $d;
+        }
+
+        usort($result, fn (array $a, array $b) => strcmp($a['date'], $b['date']));
+
+        return $result;
+    }
+
+    /**
+     * Per-entity profit breakdown filtered by module + related type.
+     *
+     * Used by DashboardService for per-carrier / per-system / per-bus-company
+     * tables. Reuses the same classification engine, then resolves each
+     * transaction's entity_id via a single batch lookup (1 polymorphic hop
+     * for direct lookups, 2-hop for `bus_inventories`).
+     *
+     * @param  string       $relatedType   FQCN of the related model
+     *                                    (e.g., FlightBooking::class, BusBooking::class)
+     * @param  string       $entityColumn  The column to extract from the related model
+     *                                    (e.g., 'flight_carrier_id', 'flight_system_id',
+     *                                    'company_id' from bus_inventories)
+     * @param  array|null   $joinChain     Optional 2-hop configuration:
+     *                                    ['table' => 'bus_inventories',
+     *                                     'fk'    => 'inventory_id']
+     *                                    Use when the entity_id lives on a
+     *                                    join table rather than on the related model.
+     * @param  array{from_date?: string, to_date?: string}  $filters
+     * @return list<array{entity_id: int, income: float, cogs: float, expense: float, profit: float}>
+     */
+    public function getProfitByEntity(
+        string $module,
+        string $relatedType,
+        string $entityColumn,
+        ?array $joinChain = null,
+        array $filters = []
+    ): array {
+        $moduleKey = $this->normalizeModuleKey($module);
+        $maps = $this->clearingAccounts->moduleAccountMaps();
+        $incomeClearing = $maps['income'];
+        $expenseClearing = $maps['expense'];
+        $prepaidAccounts = $this->clearingAccounts->prepaidAccountIdMap();
+        $allClearingIds = array_values(array_unique(array_merge(
+            array_keys($incomeClearing),
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
+        )));
+
+        $query = DB::table('transactions as t')
+            ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
+            ->select([
+                't.id', 't.type', 't.module', 't.amount', 't.related_type', 't.related_id',
+                't.from_account_id', 't.to_account_id',
+                'to_acc.type as to_account_type',
+                'to_acc.module_type as to_account_module_type',
+                'from_acc.module_type as from_account_module_type',
+                'tr.converted_amount', 'tr.from_currency', 'tr.to_currency',
+            ]);
+
+        $this->applyDateFilters($query, $filters);
+        $this->applyRelevanceFilter($query, $allClearingIds);
+        $query->where('t.module', $moduleKey)
+            ->where('t.related_type', $relatedType)
+            ->whereNotNull('t.related_id');
+
+        // First pass: classify each transaction + group by related_id
+        // (no entity_id yet — we batch-load that next).
+        $byRelatedId = []; // related_id => [['classification' => X, 'amount' => Y], ...]
+        $relatedIds = [];
+
+        foreach ($query->orderBy('t.id')->cursor() as $tx) {
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            if ($classification === null) {
+                continue;
+            }
+            $amount = $this->resolveAmountEGP($tx);
+            if ($amount <= 0) {
+                continue;
+            }
+            $relatedId = (int) ($tx->related_id ?? 0);
+            if ($relatedId === 0) {
+                continue;
+            }
+            $relatedIds[$relatedId] = true;
+            $byRelatedId[$relatedId][] = ['classification' => $classification, 'amount' => $amount];
+        }
+
+        if ($relatedIds === []) {
+            return [];
+        }
+
+        $relatedIds = array_keys($relatedIds);
+
+        // Batch-load the entity_id for every related_id — single query,
+        // 1 or 2 hops depending on whether $joinChain is provided.
+        $entityIdMap = $this->batchLoadEntityIds(
+            $relatedIds,
+            $relatedType,
+            $entityColumn,
+            $joinChain
+        );
+
+        // Aggregate by entity_id
+        $buckets = []; // entity_id => [income, cogs, expense]
+        foreach ($byRelatedId as $relatedId => $entries) {
+            $entityId = $entityIdMap[$relatedId] ?? null;
+            if ($entityId === null) {
+                continue;
+            }
+            if (! isset($buckets[$entityId])) {
+                $buckets[$entityId] = ['income' => 0.0, 'cogs' => 0.0, 'expense' => 0.0];
+            }
+            foreach ($entries as $e) {
+                $c = $e['classification'];
+                $a = $e['amount'];
+                if ($c === 'revenue') {
+                    $buckets[$entityId]['income'] += $a;
+                } elseif ($c === 'revenue_reversal' || $c === 'refund') {
+                    $buckets[$entityId]['income'] -= $a;
+                } elseif ($c === 'cogs') {
+                    $buckets[$entityId]['cogs'] += $a;
+                } elseif ($c === 'cogs_reversal') {
+                    $buckets[$entityId]['cogs'] -= $a;
+                } elseif ($c === 'operating_expense') {
+                    $buckets[$entityId]['expense'] += $a;
+                }
+            }
+        }
+
+        $result = [];
+        foreach ($buckets as $id => $b) {
+            $result[] = [
+                'entity_id' => (int) $id,
+                'income' => round(max(0, $b['income']), 2),
+                'cogs' => round(max(0, $b['cogs']), 2),
+                'expense' => round(max(0, $b['expense']), 2),
+                'profit' => round($b['income'] - $b['cogs'] - $b['expense'], 2),
+            ];
+        }
+
+        usort($result, fn (array $a, array $b) => $b['profit'] <=> $a['profit']);
+
+        return $result;
+    }
+
+    /**
+     * Batch-load entity_id for a list of related_ids. Single query — 1
+     * hop if $joinChain is null, 2 hops otherwise. Avoids the N+1 trap
+     * that would happen if we loaded the related model per transaction.
+     *
+     * @param  list<int>    $relatedIds
+     * @return array<int, int>  related_id => entity_id
+     */
+    private function batchLoadEntityIds(
+        array $relatedIds,
+        string $relatedType,
+        string $entityColumn,
+        ?array $joinChain
+    ): array {
+        if ($relatedIds === []) {
+            return [];
+        }
+
+        $relatedTable = $this->getTableForModel($relatedType);
+
+        if ($joinChain === null) {
+            $rows = DB::table($relatedTable)
+                ->whereIn('id', $relatedIds)
+                ->select('id', $entityColumn)
+                ->get();
+
+            return $rows->pluck($entityColumn, 'id')->all();
+        }
+
+        // 2-hop: relatedTable.fk → joinTable.entityColumn
+        $joinTable = $joinChain['table'];
+        $joinFk = $joinChain['fk'];
+
+        $rows = DB::table($relatedTable)
+            ->join($joinTable, "{$relatedTable}.{$joinFk}", '=', "{$joinTable}.id")
+            ->whereIn("{$relatedTable}.id", $relatedIds)
+            ->select("{$relatedTable}.id as related_id", "{$joinTable}.{$entityColumn} as entity_id")
+            ->get();
+
+        return $rows->pluck('entity_id', 'related_id')->all();
+    }
+
+    /**
+     * Resolve a related-model FQCN to its underlying table name. Hard-coded
+     * for the modules that publish to the GL with a known related_type
+     * (FlightBooking, BusBooking, HajjUmraBooking, VisaBooking, etc.).
+     *
+     * @return string  table name
+     */
+    private function getTableForModel(string $fqcn): string
+    {
+        return match ($fqcn) {
+            \App\Models\Flight\FlightBooking::class => 'flight_bookings',
+            \App\Models\Bus\BusBooking::class => 'bus_bookings',
+            \App\Models\HajjUmraBooking::class => 'hajj_umra_bookings',
+            \App\Models\VisaBooking::class => 'visa_bookings',
+            \App\Models\Fawry\FawryTransaction::class => 'fawry_transactions',
+            \App\Models\Wallet\WalletTransaction::class => 'wallet_transactions',
+            \App\Models\Online\OnlineTransaction::class => 'online_transactions',
+            default => 'unknown',
+        };
+    }
 }
