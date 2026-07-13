@@ -252,7 +252,12 @@ class ProfitLossReportService
             $income = round($incomeByModule[$mod] ?? 0.0, 2);
             $cogs = round($cogsByModule[$mod] ?? 0.0, 2);
             $expense = round($expenseByModule[$mod] ?? 0.0, 2);
-            if ($income <= 0 && $cogs <= 0 && $expense <= 0) {
+            // Skip only if all three are exactly zero. With Commit A's
+            // removal of the max(0, ...) floor, a negative-only module
+            // (refunds > revenue) must still surface — otherwise the
+            // card / daily / entity rows go silent exactly when the
+            // operator most needs to see them.
+            if ($income == 0 && $cogs == 0 && $expense == 0) {
                 continue;
             }
             $breakdown[] = [
