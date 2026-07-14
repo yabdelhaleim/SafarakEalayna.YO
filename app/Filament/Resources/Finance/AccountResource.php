@@ -7,8 +7,8 @@ use App\Filament\Clusters\FinanceCluster;
 use App\Filament\Resources\Finance\AccountResource\Pages;
 use App\Models\Account;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
@@ -18,15 +18,15 @@ class AccountResource extends Resource
 
     protected static ?string $cluster = FinanceCluster::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-building-library';
-    
+    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-building-library';
+
     protected static ?string $modelLabel = 'حساب / خزينة';
 
     protected static ?string $pluralModelLabel = 'دليل الحسابات (شجرة الحسابات)';
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\Section::make('البيانات الأساسية للحساب')
                     ->description('تحديد نوع الحساب والرصيد الافتتاحي')
@@ -84,8 +84,8 @@ class AccountResource extends Resource
                     ->badge()
                     ->formatStateUsing(fn ($state) => AccountType::tryFrom($state)?->label() ?? $state)
                     ->color(fn ($state) => match ($state) {
-                        AccountType::Cashbox->value, AccountType::Treasury->value => 'success',
-                        AccountType::Bank->value => 'info',
+                        AccountType::Cashbox->value => 'success',
+                        AccountType::Wallet->value => 'info',
                         AccountType::Expense->value => 'danger',
                         AccountType::Revenue->value => 'primary',
                         default => 'gray',
