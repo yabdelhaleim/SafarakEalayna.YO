@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Transfer;
+use App\Support\Finance\AccountModuleContract;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -520,7 +521,7 @@ class TransactionService
             $typeStr = $fromAccount->type instanceof AccountType
                 ? $fromAccount->type->value
                 : (string) $fromAccount->type;
-            $isFund = in_array($typeStr, ['cashbox', 'wallet', 'bank', 'treasury', 'post']);
+            $isFund = in_array($typeStr, AccountModuleContract::LIQUIDITY_TYPES, true);
 
             if ($isFund) {
                 $isCustomerOrSupplier = Customer::where('account_id', $fromAccount->id)->exists()

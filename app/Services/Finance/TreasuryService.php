@@ -10,6 +10,7 @@ use App\Models\Transaction;
 use App\Services\Reports\FinancialReportService;
 use App\Services\Reports\ProfitLossReportService;
 use App\Services\Setting\PrintSettingService;
+use App\Support\Finance\AccountModuleContract;
 use App\Support\Finance\AccountModuleDivision;
 use App\Support\Finance\UnifiedLiquidityGrouper;
 use Illuminate\Support\Collection;
@@ -537,7 +538,7 @@ class TreasuryService
         // 3. Total Liquidity (إجمالي السيولة - Tourism category)
         $tourismLiquidityAccounts = DB::table('accounts')
             ->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas'])
-            ->whereIn('type', ['cashbox', 'wallet', 'post', 'bank', 'treasury'])
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
             ->where('is_active', true)
             ->where('name', 'not like', '%عميل%')
             ->where('name', 'not like', '%شركة%')
@@ -699,7 +700,7 @@ class TreasuryService
         // 1. إجمالي السيولة — حسابات المكتب فقط (نقدي، محافظ، بنوك، خزائن)
         $officeLiquidityAccounts = DB::table('accounts')
             ->whereIn('module_type', AccountModuleDivision::OFFICE)
-            ->whereIn('type', ['cashbox', 'wallet', 'post', 'bank', 'treasury'])
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
             ->where('is_active', true)
             ->where('name', 'not like', '%عميل%')
             ->where('name', 'not like', '%شركة%')
