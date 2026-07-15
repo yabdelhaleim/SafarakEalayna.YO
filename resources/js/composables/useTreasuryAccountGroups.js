@@ -1,4 +1,21 @@
 import { computed, unref } from 'vue';
+import {
+  OFFICE_MODULE_TYPE,
+  TOURISM_MODULE_TYPE,
+  OFFICE_DIVISION_MODULES,
+  TOURISM_DIVISION_MODULES,
+  LIQUIDITY_TYPES,
+  SUBJECT_TYPES,
+  divisionFor,
+  isLiquidityType,
+  isSubjectType,
+} from '@/constants/accountModuleContract';
+
+/** @deprecated kept as a re-export for callers. Prefer importing from @/constants/accountModuleContract directly. */
+export const TOURISM_MODULE_TYPES = TOURISM_DIVISION_MODULES;
+
+/** @deprecated kept as a re-export. The 'general' tail is legacy and not in the contract. Prefer OFFICE_DIVISION_MODULES from @/constants/accountModuleContract. */
+export const OFFICE_MODULE_TYPES = [...OFFICE_DIVISION_MODULES, 'general'];
 
 export const MODULE_GROUP_LABELS = {
   general: 'الإدارة العامة',
@@ -26,9 +43,13 @@ export const MODULE_GROUP_ORDER = [
   'wallet_transfer',
 ];
 
-export const TOURISM_MODULE_TYPES = ['tourism', 'flights', 'hajj_umra', 'visas'];
-export const OFFICE_MODULE_TYPES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general'];
-
+/**
+ * Legacy alias map: Vue/API singular or short module names → Filament canonical
+ * `module_type` plural values. Kept for backward compatibility with existing
+ * callers; do NOT add new entries without checking the canonical
+ * `AccountModuleContract::OFFICE_DIVISION_MODULES` / `TOURISM_DIVISION_MODULES`
+ * in PHP.
+ */
 export const MODULE_TO_MODULE_TYPE = {
   flight: 'flights',
   hajj_umra: 'hajj_umra',
@@ -62,13 +83,30 @@ export const ACCOUNT_TYPE_LABELS = {
   cashbox: 'خزينة',
   wallet: 'محفظة',
   bank: 'بنك',
-  treasury: 'خزينة عامة',
-  post: 'بريد',
 };
 
-const TREASURY_TYPES = new Set(['cashbox', 'wallet', 'bank', 'treasury', 'post']);
+/**
+ * Backed Set view of {@link LIQUIDITY_TYPES} — preserves the Set API used by
+ * `isTreasuryAccount()`. The values are sourced from the contract so they
+ * cannot drift from the PHP side.
+ */
+const TREASURY_TYPES = new Set(LIQUIDITY_TYPES);
 
-export const SETTLEMENT_ACCOUNT_TYPES = 'cashbox,wallet,bank,treasury,post';
+/**
+ * Comma-joined string form for the `/api/v1/finance/accounts?types=...`
+ * query parameter. Derived from the contract's {@link LIQUIDITY_TYPES}.
+ *
+ * Note: the previous value `'cashbox,wallet,bank,treasury,post'` included
+ * legacy types the DB enum no longer accepts after Phase 3.5b — those
+ * caused `?types=` queries to match zero rows. Now the API filter aligns
+ * with the contract.
+ */
+export const SETTLEMENT_ACCOUNT_TYPES = LIQUIDITY_TYPES.join(',');
+
+// Silence "unused" lint warnings for re-exported contract identifiers
+// that are kept here for callers that import them from this module.
+void OFFICE_MODULE_TYPE;
+void TOURISM_MODULE_TYPE;
 
 export function unwrapAccountItems(payload) {
   if (Array.isArray(payload)) return payload;
@@ -98,27 +136,69 @@ export function accountMatchesWalletType(account, walletType) {
   return provider === code;
 }
 
+/**
+ * Phase 6 (Account Unification) — broadened to match the PHP Rules from
+ * {@see \App\Support\Finance\AccountModuleContract} + the Phase 5 LiquidityAccount
+ * Rules. Same tri-rule acceptance matrix:
+ *
+ *   ┌──────────────────────────────────────────────────────────────────┐
+ *   │ Test case                                │ result                │
+ *   ├──────────────────────────────────────────────────────────────────┤
+ *   │ module-specific (narrowed) vault         │ ACCEPT                │
+ *   │ division-unified vault (own division)    │ ACCEPT  (Phase 6)     │
+ *   │ other-module (same division) narrowed    │ ACCEPT  (label is just a label)
+ *   │ other-division vault                     │ REJECT                │
+ *   │ subject account (customer/supplier)      │ REJECT                │
+ *   │ null module / null account               │ ACCEPT  (no filter)   │
+ *   └──────────────────────────────────────────────────────────────────┘
+ *
+ * Re-exported from this file (rather than moved) so existing callers
+ * (`BusCreate`, `FawryCreate`, `FlightCreate`, `HajjUmraCreate`,
+ * `VisaCreate`, the 2 RefundWizards, the Bus customer-index/statement
+ * views, etc.) keep working without import-path changes. The function
+ * itself is now a thin wrapper over the contract's `divisionFor()`.
+ *
+ * @param {object|null} account
+ * @param {string|null} module  Module key (canonical, legacy alias, or division marker).
+ * @returns {boolean}
+ */
 export function accountBelongsToModule(account, module) {
   if (!module || !account) {
     return true;
   }
 
+  // Phase 5 Rule equivalent: subject accounts are NOT liquidity and must be
+  // rejected from treasury/settlement dropdowns regardless of module.
+  if (isSubjectType(account.type)) {
+    return false;
+  }
+
   const canonical = MODULE_TO_MODULE_TYPE[module] || module;
-  const moduleType = account.module_type || '';
-  const legacyModule = account.module || '';
+  const moduleType = String(account.module_type || '');
+  const moduleCol = String(account.module || '');
 
-  if (moduleType === canonical || legacyModule === canonical) {
+  // 1. Module-specific (narrowed): canonical matches either column.
+  if (moduleType === canonical || moduleCol === canonical) {
     return true;
   }
-  if (moduleType === module || legacyModule === module) {
+  if (moduleType === module || moduleCol === module) {
     return true;
   }
 
+  // 2. Division-unified (Phase 6): any account in the same division is valid.
+  // Per contract rule 2, the `module` column is just a label hint and is NOT
+  // used as a filter once `module_type` is the division marker.
+  const division = divisionFor(canonical) || divisionFor(module);
+  if (division && moduleType === division) {
+    return true;
+  }
+
+  // Legacy aliases (singular/plural etc.) for backward compat with pre-Phase 6 data.
   const legacyAliases = Object.entries(MODULE_TO_MODULE_TYPE)
     .filter(([, value]) => value === canonical)
     .map(([key]) => key);
 
-  return legacyAliases.includes(moduleType) || legacyAliases.includes(legacyModule);
+  return legacyAliases.includes(moduleType) || legacyAliases.includes(moduleCol);
 }
 
 export function filterSettlementAccountsByModule(accounts, module) {
@@ -129,19 +209,27 @@ export function filterSettlementAccountsByModule(accounts, module) {
   return (accounts || []).filter((account) => accountBelongsToModule(account, module));
 }
 
-/** Liquidity accounts for settlements; when module is set, never falls back to all modules. */
+/**
+ * Liquidity accounts for settlements; when module is set, never falls back to all modules.
+ *
+ * Note: the historical `includePost` flag is retained as an accepted option
+ * for backward compatibility but is now a no-op — the canonical
+ * {@link LIQUIDITY_TYPES} from the contract has no 'post' value (it was
+ * removed by Phase 3.5b cleanup alongside 'treasury').
+ */
 export async function fetchSettlementAccounts(httpClient, options = {}) {
   const {
     module = null,
     module_type = null,
-    includePost = true,
+    includePost: _includePost = true,
     isActive = 1,
     strictModule = true,
   } = options;
 
-  const types = includePost
-    ? SETTLEMENT_ACCOUNT_TYPES
-    : 'cashbox,wallet,bank,treasury';
+  // Source-of-truth: contract's LIQUIDITY_TYPES (replaces the stale
+  // `'cashbox,wallet,bank,treasury,post'` literal that previously leaked
+  // through to the /api/v1/finance/accounts?types=... query string).
+  const types = SETTLEMENT_ACCOUNT_TYPES;
 
   const baseParams = {
     per_page: 100,
@@ -184,10 +272,7 @@ export function formatAccountType(type) {
 }
 
 export function isTreasuryAccount(account) {
-  const type = typeof account?.type === 'object' && account?.type?.value
-    ? account.type.value
-    : account?.type;
-  return TREASURY_TYPES.has(type);
+  return isLiquidityType(account?.type);
 }
 
 const TOURISM_MODULE_KEYS = new Set([...TOURISM_MODULE_TYPES, 'flight', 'visa', 'hajj']);
