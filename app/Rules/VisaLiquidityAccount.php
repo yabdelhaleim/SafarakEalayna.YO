@@ -6,15 +6,14 @@ use App\Models\Account;
 use App\Support\Finance\AccountModuleContract;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Validates that the selected account is a usable Hajj/Umra-module liquidity account.
+ * Validates that the selected account is a usable Visa-module liquidity account.
  *
- * Phase 5 (Account Unification) — broadened acceptance:
+ * Phase 5 (Account Unification) — designed broadened from the start:
  *
- *  1. Strict per-module: `module_type ∈ {'hajj_umra','hajj','umrah'}`
- *     OR `module ∈ {'hajj_umra','hajj','umrah'}` (legacy alias).
+ *  1. Strict per-module: `module_type ∈ {'visas','visa'}` OR
+ *     `module ∈ {'visas','visa'}` — canonical 'visas' + legacy alias 'visa'.
  *     Per the Phase 3.5 saving hook, no NEW liquidity account can have
  *     these module_type values, but legacy data may exist and is still
  *     accepted for backward compatibility.
@@ -22,19 +21,18 @@ use Illuminate\Database\Eloquent\Builder;
  *  2. Tourism-division unified vault: `module_type='tourism'`
  *     A single tourism-wide vault now serves flights/hajj_umra/visas
  *     simultaneously. The `module` column on such accounts is just a
- *     label hint (e.g. `module='hajj_umra'` after auto-fill, or any
- *     other narrowed label) and is NOT used as a filter — per
+ *     label hint and is NOT used as a filter — per
  *     {@see \App\Support\Finance\AccountModuleContract} rule 2.
  *
  * REJECTS:
  *  - Office-division accounts (`module_type='office'`), even with
- *    `module='hajj_umra'` alias — preserves the office/tourism separation.
+ *    `module='visa'` alias — preserves the office/tourism separation.
  *  - Subject accounts (customer/supplier) — wrong type.
  *  - Inactive accounts.
  *
  * @see \App\Support\Finance\AccountModuleContract
  */
-class HajjUmraLiquidityAccount implements ValidationRule
+class VisaLiquidityAccount implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
@@ -43,15 +41,15 @@ class HajjUmraLiquidityAccount implements ValidationRule
             return;
         }
 
-        if (! self::belongsToHajjUmraModule($account)) {
-            $fail('يجب أن يكون الحساب تابعاً لموديول الحج والعمرة أو خزينة قسم السياحة الموحّدة.');
+        if (! self::belongsToVisaModule($account)) {
+            $fail('يجب أن يكون الحساب تابعاً لموديول التأشيرات أو خزينة قسم السياحة الموحّدة.');
 
             return;
         }
 
         $type = $account->type instanceof \BackedEnum ? $account->type->value : (string) $account->type;
         if (! in_array($type, AccountModuleContract::LIQUIDITY_TYPES, true)) {
-            $fail('يجب اختيار حساب سيولة (خزينة / بنك / محفظة) تابع للحج والعمرة أو قسم السياحة.');
+            $fail('يجب اختيار حساب سيولة (خزينة / بنك / محفظة) تابع للتأشيرات أو قسم السياحة.');
 
             return;
         }
@@ -62,43 +60,21 @@ class HajjUmraLiquidityAccount implements ValidationRule
     }
 
     /**
-     * Query scope for Filament Selects / dropdowns that need to list
-     * every liquidity account a Hajj/Umra transaction may use.
-     *
-     * Phase 5: includes the tourism-division unified vault
-     * (`module_type='tourism'`, any module value) in addition to the
-     * per-module hajj_umra/hajj/umrah vaults.
-     */
-    public static function applyLiquidityScope(Builder $query): Builder
-    {
-        $query->where('is_active', true)
-            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
-            ->where(function (Builder $q): void {
-                // Per-module (legacy-compatible): hajj_umra / hajj / umrah on either column
-                $q->whereIn('module_type', ['hajj_umra', 'hajj', 'umrah'])
-                    ->orWhereIn('module', ['hajj_umra', 'hajj', 'umrah'])
-                    // Phase 5: tourism-division unified vault (any module label)
-                    ->orWhere('module_type', AccountModuleContract::TOURISM_MODULE_TYPE);
-            });
-
-        return $query;
-    }
-
-    /**
-     * True if the account can be used as a Hajj/Umra-module liquidity vault.
+     * True if the account can be used as a Visa-module liquidity vault.
      *
      * Acceptance matrix:
      *  ┌──────────────────────────────────┬───────┐
      *  │ module_type / module             │ result│
      *  ├──────────────────────────────────┼───────┤
-     *  │ module_type ∈ {hajj_umra,hajj,umrah}│ ✅   │ (legacy data)
-     *  │ module ∈ {hajj_umra,hajj,umrah}      │ ✅   │ (alias)
+     *  │ module_type ∈ {visas,visa}       │ ✅    │ (legacy data)
+     *  │ module ∈ {visas,visa}            │ ✅    │ (alias)
      *  │ module_type=tourism (any module) │ ✅    │ (Phase 5 — unified vault)
      *  │ module_type=flights              │ ❌    │
+     *  │ module_type=hajj_umra            │ ❌    │
      *  │ module_type=office               │ ❌    │
      *  └──────────────────────────────────┴───────┘
      */
-    public static function belongsToHajjUmraModule(Account $account): bool
+    public static function belongsToVisaModule(Account $account): bool
     {
         $moduleType = $account->module_type instanceof \BackedEnum
             ? $account->module_type->value
@@ -107,12 +83,12 @@ class HajjUmraLiquidityAccount implements ValidationRule
             ? $account->module->value
             : (string) ($account->module ?? '');
 
-        // Strict per-module (canonical + legacy aliases) — covers legacy data
-        if (in_array($moduleType, ['hajj_umra', 'hajj', 'umrah'], true)) {
+        // Strict per-module (canonical 'visas' + legacy alias 'visa')
+        if (in_array($moduleType, ['visas', 'visa'], true)) {
             return true;
         }
 
-        if (in_array($module, ['hajj_umra', 'hajj', 'umrah'], true)) {
+        if (in_array($module, ['visas', 'visa'], true)) {
             return true;
         }
 

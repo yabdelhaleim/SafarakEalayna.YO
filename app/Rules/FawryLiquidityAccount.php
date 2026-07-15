@@ -8,11 +8,11 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
 /**
- * Validates that the selected account is a usable Bus-module liquidity account.
+ * Validates that the selected account is a usable Fawry-module liquidity account.
  *
- * Phase 5 (Account Unification) — broadened acceptance:
+ * Phase 5 (Account Unification) — designed broadened from the start:
  *
- *  1. Strict per-module: `module_type='bus'` OR `module='bus'` (legacy alias)
+ *  1. Strict per-module: `module_type='fawry'` OR `module='fawry'`
  *  2. Office-division unified vault: `module_type='office'`
  *     A single office-wide vault now serves bus/fawry/online/wallet_transfer
  *     simultaneously. The `module` column on such accounts is just a label
@@ -21,14 +21,14 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * REJECTS:
  *  - Tourism-division accounts (`module_type='tourism'`) — preserves the
  *    office/tourism separation contract.
- *  - Other office modules (`module_type='fawry'`, 'online', 'wallet_transfer')
+ *  - Other office modules (`module_type='bus'`, 'online', 'wallet_transfer')
  *    — those are per-module vaults owned by their respective rules.
  *  - Subject accounts (customer/supplier) — wrong type.
  *  - Inactive accounts.
  *
  * @see \App\Support\Finance\AccountModuleContract
  */
-class BusLiquidityAccount implements ValidationRule
+class FawryLiquidityAccount implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
@@ -37,15 +37,15 @@ class BusLiquidityAccount implements ValidationRule
             return;
         }
 
-        if (! self::belongsToBusModule($account)) {
-            $fail('يجب أن يكون الحساب تابعاً لموديول الباصات أو خزينة قسم المكتب الموحّدة.');
+        if (! self::belongsToFawryModule($account)) {
+            $fail('يجب أن يكون الحساب تابعاً لموديول فوري أو خزينة قسم المكتب الموحّدة.');
 
             return;
         }
 
         $type = $account->type instanceof \BackedEnum ? $account->type->value : (string) $account->type;
         if (! in_array($type, AccountModuleContract::LIQUIDITY_TYPES, true)) {
-            $fail('يجب اختيار حساب سيولة (خزينة / بنك / محفظة) تابع للباصات أو قسم المكتب.');
+            $fail('يجب اختيار حساب سيولة (خزينة / بنك / محفظة) تابع لفوري أو قسم المكتب.');
 
             return;
         }
@@ -56,22 +56,22 @@ class BusLiquidityAccount implements ValidationRule
     }
 
     /**
-     * True if the account can be used as a Bus-module liquidity vault.
+     * True if the account can be used as a Fawry-module liquidity vault.
      *
      * Acceptance matrix:
      *  ┌─────────────────────────────┬───────┐
      *  │ module_type / module        │ result│
      *  ├─────────────────────────────┼───────┤
-     *  │ module_type=bus             │ ✅    │
-     *  │ module=bus (alias only)     │ ✅    │
+     *  │ module_type=fawry           │ ✅    │
+     *  │ module=fawry (alias only)   │ ✅    │
      *  │ module_type=office          │ ✅    │ (Phase 5)
-     *  │ module_type=fawry           │ ❌    │
+     *  │ module_type=bus             │ ❌    │
      *  │ module_type=online          │ ❌    │
      *  │ module_type=wallet_transfer │ ❌    │
      *  │ module_type=tourism         │ ❌    │
      *  └─────────────────────────────┴───────┘
      */
-    public static function belongsToBusModule(Account $account): bool
+    public static function belongsToFawryModule(Account $account): bool
     {
         $moduleType = $account->module_type instanceof \BackedEnum
             ? $account->module_type->value
@@ -80,12 +80,10 @@ class BusLiquidityAccount implements ValidationRule
             ? $account->module->value
             : (string) ($account->module ?? '');
 
-        // Strict per-module (covers module_type=bus AND module=bus alias)
-        if ($moduleType === 'bus' || $module === 'bus') {
+        if ($moduleType === 'fawry' || $module === 'fawry') {
             return true;
         }
 
-        // Phase 5: Office-division unified vault
         if ($moduleType === AccountModuleContract::OFFICE_MODULE_TYPE) {
             return true;
         }
