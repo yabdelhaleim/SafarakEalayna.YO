@@ -14,7 +14,18 @@ final class AccountModuleDivision
 
     public const OFFICE = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general'];
 
-    public const LIQUIDITY_TYPES = ['cashbox', 'wallet', 'bank', 'treasury', 'post'];
+    /**
+     * Canonical liquidity account types — ALIASED to {@see AccountModuleContract::LIQUIDITY_TYPES}.
+     *
+     * Pre-fix this was an independent 5-value array (cashbox/wallet/bank/treasury/post)
+     * that drifted from the canonical 3-value set after Phase 3.5b removed the
+     * 'treasury'/'post' cases from the DB enum. Now a structural reference so the
+     * two can never drift again — any future change to the contract automatically
+     * propagates here. All existing call-sites (controllers, services, reports,
+     * `applyLiquidityTreasuryScope()` below, `UnifiedLiquidityGrouper`, etc.) keep
+     * working unchanged.
+     */
+    public const LIQUIDITY_TYPES = AccountModuleContract::LIQUIDITY_TYPES;
 
     /** @var array<string, string> Vue/API singular or legacy keys → Filament canonical module_type */
     public const LEGACY_MODULE_TO_TYPE = [
@@ -62,55 +73,7 @@ final class AccountModuleDivision
 
     public static function moduleLabel(string $moduleType): string
     {
-        return match ($moduleType) {
-            'general' => 'الإدارة العامة',
-            'office' => 'المكتب / الإداري',
-            'flights' => 'الطيران',
-            'tourism' => 'السياحة',
-            'hajj_umra' => 'الحج والعمرة',
-            'visas' => 'التأشيرات',
-            'bus' => 'الباصات',
-            'fawry' => 'فوري',
-            'online' => 'الخدمات الإلكترونية',
-            'wallet_transfer' => 'المحافظ والتحويلات',
-            default => ucfirst(str_replace('_', ' ', $moduleType)),
-        };
-    }
-
-    /** @return array<string, string> */
-    public static function moduleTypeOptions(): array
-    {
-        return [
-            'general' => self::moduleLabel('general'),
-            'office' => self::moduleLabel('office'),
-            'flights' => self::moduleLabel('flights'),
-            'bus' => self::moduleLabel('bus'),
-            'hajj_umra' => self::moduleLabel('hajj_umra'),
-            'visas' => self::moduleLabel('visas'),
-            'fawry' => self::moduleLabel('fawry'),
-            'online' => self::moduleLabel('online'),
-            'wallet_transfer' => self::moduleLabel('wallet_transfer'),
-            'tourism' => self::moduleLabel('tourism'),
-        ];
-    }
-
-    /** Legacy `accounts.module` column value for API/Vue compatibility. */
-    public static function legacyModuleColumn(string $moduleType): string
-    {
-        return match ($moduleType) {
-            'flights' => 'flight',
-            'visas' => 'visa',
-            default => $moduleType,
-        };
-    }
-
-    public static function applyModuleFilter(Builder $query, string $module): void
-    {
-        if ($module === 'general') {
-            $query->where(function (Builder $q): void {
-                $q->whereNull('module_type')
-                    ->orWhere('module_type', 'general')
-                    ->orWhere('module_type', '');
+        return match ($moduleType) {            'general' => 'الإدارة العامة',            'office' => 'المكتب / الإداري',            'flights' => 'الطيران',            'tourism' => 'السياحة',            'hajj_umra' => 'الحج والعمرة',            'visas' => 'التأشيرات',            'bus' => 'الباصات',            'fawry' => 'فوري',            'online' => 'الخدمات الإلكترونية',            'wallet_transfer' => 'المحافظ والتحويلات',            default => ucfirst(str_replace('_', ' ', $moduleType)),        };    }    /** @return array<string, string> */    public static function moduleTypeOptions(): array    {        return [            'general' => self::moduleLabel('general'),            'office' => self::moduleLabel('office'),            'flights' => self::moduleLabel('flights'),            'bus' => self::moduleLabel('bus'),            'hajj_umra' => self::moduleLabel('hajj_umra'),            'visas' => self::moduleLabel('visas'),            'fawry' => self::moduleLabel('fawry'),            'online' => self::moduleLabel('online'),            'wallet_transfer' => self::moduleLabel('wallet_transfer'),            'tourism' => self::moduleLabel('tourism'),        ];    }    /** Legacy `accounts.module` column value for API/Vue compatibility. */    public static function legacyModuleColumn(string $moduleType): string    {        return match ($moduleType) {            'flights' => 'flight',            'visas' => 'visa',            default => $moduleType,        };    }    public static function applyModuleFilter(Builder $query, string $module): void    {        if ($module === 'general') {            $query->where(function (Builder $q): void {                $q->whereNull('module_type')                    ->orWhere('module_type', 'general')                    ->orWhere('module_type', '');
             });
 
             return;
