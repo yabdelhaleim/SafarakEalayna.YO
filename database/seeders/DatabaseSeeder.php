@@ -17,11 +17,17 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UserSeeder::class,
-            FawrySettingsSeeder::class,
-            OnlineSettingsSeeder::class,
-            HajjUmraSettingsSeeder::class,
-            WalletSettingsSeeder::class,
-            TourismAccountsSeeder::class,
+            // NOTE: 5 seeder references that previously broke `php artisan db:seed`
+            // were removed on 2026-07-15:
+            //   - FawrySettingsSeeder
+            //   - OnlineSettingsSeeder
+            //   - HajjUmraSettingsSeeder
+            //   - WalletSettingsSeeder
+            //   - TourismAccountsSeeder
+            // The data these would have seeded is entered manually through the
+            // Filament admin UI (or the corresponding API endpoints), per the
+            // user's explicit decision (Option د).
+            // For Phase 7's account-unification seeder, see UnifiedVaultsSeeder.
         ]);
 
         $this->command->info('═══════════════════════════════════════');
