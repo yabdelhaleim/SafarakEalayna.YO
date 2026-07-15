@@ -11,6 +11,8 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
 
 class AccountResource extends Resource
 {
@@ -100,6 +102,25 @@ class AccountResource extends Resource
                     ->numeric(2)
                     ->sortable()
                     ->color(fn (Account $record): string => $record->balance < 0 ? 'danger' : 'success'),
+
+                // Phase 4 STEP 2: columns transferred from the per-module treasury
+                // pages before they were removed (see git log for "feat(filament):
+                // consolidate per-module treasury pages"). Kept here so the
+                // general page shows the same information previously visible
+                // on the per-module pages.
+                TextColumn::make('fawry_transactions_count')
+                    ->counts('fawryTransactions')
+                    ->label('معاملات فوري')
+                    ->sortable()
+                    ->badge()
+                    ->color('primary')
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->toggleable(),
+
+                IconColumn::make('is_module_vault')
+                    ->label('خزنة الموديول الرسمية')
+                    ->boolean()
+                    ->toggleable(),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('نشط')

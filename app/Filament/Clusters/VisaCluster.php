@@ -6,7 +6,6 @@ use App\Filament\Admin\Resources\VisaAgents\VisaAgentResource;
 use App\Filament\Admin\Resources\VisaBankAccounts\VisaBankAccountResource;
 use App\Filament\Admin\Resources\VisaBookings\VisaBookingResource;
 use App\Filament\Admin\Resources\VisaDurations\VisaDurationResource;
-use App\Filament\Admin\Resources\VisaTreasuries\VisaTreasuryResource;
 use App\Filament\Admin\Resources\VisaWallets\VisaWalletResource;
 use Filament\Clusters\Cluster;
 
@@ -26,7 +25,8 @@ class VisaCluster extends Cluster
             VisaBookingResource::class,
             VisaAgentResource::class,
             VisaBankAccountResource::class,
-            VisaTreasuryResource::class,
+            // VisaTreasuryResource removed in Phase 4 STEP 2 — its data is
+            // visible from the general AccountResource instead.
             VisaWalletResource::class,
             VisaDurationResource::class,
         ];

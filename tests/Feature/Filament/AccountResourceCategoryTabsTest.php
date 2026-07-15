@@ -217,4 +217,91 @@ class AccountResourceCategoryTabsTest extends TestCase
         preg_match_all('/<a\s[^>]*>/', $html, $matches);
         $this->assertCount(4, $matches[0], 'View should render exactly 4 anchor tags (one per tab)');
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Phase 4 STEP 2 — Fawry treasury coverage on the general page
+    // (replaces 3 tests previously in FawryWalletFilamentTest.php that
+    // referenced the removed FawryTreasuryResource)
+    // ════════════════════════════════════════════════════════════════════
+
+    public function test_fawry_account_appears_in_general_page(): void
+    {
+        $fawryBank = Account::create([
+            'name' => 'STEP2-TEST Fawry Bank (General Page)',
+            'type' => AccountType::Bank,
+            'currency' => 'EGP',
+            'balance' => 0,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'fawry',
+            'module' => 'fawry',
+            'is_active' => true,
+            'is_module_vault' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->get(AccountResource::getUrl('index'))->assertOk();
+
+        Livewire::test(ListAccounts::class)
+            ->assertCanSeeTableRecords([$fawryBank]);
+    }
+
+    public function test_can_create_fawry_account_via_general_page(): void
+    {
+        Livewire::test(\App\Filament\Resources\Finance\AccountResource\Pages\CreateAccount::class)
+            ->fillForm([
+                'name' => 'STEP2-TEST Fawry Bank (Created via General)',
+                'type' => AccountType::Bank->value,
+                'currency' => 'EGP',
+                'owner_type' => Account::OWNER_TYPE_OFFICE,
+                'module_type' => 'fawry',
+                'is_module_vault' => true,
+                'is_active' => true,
+                'notes' => null,
+            ])
+            ->call('create')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('accounts', [
+            'name' => 'STEP2-TEST Fawry Bank (Created via General)',
+            'type' => AccountType::Bank->value,
+            'module_type' => 'fawry',
+            'is_module_vault' => 1,
+        ]);
+    }
+
+    public function test_general_page_filter_shows_fawry_in_liquidity_bucket(): void
+    {
+        // 1 Fawry bank + 1 Bus cashbox → both should be in 'liquidity' bucket
+        $fawryBank = Account::create([
+            'name' => 'STEP2-TEST Fawry Bank (Liquidity Filter)',
+            'type' => AccountType::Bank,
+            'currency' => 'EGP',
+            'balance' => 0,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'fawry',
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+        $busCashbox = Account::create([
+            'name' => 'STEP2-TEST Bus Cashbox (Liquidity Filter)',
+            'type' => AccountType::Cashbox,
+            'currency' => 'EGP',
+            'balance' => 0,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'bus',
+            'is_active' => true,
+            'created_by' => $this->user->id,
+        ]);
+
+        // ?category=liquidity should include BOTH (proving Fawry is in the
+        // same liquidity bucket as other module-specific cashboxes/banks)
+        Livewire::withQueryParams(['category' => 'liquidity'])
+            ->test(ListAccounts::class)
+            ->assertCanSeeTableRecords([$fawryBank, $busCashbox]);
+
+        // ?category=subject should include NEITHER (both are liquidity, not subject)
+        Livewire::withQueryParams(['category' => 'subject'])
+            ->test(ListAccounts::class)
+            ->assertCanNotSeeTableRecords([$fawryBank, $busCashbox]);
+    }
 }

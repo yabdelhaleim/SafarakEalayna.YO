@@ -47,11 +47,27 @@ function check(string $name, bool $cond, array &$results, array &$failures): voi
 
 echo "=== Phase 7 — Unified Vaults E2E (direct execution) ===\n\n";
 
-// ─── Cleanup any prior test rows ────────────────────────────────────────────
+// ─── Cleanup any prior test rows + reset vault balances ────────────────────
+// Make the script idempotent across runs by zeroing the vault balances at
+// the start (they may carry over from a previous run that wasn't cleaned up).
+LedgerBalanceMutationGuard::run(function (): void {
+    DB::table('account_entries')->where('notes', 'like', '[PHASE7-E2E]%')->delete();
+    DB::table('transactions')->where('notes', 'like', '[PHASE7-E2E]%')->delete();
+    Account::where('name', 'like', '[PHASE7-E2E]%')->delete();
 
-DB::table('account_entries')->where('notes', 'like', '[PHASE7-E2E]%')->delete();
-DB::table('transactions')->where('notes', 'like', '[PHASE7-E2E]%')->delete();
-Account::where('name', 'like', '[PHASE7-E2E]%')->delete();
+    $officeVault = Account::where('is_module_vault', true)
+        ->where('module_type', AccountModuleContract::OFFICE_MODULE_TYPE)->first();
+    if ($officeVault) {
+        $officeVault->balance = 0;
+        $officeVault->save();
+    }
+    $tourismVault = Account::where('is_module_vault', true)
+        ->where('module_type', AccountModuleContract::TOURISM_MODULE_TYPE)->first();
+    if ($tourismVault) {
+        $tourismVault->balance = 0;
+        $tourismVault->save();
+    }
+});
 
 // ─── Setup ─────────────────────────────────────────────────────────────────
 

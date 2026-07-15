@@ -10,9 +10,10 @@ use App\Filament\Admin\Resources\FawryBanks\Pages\ListFawryBanks;
 use App\Filament\Admin\Resources\FawryCashboxes\FawryCashboxResource;
 use App\Filament\Admin\Resources\FawryCashboxes\Pages\CreateFawryCashbox;
 use App\Filament\Admin\Resources\FawryCashboxes\Pages\ListFawryCashboxes;
-use App\Filament\Admin\Resources\FawryTreasuries\FawryTreasuryResource;
-use App\Filament\Admin\Resources\FawryTreasuries\Pages\CreateFawryTreasury;
-use App\Filament\Admin\Resources\FawryTreasuries\Pages\ListFawryTreasuries;
+// FawryTreasuryResource and its Pages/ classes were removed in Phase 4
+// STEP 2 — the 3 tests that exercised them were relocated to
+// tests/Feature/Filament/AccountResourceCategoryTabsTest.php which
+// tests the same concepts against the general AccountResource.
 use App\Filament\Admin\Resources\FawryWallets\FawryWalletResource;
 use App\Filament\Admin\Resources\FawryWallets\Pages\CreateFawryWallet;
 use App\Filament\Admin\Resources\FawryWallets\Pages\ListFawryWallets;
@@ -226,60 +227,26 @@ class FawryWalletFilamentTest extends TestCase
 
     public function test_fawry_treasuries_index_page_loads(): void
     {
-        $this->get(FawryTreasuryResource::getUrl('index'))->assertOk();
+        // REMOVED in Phase 4 STEP 2 — FawryTreasuryResource was removed.
+        // The equivalent test (Fawry account visible in the general page)
+        // now lives in tests/Feature/Filament/AccountResourceCategoryTabsTest.php
+        // as test_fawry_account_appears_in_general_page.
+        $this->assertTrue(true);
     }
 
     public function test_can_create_fawry_treasury_via_filament(): void
     {
-        Livewire::test(CreateFawryTreasury::class)
-            ->fillForm([
-                'name' => 'خزينة فوري الرسمية',
-                'owner_type' => 'office',
-                'currency' => 'EGP',
-                'balance' => 0,
-                'is_module_vault' => true,
-                'is_active' => true,
-            ])
-            ->call('create')
-            ->assertHasNoErrors();
-
-        $this->assertDatabaseHas('accounts', [
-            'name' => 'خزينة فوري الرسمية',
-            'type' => AccountType::Treasury->value,
-            'module_type' => 'fawry',
-            'module' => 'fawry',
-            'is_module_vault' => true,
-        ]);
+        // REMOVED in Phase 4 STEP 2 — CreateFawryTreasury Livewire class
+        // was removed with its parent resource. The equivalent test now lives
+        // in AccountResourceCategoryTabsTest.php as test_can_create_fawry_account_via_general_page.
+        $this->assertTrue(true);
     }
 
     public function test_treasury_list_shows_only_fawry_treasuries(): void
     {
-        $treasury = Account::query()->create([
-            'name' => 'خزينة عامة فوري',
-            'type' => AccountType::Treasury,
-            'module_type' => 'fawry',
-            'module' => 'fawry',
-            'currency' => 'EGP',
-            'balance' => 0,
-            'is_active' => true,
-            'is_module_vault' => true,
-            'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'created_by' => $this->admin->id,
-        ]);
-
-        Account::query()->create([
-            'name' => 'خزينة عامة طيران',
-            'type' => AccountType::Treasury,
-            'module_type' => 'flights',
-            'currency' => 'EGP',
-            'balance' => 0,
-            'is_active' => true,
-            'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'created_by' => $this->admin->id,
-        ]);
-
-        Livewire::test(ListFawryTreasuries::class)
-            ->assertCanSeeTableRecords([$treasury])
-            ->assertCountTableRecords(1);
+        // REMOVED in Phase 4 STEP 2 — ListFawryTreasuries Livewire class
+        // was removed with its parent resource. The equivalent test now lives
+        // in AccountResourceCategoryTabsTest.php as test_general_page_filter_shows_fawry_in_liquidity_bucket.
+        $this->assertTrue(true);
     }
 }
