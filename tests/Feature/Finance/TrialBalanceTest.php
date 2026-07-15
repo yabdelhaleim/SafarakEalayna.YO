@@ -290,7 +290,7 @@ class TrialBalanceTest extends TestCase
     {
         $ledgerAccount = Account::query()->create([
             'name' => 'ذممة عميل — أحمد علي · 01012345678',
-            'type' => AccountType::Treasury,
+            'type' => AccountType::Bank,
             'balance' => 7500.0,
             'currency' => 'EGP',
             'is_active' => true,

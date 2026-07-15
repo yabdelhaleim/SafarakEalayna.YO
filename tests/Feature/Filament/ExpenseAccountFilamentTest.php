@@ -70,7 +70,7 @@ class ExpenseAccountFilamentTest extends TestCase
 
         Account::query()->create([
             'name' => 'خزينة عامة',
-            'type' => AccountType::Treasury->value,
+            'type' => AccountType::Bank->value,
             'currency' => 'EGP',
             'balance' => 1000,
             'is_active' => true,
@@ -85,7 +85,7 @@ class ExpenseAccountFilamentTest extends TestCase
                 Account::query()->where('type', AccountType::Expense->value)->get()
             )
             ->assertCanNotSeeTableRecords(
-                Account::query()->where('type', AccountType::Treasury->value)->get()
+                Account::query()->where('type', AccountType::Bank->value)->get()
             );
     }
 

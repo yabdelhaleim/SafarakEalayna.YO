@@ -28,7 +28,7 @@ class TransferTreasuryController extends Controller
             'wallets' => $map($accounts->get(AccountType::Wallet->value)),
             'banks' => $map($accounts->get(AccountType::Bank->value)),
             'cashboxes' => $map($accounts->get(AccountType::Cashbox->value)),
-            'treasury' => $map($accounts->get(AccountType::Treasury->value)),
+            'treasury' => $map($accounts->get(AccountType::Bank->value)),
             'accounts' => $map($accounts->flatten(1)),
         ]);
     }

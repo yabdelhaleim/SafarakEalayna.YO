@@ -16,12 +16,7 @@ class VisaTreasuryController extends Controller
 {
     public function overview(Request $request): JsonResponse
     {
-        $accountTypes = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $accountTypes = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         $accounts = Account::query()
             ->where('is_active', true)

@@ -109,12 +109,7 @@ class VisaAgentDebtStatement extends Page implements HasTable
                 TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
-                    ->color(fn ($state) => match($state) {
-                        VisaStatus::Pending => 'warning',
-                        VisaStatus::Processing => 'info',
-                        VisaStatus::Approved => 'success',
-                        VisaStatus::Rejected => 'danger',
-                        default => 'gray',
+                    ->color(fn ($state) => match($state) {                        VisaStatus::Pending => 'warning',                        VisaStatus::Processing => 'info',                        VisaStatus::Approved => 'success',                        VisaStatus::Rejected => 'danger',                        default => 'gray',
                     })
                     ->formatStateUsing(fn ($state) => $state->label ?? $state),
                 TextColumn::make('created_at')

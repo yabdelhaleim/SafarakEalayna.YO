@@ -71,10 +71,7 @@ class CustomerService
         }
 
         if (! empty($filters['balance_status'])) {
-            match ($filters['balance_status']) {
-                'settled' => $query->where(function ($q) {
-                    $q->whereNull('accounts.id')
-                        ->orWhere('accounts.balance', 0);
+            match ($filters['balance_status']) {                'settled' => $query->where(function ($q) {                    $q->whereNull('accounts.id')                        ->orWhere('accounts.balance', 0);
                 }),
                 'outstanding' => $query->where('accounts.balance', '!=', 0),
                 'debtors' => $query->where('accounts.balance', '>', 0),

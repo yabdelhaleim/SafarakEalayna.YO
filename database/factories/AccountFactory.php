@@ -18,7 +18,7 @@ class AccountFactory extends Factory
                 AccountType::Bank,
                 AccountType::Cashbox,
                 AccountType::Wallet,
-                AccountType::Treasury,
+                AccountType::Bank,
             ]),
             'owner_type' => Account::OWNER_TYPE_OWNER,
             'currency' => $this->faker->randomElement(['EGP', 'USD', 'EUR', 'SAR', 'KWD']),

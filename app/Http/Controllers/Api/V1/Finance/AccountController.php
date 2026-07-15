@@ -66,8 +66,8 @@ class AccountController extends Controller
                 'cashbox' => (float) $liquidityAccounts->where('type', AccountType::Cashbox)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
                 'bank' => (float) $liquidityAccounts->where('type', AccountType::Bank)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
                 'wallet' => (float) $liquidityAccounts->where('type', AccountType::Wallet)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
-                'treasury' => (float) $liquidityAccounts->where('type', AccountType::Treasury)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
-                'post' => (float) $liquidityAccounts->where('type', AccountType::Post)->sum(fn($a) => (float) $a->balance * $treasuryService->getAveragePurchaseRate($a->currency ?: 'EGP')),
+                // 'treasury' and 'post' removed in Phase 3.5b cleanup:
+                // their AccountType enum cases are gone from the DB schema.
             ];
 
             $reportFinance = app(ReportFinanceService::class);

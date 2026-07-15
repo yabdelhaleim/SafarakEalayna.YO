@@ -121,7 +121,7 @@ class TreasuryOverviewIntegrityTest extends TestCase
             ['name' => 'نقدي طيران', 'type' => AccountType::Cashbox, 'balance' => 500, 'module_type' => 'flights'],
             ['name' => 'فودافون كاش باص', 'type' => AccountType::Wallet, 'balance' => 150, 'module_type' => 'bus', 'wallet_provider' => 'vodafone_cash'],
             ['name' => 'خزينة باص', 'type' => AccountType::Cashbox, 'balance' => 200, 'module_type' => 'bus'],
-            ['name' => 'بريد فوري', 'type' => AccountType::Post, 'balance' => 0, 'module_type' => 'fawry'],
+            ['name' => 'بريد فوري', 'type' => AccountType::Bank, 'balance' => 0, 'module_type' => 'fawry'],
         ];
 
         foreach ($rows as $row) {

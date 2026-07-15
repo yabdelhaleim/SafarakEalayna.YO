@@ -94,12 +94,7 @@ class AccountRechargeService
     public static function sourceAccountOptions(Account $target): array
     {
         $currency = strtoupper((string) $target->currency);
-        $allowedTypes = [
-            AccountType::Bank->value,
-            AccountType::Wallet->value,
-            AccountType::Cashbox->value,
-            AccountType::Treasury->value,
-        ];
+        $allowedTypes = [AccountType::Bank->value, AccountType::Wallet->value, AccountType::Cashbox->value];
 
         return Account::query()
             ->whereKeyNot($target->getKey())

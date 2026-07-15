@@ -27,7 +27,7 @@ final class LiquidityAccountGroups
 
     /**
      * @param  Collection<int, Account>  $accounts
-     * @return array{wallets: Collection, banks: Collection, cashboxes: Collection, treasuries: Collection, post: Collection}
+     * @return array{wallets: Collection, banks: Collection, cashboxes: Collection}
      */
     public static function group(Collection $accounts): array
     {
@@ -37,8 +37,10 @@ final class LiquidityAccountGroups
             'wallets' => $grouped->get(AccountType::Wallet->value, collect())->values(),
             'banks' => $grouped->get(AccountType::Bank->value, collect())->values(),
             'cashboxes' => $grouped->get(AccountType::Cashbox->value, collect())->values(),
-            'treasuries' => $grouped->get(AccountType::Treasury->value, collect())->values(),
-            'post' => $grouped->get(AccountType::Post->value, collect())->values(),
+            // 'treasuries' and 'post' removed in Phase 3.5b cleanup:
+            // their AccountType enum cases are gone from the DB schema.
+            // Accounts previously labelled 'Treasury' or 'Post' must now be
+            // recorded as bank/cashbox with a free-text name.
         ];
     }
 

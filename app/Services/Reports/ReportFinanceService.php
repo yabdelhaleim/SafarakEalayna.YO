@@ -166,22 +166,7 @@ class ReportFinanceService
             $type = $account->type instanceof AccountType ? $account->type->value : (string) $account->type;
             
             $grandTotal += $balanceEgp;
-            match ($type) {
-                'cashbox' => $totalCashbox += $balanceEgp,
-                'wallet' => $totalWallet += $balanceEgp,
-                'bank' => $totalBank += $balanceEgp,
-                'treasury' => $totalTreasury += $balanceEgp,
-                'post' => $totalPost += $balanceEgp,
-                default => null,
-            };
-
-            return [
-                'id' => $account->id,
-                'name' => $account->name,
-                'type' => $type,
-                'currency' => $account->currency,
-                'balance' => round($balance, 2),
-            ];
+            match ($type) {                'cashbox' => $totalCashbox += $balanceEgp,                'wallet' => $totalWallet += $balanceEgp,                'bank' => $totalBank += $balanceEgp,                'treasury' => $totalTreasury += $balanceEgp,                'post' => $totalPost += $balanceEgp,                default => null,            };            return [                'id' => $account->id,                'name' => $account->name,                'type' => $type,                'currency' => $account->currency,                'balance' => round($balance, 2),            ];
         });
 
         return [

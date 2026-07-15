@@ -141,55 +141,7 @@ class LedgerClearingAccounts
 
         $v = strtolower((string) $module);
 
-        return match ($v) {
-            '', 'general' => 'general',
-            default => $v,
-        };
-    }
-
-    protected function accountIdByName(?string $name): ?int
-    {
-        if ($name === null || $name === '') {
-            return null;
-        }
-
-        return Account::query()
-            ->where('name', $name)
-            ->where('is_active', true)
-            ->value('id');
-    }
-
-    protected function ensureClearingAccountExists(string $name, string $moduleKey, string $type): int
-    {
-        $id = $this->accountIdByName($name);
-        if ($id !== null) {
-            return $id;
-        }
-
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $moduleKey, $type) {
-            $account = Account::query()->firstOrCreate(
-                ['name' => $name],
-                [
-                    'type' => AccountType::Owner,  // owner = حساب داخلي لا يظهر في الخزائن
-                    'balance' => 0,
-                    'currency' => 'EGP',
-                    'is_active' => true,
-                    'owner_type' => Account::OWNER_TYPE_OWNER,
-                    'module_type' => AccountModuleDivision::resolveModuleTypeKey(null, $moduleKey),
-                    'is_module_vault' => false,
-                    'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type})",
-                    'created_by' => Auth::id() ?? 1,
-                ]
-            );
-
-            Log::info('Clearing account automatically created', [
-                'name' => $name,
-                'id' => $account->id,
-                'module' => $moduleKey,
-                'type' => $type,
-            ]);
-
-            return $account->id;
+        return match ($v) {            '', 'general' => 'general',            default => $v,        };    }    protected function accountIdByName(?string $name): ?int    {        if ($name === null || $name === '') {            return null;        }        return Account::query()            ->where('name', $name)            ->where('is_active', true)            ->value('id');    }    protected function ensureClearingAccountExists(string $name, string $moduleKey, string $type): int    {        $id = $this->accountIdByName($name);        if ($id !== null) {            return $id;        }        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $moduleKey, $type) {            $account = Account::query()->firstOrCreate(                ['name' => $name],                [                    'type' => AccountType::Owner,  // owner = حساب داخلي لا يظهر في الخزائن                    'balance' => 0,                    'currency' => 'EGP',                    'is_active' => true,                    'owner_type' => Account::OWNER_TYPE_OWNER,                    'module_type' => AccountModuleDivision::resolveModuleTypeKey(null, $moduleKey),                    'is_module_vault' => false,                    'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type})",                    'created_by' => Auth::id() ?? 1,                ]            );            Log::info('Clearing account automatically created', [                'name' => $name,                'id' => $account->id,                'module' => $moduleKey,                'type' => $type,            ]);            return $account->id;
         }));
     }
 

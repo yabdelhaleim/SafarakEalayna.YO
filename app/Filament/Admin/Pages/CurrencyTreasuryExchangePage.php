@@ -41,12 +41,7 @@ class CurrencyTreasuryExchangePage extends Page
 
     public function refreshSummary(): void
     {
-        $types = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $types = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         $accounts = Account::query()
             ->where('is_active', true)
@@ -80,12 +75,7 @@ class CurrencyTreasuryExchangePage extends Page
      */
     protected function treasuryAccountSelectOptions(): array
     {
-        $types = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $types = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         return Account::query()
             ->where('is_active', true)

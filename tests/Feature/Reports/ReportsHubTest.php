@@ -64,7 +64,7 @@ class ReportsHubTest extends TestCase
 
         Account::query()->create([
             'name' => 'Hub Treasury',
-            'type' => AccountType::Treasury,
+            'type' => AccountType::Bank,
             'balance' => 2500,
             'currency' => 'EGP',
             'is_active' => true,

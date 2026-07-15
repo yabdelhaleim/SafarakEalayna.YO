@@ -36,7 +36,7 @@ class FawryDashboardController extends Controller
         $stats['cashboxes'] = LiquidityAccountGroups::countAndBalance(
             $accounts,
             AccountType::Cashbox,
-            AccountType::Treasury
+            AccountType::Bank
         );
 
         $stats['banks'] = LiquidityAccountGroups::countAndBalance($accounts, AccountType::Bank);

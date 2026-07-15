@@ -7,8 +7,11 @@ enum AccountType: string
     case Cashbox = 'cashbox';
     case Wallet = 'wallet';
     case Bank = 'bank';
-    case Treasury = 'treasury';
-    case Post = 'post';
+    // 'treasury' and 'post' removed in Phase 3.5b cleanup (2026-07-14).
+    // Their AccountType cases were retired after the DB schema
+    // (migration 2026_07_09_010000 etc.) removed them from the
+    // accounts.type ENUM. Accounts previously labelled "Treasury" or "Post"
+    // are now recorded as Bank or Cashbox with a free-text name.
     case Customer = 'customer';
     case Supplier = 'supplier';
     case Expense = 'expense';
@@ -22,8 +25,6 @@ enum AccountType: string
             self::Cashbox => 'خزينة نقدي',
             self::Wallet => 'محفظة إلكترونية',
             self::Bank => 'حساب بنكي',
-            self::Post => 'بريد',
-            self::Treasury => 'خزينة عامة',
             self::Customer => 'حساب عميل',
             self::Supplier => 'حساب مورد',
             self::Expense => 'مصروفات',

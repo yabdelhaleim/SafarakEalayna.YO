@@ -15,22 +15,10 @@ class TransferDashboardController extends Controller
     {
         // 1. Module Stats (Isolated by module_type = wallet_transfer)
         $stats = [
-            'wallets' => [
-                'count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Wallet->value)->count(),
-                'balance' => (float) Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Wallet->value)->sum('balance'),
-            ],
-            'banks' => [
-                'count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Bank->value)->count(),
-                'balance' => (float) Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Bank->value)->sum('balance'),
-            ],
-            'cashboxes' => [
-                'count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Cashbox->value)->count(),
-                'balance' => (float) Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Cashbox->value)->sum('balance'),
-            ],
-            'treasury' => [
-                'count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Treasury->value)->count(),
-                'balance' => (float) Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Treasury->value)->sum('balance'),
-            ],
+            'wallets' => ['count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Wallet->value)->count(), 'balance' => (float) Account::where('module_type', AccountType::Wallet->value)->sum('balance')],
+            'banks' => ['count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Bank->value)->count(), 'balance' => (float) Account::where('module_type', AccountType::Bank->value)->sum('balance')],
+            'cashboxes' => ['count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Cashbox->value)->count(), 'balance' => (float) Account::where('module_type', AccountType::Cashbox->value)->sum('balance')],
+            'treasury' => ['count' => Account::where('module_type', 'wallet_transfer')->where('type', AccountType::Bank->value)->count(), 'balance' => (float) Account::where('module_type', AccountType::Bank->value)->sum('balance')],
         ];
 
         // 1.5 Total Liquidity
