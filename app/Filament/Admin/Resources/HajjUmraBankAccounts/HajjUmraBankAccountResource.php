@@ -38,13 +38,13 @@ class HajjUmraBankAccountResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->whereIn('type', [AccountType::Bank->value, AccountType::Post->value])
+            ->whereIn('type', [AccountType::Bank->value])
             ->where('module_type', 'hajj_umra');
     }
 
     public static function form(Schema $schema): Schema
     {
-        return AccountFormSchema::configure($schema, [AccountType::Bank, AccountType::Post], 'hajj_umra');
+        return AccountFormSchema::configure($schema, [AccountType::Bank, AccountType::Bank], 'hajj_umra');
     }
 
     public static function table(Table $table): Table

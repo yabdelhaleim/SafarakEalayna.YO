@@ -141,7 +141,6 @@ class AppServiceProvider extends ServiceProvider
             $sqlPreview = mb_substr($event->sql, 0, 200);
             $callerFile = $caller['file'] ?? '?';
             $callerLine = (int) ($caller['line'] ?? 0);
-
             // ───────────────────────────────────────────────────────────────
             // ① Log warning (لا يكسر الـ request)
             // ───────────────────────────────────────────────────────────────
@@ -155,7 +154,6 @@ class AppServiceProvider extends ServiceProvider
                 'user_id' => Auth::id(),
                 'hint' => 'استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك.',
             ]);
-
             // ───────────────────────────────────────────────────────────────
             // ② Critical notification لكل الأدمن (Filament database + email)
             // ───────────────────────────────────────────────────────────────
@@ -163,12 +161,10 @@ class AppServiceProvider extends ServiceProvider
                 $admins = User::where('role', 'admin')
                     ->where('is_active', true)
                     ->get();
-
                 if ($admins->isNotEmpty()) {
                     $userIdentifier = Auth::user()?->email
                         ?? Auth::user()?->name
                         ?? 'CLI/Background';
-
                     $notification = new BalanceTamperDetectedNotification(
                         table: $tableName,
                         sqlPreview: $sqlPreview,
@@ -177,7 +173,6 @@ class AppServiceProvider extends ServiceProvider
                         userIdentifier: $userIdentifier,
                         connectionName: $connection,
                     );
-
                     Notification::send($admins, $notification);
                 }
             } catch (\Throwable $e) {

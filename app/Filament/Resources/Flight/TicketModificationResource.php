@@ -192,11 +192,7 @@ class TicketModificationResource extends Resource
                         'warning' => 'destination_change',
                         'success' => 'both',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'date_change' => 'تعديل موعد',
-                        'destination_change' => 'تعديل وجهة',
-                        'both' => 'موعد ووجهة',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'date_change' => 'تعديل موعد',                        'destination_change' => 'تعديل وجهة',                        'both' => 'موعد ووجهة',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('airline_change_fee')
@@ -225,13 +221,7 @@ class TicketModificationResource extends Resource
                         'info' => 'approved',
                         'success' => 'confirmed',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'draft' => 'مسودة',
-                        'pending' => 'انتظار',
-                        'quoted' => 'مسعر',
-                        'approved' => 'معتمد',
-                        'confirmed' => 'مؤكد ومرحل',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'draft' => 'مسودة',                        'pending' => 'انتظار',                        'quoted' => 'مسعر',                        'approved' => 'معتمد',                        'confirmed' => 'مؤكد ومرحل',                        default => $state,
                     }),
 
                 Tables\Columns\BadgeColumn::make('reconciliation_status')
@@ -241,11 +231,7 @@ class TicketModificationResource extends Resource
                         'success' => 'matched',
                         'warning' => 'disputed',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'unreconciled' => 'غير مسوى',
-                        'matched' => 'مطابق',
-                        'disputed' => 'متنازع عليه',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'unreconciled' => 'غير مسوى',                        'matched' => 'مطابق',                        'disputed' => 'متنازع عليه',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('created_at')

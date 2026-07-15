@@ -169,18 +169,9 @@ class BusTicketResource extends Resource
                     ->color('success'),
 
                 BadgeColumn::make('status', 'الحالة')
-                    ->color(fn (string $state): string => match ($state) {
-                        'pending' => 'warning',
-                        'confirmed' => 'success',
-                        'cancelled' => 'danger',
-                        'completed' => 'info',
+                    ->color(fn (string $state): string => match ($state) {                        'pending' => 'warning',                        'confirmed' => 'success',                        'cancelled' => 'danger',                        'completed' => 'info',
                     })
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pending' => 'قيد الانتظار',
-                        'confirmed' => 'مؤكد',
-                        'cancelled' => 'ملغي',
-                        'completed' => 'مكتمل',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'pending' => 'قيد الانتظار',                        'confirmed' => 'مؤكد',                        'cancelled' => 'ملغي',                        'completed' => 'مكتمل',                        default => $state,
                     }),
 
                 TextColumn::make('employee.name', 'الموظف')

@@ -10,13 +10,7 @@ use App\Filament\Admin\Resources\FlightBookings\Pages\ListFlightBookings;
 use App\Models\Flight\FlightBooking;
 use BackedEnum;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\ForceDeleteAction;
-use Filament\Tables\Actions\ForceDeleteBulkAction;
-use Filament\Tables\Actions\RestoreAction;
-use Filament\Tables\Actions\RestoreBulkAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -320,9 +314,85 @@ class FlightBookingResource extends Resource
                     ->icon('heroicon-o-adjustments-horizontal')
                     ->color('info')
                     ->url(fn ($record): string => \App\Filament\Admin\Resources\TicketModifications\TicketModificationResource::getUrl('create') . '?booking_id=' . $record->id),
+                \Filament\Tables\Actions\Action::make('deleteWithReversal')
+                    ->label('حذف مع عكس القيود')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('حذف الحجز مع عكس الأثر المالي')
+                    ->modalDescription(
+                        'سيتم تنفيذ soft delete + عكس كل القيود المحاسبية '
+                        .'(الحجز + الدفعات + Sale GL + إرجاع رصيد الـ carrier/system). '
+                        .'هذه العملية لا يمكن التراجع عنها.'
+                    )
+                    ->modalSubmitActionLabel('نعم، احذف وعكس')
+                    ->action(function (\App\Models\Flight\FlightBooking $record): void {
+                        $userId = \Illuminate\Support\Facades\Auth::id() ?: 1;
+                        try {
+                            app(\App\Services\Flight\FlightBookingService::class)
+                                ->deleteBookingWithReversal($record->id, $userId);
+                            \Filament\Notifications\Notification::make()
+                                ->title('تم حذف الحجز وعكس كل الآثار بنجاح')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('فشل الحذف')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
                 \Filament\Tables\Actions\EditAction::make()->modal(false),
             ])
             ->bulkActions([
+                \Filament\Tables\Actions\BulkActionGroup::make([
+                    \Filament\Tables\Actions\BulkAction::make('deleteWithReversal')
+                        ->label('حذف مع عكس القيود')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('حذف الحجوزات المختارة مع عكس القيود')
+                        ->modalDescription(
+                            'سيتم تنفيذ soft delete + عكس القيود المحاسبية لكل حجز مُختار. '
+                            .'سيتم عرض نتيجة كل حجز (نجاح/فشل) في إشعار واحد.'
+                        )
+                        ->modalSubmitActionLabel('نعم، احذف الكل وعكس')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (\Illuminate\Support\Collection $records): void {
+                            $userId = \Illuminate\Support\Facades\Auth::id() ?: 1;
+                            $svc = app(\App\Services\Flight\FlightBookingService::class);
+                            $successCount = 0;
+                            $errors = [];
+
+                            foreach ($records as $record) {
+                                try {
+                                    $svc->deleteBookingWithReversal($record->id, $userId);
+                                    $successCount++;
+                                } catch (\Throwable $e) {
+                                    $errors[] = "حجز #{$record->id}: " . $e->getMessage();
+                                }
+                            }
+
+                            if ($successCount > 0) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title("تم حذف {$successCount} حجز بنجاح")
+                                    ->success()
+                                    ->send();
+                            }
+                            if (! empty($errors)) {
+                                $errorMsg = implode("\n", array_slice($errors, 0, 5));
+                                if (count($errors) > 5) {
+                                    $errorMsg .= "\n... و " . (count($errors) - 5) . ' حجز(ات) أخرى فشلت';
+                                }
+                                \Filament\Notifications\Notification::make()
+                                    ->title('فشل ' . count($errors) . ' حجز')
+                                    ->body($errorMsg)
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+                ]),
             ]);
     }
 

@@ -239,10 +239,7 @@ class RefundRequestResource extends Resource
                         'primary' => 'airline_credit',
                         'success' => 'agency_treasury',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'airline_credit' => 'رصيد طيران',
-                        'agency_treasury' => 'خزينة الوكالة',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'airline_credit' => 'رصيد طيران',                        'agency_treasury' => 'خزينة الوكالة',                        default => $state,
                     }),
 
                 Tables\Columns\BadgeColumn::make('status')
@@ -252,11 +249,7 @@ class RefundRequestResource extends Resource
                         'info' => 'approved',
                         'success' => 'processed',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pending' => 'انتظار',
-                        'approved' => 'معتمد',
-                        'processed' => 'مرحل',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'pending' => 'انتظار',                        'approved' => 'معتمد',                        'processed' => 'مرحل',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('created_at')

@@ -75,17 +75,9 @@ class PayrollResource extends Resource
                 TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'draft' => 'warning',
-                        'paid' => 'success',
-                        'cancelled' => 'danger',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match ($state) {                        'draft' => 'warning',                        'paid' => 'success',                        'cancelled' => 'danger',                        default => 'gray',
                     })
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'draft' => 'مسودة',
-                        'paid' => 'تم الصرف',
-                        'cancelled' => 'ملغي',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'draft' => 'مسودة',                        'paid' => 'تم الصرف',                        'cancelled' => 'ملغي',                        default => $state,
                     }),
             ])
             ->filters([

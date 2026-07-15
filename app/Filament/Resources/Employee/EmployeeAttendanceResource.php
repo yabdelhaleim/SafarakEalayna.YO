@@ -82,20 +82,11 @@ class EmployeeAttendanceResource extends Resource
 
                 TextColumn::make('status', 'الحالة')
                     ->badge()
-                    ->color(fn ($state) => match($state instanceof \BackedEnum ? $state->value : $state) {
-                        'present' => 'success',
-                        'absent' => 'danger',
-                        'late' => 'warning',
-                        default => 'gray',
+                    ->color(fn ($state) => match($state instanceof \BackedEnum ? $state->value : $state) {                        'present' => 'success',                        'absent' => 'danger',                        'late' => 'warning',                        default => 'gray',
                     })
                     ->formatStateUsing(function ($state): string {
                         $val = $state instanceof \BackedEnum ? $state->value : $state;
-                        return match($val) {
-                            'present' => 'حاضر',
-                            'absent' => 'غائب',
-                            'late' => 'تأخير',
-                            default => (string) $val,
-                        };
+                        return match($val) {                            'present' => 'حاضر',                            'absent' => 'غائب',                            'late' => 'تأخير',                            default => (string) $val,                        };
                     }),
 
                 TextColumn::make('notes', 'ملاحظات')

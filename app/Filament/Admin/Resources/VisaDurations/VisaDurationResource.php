@@ -75,11 +75,7 @@ class VisaDurationResource extends Resource
                 TextColumn::make('label_ar')->label('الاسم العربي')->searchable(),
                 TextColumn::make('months')->label('الأشهر')->sortable()->toggleable(),
                 TextColumn::make('entry_type')->label('نوع الدخول')->badge()
-                    ->formatStateUsing(fn (?string $s) => match ($s) {
-                        'single' => 'دخول واحد',
-                        'multiple' => 'دخول متعدد',
-                        'triple' => 'دخول ثلاثي',
-                        default => '-',
+                    ->formatStateUsing(fn (?string $s) => match ($s) {                        'single' => 'دخول واحد',                        'multiple' => 'دخول متعدد',                        'triple' => 'دخول ثلاثي',                        default => '-',
                     }),
                 IconColumn::make('is_active')->label('مفعّل')->boolean(),
             ])

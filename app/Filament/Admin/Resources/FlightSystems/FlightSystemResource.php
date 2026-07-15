@@ -200,16 +200,9 @@ class FlightSystemResource extends Resource
                 TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => match ($state) {
-                        'gds' => 'GDS',
-                        'ndc' => 'NDC',
-                        'other' => 'أخرى',
-                        default => $state ?? '—',
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {                        'gds' => 'GDS',                        'ndc' => 'NDC',                        'other' => 'أخرى',                        default => $state ?? '—',
                     })
-                    ->color(fn (?string $state): string => match ($state) {
-                        'gds' => 'info',
-                        'ndc' => 'success',
-                        default => 'gray',
+                    ->color(fn (?string $state): string => match ($state) {                        'gds' => 'info',                        'ndc' => 'success',                        default => 'gray',
                     }),
                 TextColumn::make('currency')
                     ->label('العملة')
@@ -356,12 +349,7 @@ class FlightSystemResource extends Resource
      */
     protected static function accountOptionsForSystem(FlightSystem $system): array
     {
-        $types = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $types = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         return Account::query()
             ->where('is_active', true)
@@ -394,7 +382,7 @@ class FlightSystemResource extends Resource
 
         $typeLabel = match ($typeVal) {
             AccountType::Cashbox->value => 'نقدي / درج',
-            AccountType::Treasury->value => 'خزينة عامة',
+            AccountType::Bank->value => 'خزينة عامة',
             AccountType::Bank->value => 'بنك',
             default => $typeVal,
         };

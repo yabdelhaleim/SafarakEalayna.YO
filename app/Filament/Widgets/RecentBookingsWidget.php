@@ -36,17 +36,9 @@ class RecentBookingsWidget extends BaseWidget
                 Tables\Columns\TextColumn::make('booking_status')
                     ->label('الحالة')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => match ($state) {
-                        'pending' => 'قيد الانتظار',
-                        'confirmed' => 'مؤكد',
-                        'cancelled' => 'ملغي',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match ($state) {                        'pending' => 'قيد الانتظار',                        'confirmed' => 'مؤكد',                        'cancelled' => 'ملغي',                        default => $state,
                     })
-                    ->color(fn ($state) => match ($state) {
-                        'pending' => 'warning',
-                        'confirmed' => 'success',
-                        'cancelled' => 'danger',
-                        default => 'gray',
+                    ->color(fn ($state) => match ($state) {                        'pending' => 'warning',                        'confirmed' => 'success',                        'cancelled' => 'danger',                        default => 'gray',
                     }),
             ]);
     }

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'flight_booking_id',
@@ -31,6 +32,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 ])]
 class RefundRequest extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'flight_booking_id',
         'refund_type',

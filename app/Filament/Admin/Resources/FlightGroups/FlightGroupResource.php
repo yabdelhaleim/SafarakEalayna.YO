@@ -138,12 +138,7 @@ class FlightGroupResource extends Resource
                 TextColumn::make('carrier.currency')
                     ->label('العملة')
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
-                        'EGP' => 'success',
-                        'KWD' => 'warning',
-                        'SAR' => 'info',
-                        'USD' => 'primary',
-                        default => 'gray',
+                    ->color(fn (?string $state): string => match ($state) {                        'EGP' => 'success',                        'KWD' => 'warning',                        'SAR' => 'info',                        'USD' => 'primary',                        default => 'gray',
                     }),
                 TextColumn::make('contact_person')
                     ->label('المسؤول')

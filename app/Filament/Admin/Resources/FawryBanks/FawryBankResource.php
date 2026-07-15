@@ -32,7 +32,7 @@ class FawryBankResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->whereIn('type', [AccountType::Bank, AccountType::Post])
+            ->whereIn('type', [AccountType::Bank, AccountType::Bank])
             ->where(function (Builder $query): void {
                 $query->where('module_type', 'fawry')
                     ->orWhere('module', 'fawry');

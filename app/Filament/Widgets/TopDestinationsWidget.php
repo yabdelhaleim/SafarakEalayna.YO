@@ -32,13 +32,7 @@ class TopDestinationsWidget extends BaseWidget
                     ->label('الشركة'),
                 Tables\Columns\TextColumn::make('destination')
                     ->label('الوجهة')
-                    ->formatStateUsing(fn ($state) => match ($state) {
-                        'CAI' => 'القاهرة 🇪🇬',
-                        'DXB' => 'دبي 🇦🇪',
-                        'IST' => 'إسطنبول 🇹🇷',
-                        'LHR' => 'لندن 🇬🇧',
-                        'RUH' => 'الرياض 🇸🇦',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match ($state) {                        'CAI' => 'القاهرة 🇪🇬',                        'DXB' => 'دبي 🇦🇪',                        'IST' => 'إسطنبول 🇹🇷',                        'LHR' => 'لندن 🇬🇧',                        'RUH' => 'الرياض 🇸🇦',                        default => $state,
                     }),
                 Tables\Columns\TextColumn::make('available_seats')
                     ->label('المقاعد المتاحة')

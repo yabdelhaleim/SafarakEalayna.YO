@@ -73,10 +73,7 @@ class WalletTransactionResource extends Resource
                             )->all())
                             ->required()
                             ->live()
-                            ->helperText(fn (?string $state): ?string => match ($state) {
-                                'send' => 'إرسال: الوكالة ترسل للعميل وتستلم نقديًا + الخدمة',
-                                'receive' => 'استقبال: العميل يحول للوكالة وتدفع له نقديًا − الخدمة',
-                                default => null,
+                            ->helperText(fn (?string $state): ?string => match ($state) {                                'send' => 'إرسال: الوكالة ترسل للعميل وتستلم نقديًا + الخدمة',                                'receive' => 'استقبال: العميل يحول للوكالة وتدفع له نقديًا − الخدمة',                                default => null,
                             }),
 
                         Select::make('wallet_type_id')
@@ -160,7 +157,7 @@ class WalletTransactionResource extends Resource
                         Select::make('cash_account_id')
                             ->label('الحساب النقدي')
                             ->options(fn (): array => Account::query()
-                                ->whereIn('type', [AccountType::Cashbox, AccountType::Treasury])
+                                ->whereIn('type', [AccountType::Cashbox, AccountType::Bank])
                                 ->where('module_type', 'wallet_transfer')
                                 ->where('is_active', true)
                                 ->orderBy('name')
@@ -275,10 +272,7 @@ class WalletTransactionResource extends Resource
                 TextColumn::make('type', 'النوع')
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => WalletTransactionType::tryFrom((string) $state)?->label() ?? (string) $state)
-                    ->color(fn (?string $state): string => match ($state) {
-                        'send' => 'warning',
-                        'receive' => 'success',
-                        default => 'gray',
+                    ->color(fn (?string $state): string => match ($state) {                        'send' => 'warning',                        'receive' => 'success',                        default => 'gray',
                     }),
 
                 TextColumn::make('walletType.name', 'المحفظة')

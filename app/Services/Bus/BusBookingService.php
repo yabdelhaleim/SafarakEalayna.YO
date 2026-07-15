@@ -405,43 +405,7 @@ class BusBookingService
                 $booking->load('payments');
                 $totalPaid = $booking->payments->sum('amount');
 
-                $newPaymentStatus = match (true) {
-                    $totalPaid >= $booking->total_price => BusPaymentStatus::Paid,
-                    $totalPaid > 0 => BusPaymentStatus::Partial,
-                    default => BusPaymentStatus::Pending,
-                };
-
-                $newStatus = match ($newPaymentStatus) {
-                    BusPaymentStatus::Paid => BusBookingStatus::Paid,
-                    default => $booking->status,
-                };
-
-                $booking->update([
-                    'paid_amount' => $totalPaid,
-                    'payment_status' => $newPaymentStatus,
-                    'status' => $newStatus,
-                    'account_id' => $data['account_id'] ?? $booking->account_id,
-                ]);
-
-                Log::info('Bus booking payment recorded', [
-                    'booking_id' => $booking->id,
-                    'payment_id' => $payment->id,
-                    'amount' => $data['amount'],
-                    'total_paid' => $totalPaid,
-                    'payment_status' => $newPaymentStatus->value,
-                    'transaction_id' => $transactionId,
-                    'user_id' => Auth::id(),
-                ]);
-
-                return $booking->fresh([
-                    'inventory.company',
-                    'customer',
-                    'employee.user',
-                    'account',
-                    'payments',
-                    'transaction',
-                    'createdBy',
-                ]);
+                $newPaymentStatus = match (true) {                    $totalPaid >= $booking->total_price => BusPaymentStatus::Paid,                    $totalPaid > 0 => BusPaymentStatus::Partial,                    default => BusPaymentStatus::Pending,                };                $newStatus = match ($newPaymentStatus) {                    BusPaymentStatus::Paid => BusBookingStatus::Paid,                    default => $booking->status,                };                $booking->update([                    'paid_amount' => $totalPaid,                    'payment_status' => $newPaymentStatus,                    'status' => $newStatus,                    'account_id' => $data['account_id'] ?? $booking->account_id,                ]);                Log::info('Bus booking payment recorded', [                    'booking_id' => $booking->id,                    'payment_id' => $payment->id,                    'amount' => $data['amount'],                    'total_paid' => $totalPaid,                    'payment_status' => $newPaymentStatus->value,                    'transaction_id' => $transactionId,                    'user_id' => Auth::id(),                ]);                return $booking->fresh([                    'inventory.company',                    'customer',                    'employee.user',                    'account',                    'payments',                    'transaction',                    'createdBy',                ]);
             });
         } catch (\Exception $e) {
             Log::error('BusBookingService::payBooking failed', [
@@ -560,27 +524,7 @@ class BusBookingService
                     'created_by' => $userId,
                 ]);
 
-                $newStatus = match (true) {
-                    $refundAmount > 0.001 => BusBookingStatus::Refunded,
-                    $totalPenalties > 0.001 => BusBookingStatus::PartiallyRefunded,
-                    default => BusBookingStatus::Cancelled,
-                };
-
-                $booking->update([
-                    'status' => $newStatus,
-                    'payment_status' => $refundAmount > 0.001
-                        ? BusPaymentStatus::Pending
-                        : $booking->payment_status,
-                ]);
-
-                Log::info('Bus booking cancelled successfully', [
-                    'booking_id' => $booking->id,
-                    'refund_id' => $refund->id,
-                    'new_status' => $newStatus->value,
-                    'user_id' => $userId,
-                ]);
-
-                return $refund->load(['booking', 'account', 'transaction', 'createdBy']);
+                $newStatus = match (true) {                    $refundAmount > 0.001 => BusBookingStatus::Refunded,                    $totalPenalties > 0.001 => BusBookingStatus::PartiallyRefunded,                    default => BusBookingStatus::Cancelled,                };                $booking->update([                    'status' => $newStatus,                    'payment_status' => $refundAmount > 0.001                        ? BusPaymentStatus::Pending                        : $booking->payment_status,                ]);                Log::info('Bus booking cancelled successfully', [                    'booking_id' => $booking->id,                    'refund_id' => $refund->id,                    'new_status' => $newStatus->value,                    'user_id' => $userId,                ]);                return $refund->load(['booking', 'account', 'transaction', 'createdBy']);
             });
         } catch (\InvalidArgumentException $e) {
             throw $e;

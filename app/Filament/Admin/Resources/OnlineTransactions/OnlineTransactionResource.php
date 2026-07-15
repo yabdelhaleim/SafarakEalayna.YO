@@ -261,11 +261,7 @@ class OnlineTransactionResource extends Resource
 
                 TextColumn::make('status', 'الحالة')
                     ->badge()
-                    ->color(fn ($state) => match ($state instanceof OnlineTransactionStatus ? $state->value : $state) {
-                        'completed' => 'success',
-                        'pending' => 'warning',
-                        'failed' => 'danger',
-                        default => 'gray',
+                    ->color(fn ($state) => match ($state instanceof OnlineTransactionStatus ? $state->value : $state) {                        'completed' => 'success',                        'pending' => 'warning',                        'failed' => 'danger',                        default => 'gray',
                     })
                     ->formatStateUsing(fn ($state) => $state instanceof OnlineTransactionStatus
                         ? $state->label()

@@ -41,8 +41,8 @@ class FlightDashboardController extends Controller
         $treasuryService = app(\App\Services\Finance\TreasuryService::class);
 
         // Safe enum comparison
-        $cashboxes = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Cashbox->value, AccountType::Treasury->value], true));
-        $banks = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Bank->value, AccountType::Post->value], true));
+        $cashboxes = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Cashbox->value, AccountType::Bank->value], true));
+        $banks = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Bank->value], true));
         $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
         $cashboxCount = $cashboxes->count();

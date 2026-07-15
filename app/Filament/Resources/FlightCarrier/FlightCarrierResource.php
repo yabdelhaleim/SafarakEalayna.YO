@@ -154,12 +154,7 @@ class FlightCarrierResource extends Resource
                 Tables\Columns\TextColumn::make('currency')
                     ->label('العملة')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'EGP' => 'success',
-                        'KWD' => 'warning',
-                        'SAR' => 'info',
-                        'USD' => 'primary',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match ($state) {                        'EGP' => 'success',                        'KWD' => 'warning',                        'SAR' => 'info',                        'USD' => 'primary',                        default => 'gray',
                     }),
 
                 Tables\Columns\TextColumn::make('balance')
@@ -316,12 +311,7 @@ class FlightCarrierResource extends Resource
      */
     protected static function accountOptionsForCarrier(FlightCarrier $carrier): array
     {
-        $types = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $types = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         return Account::query()
             ->where('is_active', true)
@@ -354,7 +344,7 @@ class FlightCarrierResource extends Resource
 
         $typeLabel = match ($typeVal) {
             AccountType::Cashbox->value => 'نقدي / درج',
-            AccountType::Treasury->value => 'خزينة عامة',
+            AccountType::Bank->value => 'خزينة عامة',
             AccountType::Bank->value => 'بنك',
             default => $typeVal,
         };

@@ -20,7 +20,7 @@ class CreateBankAccount extends CreateRecord
         $data['type'] = $data['type'] ?? AccountType::Bank->value;
 
         // Guard: this resource only exposes Bank + Post; reject anything else explicitly.
-        if (! in_array($data['type'], [AccountType::Bank->value, AccountType::Post->value], true)) {
+        if (! in_array($data['type'], [AccountType::Bank->value], true)) {
             $data['type'] = AccountType::Bank->value;
         }
 

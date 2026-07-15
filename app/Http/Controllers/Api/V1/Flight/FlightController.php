@@ -321,14 +321,21 @@ class FlightController extends Controller
     }
 
     /**
-     * Soft delete a flight booking.
+     * Soft delete a flight booking WITH full financial reversal.
+     *
+     * See FlightBookingService::deleteBookingWithReversal — that is the canonical
+     * implementation. This controller method is a thin pass-through that:
+     *   1. Honors the project's "Soft Delete + Financial Reversal" rule.
+     *   2. Replaces the old `deleteBooking()` path (which used to require status=PENDING
+     *      + no payments — too restrictive for real-world admin workflows).
      */
     public function destroy(FlightBooking $flightBooking): JsonResponse
     {
         try {
-            $this->bookingService->deleteBooking($flightBooking);
+            $userId = \Illuminate\Support\Facades\Auth::id() ?: 1;
+            $this->bookingService->deleteBookingWithReversal($flightBooking->id, $userId);
 
-            return ApiResponse::success('Booking deleted successfully.');
+            return ApiResponse::success('تم حذف الحجز مع عكس كل الآثار المحاسبية بنجاح.');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

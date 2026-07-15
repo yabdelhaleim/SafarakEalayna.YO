@@ -145,47 +145,23 @@ class CustomerResource extends Resource
 
                 Tables\Columns\TextColumn::make('nationality')
                     ->label('الجنسية')
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'EG' => 'مصر 🇪🇬',
-                        'SA' => 'السعودية 🇸🇦',
-                        'AE' => 'الإمارات 🇦🇪',
-                        'KW' => 'الكويت 🇰🇼',
-                        'QA' => 'قطر 🇶🇦',
-                        'BH' => 'البحرين 🇧🇭',
-                        'OM' => 'عُمان 🇴🇲',
-                        'JO' => 'الأردن 🇯🇴',
-                        'OTHER' => 'أخرى 🌐',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'EG' => 'مصر 🇪🇬',                        'SA' => 'السعودية 🇸🇦',                        'AE' => 'الإمارات 🇦🇪',                        'KW' => 'الكويت 🇰🇼',                        'QA' => 'قطر 🇶🇦',                        'BH' => 'البحرين 🇧🇭',                        'OM' => 'عُمان 🇴🇲',                        'JO' => 'الأردن 🇯🇴',                        'OTHER' => 'أخرى 🌐',                        default => $state,
                     }),
 
                  Tables\Columns\TextColumn::make('status')
                     ->label('الحالة')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'active' => 'نشط',
-                        'blocked' => 'محظور',
-                        'vip' => 'VIP ⭐️',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'active' => 'نشط',                        'blocked' => 'محظور',                        'vip' => 'VIP ⭐️',                        default => $state,
                     })
-                    ->color(fn ($state) => match($state) {
-                        'active' => 'success',
-                        'blocked' => 'danger',
-                        'vip' => 'warning',
-                        default => 'gray',
+                    ->color(fn ($state) => match($state) {                        'active' => 'success',                        'blocked' => 'danger',                        'vip' => 'warning',                        default => 'gray',
                     }),
 
                 Tables\Columns\TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'individual', \App\Enums\CustomerType::Individual => 'عميل فردي',
-                        'company', \App\Enums\CustomerType::Company => 'شركة',
-                        default => $state instanceof \App\Enums\CustomerType ? $state->label() : $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'individual', \App\Enums\CustomerType::Individual => 'عميل فردي',                        'company', \App\Enums\CustomerType::Company => 'شركة',                        default => $state instanceof \App\Enums\CustomerType ? $state->label() : $state,
                     })
-                    ->color(fn ($state) => match($state) {
-                        'individual', \App\Enums\CustomerType::Individual => 'gray',
-                        'company', \App\Enums\CustomerType::Company => 'info',
-                        default => 'gray',
+                    ->color(fn ($state) => match($state) {                        'individual', \App\Enums\CustomerType::Individual => 'gray',                        'company', \App\Enums\CustomerType::Company => 'info',                        default => 'gray',
                     }),
 
                 Tables\Columns\TextColumn::make('total_spent')

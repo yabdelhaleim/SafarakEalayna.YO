@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'flight_carrier_id',
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class AirlineCredit extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'flight_carrier_id',
         'customer_id',
@@ -72,5 +75,35 @@ class AirlineCredit extends Model
     public function scopeExpired(Builder $query): Builder
     {
         return $query->where('status', 'expired');
+    }
+
+    public function scopeCancelled(Builder $query): Builder
+    {
+        return $query->where('status', 'cancelled');
+    }
+
+    /**
+     * Cancel this voucher: change status to 'cancelled' + soft-delete the row.
+     *
+     * Per the project rule: AirlineCredit is a *future-use voucher* — it NEVER had
+     * a corresponding GL entry at creation time (see RefundService::processRefundRequest
+     * branch A at L95-117), so there is no GL to reverse here. The only thing we
+     * do is make sure the customer/carrier can no longer use or list this credit.
+     *
+     * Safe to call multiple times (idempotent) — if already cancelled the second call
+     * is a no-op.
+     */
+    public function cancelCredit(): bool
+    {
+        if ($this->status === 'cancelled' && $this->trashed()) {
+            return false; // Already cancelled
+        }
+
+        $this->status = 'cancelled';
+        $this->save();
+
+        $this->delete(); // Soft delete (SoftDeletes trait)
+
+        return true;
     }
 }

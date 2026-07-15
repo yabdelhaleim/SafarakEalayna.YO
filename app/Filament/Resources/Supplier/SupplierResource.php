@@ -121,11 +121,7 @@ class SupplierResource extends Resource
 
                 TextColumn::make('type', 'النوع')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'individual' => 'فرد',
-                        'company' => 'شركة',
-                        'government' => 'حكومي',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'individual' => 'فرد',                        'company' => 'شركة',                        'government' => 'حكومي',                        default => $state,
                     }),
 
                 TextColumn::make('contact_person', 'المسؤول')

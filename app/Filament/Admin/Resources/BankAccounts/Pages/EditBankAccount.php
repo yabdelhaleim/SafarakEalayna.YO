@@ -18,7 +18,7 @@ class EditBankAccount extends EditRecord
         // Honor the user's selection from the dropdown (Bank / Post).
         $data['type'] = $data['type'] ?? AccountType::Bank->value;
 
-        if (! in_array($data['type'], [AccountType::Bank->value, AccountType::Post->value], true)) {
+        if (! in_array($data['type'], [AccountType::Bank->value], true)) {
             $data['type'] = AccountType::Bank->value;
         }
 

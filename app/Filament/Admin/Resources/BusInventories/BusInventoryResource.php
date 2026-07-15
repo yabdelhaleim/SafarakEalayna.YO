@@ -215,10 +215,7 @@ class BusInventoryResource extends Resource
                         'cash' => 'success',
                         'deferred' => 'warning',
                     ])
-                    ->formatStateUsing(fn ($state) => match($state) {
-                        'cash' => 'نقدي',
-                        'deferred' => 'آجل',
-                        default => $state,
+                    ->formatStateUsing(fn ($state) => match($state) {                        'cash' => 'نقدي',                        'deferred' => 'آجل',                        default => $state,
                     }),
 
                 BadgeColumn::make('is_fully_paid', 'سداد التكلفة')

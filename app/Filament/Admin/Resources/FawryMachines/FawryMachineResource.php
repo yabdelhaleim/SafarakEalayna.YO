@@ -103,20 +103,9 @@ class FawryMachineResource extends Resource
                 TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'fawry' => 'فوري',
-                        'aman' => 'أمان',
-                        'momtaz' => 'ممتاز',
-                        'masary' => 'مصاري',
-                        'other' => 'أخرى',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'fawry' => 'فوري',                        'aman' => 'أمان',                        'momtaz' => 'ممتاز',                        'masary' => 'مصاري',                        'other' => 'أخرى',                        default => $state,
                     })
-                    ->color(fn (string $state): string => match ($state) {
-                        'fawry' => 'success',
-                        'aman' => 'warning',
-                        'momtaz' => 'info',
-                        'masary' => 'danger',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match ($state) {                        'fawry' => 'success',                        'aman' => 'warning',                        'momtaz' => 'info',                        'masary' => 'danger',                        default => 'gray',
                     })
                     ->sortable(),
 

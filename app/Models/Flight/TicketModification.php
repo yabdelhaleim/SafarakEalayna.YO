@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'booking_id',
@@ -38,6 +39,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class TicketModification extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'booking_id',
         'modification_type',

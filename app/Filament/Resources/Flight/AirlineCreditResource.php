@@ -123,11 +123,7 @@ class AirlineCreditResource extends Resource
                         'warning' => 'used',
                         'danger' => 'expired',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'active' => 'نشط',
-                        'used' => 'مستعمل',
-                        'expired' => 'منتهي',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'active' => 'نشط',                        'used' => 'مستعمل',                        'expired' => 'منتهي',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('expiry_date')

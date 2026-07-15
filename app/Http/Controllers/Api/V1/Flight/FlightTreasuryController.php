@@ -35,13 +35,7 @@ class FlightTreasuryController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'code', 'flight_system_id', 'currency', 'balance', 'credit_limit', 'is_active']);
 
-        $accountTypes = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-            AccountType::Post->value,
-        ];
+        $accountTypes = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         $accounts = Account::query()
             ->where('is_active', true)

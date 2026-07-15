@@ -52,7 +52,7 @@ class RechargeFlightSystemRequest extends FormRequest
             }
 
             $type = $account->type instanceof AccountType ? $account->type : AccountType::tryFrom((string) $account->type);
-            $allowed = [AccountType::Cashbox, AccountType::Wallet, AccountType::Bank, AccountType::Treasury];
+            $allowed = [AccountType::Cashbox, AccountType::Wallet, AccountType::Bank, AccountType::Bank];
             if (! $type || ! in_array($type, $allowed, true)) {
                 $v->errors()->add('from_account_id', 'نوع الحساب غير مسموح للشحن (استخدم نقدي/خزينة/بنك/محفظة).');
             }

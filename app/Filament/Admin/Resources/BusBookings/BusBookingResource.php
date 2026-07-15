@@ -249,13 +249,7 @@ class BusBookingResource extends Resource
                     ->color(function ($state): string {
                         $s = $state instanceof BusPaymentStatus ? $state : BusPaymentStatus::tryFrom((string) $state);
 
-                        return match ($s) {
-                            BusPaymentStatus::Pending => 'warning',
-                            BusPaymentStatus::Partial => 'info',
-                            BusPaymentStatus::Paid => 'success',
-                            BusPaymentStatus::Overdue => 'danger',
-                            default => 'gray',
-                        };
+                        return match ($s) {                            BusPaymentStatus::Pending => 'warning',                            BusPaymentStatus::Partial => 'info',                            BusPaymentStatus::Paid => 'success',                            BusPaymentStatus::Overdue => 'danger',                            default => 'gray',                        };
                     }),
 
                 BadgeColumn::make('status', 'الحالة')

@@ -27,15 +27,9 @@ class FlightSystemTransactionsRelationManager extends RelationManager
                 TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => match ($state) {
-                        'debit' => 'خصم',
-                        'credit' => 'إضافة',
-                        default => $state ?? '—',
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {                        'debit' => 'خصم',                        'credit' => 'إضافة',                        default => $state ?? '—',
                     })
-                    ->color(fn (?string $state): string => match ($state) {
-                        'debit' => 'danger',
-                        'credit' => 'success',
-                        default => 'gray',
+                    ->color(fn (?string $state): string => match ($state) {                        'debit' => 'danger',                        'credit' => 'success',                        default => 'gray',
                     }),
                 TextColumn::make('amount')
                     ->label('المبلغ')

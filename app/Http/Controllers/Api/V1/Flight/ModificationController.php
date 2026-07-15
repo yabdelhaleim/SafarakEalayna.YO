@@ -204,4 +204,37 @@ class ModificationController extends Controller
 
         return ApiResponse::success('تم استرجاع سجل التعديلات بنجاح.', $modifications);
     }
+
+    /**
+     * Reverse (delete with financial reversal) a ticket modification.
+     *
+     * Wraps ModificationService::reverseConfirmation which:
+     *  - Restores booking fields (departure_date, destination) from the snapshots.
+     *  - Credits back the AirlineAccount for the airline_change_fee (GAP-aware — see docs/ARCHITECTURE.md § 8.5).
+     *  - Decrements booking.modification_count.
+     *  - Soft-deletes the modification itself.
+     *
+     * Idempotency: ModificationService throws RuntimeException on already-deleted.
+     *
+     * Note on authorization: this is a powerful operation (reverses committed changes),
+     * so we require the same permission as `confirm` (only finance/manager/admin).
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        try {
+            $this->authorizeMatrix($request, 'confirm');
+
+            $userId = Auth::id() ?: 1;
+            $modification = $this->modificationService->reverseConfirmation($id, $userId);
+
+            return ApiResponse::success(
+                'تم حذف طلب التعديل وعكس كل الآثار بنجاح.',
+                $modification->fresh(['booking', 'modifiedBy'])
+            );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error($e->getMessage(), null, 403);
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
 }

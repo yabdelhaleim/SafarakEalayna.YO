@@ -89,15 +89,9 @@ class FlightSystemResource extends Resource
                 Tables\Columns\TextColumn::make('type')
                     ->label('النوع')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'gds' => 'success',
-                        'ndc' => 'warning',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match ($state) {                        'gds' => 'success',                        'ndc' => 'warning',                        default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'gds' => 'GDS',
-                        'ndc' => 'NDC',
-                        default => 'أخرى',
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'gds' => 'GDS',                        'ndc' => 'NDC',                        default => 'أخرى',
                     }),
 
                 Tables\Columns\IconColumn::make('is_active')
@@ -233,12 +227,7 @@ class FlightSystemResource extends Resource
      */
     protected static function accountOptionsForSystem(FlightSystem $system): array
     {
-        $types = [
-            AccountType::Cashbox->value,
-            AccountType::Wallet->value,
-            AccountType::Bank->value,
-            AccountType::Treasury->value,
-        ];
+        $types = [AccountType::Cashbox->value, AccountType::Wallet->value, AccountType::Bank->value];
 
         return Account::query()
             ->where('is_active', true)
@@ -271,7 +260,7 @@ class FlightSystemResource extends Resource
 
         $typeLabel = match ($typeVal) {
             AccountType::Cashbox->value => 'نقدي / درج',
-            AccountType::Treasury->value => 'خزينة عامة',
+            AccountType::Bank->value => 'خزينة عامة',
             AccountType::Bank->value => 'بنك',
             default => $typeVal,
         };

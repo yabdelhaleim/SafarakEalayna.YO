@@ -9,9 +9,10 @@ use App\Models\Flight\TicketModification;
 use App\Services\Flight\ModificationService;
 use BackedEnum;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Tables\Actions\EditAction;
+use Illuminate\Support\Collection;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -193,11 +194,7 @@ class TicketModificationResource extends Resource
                         'warning' => 'destination_change',
                         'success' => 'both',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'date_change' => 'تعديل موعد',
-                        'destination_change' => 'تعديل وجهة',
-                        'both' => 'موعد ووجهة',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'date_change' => 'تعديل موعد',                        'destination_change' => 'تعديل وجهة',                        'both' => 'موعد ووجهة',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('airline_change_fee')
@@ -226,13 +223,7 @@ class TicketModificationResource extends Resource
                         'info' => 'approved',
                         'success' => 'confirmed',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'draft' => 'مسودة',
-                        'pending' => 'انتظار',
-                        'quoted' => 'مسعر',
-                        'approved' => 'معتمد',
-                        'confirmed' => 'مؤكد ومرحل',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'draft' => 'مسودة',                        'pending' => 'انتظار',                        'quoted' => 'مسعر',                        'approved' => 'معتمد',                        'confirmed' => 'مؤكد ومرحل',                        default => $state,
                     }),
 
                 Tables\Columns\BadgeColumn::make('reconciliation_status')
@@ -242,11 +233,7 @@ class TicketModificationResource extends Resource
                         'success' => 'matched',
                         'warning' => 'disputed',
                     ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'unreconciled' => 'غير مسوى',
-                        'matched' => 'مطابق',
-                        'disputed' => 'متنازع عليه',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match ($state) {                        'unreconciled' => 'غير مسوى',                        'matched' => 'مطابق',                        'disputed' => 'متنازع عليه',                        default => $state,
                     }),
 
                 Tables\Columns\TextColumn::make('created_at')
@@ -338,7 +325,53 @@ class TicketModificationResource extends Resource
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    // Custom bulk delete that goes through ModificationService::reverseConfirmation
+                    // (soft-delete + credit AirlineAccount + restore booking fields).
+                    // The default DeleteBulkAction would call Model::delete() directly — NO reversal — GAP.
+                    BulkAction::make('deleteWithReversal')
+                        ->label('حذف مع عكس القيود')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('حذف طلبات التعديل المختارة مع عكس القيود')
+                        ->modalDescription(
+                            'سيتم تنفيذ soft delete + عكس القيود المحاسبية لكل طلب مُعدَّل مُؤكَّد. '
+                            .'سيتم عرض نتيجة كل طلب (نجاح/فشل) في إشعار واحد.'
+                        )
+                        ->modalSubmitActionLabel('نعم، احذف الكل وعكس')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records) {
+                            $userId = auth()->id() ?: 1;
+                            $successCount = 0;
+                            $errors = [];
+
+                            foreach ($records as $record) {
+                                try {
+                                    app(ModificationService::class)->reverseConfirmation($record->id, $userId);
+                                    $successCount++;
+                                } catch (\Throwable $e) {
+                                    $errors[] = "طلب #{$record->id}: " . $e->getMessage();
+                                }
+                            }
+
+                            if ($successCount > 0) {
+                                Notification::make()
+                                    ->title("تم حذف {$successCount} طلب بنجاح")
+                                    ->success()
+                                    ->send();
+                            }
+                            if (! empty($errors)) {
+                                $errorMsg = implode("\n", array_slice($errors, 0, 5));
+                                if (count($errors) > 5) {
+                                    $errorMsg .= "\n... و " . (count($errors) - 5) . ' طلب(ات) أخرى فشلت';
+                                }
+                                Notification::make()
+                                    ->title('فشل ' . count($errors) . ' طلب')
+                                    ->body($errorMsg)
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ]);
     }

@@ -108,32 +108,16 @@ class EmployeeResource extends Resource
 
                 TextColumn::make('employment_type', 'نوع التوظيف')
                     ->badge()
-                    ->color(fn (string $state): string => match($state) {
-                        'full_time' => 'success',
-                        'part_time' => 'warning',
-                        'contract' => 'info',
-                        'temporary' => 'gray',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match($state) {                        'full_time' => 'success',                        'part_time' => 'warning',                        'contract' => 'info',                        'temporary' => 'gray',                        default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => match($state) {
-                        'full_time' => 'دوام كامل',
-                        'part_time' => 'دوام جزئي',
-                        'contract' => 'عقد',
-                        'temporary' => 'مؤقت',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match($state) {                        'full_time' => 'دوام كامل',                        'part_time' => 'دوام جزئي',                        'contract' => 'عقد',                        'temporary' => 'مؤقت',                        default => $state,
                     }),
 
                 TextColumn::make('status', 'الحالة')
                     ->badge()
-                    ->color(fn (string $state): string => match($state) {
-                        'active' => 'success',
-                        'inactive' => 'danger',
-                        default => 'gray',
+                    ->color(fn (string $state): string => match($state) {                        'active' => 'success',                        'inactive' => 'danger',                        default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => match($state) {
-                        'active' => 'نشط',
-                        'inactive' => 'غير نشط',
-                        default => $state,
+                    ->formatStateUsing(fn (string $state): string => match($state) {                        'active' => 'نشط',                        'inactive' => 'غير نشط',                        default => $state,
                     }),
 
                 TextColumn::make('salary', 'الراتب')

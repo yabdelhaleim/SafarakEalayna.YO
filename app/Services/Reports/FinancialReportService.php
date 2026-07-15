@@ -284,9 +284,8 @@ class FinancialReportService
         $since = now()->subHours($hours);
 
         $liquidTypes = [
-            AccountType::Treasury,
-            AccountType::Cashbox,
             AccountType::Bank,
+            AccountType::Cashbox,
             AccountType::Wallet,
         ];
 
@@ -1198,7 +1197,6 @@ if ($department === 'tourism') {
                     'to_date' => $toDate,
                     'category' => 'office',
                 ]);
-
                 $tourismPL = [
                     'revenue' => round((float) ($tourismPlReport['totalRevenues'] ?? 0), 2),
                     'cogs' => round((float) ($tourismPlReport['totalCogs'] ?? 0), 2),
@@ -1223,7 +1221,6 @@ if ($department === 'tourism') {
                 'cogs' => $tourismPL['cogs'],
                 'revenue' => $tourismPL['revenue'],
             ];
-
             $officeReport[$currency] = [
                 'capital' => $officeCapital,
                 'profit' => $officePL['profit'],
@@ -1244,20 +1241,20 @@ if ($department === 'tourism') {
     {
         $systems = FlightSystem::where('currency', $currency)->sum('balance');
         $carriers = FlightCarrier::where('currency', $currency)->sum('balance');
-        
+
         $vaults = Account::tourism()
             ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->where('currency', $currency)
             ->where('is_active', true)
             ->sum('balance');
 
-        $receivables = Customer::whereHas('ledgerAccount', function($q) use ($currency) {
+        $receivables = Customer::whereHas('ledgerAccount', function ($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '>', 0);
-        })->where(function($q) {
+        })->where(function ($q) {
             $q->whereHas('flightBookings')
               ->orWhereHas('hajjUmraBookings')
               ->orWhereHas('visaBookings');
-        })->with('ledgerAccount')->get()->sum(fn($c) => (float)$c->ledgerAccount->balance);
+        })->with('ledgerAccount')->get()->sum(fn ($c) => (float) $c->ledgerAccount->balance);
 
         $payables = 0.0;
         $groups = FlightGroup::with('carrier')->get();
