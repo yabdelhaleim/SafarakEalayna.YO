@@ -162,17 +162,9 @@ final class AccountFormSchema
                             ->label('تعريف الحساب')
                             ->icon(Heroicon::OutlinedBuildingLibrary)
                             ->schema([
-                                Section::make(match ($fixedType) {
-                                    AccountType::Bank => 'بيانات الحساب البنكي',
-                                    AccountType::Wallet => 'بيانات المحفظة الإلكترونية',
-                                    AccountType::Expense => 'بيانات بند المصروف',
-                                    default => 'الاسم والنوع',
+                                Section::make(match ($fixedType) {                                    AccountType::Bank => 'بيانات الحساب البنكي',                                    AccountType::Wallet => 'بيانات المحفظة الإلكترونية',                                    AccountType::Expense => 'بيانات بند المصروف',                                    default => 'الاسم والنوع',
                                 })
-                                    ->description(match ($fixedType) {
-                                        AccountType::Bank => 'يُستخدم في واجهة Vue لاختيار الحساب البنكي الذي تدخل إليه أموال التذاكر والتحصيل.',
-                                        AccountType::Wallet => 'أضف أكثر من محفظة؛ في التشغيل تختار أي محفظة تُسجَّل بها أموال التذاكر.',
-                                        AccountType::Expense => 'يظهر في شاشة المصروفات كتصنيف محاسبي عند تسجيل مصروف تشغيلي من الخزينة.',
-                                        default => 'اختر نوعًا واضحًا: بنك، خزينة، محفظة… يظهر في التقارير والقيود.',
+                                    ->description(match ($fixedType) {                                        AccountType::Bank => 'يُستخدم في واجهة Vue لاختيار الحساب البنكي الذي تدخل إليه أموال التذاكر والتحصيل.',                                        AccountType::Wallet => 'أضف أكثر من محفظة؛ في التشغيل تختار أي محفظة تُسجَّل بها أموال التذاكر.',                                        AccountType::Expense => 'يظهر في شاشة المصروفات كتصنيف محاسبي عند تسجيل مصروف تشغيلي من الخزينة.',                                        default => 'اختر نوعًا واضحًا: بنك، خزينة، محفظة… يظهر في التقارير والقيود.',
                                     })
                                     ->schema($definitionFields)
                                     ->columns(2),
@@ -229,11 +221,7 @@ final class AccountFormSchema
                                             ->label('ملاحظات')
                                             ->rows(4)
                                             ->columnSpanFull()
-                                            ->placeholder(match ($fixedType) {
-                                                AccountType::Bank => 'رقم IBAN، SWIFT، فرع البنك، جهة الاتصال…',
-                                                AccountType::Wallet => 'رقم المحفظة، مزود الخدمة، ملاحظات التحصيل…',
-                                                AccountType::Expense => 'تفاصيل إضافية عن البند، مركز التكلفة، ملاحظات المحاسبة…',
-                                                default => 'رقم IBAN، فرع البنك، جهة الاتصال…',
+                                            ->placeholder(match ($fixedType) {                                                AccountType::Bank => 'رقم IBAN، SWIFT، فرع البنك، جهة الاتصال…',                                                AccountType::Wallet => 'رقم المحفظة، مزود الخدمة، ملاحظات التحصيل…',                                                AccountType::Expense => 'تفاصيل إضافية عن البند، مركز التكلفة، ملاحظات المحاسبة…',                                                default => 'رقم IBAN، فرع البنك، جهة الاتصال…',
                                             }),
                                     ]),
                             ]),
@@ -515,16 +503,7 @@ final class AccountFormSchema
                 ->color('info'),
             TextColumn::make('module_type', 'الوحدة')
                 ->badge()
-                ->formatStateUsing(fn (?string $state): string => match ($state) {
-                    'general' => 'إدارة عليا',
-                    'flights' => 'طيران',
-                    'bus' => 'باصات',
-                    'hajj_umra' => 'حج وعمرة',
-                    'visas' => 'تأشيرات',
-                    'fawry' => 'فوري',
-                    'tourism' => 'سياحة',
-                    'office' => 'مكتب',
-                    default => $state ?? '—',
+                ->formatStateUsing(fn (?string $state): string => match ($state) {                    'general' => 'إدارة عليا',                    'flights' => 'طيران',                    'bus' => 'باصات',                    'hajj_umra' => 'حج وعمرة',                    'visas' => 'تأشيرات',                    'fawry' => 'فوري',                    'tourism' => 'سياحة',                    'office' => 'مكتب',                    default => $state ?? '—',
                 })
                 ->toggleable(),
             \Filament\Tables\Columns\IconColumn::make('is_module_vault')

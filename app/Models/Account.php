@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AccountType;
 use App\Enums\WalletProvider;
+use App\Support\Finance\AccountModuleContract;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +22,24 @@ class Account extends Model
 
     public const OWNER_TYPE_OFFICE = 'office';
 
+    /**
+     * Mass-assignable attributes.
+     *
+     * Module classification fields:
+     *  - `module_type` — strict classification column. Must be one of
+     *    {@see \App\Support\Finance\AccountModuleContract::OFFICE_MODULE_TYPE},
+     *    {@see \App\Support\Finance\AccountModuleContract::TOURISM_MODULE_TYPE},
+     *    or a specific module inside the appropriate division.
+     *  - `module` — optional preferred-label / alias column. `null` means
+     *    the account is truly shared across all modules of its division.
+     *    A non-null value narrows the display label but does NOT change
+     *    the division membership.
+     *
+     * See {@see \App\Support\Finance\AccountModuleContract} for the
+     * division / alias contract that this project commits to.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'name',
         'type',
@@ -87,6 +106,83 @@ class Account extends Model
             if ($type !== AccountType::Wallet) {
                 $account->wallet_provider = null;
                 $account->wallet_number = null;
+            }
+
+            // Phase 3 + Phase 3.5: enforce the office/tourism division contract
+            // for `module_type` based on the AccountType.
+            //
+            // ─────────────────────────────────────────────────────────────────
+            // RULE (dual-meaning)
+            //   Liquidity accounts (cashbox / wallet / bank)
+            //     → module_type MUST be a DIVISION ('office' or 'tourism').
+            //       They are unified within a division; the pool appears in
+            //       every module's dropdown under that division (Phase 6).
+            //
+            //   Subject accounts (customer / supplier)
+            //     → module_type MUST be a SPECIFIC module (bus, fawry, online,
+            //       wallet_transfer, flights, hajj_umra, visas). Customers of
+            //       one module are tracked separately from customers of another
+            //       module even when both sit under the same division.
+            //
+            //   Internal accounts (expense / revenue / liability / owner)
+            //     → constraint enforced at config level (clearing rows); the
+            //       hook does not over-restrict here.
+            // ─────────────────────────────────────────────────────────────────
+            $moduleType = $account->module_type instanceof \BackedEnum
+                ? $account->module_type->value
+                : (string) ($account->module_type ?? '');
+            $moduleTypeLower = strtolower($moduleType);
+
+            $isLiquidity = $type !== null
+                && in_array($typeValue, AccountModuleContract::LIQUIDITY_TYPES, true);
+            $isSubject = $type !== null
+                && in_array($typeValue, AccountModuleContract::SUBJECT_TYPES, true);
+
+            if ($isLiquidity) {
+                $validDivisions = [
+                    AccountModuleContract::OFFICE_MODULE_TYPE,
+                    AccountModuleContract::TOURISM_MODULE_TYPE,
+                ];
+                if (! in_array($moduleTypeLower, $validDivisions, true)) {
+                    throw new \InvalidArgumentException(
+                        'Liquidity accounts ('
+                        . implode('/', AccountModuleContract::LIQUIDITY_TYPES)
+                        . ') require module_type to be a DIVISION — got "' . $moduleTypeLower . '"'
+                        . '. Use "' . AccountModuleContract::OFFICE_MODULE_TYPE
+                        . '" (bus/fawry/online/wallet_transfer) or "'
+                        . AccountModuleContract::TOURISM_MODULE_TYPE
+                        . '" (flights/hajj_umra/visas). See '
+                        . 'App\\Support\\Finance\\AccountModuleContract for the contract.'
+                    );
+                }
+            } elseif ($isSubject) {
+                $reservedForLiquidity = [
+                    AccountModuleContract::OFFICE_MODULE_TYPE,
+                    AccountModuleContract::TOURISM_MODULE_TYPE,
+                ];
+                $allowedModules = array_merge(
+                    AccountModuleContract::OFFICE_DIVISION_MODULES,
+                    AccountModuleContract::TOURISM_DIVISION_MODULES
+                );
+                $allowedModules = array_diff($allowedModules, $reservedForLiquidity);
+                $allowedModules = array_values(array_unique($allowedModules));
+
+                if ($moduleTypeLower === ''
+                    || in_array($moduleTypeLower, $reservedForLiquidity, true)
+                    || ! in_array($moduleTypeLower, $allowedModules, true)
+                ) {
+                    throw new \InvalidArgumentException(
+                        'Subject accounts ('
+                        . implode('/', AccountModuleContract::SUBJECT_TYPES)
+                        . ') require module_type to be a SPECIFIC module — got "' . $moduleTypeLower . '"'
+                        . '. Use one of: ' . implode(', ', $allowedModules)
+                        . '. The division names "'
+                        . AccountModuleContract::OFFICE_MODULE_TYPE . '" and "'
+                        . AccountModuleContract::TOURISM_MODULE_TYPE
+                        . '" are RESERVED for liquidity vaults. See '
+                        . 'App\\Support\\Finance\\AccountModuleContract for the contract.'
+                    );
+                }
             }
 
             if ($account->module_type && ! $account->module) {
@@ -180,16 +276,53 @@ class Account extends Model
         });
     }
 
+    /**
+     * Filter accounts belonging to the Tourism division
+     * (flights, hajj_umra, visas). Uses `module_type` STRICTLY.
+     *
+     * For division-aware matching via the `module` alias column, see
+     * {@see \App\Support\Finance\AccountModuleContract::divisionFor()}.
+     *
+     * NOTE: This scope intentionally uses the legacy
+     * `AccountModuleDivision::TOURISM` array (which currently equals the
+     * contract's `TOURISM_DIVISION_MODULES`). Future versions may swap
+     * the source to the Contract class without behavior change.
+     */
     public function scopeTourism($query)
     {
         return $query->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::TOURISM);
     }
 
+    /**
+     * Filter accounts belonging to the Office division
+     * (bus, fawry, online, wallet_transfer). Uses `module_type` STRICTLY.
+     *
+     * For division-aware matching via the `module` alias column, see
+     * {@see \App\Support\Finance\AccountModuleContract::divisionFor()}.
+     *
+     * NOTE: This scope intentionally uses the legacy
+     * `AccountModuleDivision::OFFICE` array (which still contains a
+     * legacy `'general'` entry for backward compatibility with pre-2026
+     * code). The Contract class does NOT include `'general'`.
+     */
     public function scopeOffice($query)
     {
         return $query->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::OFFICE);
     }
 
+    /**
+     * Filter accounts by the `module` column (the per-account preferred label).
+     *
+     * IMPORTANT: This uses the `module` column, NOT `module_type`. Use this
+     * scope when matching an account by its preferred-label alias only
+     * (e.g. for display or when the alias is explicitly known).
+     *
+     * For division-aware matching (the common case during unification),
+     * prefer {@see \App\Support\Finance\AccountModuleContract::divisionFor()}
+     * combined with a `whereIn('module_type', [...])` rather than this scope.
+     *
+     * @see \App\Support\Finance\AccountModuleContract
+     */
     public function scopeModule($query, $module)
     {
         return $query->where('module', $module);
@@ -202,7 +335,7 @@ class Account extends Model
      */
     public function getPaymentStatusAttribute(): string
     {
-        if (in_array($this->type, [AccountType::Cashbox, AccountType::Bank, AccountType::Wallet, AccountType::Treasury], true)) {
+        if (in_array($this->type, [AccountType::Cashbox, AccountType::Bank, AccountType::Wallet, AccountType::Bank], true)) {
             return $this->balance < 0 ? 'partial' : 'paid';
         }
 

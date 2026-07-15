@@ -29,7 +29,14 @@ class CustomerLedgerObserver
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
-            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            // Subject accounts (AR mirroring a real party) are owner-level.
+            // Every other observer/service in the system uses OWNER_TYPE_OWNER
+            // (see FlightGroupObserver, HajjUmraExecutingCompanyObserver,
+            // UmrahSupplierObserver, VisaAgentObserver, plus bus/fawry/flight/
+            // hajj/online/visa/wallet booking services). Customer accounts
+            // belong to the same owner-ledger concept: they mirror the customer,
+            // not a division. office would silently misclassify every new AR.
+            'owner_type' => Account::OWNER_TYPE_OWNER,
             'module_type' => 'office',
             'notes' => 'أُنشئ تلقائياً مع سجل العميل للربط المحاسبي.',
             'created_by' => $userId,
