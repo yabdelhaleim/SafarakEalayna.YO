@@ -37,4 +37,28 @@ class UpdateHajjUmraBookingRequest extends FormRequest
             'passengers.*.subtotal' => ['required_with:passengers', 'numeric', 'min:0'],
         ];
     }
+
+    /**
+     * FIX (GAP #HJ-8, fixed 2026-07-16):
+     *   Arabic error messages for enum validation (Rule::in).
+     *   See StoreHajjUmraBookingRequest for full context.
+     */
+    public function messages(): array
+    {
+        $statusValues = implode('، ', array_keys(HajjUmraStatus::forDropdown()));
+        $passengerCategories = 'adult، child_with_bed، child_no_bed، infant';
+
+        return [
+            'status.Illuminate\Validation\Rules\In' => "قيمة الحالة غير صحيحة. القيم المسموحة: {$statusValues}.",
+            'status.in'                              => "قيمة الحالة غير صحيحة. القيم المسموحة: {$statusValues}.",
+            'status.string'                           => 'قيمة الحالة يجب أن تكون نصاً.',
+
+            'purchase_price.numeric' => 'سعر الشراء يجب أن يكون رقماً.',
+            'purchase_price.min'     => 'سعر الشراء يجب أن يكون >= 0.',
+            'selling_price.numeric'  => 'سعر البيع يجب أن يكون رقماً.',
+            'selling_price.min'      => 'سعر البيع يجب أن يكون >= 0.',
+
+            'passengers.*.category.in' => "فئة الراكب غير صحيحة. القيم المسموحة: {$passengerCategories}.",
+        ];
+    }
 }

@@ -152,7 +152,7 @@ class ServiceCalculationTest extends TestCase
             'currency' => 'EGP',
             'balance' => 2000,
             'is_active' => true,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
         ]);
 
         Transaction::query()->create([
@@ -196,7 +196,7 @@ class ServiceCalculationTest extends TestCase
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

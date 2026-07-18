@@ -417,6 +417,16 @@ class ProfitLossReportService
      * @param  array<int, string>  $expenseClearing
      * @param  array<int, string>  $prepaidAccounts
      */
+    /**
+     * Public wrapper around classify() so the FinancialReportController
+     * can use the same classification engine from /profit-by-operation.
+     * Same return values (revenue, cogs, expense, refund, null).
+     */
+    public function classifyPublic(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
+    {
+        return $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+    }
+
     private function classify(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
     {
         $type = (string) $tx->type;

@@ -4,7 +4,9 @@ namespace App\Models\Bus;
 
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
+use Database\Factories\Bus\BusCompanyFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,7 +23,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusCompany extends Model
 {
-    use SoftDeletes, ModelDeletionGuard;
+    use SoftDeletes, ModelDeletionGuard, HasFactory;
+
+    /**
+     * Factory is namespaced under Database\Factories\Bus\* — explicit resolver
+     * is required because Laravel's default `Database\Factories\{Model}Factory`
+     * convention does not match the sub-namespace.
+     */
+    protected static function newFactory(): \Database\Factories\Bus\BusCompanyFactory
+    {
+        return BusCompanyFactory::new();
+    }
 
     public function account(): BelongsTo
     {

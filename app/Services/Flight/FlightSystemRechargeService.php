@@ -79,6 +79,20 @@ class FlightSystemRechargeService
         return DB::transaction(function () use ($system, $source, $amount, $notes) {
 
             // ─────────────────────────────────────────────────────────────
+            // Bug #C2 fix: enforce currency match between source account and system
+            // (same as FlightCarrierRechargeService line 70-76). Without this check,
+            // a recharge from EGP source to a USD system would silently post a USD
+            // credit to the system while the prepaid GL was funded in EGP — balance desync.
+            // ─────────────────────────────────────────────────────────────
+            if (strtoupper($source->currency) !== strtoupper($system->currency)) {
+                throw new \RuntimeException(
+                    "تضارب في العملة: الحساب المصدر ({$source->currency}) ".
+                    "لا يتطابق مع عملة نظام الحجز ({$system->currency}). ".
+                    "استخدم حساب بنفس عملة النظام."
+                );
+            }
+
+            // ─────────────────────────────────────────────────────────────
             // [1] Defense-in-Depth: قفل كل الـ rows بالترتيب التصاعدي للـ ID
             // ─────────────────────────────────────────────────────────────
             $prepaidId = $this->ledgerClearingAccounts->prepaidAccountId('flight_system');

@@ -53,7 +53,7 @@ class BusApiTest extends TestCase
             'balance' => 50000.00,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
             'created_by' => $this->user->id,
         ]);
@@ -150,7 +150,7 @@ class BusApiTest extends TestCase
             'balance' => 1000,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 
@@ -170,7 +170,7 @@ class BusApiTest extends TestCase
             'balance' => 1000,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 
@@ -197,7 +197,7 @@ class BusApiTest extends TestCase
             'balance' => 5000,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 

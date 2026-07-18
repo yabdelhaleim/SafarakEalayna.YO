@@ -66,7 +66,7 @@ class PrepaidCogsTest extends TestCase
             'balance' => 100000.00,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 

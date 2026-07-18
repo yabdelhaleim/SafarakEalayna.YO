@@ -21,6 +21,7 @@ class AccountFactory extends Factory
                 AccountType::Bank,
             ]),
             'owner_type' => Account::OWNER_TYPE_OWNER,
+            'module_type' => 'office',
             'currency' => $this->faker->randomElement(['EGP', 'USD', 'EUR', 'SAR', 'KWD']),
             'balance' => $this->faker->randomFloat(2, 1000, 100000),
             'is_active' => $this->faker->boolean(90),

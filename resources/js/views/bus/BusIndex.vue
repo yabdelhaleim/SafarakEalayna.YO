@@ -134,6 +134,31 @@
         @change="onFilterChange"
       />
 
+      <!--
+        Phase 6.2 — Bus #B-01 fix
+        The Vue store declared `route_from` / `route_to` filters but the UI
+        had no inputs to set them, so users had no way to narrow the list
+        by path. Adding the inputs here mirrors the BusBookingService
+        filter that the backend now honours (LIKE '%X%' against the
+        inventory's `route` column).
+      -->
+      <input
+        v-model="store.filters.route_from"
+        type="text"
+        placeholder="من (مثل: القاهرة)"
+        dir="rtl"
+        class="px-4 py-2.5 bg-input-bg border border-white/5 rounded-xl focus:border-gold outline-none text-sm min-w-[140px]"
+        @input="onSearchInput"
+      />
+      <input
+        v-model="store.filters.route_to"
+        type="text"
+        placeholder="إلى (مثل: أسوان)"
+        dir="rtl"
+        class="px-4 py-2.5 bg-input-bg border border-white/5 rounded-xl focus:border-gold outline-none text-sm min-w-[140px]"
+        @input="onSearchInput"
+      />
+
       <button @click="clearFilters" class="text-sm text-text-muted hover:text-gold transition-colors px-4 py-2">
         مسح الفلاتر
       </button>

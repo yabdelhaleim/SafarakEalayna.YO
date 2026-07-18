@@ -7,8 +7,10 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
+use Database\Factories\Bus\BusInventoryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,11 +33,18 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'transaction_id',
     'is_auto_created',
     'notes',
+    'currency',
+    'exchange_rate_to_egp',
     'created_by',
 ])]
 class BusInventory extends Model
 {
-    use SoftDeletes, ModelDeletionGuard;
+    use SoftDeletes, ModelDeletionGuard, HasFactory;
+
+    protected static function newFactory(): BusInventoryFactory
+    {
+        return BusInventoryFactory::new();
+    }
 
     protected function casts(): array
     {
@@ -47,6 +56,8 @@ class BusInventory extends Model
             'amount_paid' => 'decimal:2',
             'remaining_debt' => 'decimal:2',
             'travel_date' => 'date',
+            'currency' => 'string',
+            'exchange_rate_to_egp' => 'decimal:6',
         ];
     }
 

@@ -14,6 +14,7 @@ use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
 use App\Models\Employee;
+use App\Services\Finance\CurrencyService;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
@@ -95,6 +96,30 @@ class BusBookingService
             $query->whereHas('inventory', fn ($q) => $q->whereDate('travel_date', '<=', $filters['date_to']));
         }
 
+        // ── NEW (Phase 6.2 — bug fix): route_from / route_to filters ─────────
+        // The Vue BusIndex.vue / busStore.js declare these filters in `state.filters`
+        // but the backend never applied them, so the dropdowns silently returned
+        // unfiltered results. We now split the inventory route on the common
+        // ' - ' / ' ← ' / ' → ' separators and apply a LIKE match on each side.
+        if (isset($filters['route_from']) && ($rf = trim((string) $filters['route_from'])) !== '') {
+            $query->whereHas('inventory', function ($q) use ($rf) {
+                // Match either a literal prefix or any route column starting with this token.
+                $q->where('route', 'like', $rf.'%')
+                    ->orWhere('route', 'like', $rf.' -%')
+                    ->orWhere('route', 'like', $rf.' ←%')
+                    ->orWhere('route', 'like', $rf.' →%');
+            });
+        }
+        if (isset($filters['route_to']) && ($rt = trim((string) $filters['route_to'])) !== '') {
+            $query->whereHas('inventory', function ($q) use ($rt) {
+                // Match either a literal suffix or any route column ending with this token.
+                $q->where('route', 'like', '%- '.$rt)
+                    ->orWhere('route', 'like', '%← '.$rt)
+                    ->orWhere('route', 'like', '%→ '.$rt)
+                    ->orWhere('route', 'like', '%'.$rt);
+            });
+        }
+
         $perPage = min((int) ($filters['per_page'] ?? 15), 100);
         $page = max(1, (int) ($filters['page'] ?? 1));
 
@@ -139,6 +164,12 @@ class BusBookingService
      *   A) inventory_id provided → use existing Filament-managed inventory
      *   B) company_id + route + selling_price → auto-create inventory (deferred/آجل)
      *
+     * Multi-currency contract (Phase 6 — multi-currency wiring):
+     *   - Inventory's currency is the BOOKING's currency (mirrored).
+     *   - Customer AR account is created in booking currency (with FX tag).
+     *   - Company debt is always posted in EGP (operating currency).
+     *   - Income clearing offset is always in EGP (system-wide pivot).
+     *
      * @param  array  $data  Validated booking data
      *
      * @throws \Exception
@@ -163,6 +194,16 @@ class BusBookingService
                 } else {
                     // Mode B: manual route → find-or-create auto inventory
                     $inventory = $this->findOrCreateAutoInventory($data);
+                }
+
+                // ── Resolve currency + FX snapshot from inventory ────────────────
+                $bookingCurrency = strtoupper((string) ($inventory->currency ?? 'EGP'));
+                $bookingFxRate = (float) ($inventory->exchange_rate_to_egp ?? 1.0);
+                if ($bookingCurrency !== 'EGP' && $bookingFxRate <= 0) {
+                    throw new \InvalidArgumentException(
+                        "Cannot book inventory #{$inventory->id}: it is priced in {$bookingCurrency} ".
+                        'but has no exchange_rate_to_egp snapshot. Re-save the inventory with a valid rate.'
+                    );
                 }
 
                 // ── Resolve customer ────────────────────────────────────────────
@@ -202,7 +243,7 @@ class BusBookingService
                 // Wrapped in BusBooking::runProfitMutation() so the ModelProfitMutationGuard lets
                 // the canonical `profit` write through — see BusBooking::booted()
                 // saving observer.
-                $booking = BusBooking::runProfitMutation(function () use ($inventory, $customerId, $employeeId, $data, $unitPrice, $totalPrice, $profit) {
+                $booking = BusBooking::runProfitMutation(function () use ($inventory, $customerId, $employeeId, $data, $unitPrice, $totalPrice, $profit, $bookingCurrency, $bookingFxRate) {
                     return BusBooking::create([
                         'inventory_id' => $inventory->id,
                         'customer_id' => $customerId,
@@ -214,19 +255,30 @@ class BusBookingService
                         'payment_status' => BusPaymentStatus::Pending,
                         'profit' => $profit,
                         'status' => BusBookingStatus::Pending,
+                        'currency' => $bookingCurrency,
+                        'exchange_rate_to_egp' => $bookingFxRate,
                         'notes' => $data['notes'] ?? null,
                         'created_by' => Auth::id(),
                     ]);
                 });
 
-                // ✅ Record company debt (cost) if company exists
+                // ── Company debt posting (always in EGP) ────────────────────────
                 $company = $inventory->company;
                 if ($company && $costPerTicket > 0) {
                     $companyService = app(BusCompanyService::class);
                     $companyAccount = $companyService->ensureCompanyAccount($company);
                     $company->account_id = $companyAccount->id;
 
-                    $totalCost = $costPerTicket * $data['quantity'];
+                    // The supplier ledger is always EGP (operating currency).
+                    // Convert the foreign cost up-front to EGP so the
+                    // same-currency transfer posts the right figure.
+                    $totalCostForeign = $costPerTicket * $data['quantity'];
+                    $totalCostEgp = $totalCostForeign; // default: same-currency case
+                    if ($bookingCurrency !== 'EGP') {
+                        $converted = $this->convertAmount($totalCostForeign, $bookingCurrency, 'EGP');
+                        $totalCostEgp = round((float) $converted['to_amount'], 2);
+                    }
+
                     $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                     // يمنع تسجيل الإيراد بدون COGS — يؤدي لتضخيم صافي الربح
@@ -238,18 +290,21 @@ class BusBookingService
                     }
 
                     $this->transactionService->recordJournalTransfer([
-                        'amount' => $totalCost,
+                        'amount' => $totalCostEgp,
                         'from_account_id' => $company->account_id,
                         'to_account_id' => $clearingAccountId,
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
-                        'notes' => 'تكلفة حجز باص #'.$booking->id.' — '.$inventory->route,
+                        'notes' => 'تكلفة حجز باص #'.$booking->id.' — '.$inventory->route.
+                            ($bookingCurrency !== 'EGP'
+                                ? " ({$totalCostForeign} {$bookingCurrency} → {$totalCostEgp} EGP)"
+                                : ''),
                         'allow_from_negative' => true,
                     ]);
                 }
 
-                // ✅ Record sale on customer ledger (Debt / مديونية)
+                // ── Customer sale posting ────────────────────────────────────────
                 $this->recordSaleToCustomer(
                     $booking,
                     (int) $customerId,
@@ -265,6 +320,8 @@ class BusBookingService
                     'employee_id' => $employeeId,
                     'quantity' => $data['quantity'],
                     'route' => $inventory->route,
+                    'currency' => $bookingCurrency,
+                    'fx_rate_to_egp' => $bookingFxRate,
                     'user_id' => Auth::id(),
                 ]);
 
@@ -289,22 +346,41 @@ class BusBookingService
     }
 
     /**
+     * Convert an amount from one currency to another using the CurrencyService.
+     * Returns the array format expected by TransactionService::recordJournalTransfer.
+     *
+     * @return array{from_amount: float, from_currency: string, to_amount: float, to_currency: string, rate: float}
+     */
+    protected function convertAmount(float $amount, string $fromCurrency, string $toCurrency): array
+    {
+        return app(CurrencyService::class)->convert($amount, $fromCurrency, $toCurrency, now());
+    }
+
+    /**
      * Find an existing auto-created inventory for (company + route + date)
      * or create a new deferred one with unlimited capacity.
      * This is used when booking directly from the Vue.js frontend (no Filament setup needed).
+     *
+     * Bug #B-01 fix: `travel_date` was passed through unchanged, which caused the
+     * dedup query (`where travel_date = '2026-08-01'`) to never match the
+     * existing row (stored as `'2026-08-01 00:00:00'` by the SQLite/MySQL
+     * backend). Normalising to Y-m-d on both write and read paths restores the
+     * dedup invariant.
      */
     protected function findOrCreateAutoInventory(array $data): BusInventory
     {
         $companyId = (int) $data['company_id'];
         $route = trim($data['route']);
-        $sellingPrice = (float) ($data['selling_price'] ?? 0);
-        $costPrice = (float) ($data['cost_price'] ?? $sellingPrice); // سعر الشراء — المديونية للشركة
-        $travelDate = $data['travel_date'] ?? now()->toDateString();
+        $sellingPrice = round((float) ($data['selling_price'] ?? 0), 2);
+        $costPrice = round((float) ($data['cost_price'] ?? $sellingPrice), 2); // سعر الشراء — المديونية للشركة
+        $travelDate = \Carbon\Carbon::parse($data['travel_date'] ?? now())->toDateString();
 
-        // Try to find an existing auto-inventory for same company + route + date + prices
+        // Try to find an existing auto-inventory for same company + route + date + prices.
+        // We compare against `DATE(travel_date)` so the comparison is engine-agnostic
+        // (works on MySQL date columns and SQLite TEXT-stored dates).
         $existing = BusInventory::where('company_id', $companyId)
             ->where('route', $route)
-            ->where('travel_date', $travelDate)
+            ->where(DB::raw('DATE(travel_date)'), $travelDate)
             ->where('selling_price', $sellingPrice)
             ->where('cost_per_ticket', $costPrice)
             ->where('is_auto_created', true)
@@ -387,16 +463,64 @@ class BusBookingService
 
                 $transactionId = null;
                 if ($accountId) {
-                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
-                    $transaction = $this->transactionService->recordIncome([
-                        'amount' => $data['amount'],
+                    $customerAccount = $this->ensureCustomerAccount(
+                        (int) $booking->customer_id,
+                        (string) ($booking->currency ?? 'EGP')
+                    );
+                    $paidAccount = Account::find($accountId);
+                    $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                    $paidAccountCurrency = strtoupper((string) ($paidAccount?->currency ?? 'EGP'));
+
+                    // Phase 7 — FX-aware payment routing:
+                    // The income clearing is ALWAYS EGP (per the saving-hook
+                    // contract), so the FX trigger is "booking currency != EGP".
+                    // When triggered we convert the booking-currency amount into
+                    // an EGP-equivalent for the clearing-side debit (`amount`)
+                    // and keep the original foreign-currency amount as the
+                    // `converted_amount` for the wallet-side credit.
+                    //
+                    // Convention reminder — recordJournalTransfer:
+                    //   amount          → debit on from_account (clearing, EGP)
+                    //   converted_amount→ credit on to_account  (paid_account, foreign)
+                    $incomeArgs = [
+                        'amount' => (float) $data['amount'],
                         'to_account_id' => $accountId,
-                        'contra_account_id' => $customerAccount->id,
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
                         'notes' => $data['notes'] ?? null,
-                    ]);
+                    ];
+
+                    if ($bookingCurrency !== 'EGP' && $bookingCurrency !== $paidAccountCurrency) {
+                        // Booking is foreign AND the pay account is a different currency
+                        // (typically EGP, but possibly another non-EGP currency).
+                        // We need the EGP-equivalent of the booking amount.
+                        $converted = $this->convertAmount(
+                            (float) $data['amount'],
+                            $bookingCurrency,
+                            'EGP'
+                        );
+                        $incomeArgs['amount'] = round((float) $converted['to_amount'], 2);          // EGP (clearing debit)
+                        $incomeArgs['converted_amount'] = round((float) $data['amount'], 2);         // foreign (wallet credit)
+                        $incomeArgs['exchange_rate'] = $converted['rate'];
+                    } elseif ($bookingCurrency !== 'EGP' && $bookingCurrency === $paidAccountCurrency) {
+                        // Booking is foreign AND we pay from a same-currency account (e.g. USD/USD).
+                        // The clearing (EGP) still receives the EGP-equivalent debit;
+                        // the paid_account (foreign, same as booking) receives the exact
+                        // booking amount as credit. We pass converted_amount so the
+                        // wallet side gets the booking-currency amount rather than a
+                        // synthetic 1:1 with the EGP clearing.
+                        $converted = $this->convertAmount(
+                            (float) $data['amount'],
+                            $bookingCurrency,
+                            'EGP'
+                        );
+                        $incomeArgs['amount'] = round((float) $converted['to_amount'], 2);          // EGP (clearing debit)
+                        $incomeArgs['converted_amount'] = round((float) $data['amount'], 2);         // foreign (wallet credit)
+                        $incomeArgs['exchange_rate'] = $converted['rate'];
+                    }
+
+                    $transaction = $this->transactionService->recordIncome($incomeArgs);
                     $payment->update(['transaction_id' => $transaction->id, 'account_id' => $accountId]);
                     $transactionId = $transaction->id;
                 }
@@ -466,7 +590,21 @@ class BusBookingService
                 }
 
                 $inventory = $booking->inventory()->lockForUpdate()->first();
-                $totalCost = (float) ($inventory->cost_per_ticket ?? 0) * (int) $booking->quantity;
+                // Phase 7 — multi-currency cost reversal:
+                // The supplier debt was originally posted in EGP (operating
+                // currency). When cancelling we must reverse the SAME EGP
+                // figure — not the foreign cost as-listed on the inventory.
+                $totalCostForeign = (float) ($inventory->cost_per_ticket ?? 0) * (int) $booking->quantity;
+                $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                $totalCost = $totalCostForeign; // default: same currency
+                if ($bookingCurrency !== 'EGP') {
+                    $converted = $this->convertAmount(
+                        $totalCostForeign,
+                        $bookingCurrency,
+                        'EGP'
+                    );
+                    $totalCost = round((float) $converted['to_amount'], 2);
+                }
                 $companyCreditAmount = max(0, $totalCost - $companyPenalty);
 
                 Log::info('Processing bus booking cancellation', [
@@ -484,37 +622,70 @@ class BusBookingService
 
                 $inventory->increment('available_tickets', $booking->quantity);
 
+                // Phase 7 — Reverse the customer AR in BOTH cases:
+                //   (a) unpaid debt (debtReversalAmount), OR
+                //   (b) the refund amount (when a refund was issued for a paid
+                //       booking — the AR was created at booking time and is
+                //       still on the books until cancellation clears it).
+                // Previously only (a) was handled; the refund scenario left
+                // the customer's AR stranded at +price indefinitely.
                 $debtReversalAmount = max(0, $totalPrice - max($totalPaid, $totalPenalties));
-                $this->reverseCustomerSaleDebt($booking, $debtReversalAmount);
+                $arReversalAmount = $debtReversalAmount + ($refundAmount > 0.001 ? $refundAmount : 0);
+                $this->reverseCustomerSaleDebt($booking, $arReversalAmount);
 
                 $refundLedgerTx = null;
                 if ($refundAmount > 0.001 && ! empty($data['account_id'])) {
+                    // Phase 7 — Multi-currency refund wiring:
+                    // The refund must be posted in the destination account's currency.
+                    // When the booking was priced in a foreign currency (USD/SAR/KWD)
+                    // and the chosen refund account is EGP, we convert via
+                    // CurrencyService and post the EGP-equivalent as same-currency
+                    // journal entry. When currencies match, no conversion is needed.
+                    $refundAccount = Account::query()->lockForUpdate()->find((int) $data['account_id']);
+                    $refundAccountCurrency = strtoupper((string) ($refundAccount?->currency ?? 'EGP'));
+                    $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+
+                    $refundAmountSameCurrency = $refundAmount;
+                    $fxNote = '';
+                    if ($refundAccount && $refundAccountCurrency !== $bookingCurrency) {
+                        $converted = $this->convertAmount($refundAmount, $bookingCurrency, $refundAccountCurrency);
+                        $refundAmountSameCurrency = round((float) $converted['to_amount'], 2);
+                        $fxNote = " ({$refundAmount} {$bookingCurrency} → {$refundAmountSameCurrency} {$refundAccountCurrency})";
+                    }
+
                     $refundLedgerTx = $this->transactionService->recordExpense([
-                        'amount' => $refundAmount,
+                        'amount' => $refundAmountSameCurrency,
                         'from_account_id' => (int) $data['account_id'],
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
-                        'notes' => 'استرداد حجز باص #'.$booking->id,
+                        'notes' => 'استرداد حجز باص #'.$booking->id.$fxNote,
                     ]);
                 }
 
                 $company = $inventory->company;
 
+                // The BusRefundRequest stores the booking-currency snapshot so
+                // downstream reports (refund history, audit log) reflect the
+                // original currency even after the company's reports only display
+                // the EGP-base equivalent.
+                $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                $bookingFxRate = (float) ($booking->exchange_rate_to_egp ?? 1.0);
+
                 $refund = BusRefundRequest::create([
                     'bus_booking_id' => $booking->id,
                     'company_id' => $company?->id ?? $inventory->company_id,
                     'refund_type' => 'cancel',
-                    'original_currency' => 'EGP',
+                    'original_currency' => $bookingCurrency,
                     'original_amount' => $totalPrice,
                     'cancellation_fee' => $totalPenalties,
                     'company_penalty' => $companyPenalty,
                     'office_penalty' => $officePenalty,
                     'total_paid' => $totalPaid,
                     'refund_amount' => $refundAmount,
-                    'refund_currency' => 'EGP',
-                    'refund_exchange_rate' => 1,
-                    'base_currency_refund' => $refundAmount,
+                    'refund_currency' => $bookingCurrency,
+                    'refund_exchange_rate' => $bookingFxRate,
+                    'base_currency_refund' => $refundAmount * $bookingFxRate,
                     'destination' => 'ledger',
                     'account_id' => $data['account_id'] ?? null,
                     'transaction_id' => $refundLedgerTx?->id,
@@ -600,6 +771,14 @@ class BusBookingService
 
     /**
      * Partially or fully reverse customer sale debt on cancellation.
+     *
+     * Phase 7 — multi-currency: the customer's AR account holds the
+     * booking-currency balance (EGP for EGP bookings, USD for USD, etc.).
+     * The income clearing account is always EGP. When currencies differ we
+     * pass the converted `converted_amount` to `recordJournalTransfer` so the
+     * EGP-side clearing posts the right figure (debit-from source = `amount`
+     * in customer currency; credit-to destination = `converted_amount` in
+     * EGP-equivalent).
      */
     protected function reverseCustomerSaleDebt(BusBooking $booking, float $amount): void
     {
@@ -607,14 +786,17 @@ class BusBookingService
             return;
         }
 
-        $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+        $customerAccount = $this->ensureCustomerAccount(
+            (int) $booking->customer_id,
+            (string) ($booking->currency ?? 'EGP')
+        );
         $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
 
         if (! $clearingAccountId || $clearingAccountId === $customerAccount->id) {
             return;
         }
 
-        $this->transactionService->recordJournalTransfer([
+        $journalArgs = [
             'amount' => $amount,
             'from_account_id' => $customerAccount->id,
             'to_account_id' => $clearingAccountId,
@@ -623,7 +805,24 @@ class BusBookingService
             'related_id' => $booking->id,
             'notes' => 'إلغاء مديونية حجز باص #'.$booking->id,
             'allow_from_negative' => true,
-        ]);
+        ];
+
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+        if ($bookingCurrency !== 'EGP' && strtoupper((string) $customerAccount->currency) !== 'EGP') {
+            // Cross-currency posting convention:
+            //   amount           → debit on `from_account` (in from_account currency = foreign customer)
+            //   converted_amount → credit on `to_account` (in to_account currency = EGP clearing)
+            // We therefore:
+            //   1. Compute the EGP-equivalent of the foreign-currency debt.
+            //   2. Set `amount`           = the original foreign-currency amount (customer debit).
+            //   3. Set `converted_amount` = the EGP-equivalent (clearing credit).
+            $converted = $this->convertAmount($amount, $bookingCurrency, 'EGP');
+            $journalArgs['amount'] = round($amount, 2);                              // foreign (customer debit)
+            $journalArgs['converted_amount'] = round((float) $converted['to_amount'], 2); // EGP (clearing credit)
+            $journalArgs['exchange_rate'] = $converted['rate'];
+        }
+
+        $this->transactionService->recordJournalTransfer($journalArgs);
     }
 
     /**
@@ -891,8 +1090,14 @@ class BusBookingService
 
     /**
      * Ensures the customer has a ledger account. Creates one if missing.
+     *
+     * Multi-currency contract:
+     *   - If `$customerCurrency` is supplied (e.g. derived from the booking's
+     *     currency) and the existing account is in EGP, we create a new account
+     *     in the desired currency rather than re-tagging the existing one
+     *     (mixing currencies on one account would corrupt the ledger).
      */
-    protected function ensureCustomerAccount(int $customerId): Account
+    protected function ensureCustomerAccount(int $customerId, ?string $customerCurrency = null): Account
     {
         $customer = Customer::findOrFail($customerId);
 
@@ -914,30 +1119,53 @@ class BusBookingService
                     });
                 }
 
+                // If the booking is in a foreign currency but the existing
+                // customer account is EGP-only, we have to open a second
+                // account in the booking currency and link it back to the
+                // customer. This preserves per-currency balance tracking
+                // — the existing EGP ledger is left intact.
+                if ($customerCurrency && strtoupper($customerCurrency) !== 'EGP'
+                    && strtoupper((string) $account->currency) !== strtoupper($customerCurrency)) {
+                    return $this->createCustomerCurrencyAccount($customer, $customerCurrency);
+                }
+
                 return $account;
             }
         }
 
-        // Create new account for customer
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+        return $this->createCustomerCurrencyAccount($customer, $customerCurrency ?? 'EGP');
+    }
+
+    /**
+     * Create a new customer AR ledger account in the requested currency.
+     */
+    protected function createCustomerCurrencyAccount(Customer $customer, string $currency): Account
+    {
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer, $currency) {
             $account = Account::create([
-                'name' => 'حساب العميل: '.$customer->full_name,
+                'name' => 'حساب العميل: '.$customer->full_name.' ('.strtoupper($currency).')',
                 'type' => AccountType::Customer,
                 'balance' => 0,
-                'currency' => 'EGP',
+                'currency' => strtoupper($currency),
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
                 'module_type' => 'bus',
                 'is_module_vault' => false,
-                'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                'notes' => 'حساب تلقائي للعميل #'.$customer->id.' بعملة '.strtoupper($currency),
                 'created_by' => Auth::id() ?? 1,
             ]);
 
+            // Always link the *primary* AR slot to the new account so future
+            // bus-module queries find it.  If the customer already had an
+            // EGP account, that account is preserved as a 2nd ledger (no
+            // funds are touched) but the new foreign-currency account is the
+            // primary going forward.
             $customer->update(['account_id' => $account->id]);
 
             Log::info('Customer ledger account created automatically (Bus module)', [
                 'customer_id' => $customer->id,
                 'account_id' => $account->id,
+                'currency' => strtoupper($currency),
             ]);
 
             return $account;
@@ -946,10 +1174,23 @@ class BusBookingService
 
     /**
      * Record the sale as a debt on the customer ledger.
+     *
+     * Multi-currency contract:
+     *   - For non-EGP bookings: the customer AR account is in booking currency;
+     *     the income-clearing account is always in EGP. We post a
+     *     cross-currency journal transfer (clearing → customer) with
+     *     `converted_amount` describing the EGP debit on the clearing side
+     *     and the foreign-currency credit on the customer side.
+     *   - For EGP bookings: single-currency posting (no FX required).
      */
     protected function recordSaleToCustomer(BusBooking $booking, int $customerId, float $sellingPrice, int $userId): void
     {
-        $customerAccount = $this->ensureCustomerAccount($customerId);
+        // Pass the booking currency so the AR account is created/opened in the
+        // right currency for cross-currency bookings.
+        $customerAccount = $this->ensureCustomerAccount(
+            $customerId,
+            (string) ($booking->currency ?? 'EGP')
+        );
         $clearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus->value);
 
         if ($clearingAccountId === null) {
@@ -965,7 +1206,7 @@ class BusBookingService
         $booking->loadMissing(['customer', 'inventory']);
         $saleNotes = app(LedgerEntryDescriptionResolver::class)->forBusBooking($booking);
 
-        $tx = $this->transactionService->recordJournalTransfer([
+        $journalArgs = [
             'amount' => $sellingPrice,
             'from_account_id' => $clearingAccountId,
             'to_account_id' => $customerAccount->id,
@@ -975,16 +1216,32 @@ class BusBookingService
             'related_id' => $booking->id,
             'notes' => $saleNotes,
             'created_by' => $userId,
-        ]);
+        ];
 
-        // Optional: save $tx->id to a field like sale_gl_transaction_id if it exists,
-        // but since BusBooking doesn't have it by default, we just record it.
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+        if ($bookingCurrency !== 'EGP') {
+            // Cross-currency posting convention (see TransactionService::recordJournalTransfer):
+            //   amount           → debit on `from_account` (in from_account currency = EGP clearing)
+            //   converted_amount → credit on `to_account` (in to_account currency = USD/SAR/... customer)
+            // We therefore:
+            //   1. Compute the EGP-equivalent of the foreign-currency sale.
+            //   2. Set `amount`           = the EGP-equivalent (clearing-side debit).
+            //   3. Set `converted_amount` = the original foreign-currency amount (customer-side credit).
+            $converted = $this->convertAmount($sellingPrice, $bookingCurrency, 'EGP');
+            $journalArgs['amount'] = round((float) $converted['to_amount'], 2); // EGP
+            $journalArgs['converted_amount'] = round($sellingPrice, 2); // foreign (USD/SAR/...)
+            $journalArgs['exchange_rate'] = $converted['rate'];
+            $journalArgs['allow_from_negative'] = true;
+        }
+
+        $tx = $this->transactionService->recordJournalTransfer($journalArgs);
 
         Log::info('Bus sale recorded on customer ledger', [
             'booking_id' => $booking->id,
             'customer_id' => $customerId,
             'account_id' => $customerAccount->id,
             'amount' => $sellingPrice,
+            'currency' => $bookingCurrency,
         ]);
     }
 }

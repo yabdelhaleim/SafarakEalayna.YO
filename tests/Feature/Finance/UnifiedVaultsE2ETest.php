@@ -4,6 +4,7 @@ namespace Tests\Feature\Finance;
 
 use App\Enums\AccountType;
 use App\Enums\TransactionType;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Transaction;
@@ -46,6 +47,7 @@ use Tests\TestCase;
  */
 class UnifiedVaultsE2ETest extends TestCase
 {
+    use RefreshDatabase;
     protected User $user;
     protected Account $officeVault;
     protected Account $tourismVault;

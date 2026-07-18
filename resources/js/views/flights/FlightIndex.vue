@@ -223,7 +223,7 @@
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex flex-col">
-                    <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} ج.م</span>
+                    <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} {{ booking.pricing.currency || 'EGP' }}</span>
                     <div :class="['flex items-center gap-1 text-[10px] font-bold', booking.pricing.profit >= 0 ? 'text-success' : 'text-error']">
                       <TrendingUp v-if="booking.pricing.profit >= 0" class="w-3 h-3" />
                       <TrendingDown v-else class="w-3 h-3" />

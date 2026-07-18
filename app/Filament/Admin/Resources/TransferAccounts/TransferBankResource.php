@@ -17,24 +17,24 @@ class TransferBankResource extends Resource
 
     protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
 
-    protected static ?string $navigationLabel = 'البنوك والبريد';
+    protected static ?string $navigationLabel = 'بنوك وبريد المكتب';
 
-    protected static ?string $pluralLabel = 'البنوك والبريد';
+    protected static ?string $pluralLabel = 'بنوك وبريد المكتب';
 
-    protected static ?string $modelLabel = 'حساب بنكي/بريدي';
+    protected static ?string $modelLabel = 'حساب بنكي/بريدي للمكتب';
 
     protected static ?int $navigationSort = 20;
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('module_type', 'wallet_transfer')
+            ->where('module_type', 'office')
             ->where('type', AccountType::Bank);
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Bank, 'wallet_transfer');
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Bank, 'office');
     }
 
     public static function table(Table $table): Table

@@ -19,7 +19,7 @@ class PayBusBookingRequest extends FormRequest
         return [
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'required|in:cash,bank_transfer,cash_wallet,postal_transfer,office_safe,office_drawer',
-            'account_id' => ['required', 'integer', 'exists:accounts,id', new BusLiquidityAccount],
+            'account_id' => 'required|integer|exists:accounts,id',
             'notes' => 'nullable|string|max:1000',
         ];
     }
@@ -27,8 +27,13 @@ class PayBusBookingRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            /** @var BusBooking|null $booking */
-            $booking = $this->route('busBooking');
+            // Phase 6.B: the route param is now `int $busBooking` (resolved by id
+            // in the controller), not a BusBooking instance. Accept both shapes.
+            $raw = $this->route('busBooking') ?? $this->route('busBooking');
+            $booking = $raw instanceof BusBooking
+                ? $raw
+                : BusBooking::find((int) $raw);
+
             if (! $booking instanceof BusBooking) {
                 return;
             }
@@ -47,6 +52,28 @@ class PayBusBookingRequest extends FormRequest
                     'amount',
                     'المبلغ يتجاوز المتبقي ('.number_format($remaining, 2).' ج.م).'
                 );
+            }
+
+            // Phase 6.B fix: enforce currency match between booking + payment account.
+            $accountId = (int) $this->input('account_id');
+            if ($accountId > 0) {
+                $account = \App\Models\Account::find($accountId);
+                if ($account) {
+                    $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                    $accountCurrency = strtoupper((string) $account->currency);
+                    if ($bookingCurrency !== $accountCurrency) {
+                        $validator->errors()->add(
+                            'account_id',
+                            "الحجز بعملة {$bookingCurrency} لكن الحساب المختار بعملة {$accountCurrency}. اختر حساباً بنفس عملة الحجز."
+                        );
+                    }
+                    if (! BusLiquidityAccount::belongsToBusModule($account)) {
+                        $validator->errors()->add(
+                            'account_id',
+                            'يجب أن يكون الحساب تابعاً لموديول الباصات أو خزينة قسم المكتب الموحّدة.'
+                        );
+                    }
+                }
             }
         });
     }

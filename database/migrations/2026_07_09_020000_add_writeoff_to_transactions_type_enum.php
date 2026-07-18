@@ -16,21 +16,24 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // ⚠️ IMPORTANT: لازم تضم كل القيم الموجودة فعلاً + 'writeoff'
-        DB::statement("
-            ALTER TABLE transactions
-            MODIFY COLUMN type
-            ENUM('income', 'expense', 'transfer', 'refund', 'writeoff') NOT NULL
-        ");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("
+                ALTER TABLE transactions
+                MODIFY COLUMN type
+                ENUM('income', 'expense', 'transfer', 'refund', 'writeoff') NOT NULL
+            ");
+        }
     }
 
     public function down(): void
     {
-        // Rollback: يرجع الـ enum للوضع الأصلي (بدون writeoff)
-        DB::statement("
-            ALTER TABLE transactions
-            MODIFY COLUMN type
-            ENUM('income', 'expense', 'transfer', 'refund') NOT NULL
-        ");
+        if (DB::getDriverName() !== 'sqlite') {
+            // Rollback: يرجع الـ enum للوضع الأصلي (بدون writeoff)
+            DB::statement("
+                ALTER TABLE transactions
+                MODIFY COLUMN type
+                ENUM('income', 'expense', 'transfer', 'refund') NOT NULL
+            ");
+        }
     }
 };

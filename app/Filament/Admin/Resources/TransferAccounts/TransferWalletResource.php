@@ -17,24 +17,24 @@ class TransferWalletResource extends Resource
 
     protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
 
-    protected static ?string $navigationLabel = 'المحافظ';
+    protected static ?string $navigationLabel = 'محافظ المكتب';
 
-    protected static ?string $pluralLabel = 'المحافظ';
+    protected static ?string $pluralLabel = 'محافظ المكتب';
 
-    protected static ?string $modelLabel = 'محفظة';
+    protected static ?string $modelLabel = 'محفظة للمكتب';
 
     protected static ?int $navigationSort = 10;
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('module_type', 'wallet_transfer')
+            ->where('module_type', 'office')
             ->where('type', AccountType::Wallet);
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Wallet, 'wallet_transfer');
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Wallet, 'office');
     }
 
     public static function table(Table $table): Table

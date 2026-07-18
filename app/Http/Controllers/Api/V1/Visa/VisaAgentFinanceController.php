@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\HajjUmra\VisaAgent;
+use App\Support\Finance\AccountModuleContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -66,8 +67,12 @@ class VisaAgentFinanceController extends Controller
         }
 
         $toAccount = Account::query()->findOrFail((int) $data['to_account_id']);
-        if ($toAccount->module_type !== 'visas') {
-            return ApiResponse::error('يجب اختيار حساب تابع لقسم التأشيرات.', null, 422);
+        // Finding #2 fix: accept any account in the tourism division (visas, flights, hajj_umra,
+        // tourism). Previously this was strict `module_type === 'visas'`, which blocked
+        // legitimate withdrawals into the unified tourism cashbox/bank (which has
+        // module_type='tourism' per AccountModuleContract).
+        if (! AccountModuleContract::isTourismModule($toAccount->module_type)) {
+            return ApiResponse::error('يجب اختيار حساب تابع لقسم السياحة أو التأشيرات.', null, 422);
         }
 
         $tx = app(\App\Services\Finance\TransactionService::class)->recordJournalTransfer([
@@ -97,8 +102,9 @@ class VisaAgentFinanceController extends Controller
         }
 
         $fromAccount = Account::query()->findOrFail((int) $data['from_account_id']);
-        if ($fromAccount->module_type !== 'visas') {
-            return ApiResponse::error('يجب اختيار حساب تابع لقسم التأشيرات.', null, 422);
+        // Finding #2 fix: accept any account in the tourism division (see withdraw() comment).
+        if (! AccountModuleContract::isTourismModule($fromAccount->module_type)) {
+            return ApiResponse::error('يجب اختيار حساب تابع لقسم السياحة أو التأشيرات.', null, 422);
         }
 
         $tx = app(\App\Services\Finance\TransactionService::class)->recordJournalTransfer([

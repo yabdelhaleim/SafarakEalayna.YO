@@ -21,7 +21,7 @@ class HajjUmraTreasuryController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->whereIn('type', $accountTypes)
-            ->where('module_type', 'hajj_umra')
+            ->whereIn('module_type', ['hajj_umra', 'tourism'])
             ->orderBy('type')
             ->orderBy('name')
             ->get([

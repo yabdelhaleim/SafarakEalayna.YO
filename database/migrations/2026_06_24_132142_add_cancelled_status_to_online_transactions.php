@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // MySQL ENUM column — must use raw ALTER TABLE to add new value
-        DB::statement("ALTER TABLE `online_transactions` MODIFY COLUMN `status` ENUM('pending', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'completed'");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE `online_transactions` MODIFY COLUMN `status` ENUM('pending', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'completed'");
+        }
     }
 
     /**
@@ -20,8 +21,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Remove cancelled status — update any cancelled rows to 'failed' first to avoid data loss
-        DB::statement("UPDATE `online_transactions` SET `status` = 'failed' WHERE `status` = 'cancelled'");
-        DB::statement("ALTER TABLE `online_transactions` MODIFY COLUMN `status` ENUM('pending', 'completed', 'failed') NOT NULL DEFAULT 'completed'");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("UPDATE `online_transactions` SET `status` = 'failed' WHERE `status` = 'cancelled'");
+            DB::statement("ALTER TABLE `online_transactions` MODIFY COLUMN `status` ENUM('pending', 'completed', 'failed') NOT NULL DEFAULT 'completed'");
+        }
     }
 };

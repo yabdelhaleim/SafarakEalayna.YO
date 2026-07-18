@@ -433,7 +433,8 @@ const directions = [
 const entityTypes = [
   { label: 'الكل', value: 'all' },
   { label: 'العملاء', value: 'customer' },
-  { label: 'الموردين والشركات', value: 'supplier' }
+  { label: 'الموردين والشركات', value: 'supplier' },
+  { label: 'ناقلين طيران', value: 'flight_carrier' }
 ];
 
 // Modules list based on department selection (cascading filter)

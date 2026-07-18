@@ -48,7 +48,7 @@ class DashboardFinancialStatsTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

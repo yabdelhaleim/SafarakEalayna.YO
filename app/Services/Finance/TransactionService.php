@@ -124,14 +124,35 @@ class TransactionService
      * Record an income / cash receipt.
      * عند وجود حساب إقفال إيرادات للموديول: مدين الإقفال ← دائن الخزينة/الحساب النقدي (قيد متوازن).
      *
+     * ⚠️ Contract: this method always uses the income clearing account as the
+     *    "from" leg of the journal. Callers cannot override this — if a
+     *    custom source account is needed (e.g. for refunds, reversals,
+     *    inter-treasury moves), use {@see self::recordJournalTransfer()}
+     *    directly. Passing `from_account_id` here throws a RuntimeException
+     *    rather than silently ignoring it (Bug #TX-001 fix).
+     *
      * @param  array  $data  Keys: amount, to_account_id, module, contra_account_id?,
      *                       related_type?, related_id?, notes?, created_by?,
      *                       allow_contra_negative? (legacy journal flag, default true for income contra)
      *
+     * @throws \RuntimeException if `from_account_id` is supplied (use recordJournalTransfer instead)
      * @throws \Exception|\Throwable
      */
     public function recordIncome(array $data): Transaction
     {
+        // ✅ Bug #TX-001 fix: reject `from_account_id` explicitly. The income
+        //    clearing account is *always* the from leg of an income record —
+        //    silently ignoring a caller-supplied from_account_id masked bugs
+        //    (e.g. refund flows thought they were pulling cash back from the
+        //    treasury when they were actually pushing more income through
+        //    the clearing account, double-counting revenue).
+        if (isset($data['from_account_id']) && $data['from_account_id'] !== null) {
+            throw new \RuntimeException(
+                'recordIncome() لا يقبل from_account_id — حساب الإيراد دائماً ما يكون حساب إقفال الإيرادات. '.
+                'للحركات العكسية (refund) أو التحويلات الخاصة استخدم recordJournalTransfer().'
+            );
+        }
+
         $strict = (bool) config('accounting.strict_double_entry', true);
         $allowLegacy = (bool) config('accounting.allow_legacy_single_leg_fallback', false);
         $toId = (int) $data['to_account_id'];
@@ -220,7 +241,14 @@ class TransactionService
         return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($transaction) {
             $reversalNote = 'عكس: '.($transaction->notes ?? '');
 
-            if ($transaction->type === TransactionType::Income->value || $transaction->type === TransactionType::Income) {
+            // Finding #1 fix: reversal entry directions flipped to be opposite of the (now flipped) original.
+//   - Income reversal (original was: to gets DEBIT entry, balance += amount):
+//       to.balance -= amount, adds CREDIT entry (was DEBIT).
+//   - Expense reversal (original was: from gets CREDIT entry, balance -= amount):
+//       from.balance += amount, adds DEBIT entry (was CREDIT).
+//   - Transfer reversal (original was: from CREDIT + to DEBIT):
+//       from gets DEBIT (was CREDIT), to gets CREDIT (was DEBIT). Balance updates unchanged.
+if ($transaction->type === TransactionType::Income->value || $transaction->type === TransactionType::Income) {
                 $account = Account::where('id', $transaction->to_account_id)->lockForUpdate()->firstOrFail();
                 $account->balance -= (float) $transaction->amount;
                 $account->save();
@@ -228,8 +256,8 @@ class TransactionService
                 AccountEntry::create([
                     'account_id' => $account->id,
                     'transaction_id' => $transaction->id,
-                    'debit' => $transaction->amount,
-                    'credit' => 0.00,
+                    'debit' => 0.00,                       // flipped: was $amount
+                    'credit' => $transaction->amount,       // flipped: was 0.00
                     'balance_after' => $account->balance,
                 ]);
             } elseif ($transaction->type === TransactionType::Expense->value || $transaction->type === TransactionType::Expense) {
@@ -240,8 +268,8 @@ class TransactionService
                 AccountEntry::create([
                     'account_id' => $account->id,
                     'transaction_id' => $transaction->id,
-                    'debit' => 0.00,
-                    'credit' => $transaction->amount,
+                    'debit' => $transaction->amount,        // flipped: was 0.00
+                    'credit' => 0.00,                       // flipped: was $transaction->amount
                     'balance_after' => $account->balance,
                 ]);
             } elseif ($transaction->type === TransactionType::Transfer->value || $transaction->type === TransactionType::Transfer) {
@@ -254,8 +282,8 @@ class TransactionService
                 AccountEntry::create([
                     'account_id' => $fromAccount->id,
                     'transaction_id' => $transaction->id,
-                    'debit' => 0.00,
-                    'credit' => $transaction->amount,
+                    'debit' => $transaction->amount,        // flipped: was 0.00
+                    'credit' => 0.00,                       // flipped: was $transaction->amount
                     'balance_after' => $fromAccount->balance,
                 ]);
 
@@ -265,8 +293,8 @@ class TransactionService
                 AccountEntry::create([
                     'account_id' => $toAccount->id,
                     'transaction_id' => $transaction->id,
-                    'debit' => $transaction->amount,
-                    'credit' => 0.00,
+                    'debit' => 0.00,                        // flipped: was $transaction->amount
+                    'credit' => $transaction->amount,       // flipped: was 0.00
                     'balance_after' => $toAccount->balance,
                 ]);
             }
@@ -380,14 +408,15 @@ class TransactionService
                 'attachment_path' => $data['attachment_path'] ?? null,
             ]);
 
+            // Finding #1 fix: ledger entry directions flipped to standard double-entry (see recordJournalTransfer).
             $fromAccount->balance = (float) $fromAccount->balance - $debitAmount;
             $fromAccount->save();
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => $debitAmount,
-                'credit' => 0.00,
+                'debit' => 0.00,                  // flipped: was $debitAmount
+                'credit' => $debitAmount,          // flipped: was 0.00
                 'balance_after' => $fromAccount->balance,
             ]);
 
@@ -397,8 +426,8 @@ class TransactionService
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => 0.00,
-                'credit' => $creditAmount,
+                'debit' => $creditAmount,          // flipped: was 0.00
+                'credit' => 0.00,                  // flipped: was $creditAmount
                 'balance_after' => $toAccount->balance,
             ]);
 
@@ -558,14 +587,23 @@ class TransactionService
                 }
             }
 
+            // Finding #1 fix: ledger entry directions flipped to standard double-entry.
+            //   - from_account (source) gets CREDIT entry (was DEBIT).
+            //     For ASSET (cashbox): credit decreases asset → balance -= amount ✓
+            //     For LIABILITY (supplier): credit increases payable → balance -= amount ✓
+            //   - to_account (destination) gets DEBIT entry (was CREDIT).
+            //     For ASSET (cashbox/customer AR): debit increases asset → balance += amount ✓
+            //   This makes Account::balance = SUM(debit) - SUM(credit) match the
+            //   intuitive convention: customer AR positive = they owe us,
+            //   supplier AP negative = we owe them.
             $fromAccount->balance = (float) $fromAccount->balance - $amount;
             $fromAccount->save();
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => $amount,
-                'credit' => 0.00,
+                'debit' => 0.00,                  // flipped: was $amount
+                'credit' => $amount,              // flipped: was 0.00
                 'balance_after' => $fromAccount->balance,
             ]);
 
@@ -575,8 +613,8 @@ class TransactionService
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => 0.00,
-                'credit' => $toAmount,
+                'debit' => $toAmount,              // flipped: was 0.00
+                'credit' => 0.00,                  // flipped: was $toAmount
                 'balance_after' => $toAccount->balance,
             ]);
 

@@ -35,6 +35,7 @@ class Customer extends Model
         'customer_tier',
         'notes',
         'type',
+        'module_type', // Phase 3.5 fix: declare which business module owns this customer (flights, hajj_umra, visas, bus, …).
         'created_by',
         'nationality',
         'gender',

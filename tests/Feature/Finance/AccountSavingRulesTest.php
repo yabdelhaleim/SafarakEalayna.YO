@@ -91,15 +91,18 @@ class AccountSavingRulesTest extends TestCase
 
     public function test_specific_module_bank_persists_and_auto_fills_module_alias(): void
     {
-        $account = Account::create($this->baseLiquidityPayload([
-            'type' => AccountType::Bank,
-            'module_type' => 'fawry',
-            'module' => null, // should be auto-filled
-        ]));
+        // Strict contract (Phase 3.5): liquidity accounts MUST have
+        // module_type = division. A specific module on a Bank is rejected
+        // by the saving hook. (Auto-fill only matters for module_types
+        // that the hook actually allows through.)
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/DIVISION/');
 
-        $this->assertNotNull($account->id);
-        $this->assertSame('fawry', (string) $account->module_type);
-        $this->assertSame('fawry', (string) $account->module, 'module auto-filled from module_type');
+        Account::create($this->baseLiquidityPayload([
+            'type' => AccountType::Bank,
+            'module_type' => 'fawry', // specific module — rejected for liquidity
+            'module' => null,
+        ]));
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -151,23 +154,27 @@ class AccountSavingRulesTest extends TestCase
 
     public function test_customer_subject_account_persists_with_office_module_type(): void
     {
-        $account = Account::create($this->baseLiquidityPayload([
-            'type' => AccountType::Customer,
-            'module_type' => AccountModuleContract::OFFICE_MODULE_TYPE,
-        ]));
+        // Strict contract (Phase 3.5): subject accounts (customer/supplier)
+        // MUST have module_type = SPECIFIC module (not division). The
+        // division markers office/tourism are reserved for liquidity vaults.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/SPECIFIC module/');
 
-        $this->assertNotNull($account->id, 'Customer AR persists when module_type is set');
-        $this->assertSame('office', (string) $account->module_type);
+        Account::create($this->baseLiquidityPayload([
+            'type' => AccountType::Customer,
+            'module_type' => AccountModuleContract::OFFICE_MODULE_TYPE, // division — rejected for subject
+        ]));
     }
 
     public function test_supplier_subject_account_persists_with_office_module_type(): void
     {
-        $account = Account::create($this->baseLiquidityPayload([
-            'type' => AccountType::Supplier,
-            'module_type' => AccountModuleContract::OFFICE_MODULE_TYPE,
-        ]));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/SPECIFIC module/');
 
-        $this->assertNotNull($account->id, 'Supplier AP persists when module_type is set');
+        Account::create($this->baseLiquidityPayload([
+            'type' => AccountType::Supplier,
+            'module_type' => AccountModuleContract::OFFICE_MODULE_TYPE, // division — rejected for subject
+        ]));
     }
 
     public function test_internal_expense_account_persists_with_office_module_type(): void

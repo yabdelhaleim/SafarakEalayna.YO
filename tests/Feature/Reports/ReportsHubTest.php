@@ -59,7 +59,7 @@ class ReportsHubTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
         ]);
 
         Account::query()->create([
@@ -69,7 +69,7 @@ class ReportsHubTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
         ]);
 
         Account::query()->create([

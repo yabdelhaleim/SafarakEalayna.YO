@@ -182,6 +182,7 @@
                     <th class="px-5 py-4 font-bold">المسار</th>
                     <th class="px-5 py-4 font-bold">السعر</th>
                     <th v-if="isAdmin" class="px-5 py-4 font-bold">الربح</th>
+                    <th class="px-5 py-4 font-bold">الحالة</th>
                     <th class="px-5 py-4 font-bold">التاريخ</th>
                   </tr>
                 </thead>
@@ -212,10 +213,15 @@
                         {{ (booking.pricing?.profit || 0) >= 0 ? '+' : '' }}{{ fmt(booking.pricing?.profit || 0) }}
                       </span>
                     </td>
+                    <td class="px-5 py-3.5">
+                      <span v-if="booking.status_label" :class="['inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold', statusBadgeClass(booking.status)]">
+                        {{ booking.status_label }}
+                      </span>
+                    </td>
                     <td class="px-5 py-3.5 text-xs text-white/40">{{ formatDt(booking.created_at) }}</td>
                   </tr>
                   <tr v-if="!data.recent_bookings?.length">
-                    <td :colspan="isAdmin ? 6 : 5" class="px-5 py-16 text-center">
+                    <td :colspan="isAdmin ? 7 : 6" class="px-5 py-16 text-center">
                       <div class="flex flex-col items-center gap-3">
                         <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
                           <Plane class="w-7 h-7 text-white/10 -rotate-45" />
@@ -253,7 +259,10 @@
                       <span class="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black text-white">{{ row.currency }}</span>
                       <span class="text-xs text-white/50">فعلي</span>
                     </div>
-                    <span class="font-mono font-bold text-white">{{ Number(row.total_actual || 0).toLocaleString('ar-EG') }}</span>
+                    <span class="font-mono font-bold text-white">
+                      {{ Number(row.total_actual || 0).toLocaleString('ar-EG') }}
+                      <span class="text-[10px] text-white/40 font-normal">{{ row.currency }}</span>
+                    </span>
                   </div>
                 </div>
 
@@ -382,6 +391,17 @@ const loading = ref(true);
 const lastUpdated = ref('—');
 
 const fmt = (v) => Number(v || 0).toLocaleString('ar-EG');
+
+// تحويل حالة الحجز إلى class ملون
+const statusBadgeClass = (status) => {
+  const s = String(status || '').toLowerCase();
+  if (s === 'confirmed') return 'bg-success/10 text-success';
+  if (s === 'pending') return 'bg-white/10 text-white/70';
+  if (s === 'ticketed') return 'bg-amber-500/10 text-amber-400';
+  if (s === 'cancelled') return 'bg-error/10 text-error';
+  if (s === 'refunded') return 'bg-muted/10 text-muted';
+  return 'bg-white/10 text-white/60';
+};
 
 // تفصيل كافة العملات
 const allCurrencies = computed(() => {

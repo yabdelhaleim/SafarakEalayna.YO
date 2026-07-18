@@ -472,12 +472,14 @@ const summaryStats = computed(() => {
 });
 
 const filteredAccounts = computed(() => {
+  // ✅ Phase 3.5b Fix: 'treasury' و 'post' تم حذفهم من AccountType enum
+  // فلدينا فقط cashbox, bank, wallet كـ liquidity types
   const typeMap = {
-    cash: ['cashbox', 'treasury'],
+    cash: ['cashbox'],
     wallet: ['wallet'],
     bank: ['bank'],
   };
-  const allowed = typeMap[settlementCategory.value] || ['cashbox', 'treasury', 'wallet', 'bank'];
+  const allowed = typeMap[settlementCategory.value] || ['cashbox', 'wallet', 'bank'];
   return (store.accounts || []).filter((a) => allowed.includes(a.type));
 });
 

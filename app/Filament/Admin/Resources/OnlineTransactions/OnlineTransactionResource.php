@@ -180,7 +180,7 @@ class OnlineTransactionResource extends Resource
                                 //    belongs to another module's ledger).
                                 ->relationship('account', 'name', fn ($q) => $q
                                     ->where('is_active', true)
-                                    ->where('module_type', 'online'))
+                                    ->whereIn('module_type', ['online', 'office']))
                                 ->getOptionLabelFromRecordUsing(fn (Account $record): string => filled($record->name)
                                     ? $record->name
                                     : 'حساب #'.$record->getKey())

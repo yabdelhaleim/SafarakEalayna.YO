@@ -18,9 +18,31 @@ class ModificationService
     {
         $booking = FlightBooking::findOrFail($data['booking_id']);
 
-        // Check eligibility: booking must be active/confirmed to process modifications
-        if ($booking->status?->value === 'cancelled' || $booking->status === 'cancelled') {
-            throw new \RuntimeException("لا يمكن إنشاء طلب تعديل لحجز ملغي.");
+        // Check eligibility: booking must be confirmed to process modifications.
+        // Bug #C6 fix: PENDING bookings (no PNR, no carrier/system debit, no sale
+        // ledger entry) must NOT be modifiable. Confirming a modification on a
+        // PENDING booking would debit AirlineAccount and post GL entries with
+        // no offsetting initial purchase transaction — phantom debit + unbalanced GL.
+        $bookingStatusValue = $booking->status?->value ?? (string) $booking->status;
+        if (in_array($bookingStatusValue, ['cancelled', 'pending', 'refunded'], true)) {
+            throw new \RuntimeException(
+                "لا يمكن إنشاء طلب تعديل لحجز بحالة '{$bookingStatusValue}'. ".
+                "يجب أن يكون الحجز مؤكداً أو مسترداً جزئياً."
+            );
+        }
+
+        // Bug #B9 fix: enforce currency consistency between modification and booking.
+        // The caller may pass a `currency` field; if they do, it MUST match the booking
+        // currency. If they omit it, we default to the booking currency (safe fallback).
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+        $modificationCurrency = isset($data['currency']) && $data['currency'] !== ''
+            ? strtoupper((string) $data['currency'])
+            : $bookingCurrency;
+        if ($modificationCurrency !== $bookingCurrency) {
+            throw new \InvalidArgumentException(
+                "عملة التعديل ({$modificationCurrency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
+                "يجب أن يكون التعديل بنفس عملة الحجز."
+            );
         }
 
         $modification = TicketModification::create([
@@ -35,7 +57,8 @@ class ModificationService
             'airline_change_fee' => $data['airline_change_fee'] ?? 0,
             'agency_commission' => $data['agency_commission'] ?? 0,
             'total_charged_to_customer' => ($data['airline_change_fee'] ?? 0) + ($data['agency_commission'] ?? 0),
-            'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
+            'currency' => $modificationCurrency,
+            'currency_snapshot' => $modificationCurrency,  // Bug #B11 fix: store currency snapshot
             'payment_method' => $data['payment_method'] ?? null,
             'deducted_from_airline_balance' => true, // Default fixed financial rule
             'status' => 'draft',

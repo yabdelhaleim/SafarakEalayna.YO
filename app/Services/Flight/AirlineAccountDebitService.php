@@ -50,8 +50,35 @@ class AirlineAccountDebitService
         TicketModification $modification,
         int $userId,
     ): array {
-        return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId) {
-            return DB::transaction(function () use ($airlineAccount, $booking, $modification, $userId) {
+        // Bug #C1 fix: validate currency match between booking and AirlineAccount
+        // BEFORE any side effect. Without this, a USD booking could post USD-denominated
+        // debit to an EGP AirlineAccount balance (or vice versa) — silent balance desync.
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+        $accountCurrency = strtoupper((string) $airlineAccount->currency);
+
+        if ($bookingCurrency !== $accountCurrency
+            && $bookingCurrency !== 'EGP'
+            && $accountCurrency !== 'EGP') {
+            throw new \RuntimeException(
+                "عملة التعديل ({$bookingCurrency}) لا تطابق عملة حساب الطيران ({$accountCurrency}). ".
+                "لا يمكن خصم غرامة بعملة مختلفة عن عملة الحساب."
+            );
+        }
+
+        // Bug #C1 fix: convert fee to account currency if needed.
+        // For booking=EGP, account=foreign: convert via booking exchange rate.
+        // For booking=foreign, account=EGP: convert via booking exchange rate (reverse).
+        // For same currency or one-side EGP: no conversion needed.
+        $fee = (float) $modification->airline_change_fee;
+        $debitAmount = $this->convertToAccountCurrency(
+            $fee,
+            $bookingCurrency,
+            $accountCurrency,
+            (float) ($booking->exchange_rate_used ?? $booking->exchange_rate ?? 1.0)
+        );
+
+        return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId, $debitAmount, $bookingCurrency, $accountCurrency) {
+            return DB::transaction(function () use ($airlineAccount, $booking, $modification, $userId, $debitAmount, $bookingCurrency, $accountCurrency) {
                 // ① Lock الـ airline account row
                 AirlineAccount::query()
                     ->whereKey($airlineAccount->id)
@@ -61,7 +88,7 @@ class AirlineAccountDebitService
                 // ② Debit الـ AirlineAccount (safe route — model method)
                 // الـ Observer هيسمح بالتعديل لأن mutateBalanceInternal flag بره
                 $airlineTx = $airlineAccount->debit(
-                    (float) $modification->airline_change_fee,
+                    $debitAmount,
                     $booking->id,
                     $userId,
                 );
@@ -74,7 +101,7 @@ class AirlineAccountDebitService
                 $prepaidTx = $this->prepaidLedgerService->consumeCogs(
                     prepaidKey: 'flight_carrier',
                     module: TransactionModule::Flight,
-                    amount: (float) $modification->airline_change_fee,
+                    amount: $debitAmount,
                     notes: "غرامة تعديل تذكرة #{$booking->booking_reference} (AirlineAccount #{$airlineAccount->id})",
                     relatedType: TicketModification::class,
                     relatedId: $modification->id,
@@ -84,7 +111,10 @@ class AirlineAccountDebitService
                     'airline_account_id' => $airlineAccount->id,
                     'booking_id' => $booking->id,
                     'modification_id' => $modification->id,
-                    'amount' => (float) $modification->airline_change_fee,
+                    'amount' => $debitAmount,
+                    'original_fee' => (float) $modification->airline_change_fee,
+                    'booking_currency' => $bookingCurrency,
+                    'account_currency' => $accountCurrency,
                     'airline_tx_id' => $airlineTx->id,
                     'prepaid_tx_id' => $prepaidTx?->id,
                     'balance_after' => $airlineAccount->fresh()->balance,
@@ -98,6 +128,43 @@ class AirlineAccountDebitService
                 ];
             });
         });
+    }
+
+    /**
+     * تحويل مبلغ من عملة إلى أخرى باستخدام سعر صرف الحجز.
+     * نفس منطق purchaseAmountInBalanceCurrency في FlightBookingService.
+     */
+    private function convertToAccountCurrency(
+        float $amount,
+        string $fromCurrency,
+        string $toCurrency,
+        float $exchangeRate
+    ): float {
+        $from = strtoupper(trim($fromCurrency));
+        $to = strtoupper(trim($toCurrency));
+
+        if ($from === $to) {
+            return round($amount, 2);
+        }
+
+        if ($from === 'EGP') {
+            // EGP → foreign: divide by exchange rate (rate = EGP per 1 foreign)
+            if ($exchangeRate <= 0) {
+                throw new \RuntimeException("لا يوجد سعر صرف صالح لتحويل EGP → {$to}.");
+            }
+            return round($amount / $exchangeRate, 4);
+        }
+
+        if ($to === 'EGP') {
+            // foreign → EGP: multiply by exchange rate
+            if ($exchangeRate <= 0) {
+                throw new \RuntimeException("لا يوجد سعر صرف صالح لتحويل {$from} → EGP.");
+            }
+            return round($amount * $exchangeRate, 2);
+        }
+
+        // both foreign, different currencies — not supported here (handled by C1 above)
+        throw new \RuntimeException("لا يمكن التحويل بين {$from} و {$to} بدون EGP كعملة وسيطة.");
     }
 
     /**
@@ -125,8 +192,34 @@ class AirlineAccountDebitService
         TicketModification $modification,
         int $userId,
     ): array {
-        return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId) {
-            return DB::transaction(function () use ($airlineAccount, $booking, $modification, $userId) {
+        // Bug #C1 fix: same currency check as debit side
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+        $accountCurrency = strtoupper((string) $airlineAccount->currency);
+
+        if ($bookingCurrency !== $accountCurrency
+            && $bookingCurrency !== 'EGP'
+            && $accountCurrency !== 'EGP') {
+            throw new \RuntimeException(
+                "عملة التعديل ({$bookingCurrency}) لا تطابق عملة حساب الطيران ({$accountCurrency})."
+            );
+        }
+
+        // Use currency_snapshot if available (B11 fix), fall back to live fields.
+        // The snapshot is what was used at confirmation time and is the
+        // authoritative value for reversal — protects against mid-flow currency
+        // mutations on the booking.
+        $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
+        $snapshotCurrency = strtoupper((string) ($modification->currency_snapshot ?? $bookingCurrency));
+
+        $creditAmount = $this->convertToAccountCurrency(
+            $fee,
+            $snapshotCurrency,
+            $accountCurrency,
+            (float) ($booking->exchange_rate_used ?? $booking->exchange_rate ?? 1.0)
+        );
+
+        return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId, $creditAmount, $fee, $snapshotCurrency, $accountCurrency) {
+            return DB::transaction(function () use ($airlineAccount, $booking, $modification, $userId, $creditAmount, $fee, $snapshotCurrency, $accountCurrency) {
                 // ① Lock the airline account row (same as debit side)
                 AirlineAccount::query()
                     ->whereKey($airlineAccount->id)
@@ -135,11 +228,9 @@ class AirlineAccountDebitService
 
                 // ② Credit the AirlineAccount (sub-ledger) — mirror of debit()
                 //    Uses mutateBalanceInternal internally → boot guard allows the save.
-                $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
-
-                if ($fee <= 0) {
+                if ($creditAmount <= 0) {
                     // Nothing was debited originally → nothing to reverse.
-                    Log::info('AirlineAccount creditBackForModification — fee is 0, no balance change', [
+                    Log::info('AirlineAccount creditBackForModification — converted amount is 0, no balance change', [
                         'modification_id' => $modification->id,
                         'airline_account_id' => $airlineAccount->id,
                     ]);
@@ -152,7 +243,7 @@ class AirlineAccountDebitService
                 }
 
                 $airlineTx = $airlineAccount->credit(
-                    amount: $fee,
+                    amount: $creditAmount,
                     description: 'عكس غرامة تعديل تذكرة #'.$booking->booking_reference,
                     userId: $userId,
                     bookingId: $booking->id,
@@ -165,7 +256,7 @@ class AirlineAccountDebitService
                 $prepaidTx = $this->prepaidLedgerService->refundCogs(
                     prepaidKey: 'flight_carrier',
                     module: TransactionModule::Flight,
-                    amount: $fee,
+                    amount: $creditAmount,
                     notes: 'عكس غرامة تعديل تذكرة #'.$booking->booking_reference.' (AirlineAccount #'.$airlineAccount->id.')',
                     relatedType: TicketModification::class,
                     relatedId: $modification->id,
@@ -175,10 +266,13 @@ class AirlineAccountDebitService
                     'airline_account_id' => $airlineAccount->id,
                     'booking_id' => $booking->id,
                     'modification_id' => $modification->id,
-                    'amount' => $fee,
+                    'amount' => $creditAmount,
+                    'original_fee' => $fee,
+                    'snapshot_currency' => $snapshotCurrency,
+                    'account_currency' => $accountCurrency,
                     'airline_tx_id' => $airlineTx->id,
                     'prepaid_tx_id' => $prepaidTx?->id,
-                    'balance_after' => (float) $airlineAccount->fresh()->balance,
+                    'balance_after' => $airlineAccount->fresh()->balance,
                     'user_id' => $userId,
                 ]);
 

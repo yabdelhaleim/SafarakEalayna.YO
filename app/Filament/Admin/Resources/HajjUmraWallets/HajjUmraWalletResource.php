@@ -18,6 +18,11 @@ class HajjUmraWalletResource extends Resource
 
     protected static ?string $model = Account::class;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-wallet';
 
     protected static string|UnitEnum|null $navigationGroup = 'الحج والعمرة';

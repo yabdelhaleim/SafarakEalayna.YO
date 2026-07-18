@@ -17,7 +17,7 @@ class FawryTreasuryController extends Controller
     {
         $accounts = Account::query()
             ->where('is_active', true)
-            ->where('module_type', 'fawry')
+            ->whereIn('module_type', ['fawry', 'office'])
             ->orderBy('type')
             ->orderBy('name')
             ->get([

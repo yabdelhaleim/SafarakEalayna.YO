@@ -392,11 +392,14 @@ const processedTransactions = computed(() => {
 
 const loadAccounts = async () => {
   try {
+    // Bug #C-02 fix: remove the legacy 'treasury' account type from the
+    // filter — it was retired in Phase 3.5b and accounts.module no longer
+    // accepts it. The composable's `fetchSettlementAccounts` already
+    // restricts to cashbox/wallet/bank via the contract's LIQUIDITY_TYPES,
+    // so this layer doesn't need to repeat the filter — we trust the
+    // server-provided list.
     const all = await fetchSettlementAccounts(axios, { module: 'bus', includePost: false });
-    treasuryAccounts.value = all.filter(a => {
-      const t = String(a.type?.value || a.type || '').toLowerCase();
-      return ['cashbox', 'bank', 'wallet', 'treasury'].includes(t);
-    });
+    treasuryAccounts.value = all;
   } catch (e) { console.error('loadAccounts', e); }
 };
 

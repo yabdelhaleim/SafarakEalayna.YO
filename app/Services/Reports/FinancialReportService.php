@@ -65,38 +65,120 @@ class FinancialReportService
 
     /**
      * تقرير أرباح يومية / شهرية / سنوية
+     *
+     * FIX (TO-BUG-001, fixed 2026-07-16):
+     *   The old query filtered transactions by `type IN ('income','expense')`,
+     *   but the actual transactions are all `type='transfer'` (because the
+     *   system uses recordJournalTransfer for every flow). This caused
+     *   the endpoint to always return 0.
+     *
+     *   The new implementation uses the same ledger-based classification as
+     *   ProfitLossReportService::moduleBreakdown(): it joins account_entries
+     *   and looks at clearing accounts (إقفال إيرادات / إقفال تكاليف) to
+     *   determine income vs expense correctly. This works for ALL transaction
+     *   types because the GL engine classifies based on which side of the
+     *   journal entry touches which clearing account.
      */
     public function getProfitReport(array $filters = []): array
     {
-        $period = $filters['period'] ?? 'daily'; // daily, monthly, yearly
+        $period = $filters['period'] ?? 'daily';
         $fromDate = $filters['from_date'] ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $filters['to_date'] ?? now()->endOfDay()->format('Y-m-d');
 
-        $transactions = Transaction::whereBetween('created_at', [$fromDate, $toDate])
-            ->selectRaw('
-                DATE(created_at) as date,
-                SUM(CASE WHEN type = ? THEN amount ELSE 0 END) as income,
-                SUM(CASE WHEN type = ? THEN amount ELSE 0 END) as expense,
-                SUM(CASE WHEN type = ? THEN amount ELSE 0 END) - SUM(CASE WHEN type = ? THEN amount ELSE 0 END) as profit
-            ', [TransactionType::Income->value, TransactionType::Expense->value, TransactionType::Income->value, TransactionType::Expense->value])
-            ->groupBy('date')
-            ->orderBy('date', 'desc')
-            ->get();
+        $plService = app(ProfitLossReportService::class);
 
-        $totalIncome = $transactions->sum('income');
-        $totalExpense = $transactions->sum('expense');
-        $totalProfit = $transactions->sum('profit');
+        // Use the proven moduleBreakdown engine and aggregate to a single P&L
+        $breakdown = $plService->moduleBreakdown([
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+        ]);
+
+        // Sum up all modules (this is the cleanest aggregation)
+        $totalIncome = 0.0;
+        $totalCogs = 0.0;
+        $totalExpenses = 0.0;
+        $byModule = [];   // FIX (consistency): keep this as a sequential list
+                            // to match /profit-by-module exactly. Earlier
+                            // versions keyed by module name which broke
+                            // any consumer that iterated over it as a list
+                            // (e.g. for (m of byModule) { ... }).
+        // Note: moduleBreakdown returns 'by_module' (array of {module, income, cogs, expenses, profit})
+        $rows = $breakdown['by_module'] ?? ($breakdown['breakdown'] ?? []);
+        foreach ($rows as $row) {
+            $mod = $row['module'] ?? 'unknown';
+            $income = (float) ($row['income'] ?? 0);
+            $cogs = (float) ($row['cogs'] ?? 0);
+            $expenses = (float) ($row['expenses'] ?? 0);
+            $byModule[] = [
+                'module' => $mod,
+                'income' => $income,
+                'cogs' => $cogs,
+                'expense' => $expenses,    // FIX: singular 'expense' to match
+                                            // /profit-by-module and Vue code (m.expense)
+                'profit' => $income - $cogs - $expenses,
+            ];
+            $totalIncome += $income;
+            $totalCogs += $cogs;
+            $totalExpenses += $expenses;
+        }
+
+        $totalProfit = $totalIncome - $totalCogs - $totalExpenses;
+        $profitMargin = $totalIncome > 0 ? ($totalProfit / $totalIncome) * 100 : 0;
+
+        // Also produce a daily timeline by calling the same engine per day
+        $daily = $this->buildDailyProfitTimeline($fromDate, $toDate, $plService);
 
         return [
             'period' => $period,
             'from_date' => $fromDate,
             'to_date' => $toDate,
-            'total_income' => $totalIncome,
-            'total_expense' => $totalExpense,
-            'total_profit' => $totalProfit,
-            'profit_margin' => $totalIncome > 0 ? ($totalProfit / $totalIncome) * 100 : 0,
-            'transactions' => $transactions,
+            'total_income' => round($totalIncome, 2),
+            'total_expense' => round($totalCogs + $totalExpenses, 2),
+            'total_cogs' => round($totalCogs, 2),
+            'total_operating_expenses' => round($totalExpenses, 2),
+            'total_profit' => round($totalProfit, 2),
+            'profit_margin' => round($profitMargin, 2),
+            'by_module' => $byModule,
+            'daily' => $daily,
+            'transactions' => [], // kept for backward-compat with old Vue; daily[] is the new source
         ];
+    }
+
+    /**
+     * Build a per-day profit timeline by sweeping one day at a time.
+     * Used by getProfitReport() to populate the `daily` array.
+     */
+    private function buildDailyProfitTimeline(string $fromDate, string $toDate, ProfitLossReportService $plService): array
+    {
+        $start = \Carbon\Carbon::parse($fromDate)->startOfDay();
+        $end = \Carbon\Carbon::parse($toDate)->endOfDay();
+        $rows = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $day = $cursor->toDateString();
+            $breakdown = $plService->moduleBreakdown([
+                'from_date' => $day,
+                'to_date' => $day,
+            ]);
+            $income = 0.0; $cogs = 0.0; $expenses = 0.0;
+            $rowsBd = $breakdown['by_module'] ?? ($breakdown['breakdown'] ?? []);
+            foreach ($rowsBd as $row) {
+                $income += (float) ($row['income'] ?? 0);
+                $cogs += (float) ($row['cogs'] ?? 0);
+                $expenses += (float) ($row['expenses'] ?? 0);
+            }
+            $rows[] = [
+                'date' => $day,
+                'revenue' => round($income, 2),
+                'income' => round($income, 2),
+                'expense' => round($cogs + $expenses, 2),
+                'cogs' => round($cogs, 2),
+                'operating_expenses' => round($expenses, 2),
+                'profit' => round($income - $cogs - $expenses, 2),
+            ];
+            $cursor->addDay();
+        }
+        return array_reverse($rows); // newest first
     }
 
     /**
@@ -391,7 +473,7 @@ class FinancialReportService
         $module = $filters['module'] ?? null; // flight, bus, hajj_umra, visa, fawry, online
         $direction = $filters['direction'] ?? 'all'; // receivables, payables, all
         $search = $filters['search'] ?? null;
-        $entityType = $filters['entity_type'] ?? 'all'; // all, customer, supplier
+        $entityType = $filters['entity_type'] ?? 'all'; // all, customer, supplier, flight_carrier
 
         $results = [];
 
@@ -1035,7 +1117,7 @@ if ($department === 'tourism') {
                 foreach ($groups as $g) {
                     $totalDebt = (float) $g->groupTransactions()->where('type', 'debt')->sum('amount');
                     $totalPayment = (float) $g->groupTransactions()->where('type', 'payment')->sum('amount');
-                    
+
                     if ($totalDebt > 0 || $totalPayment > 0) {
                         // Standard debts report convention: positive balance = receivable (they owe us), negative balance = payable (we owe them)
                         $balance = $totalPayment - $totalDebt;
@@ -1066,6 +1148,56 @@ if ($department === 'tourism') {
                         'currency' => $g->carrier ? $g->carrier->currency : 'EGP',
                         'account_id' => $g->account_id,
                         'statement_url' => '/flights/customers',
+                    ];
+                }
+            }
+        }
+
+        // 8. ✅ FIX: QUERY FLIGHT CARRIERS (tourism -> flight) — ديون على الناقلين
+        // الناقل رصيده السالب = دين علينا للناقل (يدخل في Payables)
+        // الناقل رصيده الموجب = رصيد مسبق (يدخل في Receivables)
+        if ($entityType === 'all' || $entityType === 'supplier' || $entityType === 'flight_carrier') {
+            if ((! $department || $department === 'tourism') && (! $module || $module === 'flight')) {
+                $carrierQuery = FlightCarrier::query()->with('system');
+                if ($search) {
+                    $carrierQuery->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
+                    });
+                }
+                $carriers = $carrierQuery->get();
+                foreach ($carriers as $c) {
+                    $balance = (float) $c->balance;
+                    $creditLimit = (float) $c->credit_limit;
+                    $available = $creditLimit + $balance; // balance + credit_limit
+
+                    // نُظهر الناقلين الذين رصيدهم ≠ 0 فقط (لديهم دين أو رصيد مسبق)
+                    if (abs($balance) < 0.01) {
+                        continue;
+                    }
+
+                    // ✅ Convention: رصيد سالب = علينا (Payable)
+                    $dir = $balance < 0 ? 'payables' : 'receivables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => $c->id,
+                        'name' => $c->name,
+                        'phone' => $c->code, // carrier code (معرّف)
+                        'entity_type' => 'flight_carrier',
+                        'entity_type_label' => 'ناقل طيران',
+                        'department' => 'tourism',
+                        'department_label' => 'قسم سياحه',
+                        'module' => 'flight',
+                        'module_label' => 'طيران',
+                        'balance' => $balance,
+                        'currency' => $c->currency,
+                        'account_id' => null, // carrier doesn't have a direct account
+                        'credit_limit' => $creditLimit,
+                        'available_balance' => $available,
+                        'statement_url' => "/flight/carriers/{$c->id}",
                     ];
                 }
             }

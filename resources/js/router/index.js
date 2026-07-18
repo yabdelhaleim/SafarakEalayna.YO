@@ -114,6 +114,19 @@ const routes = [
         props: true,
         meta: { title: 'معاملات حساب شركة الطيران' },
       },
+      {
+        path: 'carriers-debt',
+        name: 'flights.carriers-debt',
+        component: () => import('@/views/flights/FlightCarriersDebt.vue'),
+        meta: { title: 'ديون الناقلين', permission: 'manage_finance' },
+      },
+      {
+        path: 'carriers/:id',
+        name: 'flights.carriers.show',
+        component: () => import('@/views/flights/FlightCarriersDebt.vue'),
+        props: true,
+        meta: { title: 'تفاصيل الناقل' },
+      },
     ],
   },
   // Hajj & Umra Module

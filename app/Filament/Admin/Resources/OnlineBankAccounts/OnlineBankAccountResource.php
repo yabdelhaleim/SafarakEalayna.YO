@@ -22,6 +22,11 @@ class OnlineBankAccountResource extends Resource
 
     protected static ?string $model = Account::class;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 
     protected static string|\UnitEnum|null $navigationGroup = OnlineModuleNavigation::NAVIGATION_GROUP;

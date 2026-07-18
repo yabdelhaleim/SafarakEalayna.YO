@@ -44,12 +44,16 @@ class StoreProgramRequest extends FormRequest
             'medina_nights' => ['nullable', 'integer', 'min:0'],
             'departure_date' => ['nullable', 'date'],
             'return_date' => ['nullable', 'date', 'after_or_equal:departure_date'],
-            'airline' => ['nullable', 'string', 'max:100'],
+            // FIX (GAP #HJ-1, fixed 2026-07-16):
+            //   These two columns are NOT NULL in the DB but were marked
+            //   nullable here, causing HTTP 500 instead of a clean 422.
+            //   Aligned to match the actual schema requirement.
+            'airline' => ['required', 'string', 'max:100'],
+            'departure_point' => ['required', 'string', 'max:100'],
             'trip_supervisor' => ['nullable', 'string', 'max:150'],
             'trip_supervisor_id' => ['nullable', 'integer', 'exists:trip_supervisors,id'],
             'executing_company' => ['nullable', 'string', 'max:150'],
             'executing_company_id' => ['nullable', 'integer', 'exists:hajj_umra_executing_companies,id'],
-            'departure_point' => ['nullable', 'string', 'max:100'],
             'booking_status' => ['nullable', Rule::in(['open', 'closed', 'success', 'cancelled'])],
             'program_price_tier' => ['nullable', 'string', 'max:50'],
             'default_purchase_price' => ['nullable', 'numeric', 'min:0'],

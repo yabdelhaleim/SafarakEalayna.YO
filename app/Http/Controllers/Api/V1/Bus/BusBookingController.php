@@ -37,6 +37,10 @@ class BusBookingController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            // Phase 6.2 bug fix (Bus #B-01): route_from / route_to were
+            // declared in the Vue store but never reached the service.
+            // We now whitelist the full filter set explicitly so future
+            // additions are intentional.
             $filters = $request->only([
                 'status',
                 'customer_id',
@@ -46,6 +50,8 @@ class BusBookingController extends Controller
                 'search',
                 'date_from',
                 'date_to',
+                'route_from',
+                'route_to',
                 'per_page',
                 'page',
             ]);
@@ -88,10 +94,12 @@ class BusBookingController extends Controller
         }
     }
 
-    public function show(BusBooking $busBooking): JsonResponse
+    public function show(int $busBooking): JsonResponse
     {
         try {
-            $busBooking->load([
+            // Phase 6.B: include trashed bookings so the view page still works
+            // for soft-deleted records.
+            $busBooking = BusBooking::withTrashed()->with([
                 'inventory.company',
                 'customer',
                 'employee.user',
@@ -99,7 +107,7 @@ class BusBookingController extends Controller
                 'payments',
                 'transaction',
                 'createdBy',
-            ]);
+            ])->findOrFail($busBooking);
 
             return ApiResponse::success(
                 'Booking retrieved successfully.',
@@ -123,11 +131,15 @@ class BusBookingController extends Controller
      * via per-payment reversals).
      *
      * Idempotent: throws a clean error if the booking is already soft-deleted.
+     *
+     * Phase 6.B fix: we resolve the booking by id (including trashed) so the
+     * idempotency check inside `deleteBookingWithReversal` fires with a clean
+     * Arabic error message instead of the default 404 from route-model binding.
      */
-    public function destroy(BusBooking $busBooking): JsonResponse
+    public function destroy(int $busBooking): JsonResponse
     {
         try {
-            $this->bookingService->deleteBookingWithReversal($busBooking->id, Auth::id());
+            $this->bookingService->deleteBookingWithReversal($busBooking, Auth::id());
 
             return ApiResponse::success(
                 'تم حذف الحجز وعكس جميع القيود المالية (مدفوعات + مديونيات) بنجاح.'
@@ -137,10 +149,11 @@ class BusBookingController extends Controller
         }
     }
 
-    public function pay(PayBusBookingRequest $request, BusBooking $busBooking): JsonResponse
+    public function pay(PayBusBookingRequest $request, int $busBooking): JsonResponse
     {
         try {
-            $booking = $this->bookingService->payBooking($busBooking, $request->validated());
+            $bookingModel = BusBooking::findOrFail($busBooking);
+            $booking = $this->bookingService->payBooking($bookingModel, $request->validated());
 
             return ApiResponse::success(
                 'Payment recorded successfully.',
@@ -151,13 +164,14 @@ class BusBookingController extends Controller
         }
     }
 
-    public function cancel(CancelBusBookingRequest $request, BusBooking $busBooking): JsonResponse
+    public function cancel(CancelBusBookingRequest $request, int $busBooking): JsonResponse
     {
         try {
-            $this->bookingService->cancelBooking($busBooking, $request->validated());
+            $bookingModel = BusBooking::findOrFail($busBooking);
+            $this->bookingService->cancelBooking($bookingModel, $request->validated());
 
-            $busBooking->refresh();
-            $busBooking->load([
+            $bookingModel->refresh();
+            $bookingModel->load([
                 'inventory.company',
                 'customer',
                 'employee.user',
@@ -170,7 +184,7 @@ class BusBookingController extends Controller
 
             return ApiResponse::success(
                 'تم إلغاء الحجز وتسجيل الاسترداد بنجاح.',
-                new BusBookingResource($busBooking)
+                new BusBookingResource($bookingModel)
             );
         } catch (\InvalidArgumentException $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

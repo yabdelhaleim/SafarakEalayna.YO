@@ -138,7 +138,7 @@ class BusApiCrudTest extends TestCase
         $delBooking = $this->deleteJson("/api/v1/bus/bookings/{$bookingId}");
         $delBooking->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('message', 'Booking deleted successfully.');
+            ->assertJsonPath('message', 'تم حذف الحجز وعكس جميع القيود المالية (مدفوعات + مديونيات) بنجاح.');
 
         // --- Inventory: destroy (no bookings)
         $delInv = $this->deleteJson("/api/v1/bus/inventories/{$inventoryId}");
@@ -161,7 +161,7 @@ class BusApiCrudTest extends TestCase
             'balance' => 0,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
             'created_by' => $this->user->id,
         ]);

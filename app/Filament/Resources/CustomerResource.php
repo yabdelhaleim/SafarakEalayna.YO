@@ -201,6 +201,60 @@ class CustomerResource extends Resource
             ->actions([
                 \Filament\Actions\ViewAction::make()->label('عرض'),
                 \Filament\Actions\EditAction::make()->label('تعديل'),
+                \Filament\Actions\Action::make('payDebt')
+                    ->label('تسديد دين')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('warning')
+                    ->visible(fn (Customer $record): bool => (float) ($record->account?->balance ?? 0) > 0)
+                    ->form([
+                        \Filament\Forms\Components\TextInput::make('amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->required()
+                            ->minValue(0.01)
+                            ->maxValue(fn (Customer $record) => (float) ($record->account?->balance ?? 0))
+                            ->default(fn (Customer $record) => (float) ($record->account?->balance ?? 0))
+                            ->prefix('ج.م'),
+                        \Filament\Forms\Components\Select::make('account_id')
+                            ->label('حساب السداد (خزينة / بنك / محفظة)')
+                            ->relationship('account', 'name', fn ($query) => $query->whereIn('type', ['cashbox', 'bank', 'wallet'])->where('is_active', true))
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->helperText('اختر الخزينة أو الحساب الذي سيتم السداد منه'),
+                        \Filament\Forms\Components\Textarea::make('notes')
+                            ->label('ملاحظات')
+                            ->rows(2)
+                            ->maxLength(500),
+                    ])
+                    ->action(function (Customer $record, array $data): void {
+                        try {
+                            $resp = \Illuminate\Support\Facades\Http::withHeaders([
+                                'Authorization' => 'Bearer ' . (\Illuminate\Support\Facades\Auth::user()?->createToken('filament')->plainTextToken ?? ''),
+                                'Accept' => 'application/json',
+                            ])->post(url('/api/v1/customers/' . $record->id . '/pay-debt'), [
+                                'amount' => (float) $data['amount'],
+                                'account_id' => (int) $data['account_id'],
+                                'notes' => $data['notes'] ?? null,
+                                'module' => 'flight',
+                            ]);
+                            if ($resp->successful()) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('تم تسجيل السداد بنجاح')
+                                    ->body('رصيد العميل الجديد: ' . number_format($resp->json('data.new_balance'), 2) . ' EGP')
+                                    ->success()
+                                    ->send();
+                            } else {
+                                throw new \Exception($resp->json('message') ?? 'فشل السداد');
+                            }
+                        } catch (\Throwable $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('فشل السداد')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
                 \Filament\Actions\DeleteAction::make()->label('حذف'),
             ])
             ->bulkActions([

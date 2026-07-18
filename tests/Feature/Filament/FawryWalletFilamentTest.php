@@ -82,7 +82,7 @@ class FawryWalletFilamentTest extends TestCase
         $fawryWallet = Account::query()->create([
             'name' => 'محفظة فوري',
             'type' => AccountType::Wallet,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'wallet_provider' => WalletProvider::VodafoneCash,
             'wallet_number' => '01099998888',
@@ -96,7 +96,7 @@ class FawryWalletFilamentTest extends TestCase
         Account::query()->create([
             'name' => 'محفظة طيران',
             'type' => AccountType::Wallet,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
@@ -144,7 +144,7 @@ class FawryWalletFilamentTest extends TestCase
         $cashbox = Account::query()->create([
             'name' => 'خزينة فوري',
             'type' => AccountType::Cashbox,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'currency' => 'EGP',
             'balance' => 0,
@@ -156,7 +156,7 @@ class FawryWalletFilamentTest extends TestCase
         Account::query()->create([
             'name' => 'خزينة باصات',
             'type' => AccountType::Cashbox,
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
@@ -200,7 +200,7 @@ class FawryWalletFilamentTest extends TestCase
         $bank = Account::query()->create([
             'name' => 'بنك فوري',
             'type' => AccountType::Bank,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'currency' => 'EGP',
             'balance' => 0,
@@ -212,7 +212,7 @@ class FawryWalletFilamentTest extends TestCase
         Account::query()->create([
             'name' => 'بنك طيران',
             'type' => AccountType::Bank,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'contact_phone',
     'contact_email',
     'commission_rate',
+    'credit_limit',
     'is_active',
     'notes',
     'created_by',
@@ -31,6 +32,7 @@ class FlightGroup extends Model
     {
         return [
             'commission_rate' => 'decimal:2',
+            'credit_limit' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

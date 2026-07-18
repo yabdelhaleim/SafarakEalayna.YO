@@ -16,6 +16,7 @@ use App\Services\Reports\FinancialReportService;
 use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FinancialReportController extends Controller
 {
@@ -247,7 +248,10 @@ class FinancialReportController extends Controller
     {
         try {
             $module = strtolower(trim((string) $request->input('module', '')));
-            if (! in_array($module, self::PROFIT_DRILLDOWN_MODULES, true)) {
+            // FIX (TO-GAP-fix, 2026-07-16): module is now optional.
+            // If supplied, it must be whitelisted; if empty, we aggregate
+            // across ALL tourism modules (a department-wide daily P&L).
+            if ($module !== '' && ! in_array($module, self::PROFIT_DRILLDOWN_MODULES, true)) {
                 return ApiResponse::error(
                     'Invalid module. Allowed: ' . implode(', ', self::PROFIT_DRILLDOWN_MODULES),
                     null,
@@ -260,18 +264,43 @@ class FinancialReportController extends Controller
 
             /** @var ProfitLossReportService $plService */
             $plService = app(ProfitLossReportService::class);
-            $byDay     = $plService->getDailyProfitByModule($module, [
-                'from_date' => $fromDate,
-                'to_date'   => $toDate,
-            ]);
+
+            $byDay = [];
+            if ($module !== '') {
+                $byDay = $plService->getDailyProfitByModule($module, [
+                    'from_date' => $fromDate,
+                    'to_date'   => $toDate,
+                ]);
+            } else {
+                // Aggregate across all whitelisted modules
+                $merged = [];
+                foreach (self::PROFIT_DRILLDOWN_MODULES as $mod) {
+                    foreach ($plService->getDailyProfitByModule($mod, [
+                        'from_date' => $fromDate,
+                        'to_date'   => $toDate,
+                    ]) as $row) {
+                        $date = $row['date'] ?? null;
+                        if (! $date) continue;
+                        if (! isset($merged[$date])) {
+                            $merged[$date] = ['date' => $date, 'income' => 0, 'cogs' => 0, 'expense' => 0, 'profit' => 0];
+                        }
+                        $merged[$date]['income']  += (float) ($row['income'] ?? 0);
+                        $merged[$date]['cogs']    += (float) ($row['cogs'] ?? 0);
+                        $merged[$date]['expense'] += (float) ($row['expense'] ?? 0);
+                        $merged[$date]['profit']  += (float) ($row['profit'] ?? 0);
+                    }
+                }
+                krsort($merged);
+                $byDay = array_values($merged);
+            }
 
             // Aggregate totals so the UI can show "متوسط يومي", "إجمالي الفترة", etc.
             $totals = ['income' => 0.0, 'cogs' => 0.0, 'expense' => 0.0, 'profit' => 0.0];
             foreach ($byDay as $row) {
-                $totals['income']  += (float) $row['income'];
-                $totals['cogs']    += (float) $row['cogs'];
-                $totals['expense'] += (float) $row['expense'];
-                $totals['profit']  += (float) $row['profit'];
+                $totals['income']  += (float) ($row['income'] ?? 0);
+                $totals['cogs']    += (float) ($row['cogs'] ?? 0);
+                $totals['expense'] += (float) ($row['expense'] ?? 0);
+                $totals['profit']  += (float) ($row['profit'] ?? 0);
             }
             $totals['income']  = round($totals['income'], 2);
             $totals['cogs']    = round($totals['cogs'], 2);
@@ -279,7 +308,7 @@ class FinancialReportController extends Controller
             $totals['profit']  = round($totals['profit'], 2);
 
             return ApiResponse::success('Profit by day calculated.', [
-                'module'    => $module,
+                'module'    => $module ?: 'all',
                 'from_date' => $fromDate,
                 'to_date'   => $toDate,
                 'currency'  => 'EGP',
@@ -306,6 +335,138 @@ class FinancialReportController extends Controller
      * in the response under `entity_types` so the UI can offer a small
      * toggle without us growing the contract.
      */
+
+    /**
+     * FIX (TO-GAP-003, fixed 2026-07-16):
+     *   Per-operation P&L breakdown. Returns EACH transaction line
+     *   (revenue, cogs, or operating expense) classified with its
+     *   related entity (booking, payment, transfer, etc.) so the operator
+     *   can trace ANY amount in the P&L back to the source operation.
+     *
+     * Query params:
+     *   - module: 'flight' | 'hajj_umra' | 'visa' | etc. (optional — aggregates all if missing)
+     *   - from_date, to_date: ISO date strings (default: month-to-date)
+     *   - limit: max rows to return (default 100, hard-capped at 1000)
+     *   - category: 'revenue' | 'cogs' | 'expense' (optional — returns all categories)
+     */
+    public function profitByOperation(Request $request): JsonResponse
+    {
+        try {
+            $module = strtolower(trim((string) $request->input('module', '')));
+            if ($module !== '' && ! in_array($module, self::PROFIT_DRILLDOWN_MODULES, true)) {
+                return ApiResponse::error(
+                    'Invalid module. Allowed: ' . implode(', ', self::PROFIT_DRILLDOWN_MODULES),
+                    null,
+                    422
+                );
+            }
+
+            $fromDate = (string) $request->input('from_date', now()->startOfMonth()->toDateString());
+            $toDate   = (string) $request->input('to_date', now()->toDateString());
+            $category = strtolower((string) $request->input('category', ''));
+            $limit    = (int) $request->input('limit', 100);
+            $limit    = max(1, min(1000, $limit));
+
+            $plService = app(ProfitLossReportService::class);
+            $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
+            $maps = $clearingAccounts->moduleAccountMaps();
+            $incomeClearing = $maps['income'];
+            $expenseClearing = $maps['expense'];
+            $prepaidAccounts = $clearingAccounts->prepaidAccountIdMap();
+            $allClearingIds = array_values(array_unique(array_merge(
+                array_keys($incomeClearing),
+                array_keys($expenseClearing),
+                array_keys($prepaidAccounts),
+            )));
+
+            $query = DB::table('transactions as t')
+                ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+                ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
+                ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
+                ->select([
+                    't.id as transaction_id',
+                    't.type as transaction_type',
+                    't.module',
+                    't.amount',
+                    't.related_type',
+                    't.related_id',
+                    't.from_account_id',
+                    't.to_account_id',
+                    't.created_at',
+                    't.notes',
+                    'to_acc.name as to_account_name',
+                    'to_acc.type as to_account_type',
+                    'from_acc.name as from_account_name',
+                    'from_acc.type as from_account_type',
+                ]);
+            $query->whereBetween('t.created_at', [$fromDate . ' 00:00:00', $toDate . ' 23:59:59'])
+                ->whereIn('t.to_account_id', $allClearingIds);
+
+            if ($module !== '') {
+                $query->where('t.module', $module);
+            }
+            $query->orderBy('t.id', 'desc')->limit($limit * 3); // over-fetch to filter by classification
+
+            $rows = [];
+            $totals = ['income' => 0.0, 'cogs' => 0.0, 'expense' => 0.0, 'profit' => 0.0];
+            $skipped = 0;
+            foreach ($query->get() as $tx) {
+                if (count($rows) >= $limit) break;
+                $classification = $plService->classifyPublic((object)[
+                    'id' => $tx->transaction_id,
+                    'type' => $tx->transaction_type,
+                    'module' => $tx->module,
+                    'amount' => $tx->amount,
+                    'from_account_id' => $tx->from_account_id,
+                    'to_account_id' => $tx->to_account_id,
+                    'to_account_type' => $tx->to_account_type,
+                    'to_account_module_type' => null,
+                    'from_account_module_type' => null,
+                ], $incomeClearing, $expenseClearing, $prepaidAccounts);
+                if ($classification === null) { $skipped++; continue; }
+                $shortClass = $classification;
+                if (str_contains($shortClass, 'revenue_reversal') || str_contains($shortClass, 'refund')) $shortClass = 'refund';
+                elseif (str_contains($shortClass, 'cogs_reversal')) $shortClass = 'cogs';
+                elseif (str_contains($shortClass, 'cogs')) $shortClass = 'cogs';
+                elseif (str_contains($shortClass, 'revenue')) $shortClass = 'revenue';
+                elseif (str_contains($shortClass, 'operating_expense')) $shortClass = 'expense';
+                $sign = (str_contains($classification, 'reversal') || str_contains($classification, 'refund')) ? -1.0 : 1.0;
+                $amount = (float) $tx->amount * $sign;
+                if ($category !== '' && $shortClass !== $category) continue;
+                $rows[] = [
+                    'transaction_id' => (int) $tx->transaction_id,
+                    'date' => (string) $tx->created_at,
+                    'module' => $tx->module,
+                    'classification' => $shortClass,
+                    'amount' => round($amount, 2),
+                    'related_type' => $tx->related_type,
+                    'related_id' => $tx->related_id,
+                    'from_account' => ['id' => (int) $tx->from_account_id, 'name' => $tx->from_account_name, 'type' => $tx->from_account_type],
+                    'to_account' => ['id' => (int) $tx->to_account_id, 'name' => $tx->to_account_name, 'type' => $tx->to_account_type],
+                    'notes' => $tx->notes,
+                ];
+                $totals[$shortClass] = ($totals[$shortClass] ?? 0) + $amount;
+            }
+            $totals['profit'] = $totals['income'] - $totals['cogs'] - $totals['expense'];
+
+            return ApiResponse::success('Per-operation P&L fetched.', [
+                'module' => $module ?: 'all',
+                'category' => $category ?: 'all',
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+                'rows' => $rows,
+                'totals' => array_map(fn ($v) => round((float) $v, 2), $totals),
+                'meta' => [
+                    'row_count' => count($rows),
+                    'skipped_non_clearing' => $skipped,
+                    'generated_at' => now()->toIso8601String(),
+                ],
+            ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Throwable $e) {
+            return ApiResponse::error('profit-by-operation failed: ' . $e->getMessage(), null, 422);
+        }
+    }
+
     public function profitEntityTop(Request $request): JsonResponse
     {
         try {
@@ -497,6 +658,83 @@ class FinancialReportController extends Controller
 
             return ApiResponse::success('Trial balance report generated successfully.', $report)
                 ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * FIX (TO-GAP-001, fixed 2026-07-16): per-account detailed trial balance
+     * with explicit total_debit and total_credit per account.
+     *
+     * Powers the AccountsIndex.vue "trial balance" table where each row
+     * shows D / C / balance / type / module so the operator can trace
+     * any imbalance to a specific account.
+     *
+     * @param  Request  $request  Optional: ?division=tourism|office (default tourism)
+     */
+    public function trialBalanceDetailed(Request $request): JsonResponse
+    {
+        try {
+            $division = strtolower((string) $request->input('division', 'tourism'));
+            $division = in_array($division, ['tourism', 'office'], true) ? $division : 'tourism';
+
+            // The clearings (إقفال إيرادات/تكاليف) are in module_type=hawj_umra
+            // but they should be grouped with the tourism division.
+            $tourismModules = ['flight', 'hajj_umra', 'visa', 'tourism', 'clearings'];
+
+            $rows = DB::table('account_entries as ae')
+                ->join('accounts as a', 'a.id', '=', 'ae.account_id')
+                ->leftJoin('transactions as t', 't.id', '=', 'ae.transaction_id')
+                ->where('a.is_active', 1)
+                ->whereNotNull('t.module')
+                ->select([
+                    'a.id as account_id',
+                    'a.name as account_name',
+                    'a.type as account_type',
+                    'a.module_type as account_module_type',
+                    'a.module as account_module',
+                    'a.balance as account_balance',
+                    DB::raw('SUM(ae.debit) as total_debit'),
+                    DB::raw('SUM(ae.credit) as total_credit'),
+                    DB::raw('SUM(ae.debit) - SUM(ae.credit) as net_balance'),
+                    DB::raw('COUNT(DISTINCT ae.transaction_id) as transaction_count'),
+                ])
+                ->groupBy('a.id', 'a.name', 'a.type', 'a.module_type', 'a.module', 'a.balance')
+                ->orderBy('a.type')
+                ->orderBy('a.name')
+                ->get();
+
+            // Filter and group by division
+            $filtered = [];
+            $totalDebit = 0.0; $totalCredit = 0.0;
+            foreach ($rows as $r) {
+                $moduleType = strtolower((string) ($r->account_module_type ?? ''));
+                $belongsToTourism = in_array($moduleType, $tourismModules, true);
+                $belongsToOffice = in_array($moduleType, ['office', 'bus', 'fawry', 'online', 'wallet_transfer'], true);
+                $isClearing = in_array($moduleType, ['hajj_umra']) && in_array(strtolower((string)$r->account_type), ['expense', 'revenue', 'owner', 'liability']);
+                if ($division === 'tourism' && ! ($belongsToTourism || $isClearing)) continue;
+                if ($division === 'office' && ! $belongsToOffice) continue;
+                $filtered[] = $r;
+                $totalDebit += (float) $r->total_debit;
+                $totalCredit += (float) $r->total_credit;
+            }
+
+            return ApiResponse::success('Detailed trial balance generated.', [
+                'division' => $division,
+                'as_of'    => now()->toIso8601String(),
+                'accounts' => $filtered,
+                'totals'   => [
+                    'total_debit' => round($totalDebit, 2),
+                    'total_credit' => round($totalCredit, 2),
+                    'difference' => round($totalDebit - $totalCredit, 2),
+                    'balanced' => abs($totalDebit - $totalCredit) < 0.01,
+                ],
+                'meta' => [
+                    'account_count' => count($filtered),
+                    'generated_at' => now()->toIso8601String(),
+                ],
+            ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

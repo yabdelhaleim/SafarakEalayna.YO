@@ -21,7 +21,7 @@ class VisaTreasuryController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->whereIn('type', $accountTypes)
-            ->where('module_type', 'visas') // Note: the resource uses 'visas' plural
+            ->whereIn('module_type', ['visas', 'tourism']) // Note: the resource uses 'visas' plural
             ->orderBy('type')
             ->orderBy('name')
             ->get([

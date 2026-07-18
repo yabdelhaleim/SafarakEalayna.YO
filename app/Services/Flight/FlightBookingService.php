@@ -1330,6 +1330,40 @@ class FlightBookingService
                 }
 
                 if ($pending) {
+                    // Bug #B12 fix: prevent currency mutation when financial dependencies exist.
+                    // Changing booking currency mid-flow would desync all subsequent refunds,
+                    // modifications, and payments. Block the change if any of these are present.
+                    if (array_key_exists('currency', $data)) {
+                        $newCurrency = strtoupper((string) $data['currency']);
+                        $oldCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                        if ($newCurrency !== $oldCurrency) {
+                            // Check for any active refund requests
+                            $hasRefundRequests = DB::table('refund_requests')
+                                ->where('flight_booking_id', $booking->id)
+                                ->whereNull('deleted_at')
+                                ->exists();
+                            // Check for any confirmed modifications
+                            $hasConfirmedModifications = DB::table('ticket_modifications')
+                                ->where('booking_id', $booking->id)
+                                ->where('status', 'confirmed')
+                                ->whereNull('deleted_at')
+                                ->exists();
+                            // Check for any non-zero payments
+                            $hasPayments = DB::table('flight_payments')
+                                ->where('flight_booking_id', $booking->id)
+                                ->where('amount', '>', 0.0001)
+                                ->exists();
+
+                            if ($hasRefundRequests || $hasConfirmedModifications || $hasPayments) {
+                                throw new \InvalidArgumentException(
+                                    "لا يمكن تغيير عملة الحجز ({$oldCurrency} → {$newCurrency}) ".
+                                    "لوجود حركات مالية مرتبطة (استرجاعات، تعديلات، أو مدفوعات). ".
+                                    "احذف هذه الحركات أولاً أو ألغِ الحجز وأنشئ واحداً جديداً."
+                                );
+                            }
+                        }
+                    }
+
                     foreach ([
                         'customer_id',
                         'employee_id',
@@ -1340,12 +1374,22 @@ class FlightBookingService
                         'from_airport_id',
                         'to_airport_id',
                         'account_id',
-                        'currency',
                         'airline',
                     ] as $key) {
                         if (array_key_exists($key, $data)) {
                             $updates[$key] = $data[$key];
                         }
+                    }
+                    // NOTE: 'currency' was removed from this whitelist — it's handled
+                    // by the validation above with dependency check. Only update currency
+                    // after the dependency check passes.
+                    if (array_key_exists('currency', $data)) {
+                        $newCurrency = strtoupper((string) $data['currency']);
+                        $oldCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                        if ($newCurrency === $oldCurrency) {
+                            $updates['currency'] = $data['currency'];
+                        }
+                        // If currency differs, the throw above already prevented this path.
                     }
 
                     if (empty($data['purchase_price']) && isset($data['purchase_price_egp'])) {
@@ -1559,6 +1603,18 @@ class FlightBookingService
 
         try {
             return DB::transaction(function () use ($booking, $data) {
+                // Bug #C3 fix: lock the booking row for update to prevent
+                // TOCTOU race between concurrent payment requests. Without this,
+                // two parallel calls could both read the same totalPaid, both
+                // pass the overpayment check, and both insert FlightPayment
+                // rows whose sum exceeds selling_price — customer overpays.
+                $lockedBooking = FlightBooking::query()
+                    ->whereKey($booking->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                // Reuse locked copy for downstream reads.
+                $booking = $lockedBooking;
+
                 $amount = (float) $data['amount'];
                 if ($amount <= 0) {
                     throw new \Exception('Payment amount must be greater than zero.');
@@ -1578,6 +1634,19 @@ class FlightBookingService
                 $account = Account::query()->find($accountId);
                 $paymentCurrency = $account ? strtoupper($account->currency) : 'EGP';
                 $customerCurrency = strtoupper($customerAccount->currency);
+
+                // Bug #14 fix: enforce currency match between booking and payment account.
+                // If booking is in a foreign currency, the payment account MUST be in the same currency
+                // (no auto-conversion for foreign-currency bookings — the customer pays in the booking's currency).
+                // If booking is in EGP, the payment account can be EGP or any foreign currency
+                // (foreign currency gets converted to EGP at the booking's exchange rate).
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                if ($bookingCurrency !== 'EGP' && $paymentCurrency !== $bookingCurrency) {
+                    throw new \Exception(
+                        "عملة حساب الدفع ({$paymentCurrency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
+                        "يجب استخدام حساب بنفس عملة الحجز."
+                    );
+                }
 
                 $transferAmount = $amount;
                 $convertedAmount = null;
@@ -1638,9 +1707,13 @@ class FlightBookingService
 
                 $payment = FlightPayment::create([
                     'flight_booking_id' => $booking->id,
-                    'amount' => $transferAmount, // Store EGP value so that paid_amount is correctly calculated in EGP
+                    'amount' => $transferAmount, // EGP-equivalent for ledger and total-paid calculations
+                    // Bug #B13 fix: persist the ACTUAL payment currency and amount, not always EGP.
+                    // For foreign-currency payments (auto-converted), this preserves the
+                    // original payment info needed for refunds and reporting.
+                    'original_amount' => $amount, // actual amount paid in paymentCurrency
                     'payment_method' => $data['payment_method'] ?? $data['method'] ?? FlightPaymentMethod::Cash->value,
-                    'currency' => 'EGP',
+                    'currency' => $paymentCurrency,
                     'treasury_account' => $treasuryLabel,
                     'transaction_reference' => (string) $transaction->id,
                     'payment_date' => now(),
@@ -1706,15 +1779,46 @@ class FlightBookingService
                 $userId = Auth::id() ?: 1;
 
                 // Step 1: Calculate refund
-                $totalPaid = $booking->payments()->sum('amount') ?? 0;
+                //
+                // Bug #B5 fix: Payments are stored in `flight_payments.currency = 'EGP'`
+                // (always) but the actual paid currency may differ for EGP bookings paid
+                // in foreign currency (auto-converted at addPayment). The `amount` column
+                // is the converted EGP value, so summing it directly is the correct
+                // EGP-denominated total of what the customer paid.
+                //
+                // However, the SYSTEM comparison currency must be EGP because that's the
+                // ledger's reporting currency. Penalties and refund amounts below are
+                // all in EGP for EGP bookings and in booking-currency for foreign bookings
+                // — but the sum of payments is always in EGP (converted on insert).
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                $totalPaid = (float) ($booking->payments()->sum('amount') ?? 0);
                 $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
-                if ($totalPaid > 0.001 && $airlinePenalty + $officePenalty > $totalPaid + 0.001) {
-                    throw new \InvalidArgumentException('مجموع خصم الطيران وعمولة الإلغاء لا يمكن أن يتجاوز المبلغ المدفوع من العميل.');
+                // The penalties are assumed to be in the same currency as the booking
+                // selling_price (they represent amounts to deduct from the sale).
+                // For EGP bookings, that's EGP. For foreign-currency bookings, that's foreign.
+                $saleCurrency = $bookingCurrency;
+                $saleAmountForComparison = $bookingCurrency === 'EGP'
+                    ? (float) $booking->selling_price
+                    : (float) ($booking->original_amount ?: $booking->selling_price);
+
+                if ($saleAmountForComparison > 0.001 && $airlinePenalty + $officePenalty > $saleAmountForComparison + 0.001) {
+                    throw new \InvalidArgumentException(
+                        'مجموع خصم الطيران وعمولة الإلغاء لا يمكن أن يتجاوز مبلغ البيع الأصلي للحجز ('.
+                        $saleAmountForComparison.' '.$saleCurrency.').'
+                    );
                 }
 
-                $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
+                // Refund amount is in booking currency (foreign for non-EGP bookings,
+                // EGP for EGP bookings) — not in the ledger EGP total of payments.
+                // For foreign-currency bookings: refund foreign amount = original_amount - penalties
+                // For EGP bookings: refund EGP amount = total_paid_egp - penalties
+                if ($bookingCurrency === 'EGP') {
+                    $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
+                } else {
+                    $refundAmount = $saleAmountForComparison - $airlinePenalty - $officePenalty;
+                }
                 if ($refundAmount < 0) {
                     $refundAmount = 0;
                 }
@@ -1722,10 +1826,13 @@ class FlightBookingService
                 Log::info('Processing booking cancellation', [
                     'flight_booking_id' => $booking->id,
                     'booking_number' => $booking->booking_number,
-                    'total_paid' => $totalPaid,
+                    'booking_currency' => $bookingCurrency,
+                    'total_paid_egp' => $totalPaid,
+                    'sale_amount' => $saleAmountForComparison,
                     'airline_penalty' => $airlinePenalty,
                     'office_penalty' => $officePenalty,
                     'refund_amount' => $refundAmount,
+                    'refund_currency' => $bookingCurrency,
                     'user_id' => $userId,
                 ]);
 
@@ -1766,9 +1873,21 @@ class FlightBookingService
                 }
 
                 // Step 3: Reverse GL sale
+                //
+                // Bug #B7 fix: For foreign-currency bookings, the sale was originally
+                // posted to GL in EGP (via base_currency_amount / recordSaleToCustomer).
+                // The reversal must therefore also be in EGP, not in the booking's
+                // foreign selling_price. We compute the EGP-equivalent of the booking
+                // sale using original_amount × booking_exchange_rate.
                 if ($booking->sale_gl_transaction_id) {
-                    $totalPenalties = $airlinePenalty + $officePenalty;
-                    $saleReversalAmount = max(0.0, (float) $booking->selling_price - $totalPenalties);
+                    $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                    if ($bookingCurrency === 'EGP') {
+                        $saleAmountEgp = (float) $booking->selling_price;
+                    } else {
+                        $saleAmountEgp = ((float) ($booking->original_amount ?: $booking->selling_price)) * $bookingExchangeRate;
+                    }
+                    $totalPenaltiesEgp = ($airlinePenalty + $officePenalty) * ($bookingCurrency === 'EGP' ? 1.0 : $bookingExchangeRate);
+                    $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
 
                     if ($saleReversalAmount > 0.001) {
                         $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
@@ -1794,6 +1913,17 @@ class FlightBookingService
 
                 if ($refundAmount > 0 && empty($data['account_id'])) {
                     throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
+                }
+
+                // Step 3.5 (Bug #B6 fix): Validate refund account currency matches booking currency.
+                if ($refundAmount > 0 && ! empty($data['account_id'])) {
+                    $refundAccount = Account::query()->find($data['account_id']);
+                    if ($refundAccount && strtoupper((string) $refundAccount->currency) !== $bookingCurrency) {
+                        throw new \InvalidArgumentException(
+                            "عملة حساب الاسترجاع ({$refundAccount->currency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
+                            "يجب اختيار حساب بنفس عملة الحجز."
+                        );
+                    }
                 }
 
                 // Step 4: Cash refund from treasury (recorded payments)
@@ -2139,7 +2269,27 @@ class FlightBookingService
             // 6) Soft-delete payments (uses new SoftDeletes trait on FlightPayment)
             $booking->payments()->delete();
 
-            // 7) Soft-delete the booking itself
+            // 7) DELETE BUG #13 fix: cascade-delete passengers + segments associated with this booking.
+            //    FlightPassenger / FlightSegment do NOT use SoftDeletes, so we hard-delete them
+            //    to prevent orphan rows pointing to a soft-deleted booking.
+            $passengerCount = \App\Models\Flight\FlightPassenger::where('flight_booking_id', $booking->id)->count();
+            if ($passengerCount > 0) {
+                \App\Models\Flight\FlightPassenger::where('flight_booking_id', $booking->id)->delete();
+                Log::info('FlightBookingService::deleteBookingWithReversal — cascaded passenger delete', [
+                    'flight_booking_id' => $booking->id,
+                    'passengers_deleted' => $passengerCount,
+                ]);
+            }
+            $segmentCount = \App\Models\Flight\FlightSegment::where('flight_booking_id', $booking->id)->count();
+            if ($segmentCount > 0) {
+                \App\Models\Flight\FlightSegment::where('flight_booking_id', $booking->id)->delete();
+                Log::info('FlightBookingService::deleteBookingWithReversal — cascaded segment delete', [
+                    'flight_booking_id' => $booking->id,
+                    'segments_deleted' => $segmentCount,
+                ]);
+            }
+
+            // 8) Soft-delete the booking itself
             $booking->delete();
 
             Log::info('FlightBookingService::deleteBookingWithReversal — complete', [
@@ -2330,6 +2480,41 @@ class FlightBookingService
             ]);
             $group->account_id = $account->id;
             $group->save();
+        }
+
+        // Bug #15 + Bug #16 fix: check group balance BEFORE adding new debt.
+        //
+        // Semantics:
+        //   - account.balance > 0  → group has prepaid money available.
+        //   - account.balance = 0  → group has no money.
+        //   - account.balance < 0  → group owes us money (debt up to credit_limit).
+        //
+        // After a debit the new balance is: currentBalance - debitAmount.
+        // The booking is allowed iff newBalance >= -creditLimit
+        //                                   ⇔ debitAmount <= currentBalance + creditLimit.
+        //
+        // IMPORTANT: we read `credit_limit` from `flight_groups` (the group itself)
+        // — NOT from `accounts`, because the `accounts` table does not have a
+        // `credit_limit` column. Reading it from `accounts` would silently
+        // evaluate to 0 and wrongly reject valid prepaid bookings (Bug #16).
+        $groupAccount = Account::find($group->account_id);
+        if ($groupAccount) {
+            $currentBalance = (float) $groupAccount->balance;
+            $creditLimit = (float) ($group->credit_limit ?? 0);
+            $maxAllowedSpend = $currentBalance + $creditLimit; // إجمالي ما يمكن إنفاقه
+            if ($debitAmount > $maxAllowedSpend + 0.0001) {
+                $available = $currentBalance; // للعرض فقط — الرصيد الموجب المتاح الآن
+                throw new \Exception(
+                    "رصيد مجموعة '{$group->name}' غير كافٍ. ".
+                    "الرصيد الحالي: {$available} {$groupCurrency}، ".
+                    "حد الائتمان: {$creditLimit} {$groupCurrency}، ".
+                    "المتاح كحد أقصى: {$maxAllowedSpend} {$groupCurrency}، ".
+                    "المطلوب: {$debitAmount} {$groupCurrency}. ".
+                    ($creditLimit > 0
+                        ? "يرجى تسديد ديون المجموعة أولاً أو رفع حد الائتمان."
+                        : "لا يُسمح بالدين على هذه المجموعة (حد الائتمان = 0).")
+                );
+            }
         }
 
         $groupTx = FlightGroupTransaction::create([

@@ -23,15 +23,52 @@ class RefundController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Bug #B8 fix: validate refund_currency against known currency list,
+        // and refund_exchange_rate range to prevent silent 50x errors.
         $validated = $request->validate([
             'flight_booking_id' => ['required', 'integer', 'exists:flight_bookings,id'],
             'cancellation_fee' => ['nullable', 'numeric', 'min:0'],
-            'refund_currency' => ['nullable', 'string', 'size:3'],
-            'refund_exchange_rate' => ['nullable', 'numeric', 'min:0.000001'],
+            'refund_currency' => [
+                'nullable',
+                'string',
+                'size:3',
+                // يجب أن تكون عملة معروفة من جدول currencies النشطة فقط.
+                // EGP هي العملة الأساسية ومُسجَّلة كقاعدة للنظام — نقبلها دائماً
+                // حتى لو لم تكن موجودة كصف في جدول currencies.
+                function ($attr, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    if (strtoupper($value) === 'EGP') return;
+                    $exists = \App\Models\Setting\Currency::query()
+                        ->whereRaw('upper(code) = ?', [strtoupper($value)])
+                        ->where('is_active', true)
+                        ->exists();
+                    if (! $exists) {
+                        $fail("العملة {$value} غير معروفة أو غير نشطة في جدول العملات.");
+                    }
+                },
+            ],
+            'refund_exchange_rate' => ['nullable', 'numeric', 'min:0.000001', 'max:10000'],
             'destination' => ['required', 'string', 'in:airline_credit,agency_treasury'],
-            'treasury_id' => ['nullable', 'required_if:destination,agency_treasury', 'integer', 'exists:treasuries,id'],
+            'treasury_id' => [
+                'nullable',
+                'required_if:destination,agency_treasury',
+                'integer',
+                'exists:treasuries,id',
+                // تحقق أن الخزينة موجودة ونشطة
+                function ($attr, $value, $fail) use ($request) {
+                    if ($value === null) return;
+                    $treasury = Treasury::find($value);
+                    if (! $treasury) {
+                        $fail('الخزينة المحددة غير موجودة.');
+                        return;
+                    }
+                    if (! $treasury->is_active) {
+                        $fail("الخزينة ({$treasury->name}) غير نشطة.");
+                    }
+                },
+            ],
             'refund_type' => ['nullable', 'string'],
-            'notes' => ['nullable', 'string'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         try {

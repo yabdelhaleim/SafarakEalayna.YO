@@ -27,6 +27,109 @@ class RefundService
         protected TransactionService $transactionService,
         protected LedgerClearingAccounts $clearingAccounts,
     ) {}
+
+    /**
+     * حساب مبلغ الاسترجاع بعملة رصيد الكيان (carrier / system) باستخدام سعر صرف الحجز.
+     * يستخدم نفس منطق purchaseAmountInBalanceCurrency في FlightBookingService.
+     *
+     * الـ refund_amount دائماً بعملة الحجز.
+     * الـ base_currency_refund دائماً بالـ EGP.
+     * هذي الدالة تحسب مبلغ الرصيد بعملة الكيان (foreign).
+     *
+     * @param  string  $balanceCurrency  عملة رصيد الـ carrier / system (مثل USD أو KWD)
+     * @param  string  $bookingCurrency  عملة تسعير الحجز (EGP أو نفس عملة الرصيد)
+     * @param  float  $refundAmount  المبلغ بعملة الحجز
+     * @param  float  $baseCurrencyRefund  المبلغ بالـ EGP
+     * @param  float|null  $exchangeRate  سعر الصرف (جنيه لكل 1 وحدة من عملة الرصيد)
+     */
+    private function refundAmountInBalanceCurrency(
+        string $balanceCurrency,
+        string $bookingCurrency,
+        float $refundAmount,
+        float $baseCurrencyRefund,
+        ?float $exchangeRate = null
+    ): float {
+        $bal = strtoupper(trim($balanceCurrency));
+        $book = strtoupper(trim($bookingCurrency));
+
+        if ($bal === 'EGP') {
+            return round($baseCurrencyRefund, 2);
+        }
+
+        if ($bal === $book && $book !== 'EGP') {
+            return round($refundAmount, 4);
+        }
+
+        if ($book === 'EGP') {
+            $rate = ($exchangeRate !== null && $exchangeRate > 0)
+                ? $exchangeRate
+                : 1.0;
+            if ($rate <= 0) {
+                throw new \RuntimeException(
+                    "لا يوجد سعر صرف فعّال لتحويل الاسترجاع من EGP إلى {$bal}. ".
+                    "حدّث سعر الصرف في جدول currencies."
+                );
+            }
+            return round($baseCurrencyRefund / $rate, 4);
+        }
+
+        throw new \RuntimeException(
+            "عملة رصيد الكيان ({$bal}) لا تتوافق مع عملة الحجز ({$book}). ".
+            "تأكد من تطابق العملة أو حدّث بيانات الحجز."
+        );
+    }
+
+    /**
+     * حساب مبالغ الـ GL transfer بين حساب prepaid وحساب cashbox بعملاتهم الصحيحة.
+     *
+     * @param  string  $fromCurrency  عملة حساب الـ prepaid (المصدر)
+     * @param  string  $toCurrency  عملة حساب الـ cashbox (الوجهة)
+     * @param  float  $refundAmount  المبلغ بعملة الحجز (foreign for non-EGP, EGP for EGP)
+     * @param  float  $baseCurrencyRefund  المبلغ بالـ EGP
+     * @param  float|null  $refundExchangeRate  سعر صرف الاسترجاع
+     * @return array{amount: float, converted_amount: ?float, exchange_rate: ?float}
+     */
+    private function glTransferAmounts(
+        string $fromCurrency,
+        string $toCurrency,
+        float $refundAmount,
+        float $baseCurrencyRefund,
+        ?float $refundExchangeRate
+    ): array {
+        $from = strtoupper(trim($fromCurrency));
+        $to = strtoupper(trim($toCurrency));
+
+        if ($from === $to) {
+            return ['amount' => round($refundAmount, 4), 'converted_amount' => null, 'exchange_rate' => null];
+        }
+
+        $rate = ($refundExchangeRate !== null && $refundExchangeRate > 0)
+            ? $refundExchangeRate
+            : 1.0;
+
+        if ($from === 'EGP') {
+            // EGP prepaid → foreign cashbox: amount in EGP, converted to foreign
+            return [
+                'amount' => round($baseCurrencyRefund, 2),
+                'converted_amount' => round($refundAmount, 4),
+                'exchange_rate' => round($rate, 6),
+            ];
+        }
+
+        if ($to === 'EGP') {
+            // Foreign prepaid → EGP cashbox: amount in foreign, converted to EGP
+            return [
+                'amount' => round($refundAmount, 4),
+                'converted_amount' => round($baseCurrencyRefund, 2),
+                'exchange_rate' => round($rate, 6),
+            ];
+        }
+
+        throw new \RuntimeException(
+            "لا يمكن التحويل بين عملتين مختلفتين غير EGP ({$from} → {$to}). ".
+            "يجب أن يكون أحد الحسابات بـ EGP."
+        );
+    }
     /**
      * إنشاء طلب استرجاع جديد للتذكرة.
      */
@@ -48,7 +151,21 @@ class RefundService
             throw new \RuntimeException('هذا الحجز تم استرداده بالكامل مسبقاً ولا يمكن إصدار طلب استرجاع جديد له.');
         }
 
-        $originalCurrency = $booking->original_currency ?: ($booking->currency ?: 'EGP');
+        // Bug #C4 fix: PENDING bookings (no PNR, no payment, no carrier debit)
+        // must not be refundable. Allowing refund on PENDING creates an AirlineCredit
+        // voucher with no corresponding original purchase, or a treasury credit
+        // for a customer who never paid.
+        if (!in_array($booking->status, [
+            FlightBookingStatus::CONFIRMED,
+            FlightBookingStatus::PARTIALLY_REFUNDED,
+        ], true)) {
+            throw new \RuntimeException(
+                "لا يمكن إصدار طلب استرجاع لحجز بحالة '{$booking->status->value}'. ".
+                "يجب أن يكون الحجز مؤكداً على الأقل."
+            );
+        }
+
+        $originalCurrency = strtoupper($booking->original_currency ?: ($booking->currency ?: 'EGP'));
         $originalAmount = (float) ($booking->original_amount ?: $booking->selling_price);
         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
 
@@ -59,8 +176,41 @@ class RefundService
             throw new \InvalidArgumentException('رسوم الإلغاء لا يمكن أن تتجاوز المبلغ الأصلي للحجز.');
         }
 
-        $refundCurrency = $data['refund_currency'] ?? $originalCurrency;
-        $refundExchangeRate = (float) ($data['refund_exchange_rate'] ?? 1.0);
+        // Bug #C5 fix: cap cumulative active refunds at the original amount.
+        // Without this, sequential refund requests can refund > 100% of the booking.
+        $alreadyRefunded = (float) RefundRequest::query()
+            ->where('flight_booking_id', $booking->id)
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'rejected')
+            ->sum('refund_amount');
+        if ($alreadyRefunded + $refundAmount > $originalAmount + 0.0001) {
+            throw new \RuntimeException(
+                "إجمالي مبالغ الاسترجاع النشطة ({$alreadyRefunded} {$originalCurrency}) ".
+                "مع هذا الطلب ({$refundAmount} {$originalCurrency}) ".
+                "سيتجاوز المبلغ الأصلي للحجز ({$originalAmount} {$originalCurrency})."
+            );
+        }
+
+        $refundCurrency = strtoupper((string) ($data['refund_currency'] ?? $originalCurrency));
+        // Bug #B1 fix: enforce currency match between booking and refund request.
+        // A refund MUST be in the same currency as the booking — silent conversion
+        // would create accounting drift and surprise the customer.
+        if ($refundCurrency !== $originalCurrency) {
+            throw new \InvalidArgumentException(
+                "عملة الاسترجاع ({$refundCurrency}) لا تطابق عملة الحجز الأصلية ({$originalCurrency}). ".
+                "يجب أن يكون الاسترجاع بنفس عملة الحجز."
+            );
+        }
+
+        // Bug #B14 fix: validate refund_exchange_rate explicitly.
+        // Defaulting silently to 1.0 for foreign currencies would create 50x+ accounting errors.
+        $refundExchangeRate = isset($data['refund_exchange_rate'])
+            ? (float) $data['refund_exchange_rate']
+            : ($refundCurrency === 'EGP' ? 1.0 : $bookingExchangeRate);
+        if ($refundExchangeRate <= 0) {
+            throw new \InvalidArgumentException('سعر صرف الاسترجاع يجب أن يكون أكبر من صفر.');
+        }
+
         $baseCurrencyRefund = $refundAmount * $refundExchangeRate;
 
         // حساب فرق العملة بناءً على المبلغ الصافي المسترد
@@ -111,6 +261,20 @@ class RefundService
                 // Scenario A: رصيد طيران فقط
                 if (! $booking->flight_carrier_id) {
                     throw new \RuntimeException('لا يمكن إصدار رصيد طيران لحجز لا يحتوي على شركة طيران (Carrier) محددة.');
+                }
+
+                // Bug #B2 fix: enforce currency match between refund voucher
+                // and the carrier's balance currency. Without this check, an
+                // EGP-priced ticket could produce a USD-denominated voucher
+                // that can only be spent against USD services of the carrier.
+                $carrier = FlightCarrier::query()->find($booking->flight_carrier_id);
+                $carrierCurrency = $carrier ? strtoupper((string) $carrier->currency) : 'EGP';
+                if (strtoupper($refundRequest->refund_currency) !== $carrierCurrency) {
+                    throw new \RuntimeException(
+                        "تضارب في العملة: عملة الاسترجاع ({$refundRequest->refund_currency}) ".
+                        "لا تطابق عملة شركة الطيران ({$carrierCurrency}). ".
+                        "يجب أن يكون رصيد شركة الطيران بنفس عملة الحجز."
+                    );
                 }
 
                 // NEW (2026-07-11): Defense against duplicate voucher creation.
@@ -228,53 +392,62 @@ class RefundService
                 }
 
                 // 2. Resolve source prepaid account and decrement balance in GDS/carrier sub-ledger
+                //
+                // Bug #B3 fix: use refundAmountInBalanceCurrency() helper to correctly
+                // convert refund_amount (in booking currency) to the carrier/system currency.
+                // Old code only handled the EGP case — for foreign-currency booking on a
+                // foreign-currency carrier, it was using refund_amount (foreign) directly
+                // without verifying it matches the carrier's currency.
                 $prepaidKey = 'flight_system';
-                $debitSubLedgerAmount = $refundRequest->refund_amount;
-                if ($booking->purchase_balance_source === 'carrier') {
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+
+                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
                     $prepaidKey = 'flight_carrier';
-                    if ($booking->flight_carrier_id) {
-                        $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
-                        if ($carrier) {
-                            if (strtoupper($carrier->currency) === 'EGP') {
-                                $debitSubLedgerAmount = $refundRequest->base_currency_refund;
-                            }
-                            $carrier->debit($debitSubLedgerAmount, $booking->id, $userId);
-                        }
+                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
+                    if ($carrier) {
+                        $debitSubLedgerAmount = $this->refundAmountInBalanceCurrency(
+                            (string) $carrier->currency,
+                            $bookingCurrency,
+                            (float) $refundRequest->refund_amount,
+                            (float) $refundRequest->base_currency_refund,
+                            $bookingExchangeRate
+                        );
+                        $carrier->debit($debitSubLedgerAmount, $booking->id, $userId);
                     }
-                } else {
-                    if ($booking->flight_system_id) {
-                        $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
-                        if ($system) {
-                            if (strtoupper($system->currency) === 'EGP') {
-                                $debitSubLedgerAmount = $refundRequest->base_currency_refund;
-                            }
-                            $system->debit($debitSubLedgerAmount, $booking->id, $userId);
-                        }
+                } elseif ($booking->flight_system_id) {
+                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
+                    if ($system) {
+                        $debitSubLedgerAmount = $this->refundAmountInBalanceCurrency(
+                            (string) $system->currency,
+                            $bookingCurrency,
+                            (float) $refundRequest->refund_amount,
+                            (float) $refundRequest->base_currency_refund,
+                            $bookingExchangeRate
+                        );
+                        $system->debit($debitSubLedgerAmount, $booking->id, $userId);
                     }
                 }
                 $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
 
                 // 3. Record GL journal entry transfer
+                //
+                // Bug #B4 + #B15 fix: use glTransferAmounts() helper to compute the
+                // correct amount (in from_account currency) and converted_amount (in
+                // to_account currency). The old code used `||` instead of `&&` and the
+                // convertedAmount was computed but not actually used as the GL amount.
                 if ($fromAccountId && $account && $fromAccountId !== $account->id) {
-                    $transferAmount = $refundRequest->refund_amount;
                     $fromAccount = Account::find($fromAccountId);
-                    if (($fromAccount && $fromAccount->currency === 'EGP') || ($account->currency === 'EGP')) {
-                        $transferAmount = $refundRequest->base_currency_refund ?? $refundRequest->refund_amount;
-                    }
-                    $convertedAmount = null;
-                    $exchangeRate = null;
-                    if ($fromAccount && $fromAccount->currency !== $account->currency) {
-                        if ($fromAccount->currency === 'EGP') {
-                            $convertedAmount = $refundRequest->refund_amount;
-                            $exchangeRate = $refundRequest->refund_exchange_rate;
-                        } else {
-                            $convertedAmount = $refundRequest->base_currency_refund;
-                            $exchangeRate = $refundRequest->refund_exchange_rate;
-                        }
-                    }
+                    $glAmounts = $this->glTransferAmounts(
+                        (string) ($fromAccount ? $fromAccount->currency : 'EGP'),
+                        (string) $account->currency,
+                        (float) $refundRequest->refund_amount,
+                        (float) $refundRequest->base_currency_refund,
+                        $refundRequest->refund_exchange_rate !== null ? (float) $refundRequest->refund_exchange_rate : null
+                    );
 
                     $glTransaction = $this->transactionService->recordJournalTransfer([
-                        'amount' => $transferAmount,
+                        'amount' => $glAmounts['amount'],
                         'from_account_id' => $fromAccountId,
                         'to_account_id' => $account->id,
                         'allow_from_negative' => true,
@@ -283,8 +456,8 @@ class RefundService
                         'related_id' => $booking->id,
                         'notes' => "إيداع استرجاع تذكرة حجز طيران — حجز #{$booking->booking_number}",
                         'created_by' => $userId,
-                        'converted_amount' => $convertedAmount,
-                        'exchange_rate' => $exchangeRate,
+                        'converted_amount' => $glAmounts['converted_amount'],
+                        'exchange_rate' => $glAmounts['exchange_rate'],
                     ]);
 
                     Log::info('تم تسجيل القيد المحاسبي المزدوج للاسترداد بنجاح', [
@@ -403,18 +576,27 @@ class RefundService
 
                 $booking = FlightBooking::lockForUpdate()->findOrFail($refundRequest->flight_booking_id);
                 $prepaidKey = 'flight_system';
-                $debitSubLedgerAmount = (float) $refundRequest->refund_amount;
 
                 // (a) Reverse the FlightCarrier/System debit (credit back)
+                //
+                // Bug #B3 fix: use refundAmountInBalanceCurrency() helper for correct currency conversion.
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                $creditSubLedgerAmount = (float) $refundRequest->refund_amount;
+
                 if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
                     $prepaidKey = 'flight_carrier';
                     $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
                     if ($carrier) {
-                        if (strtoupper($carrier->currency) === 'EGP') {
-                            $debitSubLedgerAmount = (float) $refundRequest->base_currency_refund;
-                        }
+                        $creditSubLedgerAmount = $this->refundAmountInBalanceCurrency(
+                            (string) $carrier->currency,
+                            $bookingCurrency,
+                            (float) $refundRequest->refund_amount,
+                            (float) $refundRequest->base_currency_refund,
+                            $bookingExchangeRate
+                        );
                         $carrier->credit(
-                            amount: $debitSubLedgerAmount,
+                            amount: $creditSubLedgerAmount,
                             description: 'عكس خصم ناقل — حذف طلب استرداد #'.$refundRequest->id,
                             userId: $userId,
                             bookingId: $booking->id,
@@ -423,11 +605,15 @@ class RefundService
                 } elseif ($booking->flight_system_id) {
                     $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
                     if ($system) {
-                        if (strtoupper($system->currency) === 'EGP') {
-                            $debitSubLedgerAmount = (float) $refundRequest->base_currency_refund;
-                        }
+                        $creditSubLedgerAmount = $this->refundAmountInBalanceCurrency(
+                            (string) $system->currency,
+                            $bookingCurrency,
+                            (float) $refundRequest->refund_amount,
+                            (float) $refundRequest->base_currency_refund,
+                            $bookingExchangeRate
+                        );
                         $system->credit(
-                            amount: $debitSubLedgerAmount,
+                            amount: $creditSubLedgerAmount,
                             description: 'عكس خصم نظام — حذف طلب استرداد #'.$refundRequest->id,
                             userId: $userId,
                             bookingId: $booking->id,
@@ -452,27 +638,19 @@ class RefundService
                 $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
 
                 if ($fromAccountId && $account && $fromAccountId !== $account->id) {
-                    // Mirror the conversion logic in processRefundRequest
-                    $transferAmount = (float) $refundRequest->refund_amount;
+                    // Bug #B4 + #B15 fix: use glTransferAmounts() helper.
                     $fromAccount = Account::find($fromAccountId);
-                    if (($fromAccount && $fromAccount->currency === 'EGP') || ($account->currency === 'EGP')) {
-                        $transferAmount = (float) ($refundRequest->base_currency_refund ?? $refundRequest->refund_amount);
-                    }
-                    $convertedAmount = null;
-                    $exchangeRate = null;
-                    if ($fromAccount && $fromAccount->currency !== $account->currency) {
-                        if ($fromAccount->currency === 'EGP') {
-                            $convertedAmount = (float) $refundRequest->refund_amount;
-                            $exchangeRate = (float) $refundRequest->refund_exchange_rate;
-                        } else {
-                            $convertedAmount = (float) $refundRequest->base_currency_refund;
-                            $exchangeRate = (float) $refundRequest->refund_exchange_rate;
-                        }
-                    }
+                    $glAmounts = $this->glTransferAmounts(
+                        (string) $account->currency,
+                        (string) ($fromAccount ? $fromAccount->currency : 'EGP'),
+                        (float) $refundRequest->refund_amount,
+                        (float) $refundRequest->base_currency_refund,
+                        $refundRequest->refund_exchange_rate !== null ? (float) $refundRequest->refund_exchange_rate : null
+                    );
 
                     // REVERSE: original was prepaid → cashbox; here cashbox → prepaid
                     $glTransaction = $this->transactionService->recordJournalTransfer([
-                        'amount' => $transferAmount,
+                        'amount' => $glAmounts['amount'],
                         'from_account_id' => $account->id,
                         'to_account_id' => $fromAccountId,
                         'allow_from_negative' => true,
@@ -482,8 +660,8 @@ class RefundService
                         'notes' => 'عكس قيد استرداد — حذف طلب #'.$refundRequest->id.
                                    ' — حجز #'.$refundRequest->flight_booking_id,
                         'created_by' => $userId,
-                        'converted_amount' => $convertedAmount,
-                        'exchange_rate' => $exchangeRate,
+                        'converted_amount' => $glAmounts['converted_amount'],
+                        'exchange_rate' => $glAmounts['exchange_rate'],
                     ]);
 
                     Log::info('RefundService::reverseRefundRequest — GL reversal posted', [

@@ -40,7 +40,7 @@ class FlightTreasuryController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->whereIn('type', $accountTypes)
-            ->where('module_type', 'flights')
+            ->whereIn('module_type', ['flights', 'tourism'])
             // استثناء حسابات الإقفال والرصيد المسبق والتسوية
             // (هذه حسابات وسيطة محاسبية وليست خزائن نقدية حقيقية)
             ->where('name', 'not like', '%إقفال%')

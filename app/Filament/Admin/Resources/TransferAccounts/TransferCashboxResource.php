@@ -17,24 +17,24 @@ class TransferCashboxResource extends Resource
 
     protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
 
-    protected static ?string $navigationLabel = 'الخزائن النقدية';
+    protected static ?string $navigationLabel = 'خزائن المكتب النقدية';
 
-    protected static ?string $pluralLabel = 'الخزائن النقدية';
+    protected static ?string $pluralLabel = 'خزائن المكتب النقدية';
 
-    protected static ?string $modelLabel = 'خزنة نقدية';
+    protected static ?string $modelLabel = 'خزنة نقدية للمكتب';
 
     protected static ?int $navigationSort = 30;
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('module_type', 'wallet_transfer')
+            ->where('module_type', 'office')
             ->where('type', AccountType::Cashbox);
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Cashbox, 'wallet_transfer');
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Cashbox, 'office');
     }
 
     public static function table(Table $table): Table

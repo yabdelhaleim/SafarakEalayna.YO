@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Support\Finance\AccountModuleContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -78,7 +79,18 @@ class HajjUmraExecutingCompanyFinanceController extends Controller
         }
 
         $toAccount = Account::query()->findOrFail((int) $data['to_account_id']);
-        if ($toAccount->module_type !== 'hajj_umra') {
+        // ─────────────────────────────────────────────────────────────────
+        // FIX (BUG #HJ-1, fixed 2026-07-16):
+        //   Old check `$toAccount->module_type !== 'hajj_umra'` is wrong —
+        //   it rejects every valid tourism-division cashbox/wallet/bank
+        //   (Phase-3 contract forbids liquidity accounts from having
+        //   module_type='hajj_umra'; they must be 'office' or 'tourism').
+        //
+        //   Use AccountModuleContract::isTourismModule() which checks the
+        //   division AND the 'hajj_umra' alias — the canonical predicate.
+        // ─────────────────────────────────────────────────────────────────
+        if (! AccountModuleContract::isTourismModule($toAccount->module_type)
+            && $toAccount->module !== 'hajj_umra') {
             return ApiResponse::error('يجب اختيار حساب تابع لقسم الحج والعمرة.', null, 422);
         }
 
@@ -109,8 +121,28 @@ class HajjUmraExecutingCompanyFinanceController extends Controller
         }
 
         $fromAccount = Account::query()->findOrFail((int) $data['from_account_id']);
-        if ($fromAccount->module_type !== 'hajj_umra') {
+        // See BUG #HJ-1 fix above in withdraw() — same predicate needed here.
+        if (! AccountModuleContract::isTourismModule($fromAccount->module_type)
+            && $fromAccount->module !== 'hajj_umra') {
             return ApiResponse::error('يجب اختيار حساب تابع لقسم الحج والعمرة.', null, 422);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // FIX (GAP #HJ-6, fixed 2026-07-16):
+        //   The cashbox is the "from" account in repay() — it pays the
+        //   executing company. Without this guard, the cashbox could go
+        //   negative, breaking reconciliation. We allow the operation only
+        //   if the source account has sufficient balance.
+        // ─────────────────────────────────────────────────────────────────
+        if ((float) $fromAccount->balance < (float) $data['amount']) {
+            return ApiResponse::error(
+                'رصيد الحساب المصدر غير كافٍ لإتمام السداد: '
+                .'الرصيد الحالي ' . number_format((float) $fromAccount->balance, 2)
+                .' والمطلوب ' . number_format((float) $data['amount'], 2)
+                .' (' . $fromAccount->name . ').',
+                null,
+                422
+            );
         }
 
         $tx = app(\App\Services\Finance\TransactionService::class)->recordJournalTransfer([

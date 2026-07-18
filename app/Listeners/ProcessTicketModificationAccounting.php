@@ -35,6 +35,13 @@ class ProcessTicketModificationAccounting implements ShouldQueue
             return;
         }
 
+        // Bug #B10 fix: ALWAYS derive accounting currency from the booking, NOT from
+        // the modification's `currency` field. The modification's currency must equal
+        // the booking currency (enforced by ModificationService::createRequest) — but
+        // using `booking->currency` here makes the listener robust against any future
+        // caller that bypasses the service layer.
+        $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+
         // Prevent double processing (Idempotency check)
         $existingTx = Transaction::where('related_type', TicketModification::class)
             ->where('related_id', $modification->id)
@@ -45,7 +52,7 @@ class ProcessTicketModificationAccounting implements ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($modification, $booking) {
+        DB::transaction(function () use ($modification, $booking, $bookingCurrency) {
             // 1. Deduct from original airline account
             if ($modification->deducted_from_airline_balance && $booking->airline_account_id) {
                 $airlineAccount = AirlineAccount::active()
@@ -84,21 +91,21 @@ class ProcessTicketModificationAccounting implements ShouldQueue
             }
 
             // 2. Double-Entry Accounting Layer (GL Accounts)
-            // Resolve principal accounts safely
-            $cashAccount = Account::where('currency', $modification->currency)
+            // Bug #B10 fix: use bookingCurrency (from booking), NOT $modification->currency.
+            // This prevents the listener from spinning up brand-new currency-denominated
+            // accounts (e.g., JPY) for an EGP booking just because the modification
+            // record was mis-stamped.
+            $cashAccount = Account::where('currency', $bookingCurrency)
                 ->whereIn('type', ['treasury', 'cashbox', 'bank'])
                 ->active()
                 ->first();
 
             if (!$cashAccount) {
                 $cashAccount = Account::firstOrCreate([
-                    'name' => "خزينة تعديلات التذاكر - {$modification->currency}",
+                    'name' => "خزينة تعديلات التذاكر - {$bookingCurrency}",
                 ], [
-                    // Bug fix (2026-07-11): 'treasury' was removed from accounts.type
-                    // enum by migration 2026_07_09_010000. Use 'cashbox' (semantically
-                    // equivalent — it's the asset-side account that holds received cash).
                     'type' => 'cashbox',
-                    'currency' => $modification->currency,
+                    'currency' => $bookingCurrency,
                     'balance' => 0,
                     'is_active' => true,
                     'owner_type' => 'owner',
@@ -109,7 +116,7 @@ class ProcessTicketModificationAccounting implements ShouldQueue
                 'name' => 'حساب دائنو الطيران',
             ], [
                 'type' => 'liability',
-                'currency' => $modification->currency,
+                'currency' => $bookingCurrency,
                 'balance' => 0,
                 'is_active' => true,
                 'owner_type' => 'owner',
@@ -119,14 +126,14 @@ class ProcessTicketModificationAccounting implements ShouldQueue
                 'name' => 'إيرادات عمولات تعديل التذاكر',
             ], [
                 'type' => 'revenue',
-                'currency' => $modification->currency,
+                'currency' => $bookingCurrency,
                 'balance' => 0,
                 'is_active' => true,
                 'owner_type' => 'owner',
             ]);
 
             // Execute balanced double-entry inside Mutation Guard
-            LedgerBalanceMutationGuard::run(function () use ($modification, $cashAccount, $payableAccount, $revenueAccount) {
+            LedgerBalanceMutationGuard::run(function () use ($modification, $booking, $bookingCurrency, $cashAccount, $payableAccount, $revenueAccount) {
                 $totalPaid = (float) $modification->total_charged_to_customer;
                 $changeFee = (float) $modification->airline_change_fee;
                 $commission = (float) $modification->agency_commission;
@@ -140,7 +147,7 @@ class ProcessTicketModificationAccounting implements ShouldQueue
                     'from_account_id' => $cashAccount->id, // Asset holding received cash
                     'to_account_id' => $payableAccount->id,
                     'created_by' => $modification->modified_by ?? 1,
-                    'notes' => "قيود تعديل تذكرة طيران للحجز #{$modification->booking->booking_reference}",
+                    'notes' => "قيود تعديل تذكرة طيران للحجز #{$booking->booking_reference}",
                 ]);
 
                 // Lock accounts for GL entry
@@ -193,7 +200,7 @@ class ProcessTicketModificationAccounting implements ShouldQueue
                 }
             });
 
-            Log::info("Successfully processed GL accounting for Ticket Modification ID: {$modification->id}");
+            Log::info("Successfully processed GL accounting for Ticket Modification ID: {$modification->id} (currency={$bookingCurrency})");
         });
     }
 

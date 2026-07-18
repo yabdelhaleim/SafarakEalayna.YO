@@ -94,6 +94,7 @@
               <router-link to="/flights/customers" class="nl-sub">عملاء الطيران</router-link>
               <router-link to="/flights/passengers" class="nl-sub">دليل المسافرين</router-link>
               <router-link v-if="isAdminOrOwner" to="/flights/treasury" class="nl-sub">إدارة القسم (مالية وأرصدة)</router-link>
+              <router-link v-if="hasPermission('manage_finance')" to="/flights/carriers-debt" class="nl-sub">ديون الناقلين</router-link>
             </div>
           </div>
 

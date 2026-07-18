@@ -14,7 +14,7 @@ class ManageTransferCashboxes extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['module_type'] = 'wallet_transfer';
+                    $data['module_type'] = 'office';
 
                     return $data;
                 }),

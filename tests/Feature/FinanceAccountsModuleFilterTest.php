@@ -42,8 +42,8 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
-            'module' => 'flight',
+            'module_type' => 'tourism',
+            'module' => 'flights',
         ]);
 
         Account::query()->create([
@@ -53,7 +53,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
         ]);
 
@@ -74,7 +74,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
         ]);
 
         Account::query()->create([
@@ -104,7 +104,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
         ]);
 
         Account::query()->create([
@@ -114,7 +114,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => false,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
         ]);
 
         $response = $this->getJson('/api/v1/finance/accounts?is_active=0&per_page=100');
@@ -134,7 +134,8 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
+            'module' => 'fawry',
         ]);
 
         $fawryClearingName = config('accounting.clearing.income.fawry', 'إقفال إيرادات فوري');
@@ -145,7 +146,8 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
+            'module' => 'fawry',
         ]);
 
         $clearing = app(LedgerClearingAccounts::class);
@@ -178,7 +180,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'module' => 'flights',
         ]);
 
@@ -189,7 +191,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
         ]);
 
@@ -210,7 +212,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'visas',
+            'module_type' => 'tourism',
             'module' => 'visas',
             'wallet_number' => '01011112222',
         ]);
@@ -231,7 +233,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'hajj_umra',
+            'module_type' => 'tourism',
             'module' => 'hajj_umra',
         ]);
 
@@ -251,7 +253,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
             'module' => 'wallet_transfer',
             'wallet_number' => '01033334444',
         ]);
@@ -272,7 +274,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
         ]);
 
@@ -283,7 +285,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'wallet_number' => '01055556666',
         ]);
@@ -295,7 +297,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'online',
+            'module_type' => 'office',
             'module' => 'online',
         ]);
 
@@ -321,7 +323,8 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
+            'module' => 'wallet_transfer',
             'wallet_number' => '01099887766',
         ]);
 
@@ -341,8 +344,8 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
-            'module' => 'flight',
+            'module_type' => 'tourism',
+            'module' => 'flights',
         ]);
 
         Account::query()->create([
@@ -352,7 +355,7 @@ class FinanceAccountsModuleFilterTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
         ]);
 

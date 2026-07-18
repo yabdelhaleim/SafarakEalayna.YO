@@ -99,6 +99,31 @@ class HajjUmraController extends Controller
         ], 201);
     }
 
+    /**
+     * FIX (GAP #HJ-3, fixed 2026-07-16):
+     *   Full refund workflow for a HajjUmra booking. Performs additive
+     *   reversal of all transactions (payments, income, expense) and sets
+     *   status='refunded'. The booking row stays visible for audit.
+     */
+    public function refund(Request $request, HajjUmraBooking $hajjUmra): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $refundService = app(\App\Services\HajjUmra\HajjUmraRefundService::class);
+            $booking = $refundService->refund($hajjUmra, $data['reason'] ?? null);
+        } catch (\Throwable $e) {
+            return ApiResponse::error('فشل استرداد الحجز: '.$e->getMessage(), null, 422);
+        }
+
+        return ApiResponse::success('تم استرداد الحجز بنجاح', [
+            'booking' => new HajjUmraBookingResource($this->service->find($booking->id)),
+            'refunded_at' => now()->toDateTimeString(),
+        ]);
+    }
+
     public function customerBalances(Request $request): JsonResponse
     {
         try {

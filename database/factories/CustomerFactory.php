@@ -32,4 +32,30 @@ class CustomerFactory extends Factory
             'created_by' => null,
         ];
     }
+
+    public function withBusAccount(float $balance = 0, string $currency = 'EGP'): self
+    {
+        return $this->afterCreating(function (\App\Models\Customer $customer) use ($balance, $currency) {
+            \App\Support\Finance\LedgerBalanceMutationGuard::run(function () use ($customer, $balance, $currency) {
+                $account = \App\Models\Account::create([
+                    'name' => 'حساب العميل: '.$customer->full_name,
+                    'type' => \App\Enums\AccountType::Customer,
+                    'currency' => $currency,
+                    'balance' => $balance,
+                    'is_active' => true,
+                    'owner_type' => \App\Models\Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'bus',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب تلقائي للعميل #'.$customer->id,
+                    'created_by' => $customer->created_by ?? 1,
+                ]);
+                $customer->update(['account_id' => $account->id]);
+            });
+        });
+    }
+
+    public function phone(string $phone): self
+    {
+        return $this->state(fn () => ['phone' => $phone]);
+    }
 }

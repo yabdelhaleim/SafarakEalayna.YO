@@ -34,10 +34,16 @@ class BusDashboardController extends Controller
         // 2. Total Bookings
         $totalBookings = BusBooking::count();
 
-        // 3. Accounts Balances (Cashboxes, Banks, Wallets) for Bus Module
+        // 3. Accounts Balances (Cashboxes, Banks, Wallets) for Bus Module.
+        //
+        // Bug #B-02 fix: previously filtered `module_type='bus'` only. That
+        // excluded the unified office-division liquidity accounts that were
+        // introduced in Phase 3.5. Per the AccountModuleContract the
+        // bus/fawry/online/wallet_transfer modules share ONE office-division
+        // cashbox, so the dashboard must look at BOTH 'bus' AND 'office'.
         $accounts = Account::query()
             ->where('is_active', true)
-            ->where('module_type', 'bus')
+            ->whereIn('module_type', ['bus', 'office'])
             ->get(['type', 'balance']);
 
         $cashboxes = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);

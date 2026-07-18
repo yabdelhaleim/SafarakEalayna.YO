@@ -60,7 +60,7 @@ class TreasuryOverviewIntegrityTest extends TestCase
             'currency' => 'KWD',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
         ]);
 
         // 2. Create a bank account in EGP
@@ -71,7 +71,7 @@ class TreasuryOverviewIntegrityTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
         ]);
 
         // 3. Call service

@@ -410,6 +410,7 @@ Route::prefix('v1')->middleware([
         Route::get('summary', [FinancialReportController::class, 'financialSummary']);
         Route::get('profit-by-module', [FinancialReportController::class, 'profitByModule']);
         Route::get('profit-by-day', [FinancialReportController::class, 'profitByDay']);
+        Route::get('profit-by-operation', [FinancialReportController::class, 'profitByOperation']);
         Route::get('profit-entity-top', [FinancialReportController::class, 'profitEntityTop']);
         Route::get('cash-flow-realtime', [FinancialReportController::class, 'cashFlowRealtime']);
         Route::get('customer-ledger-balances', [FinancialReportController::class, 'customerLedgerBalances']);
@@ -417,6 +418,7 @@ Route::prefix('v1')->middleware([
         Route::get('ledger-reconciliation/latest', [FinancialReportController::class, 'latestLedgerReconciliation']);
         Route::get('capital-analysis', [FinancialReportController::class, 'capitalAnalysis']);
         Route::get('trial-balance', [FinancialReportController::class, 'trialBalance']);
+        Route::get('trial-balance-detailed', [FinancialReportController::class, 'trialBalanceDetailed']);
         Route::get('office-trial-balance', [FinancialReportController::class, 'officeTrialBalance']);
         Route::get('consolidated-trial-balance', [FinancialReportController::class, 'consolidatedTrialBalance']);
         Route::get('flights/detailed', [FinancialReportController::class, 'detailedFlightReport']);
@@ -458,6 +460,10 @@ Route::prefix('v1')->middleware([
         Route::match(['put', 'patch'], 'bookings/{hajjUmra}', [HajjUmraController::class, 'update']);
         Route::delete('bookings/{hajjUmra}', [HajjUmraController::class, 'destroy']);
         Route::post('bookings/{hajjUmra}/payments', [HajjUmraController::class, 'addPayment']);
+        // FIX (GAP #HJ-3, fixed 2026-07-16):
+        //   Refund endpoint for HajjUmra bookings. Performs additive reversal
+        //   of all transactions and sets status='refunded'.
+        Route::post('bookings/{hajjUmra}/refund', [HajjUmraController::class, 'refund']);
     });
 
     // Visa API

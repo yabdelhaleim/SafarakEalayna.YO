@@ -56,7 +56,8 @@ class StoreFlightBookingRequest extends FormRequest
             'airline_name' => 'nullable|string|max:150',
             'airline' => 'nullable|string|max:150',
             'system_type' => 'nullable|string|max:50',
-            'pnr' => 'required|string|max:50',
+            // ✅ S8 FIX: PNR أصبح اختياري للسماح بإنشاء حجوزات PENDING (لتعديل الأسعار لاحقاً)
+            'pnr' => 'nullable|string|max:50',
             'trip_type' => 'nullable|in:one_way,round_trip,multi_city',
             'from_airport' => 'nullable|string|max:10',
             'to_airport' => 'nullable|string|max:10',

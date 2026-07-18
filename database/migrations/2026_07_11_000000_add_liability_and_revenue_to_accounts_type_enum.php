@@ -33,24 +33,28 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement("
-            ALTER TABLE accounts
-            MODIFY COLUMN type
-            ENUM('bank','cashbox','customer','owner','supplier','wallet','expense','liability','revenue')
-            NOT NULL
-        ");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("
+                ALTER TABLE accounts
+                MODIFY COLUMN type
+                ENUM('bank','cashbox','customer','owner','supplier','wallet','expense','liability','revenue')
+                NOT NULL
+            ");
+        }
     }
 
     public function down(): void
     {
-        // Note: rollback will fail if any account rows currently have type='liability' or 'revenue'.
-        // Production-safe rollback requires manual cleanup first:
-        //     UPDATE accounts SET type='expense' WHERE type IN ('liability', 'revenue');
-        DB::statement("
-            ALTER TABLE accounts
-            MODIFY COLUMN type
-            ENUM('bank','cashbox','customer','owner','supplier','wallet','expense')
-            NOT NULL
-        ");
+        if (DB::getDriverName() !== 'sqlite') {
+            // Note: rollback will fail if any account rows currently have type='liability' or 'revenue'.
+            // Production-safe rollback requires manual cleanup first:
+            //     UPDATE accounts SET type='expense' WHERE type IN ('liability', 'revenue');
+            DB::statement("
+                ALTER TABLE accounts
+                MODIFY COLUMN type
+                ENUM('bank','cashbox','customer','owner','supplier','wallet','expense')
+                NOT NULL
+            ");
+        }
     }
 };

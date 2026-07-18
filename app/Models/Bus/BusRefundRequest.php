@@ -6,13 +6,20 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\Treasury;
 use App\Models\User;
+use Database\Factories\Bus\BusRefundRequestFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BusRefundRequest extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, HasFactory;
+
+    protected static function newFactory(): BusRefundRequestFactory
+    {
+        return BusRefundRequestFactory::new();
+    }
 
     protected $fillable = [
         'bus_booking_id',

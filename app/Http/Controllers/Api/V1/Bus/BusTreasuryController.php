@@ -22,7 +22,7 @@ class BusTreasuryController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->whereIn('type', $accountTypes)
-            ->where('module_type', 'bus')
+            ->whereIn('module_type', ['bus', 'office'])
             ->orderBy('type')
             ->orderBy('name')
             ->get([

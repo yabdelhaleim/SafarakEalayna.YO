@@ -67,7 +67,7 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -261,7 +261,7 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -327,7 +327,7 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

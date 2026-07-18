@@ -123,19 +123,28 @@ class CurrencyService
     public function setExchangeRate(array $data): ExchangeRate
     {
         return DB::transaction(function () use ($data) {
-            $rate = ExchangeRate::create([
-                'from_currency' => $data['from_currency'],
-                'to_currency' => $data['to_currency'],
-                'rate' => $data['rate'],
-                'effective_date' => $data['effective_date'] ?? now(),
-                'is_active' => $data['is_active'] ?? true,
-                'created_by' => Auth::id(),
-            ]);
+            $effectiveDate = $data['effective_date'] ?? now()->toDateString();
+
+            // Phase 3.5 fix: use updateOrCreate so re-running with same
+            // (from_currency, to_currency, effective_date) updates the rate
+            // instead of violating the unique key.
+            $rate = ExchangeRate::updateOrCreate(
+                [
+                    'from_currency' => $data['from_currency'],
+                    'to_currency' => $data['to_currency'],
+                    'effective_date' => $effectiveDate,
+                ],
+                [
+                    'rate' => $data['rate'],
+                    'is_active' => $data['is_active'] ?? true,
+                    'created_by' => Auth::id(),
+                ]
+            );
 
             // Audit Log
             AuditLog::create([
                 'user_id' => Auth::id(),
-                'action' => 'create_exchange_rate',
+                'action' => $rate->wasRecentlyCreated ? 'create_exchange_rate' : 'update_exchange_rate',
                 'model_type' => ExchangeRate::class,
                 'model_id' => $rate->id,
                 'ip_address' => request()->ip(),

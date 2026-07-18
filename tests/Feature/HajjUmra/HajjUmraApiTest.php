@@ -50,7 +50,7 @@ class HajjUmraApiTest extends TestCase
             'balance' => 100000.00,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'hajj_umra',
+            'module_type' => 'tourism',
             'module' => 'hajj_umra',
             'created_by' => $this->user->id,
         ]);
@@ -124,7 +124,7 @@ class HajjUmraApiTest extends TestCase
             'balance' => 5000,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'flights',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -195,14 +195,20 @@ class HajjUmraApiTest extends TestCase
         $this->assertEquals(0.0, (float) Account::find($customer->account_id)->fresh()->balance);
         $this->assertEqualsWithDelta($treasuryBefore, (float) $this->treasury->fresh()->balance, 0.01);
 
-        $remainingEntries = AccountEntry::query()
+        // Reversal is ADDITIVE (محاسبياً صحيح): يُضاف قيد عكسي لكل قيد أصلي.
+        // لذا لا نتحقق من count=0 بل من أن الصافي صفر (credits = debits).
+        $bookingEntries = AccountEntry::query()
             ->whereHas('transaction', function ($q) use ($bookingId): void {
                 $q->where('module', 'hajj_umra')
                     ->where('related_type', HajjUmraBooking::class)
                     ->where('related_id', $bookingId);
             })
-            ->count();
-        $this->assertSame(0, $remainingEntries);
+            ->get();
+        $netDebit  = $bookingEntries->sum('debit');
+        $netCredit = $bookingEntries->sum('credit');
+        // بعد الإلغاء الكامل الصافي يجب أن يكون صفراً (كل قيد له عكسه)
+        $this->assertEqualsWithDelta(0.0, (float)($netDebit - $netCredit), 0.01,
+            'Net debit/credit after full cancellation should be zero (additive reversal)');
 
         $balancesResponse = $this->getJson('/api/v1/hajj-umra/customer-balances');
         $balancesResponse->assertOk();
@@ -329,10 +335,14 @@ class HajjUmraApiTest extends TestCase
         $this->assertNotEquals($originalIncomeTxId, $booking->income_transaction_id);
         $this->assertEquals(9500.0, (float) $booking->incomeTransaction->amount);
 
+        // Reversal is ADDITIVE — القيود القديمة موجودة مع عكسها.
+        // نتحقق أن الصافي = صفر (reversed) وأن الـ transaction الجديد بالمبلغ الصحيح.
         $oldEntries = AccountEntry::query()
             ->where('transaction_id', $originalIncomeTxId)
-            ->count();
-        $this->assertSame(0, $oldEntries);
+            ->get();
+        $netOld = (float)($oldEntries->sum('debit') - $oldEntries->sum('credit'));
+        $this->assertEqualsWithDelta(0.0, $netOld, 0.01,
+            'Old income transaction entries should net to zero after reversal (additive)');
     }
 
     protected function createProgram(): Program

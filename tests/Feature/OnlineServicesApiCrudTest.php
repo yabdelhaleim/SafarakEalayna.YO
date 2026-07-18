@@ -45,6 +45,7 @@ class OnlineServicesApiCrudTest extends TestCase
             'balance' => 10000,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

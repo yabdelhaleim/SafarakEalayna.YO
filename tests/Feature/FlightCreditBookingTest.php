@@ -77,7 +77,7 @@ class FlightCreditBookingTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->admin->id,
         ]);
     }

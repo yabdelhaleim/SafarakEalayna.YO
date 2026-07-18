@@ -54,7 +54,7 @@ class FlightDashboardTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 
@@ -66,7 +66,7 @@ class FlightDashboardTest extends TestCase
             'currency' => 'USD',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 

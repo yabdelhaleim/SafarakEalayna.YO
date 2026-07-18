@@ -47,8 +47,12 @@ class RechargeFlightSystemRequest extends FormRequest
                 $v->errors()->add('from_account_id', 'حساب المصدر غير مفعّل.');
             }
 
-            if ($account->module_type !== 'flights') {
-                $v->errors()->add('from_account_id', 'يُسمح فقط بحسابات وحدة العمل «طيران».');
+            // Phase 3.5 fix: liquidity accounts are now division-tagged ('tourism')
+            // per AccountModuleContract, not module-tagged ('flights'). Accept
+            // both for backward compatibility with any legacy 'flights'-tagged
+            // liquidity accounts that may still exist in the wild.
+            if (! in_array(strtolower((string) $account->module_type), ['flights', 'tourism'], true)) {
+                $v->errors()->add('from_account_id', 'يُسمح فقط بحسابات قسم «السياحة/الطيران» (flights أو tourism).');
             }
 
             $type = $account->type instanceof AccountType ? $account->type : AccountType::tryFrom((string) $account->type);

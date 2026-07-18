@@ -40,7 +40,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
         ]);
 
         $visaWallet = Account::query()->create([
@@ -50,7 +50,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'visas',
+            'module_type' => 'tourism',
             'module' => 'general',
         ]);
 
@@ -61,7 +61,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'bus',
+            'module_type' => 'office',
         ]);
 
         $response = $this->getJson('/api/v1/finance/treasuries/get-overview');
@@ -92,7 +92,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
         ]);
 
         Account::query()->create([
@@ -102,7 +102,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'hajj_umra',
+            'module_type' => 'tourism',
         ]);
 
         Account::query()->create([
@@ -112,7 +112,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'visas',
+            'module_type' => 'tourism',
         ]);
 
         $response = $this->getJson('/api/v1/finance/treasuries/get-overview');
@@ -146,7 +146,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
         ]);
 
         $response = $this->getJson('/api/v1/finance/treasuries/get-overview');
@@ -167,7 +167,7 @@ class TreasuryOverviewTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'visas',
+            'module_type' => 'tourism',
         ]);
 
         $response = $this->getJson('/api/v1/finance/treasuries/get-module-accounts/visas');

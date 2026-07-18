@@ -33,9 +33,16 @@ class FlightDashboardController extends Controller
         $totalBookings = FlightBooking::count();
 
         // 3. Accounts Balances (Cashboxes, Banks, Wallets)
+        // ✅ Fix: نستخدم 'flights' في module column (وليس module_type) — لأن AccountModuleContract
+        // يُعرّف flights كـ module داخل tourism division. الـ E2E accounts module_type = 'tourism', module = 'flights'
         $accounts = Account::query()
             ->where('is_active', true)
-            ->where('module_type', 'flights')
+            ->where(function ($q) {
+                $q->where('module', 'flights')
+                  ->orWhere('module_type', 'flights');
+            })
+            // ✅ نقتصر على liquidity types فقط (cashbox, bank, wallet) — لا نضع clearing/supplier/customer في الإجمالي
+            ->whereIn('type', [AccountType::Cashbox->value, AccountType::Bank->value, AccountType::Wallet->value])
             ->get(['type', 'balance', 'currency']);
 
         $treasuryService = app(\App\Services\Finance\TreasuryService::class);

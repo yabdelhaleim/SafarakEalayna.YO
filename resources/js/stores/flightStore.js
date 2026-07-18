@@ -146,7 +146,12 @@ export const useFlightStore = defineStore('flight', {
       const total = bookings.length;
       const revenue = bookings.reduce((sum, b) => sum + (b.pricing?.sellingPrice || 0), 0);
       const profit = bookings.reduce((sum, b) => sum + (b.pricing?.profit || 0), 0);
-      const active = bookings.filter(b => b && ['confirmed', 'ticketed'].includes(b.status)).length;
+      // ✅ Vue Bug Fix: API يُرجع 'CONFIRMED' (uppercase) — يقبل الحالتين (lowercase + uppercase)
+      const active = bookings.filter(b => {
+        if (!b) return false;
+        const s = String(b.status || '').toLowerCase();
+        return ['confirmed', 'ticketed'].includes(s);
+      }).length;
       return { total, revenue, profit, active };
     },
 

@@ -150,7 +150,7 @@ class AirlineAccountController extends Controller
         ]);
 
         try {
-            return DB::transaction(function () use ($validated) {
+            return DB::transaction(function () use ($validated, $request) {
                 $account = AirlineAccount::findOrFail($validated['airline_account_id']);
                 $amount = (float) $validated['amount'];
 

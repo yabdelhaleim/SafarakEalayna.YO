@@ -17,6 +17,11 @@ class FawryBankResource extends Resource
 {
     protected static ?string $model = Account::class;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 
     protected static string|UnitEnum|null $navigationGroup = 'فوري';
@@ -32,9 +37,9 @@ class FawryBankResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->whereIn('type', [AccountType::Bank, AccountType::Bank])
+            ->where('type', AccountType::Bank)
             ->where(function (Builder $query): void {
-                $query->where('module_type', 'fawry')
+                $query->whereIn('module_type', ['fawry', 'office'])
                     ->orWhere('module', 'fawry');
             })
             ->withCount('fawryTransactions');

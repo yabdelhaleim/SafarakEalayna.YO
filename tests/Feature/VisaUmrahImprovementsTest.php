@@ -49,6 +49,7 @@ class VisaUmrahImprovementsTest extends TestCase
             'balance' => 0.0,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'tourism',
             'module' => 'hajj_umra',
             'created_by' => $this->user->id,
         ]);

@@ -5,7 +5,9 @@ namespace App\Models\Bus;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
+use Database\Factories\Bus\BusPaymentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -16,15 +18,24 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'payment_method',
     'account_id',
     'transaction_id',
+    'currency',
+    'exchange_rate_to_egp',
     'notes',
     'created_by',
 ])]
 class BusPayment extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, HasFactory;
+
+    protected static function newFactory(): BusPaymentFactory
+    {
+        return BusPaymentFactory::new();
+    }
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'currency' => 'string',
+        'exchange_rate_to_egp' => 'decimal:6',
     ];
 
     public function booking(): BelongsTo

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'flight_booking_id',
     'amount',
+    'original_amount',
     'payment_method',
     'currency',
     'treasury_account',
@@ -33,6 +34,7 @@ class FlightPayment extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'original_amount' => 'decimal:4',
             'payment_date' => 'datetime',
             'payment_method' => FlightPaymentMethod::class,
         ];

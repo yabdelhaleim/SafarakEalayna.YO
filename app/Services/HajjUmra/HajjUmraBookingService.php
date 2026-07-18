@@ -199,6 +199,28 @@ class HajjUmraBookingService
                 }
             }
 
+            // ─────────────────────────────────────────────────────────────────
+            // FIX (GAP #HJ-6, fixed 2026-07-16):
+            //   If the expense falls back to the cashbox (no supplier AND no
+            //   executing company), the cashbox must have enough balance to
+            //   cover the purchase cost. Without this guard, the system could
+            //   silently book expenses it cannot pay, leading to negative
+            //   balances and broken reconciliation downstream.
+            // ─────────────────────────────────────────────────────────────────
+            if ($expenseAccountId === $accountId) {
+                $cashbox = Account::findOrFail($accountId);
+                if ((float) $cashbox->balance < (float) $totalPurchase) {
+                    throw new \RuntimeException(
+                        'رصيد الخزينة غير كافٍ لتغطية تكلفة الحجز: '
+                        .'الرصيد الحالي ' . number_format((float) $cashbox->balance, 2)
+                        .' والمطلوب ' . number_format((float) $totalPurchase, 2)
+                        .' (' . $cashbox->name . '). '
+                        .'يُرجى اختيار مورّد أو شركة منفذة لتحمّل تكلفة الحجز، '
+                        .'أو إيداع رصيد كافٍ في الخزينة.'
+                    );
+                }
+            }
+
             $expense = $this->transactions->recordExpense([
                 'amount' => $totalPurchase,
                 'from_account_id' => $expenseAccountId,
@@ -560,6 +582,33 @@ class HajjUmraBookingService
 
     public function addPayment(HajjUmraBooking $booking, array $data): HajjUmraPayment
     {
+        // ─────────────────────────────────────────────────────────────────
+        // FIX (GAP #HJ-4 + #HJ-5, fixed 2026-07-16):
+        //   The system used to accept payments on cancelled OR soft-deleted
+        //   bookings, which would corrupt the ledger and let admins add
+        //   money to closed bookings. We now guard at the service level —
+        //   this is the canonical entry point for all payment additions
+        //   (Tinker, API, Filament form, direct call).
+        // ─────────────────────────────────────────────────────────────────
+        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+        if ($status === \App\Enums\HajjUmraStatus::Cancelled->value) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز مُلغى (status=cancelled). '
+                .'يجب استخدام HajjUmraRefundService::refund() لاسترداد المبالغ.'
+            );
+        }
+        if ($status === \App\Enums\HajjUmraStatus::Refunded->value) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز تم استرداده بالكامل (status=refunded).'
+            );
+        }
+        if ($booking->trashed()) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز محذوف (soft-deleted). '
+                .'يجب استخدام deleteBookingWithReversal() للعكس الإداري.'
+            );
+        }
+
         return DB::transaction(function () use ($booking, $data) {
             $amount = (float) $data['amount'];
             $accountId = (int) ($data['account_id'] ?? $booking->account_id);

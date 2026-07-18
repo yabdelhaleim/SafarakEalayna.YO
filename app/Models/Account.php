@@ -185,10 +185,32 @@ class Account extends Model
                 }
             }
 
+            // Phase 3.5 fix: defensive check — `module` column may be absent
+            // on legacy schemas (we already migrated module_type into the
+            // canonical column). Only touch the alias when the column
+            // actually exists in the DB, otherwise the INSERT will fail
+            // with "Unknown column 'module' in 'field list'".
             if ($account->module_type && ! $account->module) {
-                $account->module = $account->module_type instanceof BackedEnum
-                    ? $account->module_type->value
-                    : $account->module_type;
+                // Auto-fill module from module_type ONLY when module_type
+                // names a SPECIFIC module. If module_type is a division
+                // (office/tourism) the account is division-unified and
+                // module must stay null per AccountModuleContract rule #2.
+                $moduleTypeIsDivision = in_array($moduleTypeLower, [
+                    AccountModuleContract::OFFICE_MODULE_TYPE,
+                    AccountModuleContract::TOURISM_MODULE_TYPE,
+                ], true);
+
+                if (! $moduleTypeIsDivision) {
+                    try {
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('accounts', 'module')) {
+                            $account->module = $account->module_type instanceof BackedEnum
+                                ? $account->module_type->value
+                                : $account->module_type;
+                        }
+                    } catch (\Throwable) {
+                        // column missing — silently skip (legacy schema)
+                    }
+                }
             }
         });
 

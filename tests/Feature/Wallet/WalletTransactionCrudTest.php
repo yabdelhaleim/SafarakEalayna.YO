@@ -47,12 +47,14 @@ class WalletTransactionCrudTest extends TestCase
             'full_name' => 'أحمد محمود',
         ]);
 
-        $this->walletType = WalletType::create([
-            'name' => 'فودافون كاش',
-            'code' => 'vodafone_cash',
-            'is_active' => true,
-            'sort_order' => 1,
-        ]);
+        $this->walletType = WalletType::firstOrCreate(
+            ['code' => 'vodafone_cash'],
+            [
+                'name' => 'فودافون كاش',
+                'is_active' => true,
+                'sort_order' => 1,
+            ]
+        );
     }
 
     // ────────────── Wallet Types ──────────────
@@ -92,7 +94,7 @@ class WalletTransactionCrudTest extends TestCase
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/wallet/transactions', $payload);
-
+        dd($response->json());
         $response->assertStatus(201)
             ->assertJsonStructure([
                 'success', 'message',

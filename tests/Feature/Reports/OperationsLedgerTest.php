@@ -53,7 +53,7 @@ class OperationsLedgerTest extends TestCase
             'balance' => 100_000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -234,7 +234,7 @@ class OperationsLedgerTest extends TestCase
             'balance' => 0,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -333,7 +333,7 @@ class OperationsLedgerTest extends TestCase
             'balance' => 1000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

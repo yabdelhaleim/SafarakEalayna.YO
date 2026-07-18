@@ -144,7 +144,7 @@ class FinanceTransferTest extends TestCase
             'balance' => 1000.0,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -237,7 +237,7 @@ class FinanceTransferTest extends TestCase
             'balance' => 20000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 
@@ -287,7 +287,7 @@ class FinanceTransferTest extends TestCase
             'balance' => 15000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -335,7 +335,7 @@ class FinanceTransferTest extends TestCase
             'balance' => 30000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 

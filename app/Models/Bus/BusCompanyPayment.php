@@ -6,7 +6,9 @@ use App\Enums\BusCompanyPaymentStatus;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
+use Database\Factories\Bus\BusCompanyPaymentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -23,7 +25,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusCompanyPayment extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, HasFactory;
+
+    protected static function newFactory(): BusCompanyPaymentFactory
+    {
+        return BusCompanyPaymentFactory::new();
+    }
 
     protected function casts(): array
     {

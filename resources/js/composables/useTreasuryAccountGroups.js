@@ -247,11 +247,14 @@ export async function fetchSettlementAccounts(httpClient, options = {}) {
     const params = { ...baseParams };
     if (module) {
       params.module = module;
-    }
-    if (module_type) {
+      // Bug #C-01 fix: do NOT also send `module_type` here. The AccountService
+      // applies `applyModuleTypeFilter` BEFORE `applyModuleFilter`, so sending
+      // both with the same canonical value collapses the broader OR-query
+      // (which includes office-division unified vaults) into a strict
+      // `where module_type='bus'` — and the dropdown ends up empty.
+      // Send ONLY `module=bus` so the broader filter runs.
+    } else if (module_type) {
       params.module_type = module_type;
-    } else if (module && MODULE_TO_MODULE_TYPE[module]) {
-      params.module_type = MODULE_TO_MODULE_TYPE[module];
     }
 
     const scoped = await fetchList(params);

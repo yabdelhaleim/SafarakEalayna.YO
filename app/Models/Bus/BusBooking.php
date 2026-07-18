@@ -11,8 +11,10 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
 use App\Support\Finance\ModelProfitMutationGuard;
+use Database\Factories\Bus\BusBookingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -34,11 +36,18 @@ use App\Traits\ClearsCache;
     'account_id',
     'transaction_id',
     'notes',
+    'currency',
+    'exchange_rate_to_egp',
     'created_by',
 ])]
 class BusBooking extends Model
 {
-    use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard, HasFactory;
+
+    protected static function newFactory(): BusBookingFactory
+    {
+        return BusBookingFactory::new();
+    }
 
     protected function casts(): array
     {
@@ -50,6 +59,8 @@ class BusBooking extends Model
             'profit' => 'decimal:2',
             'status' => BusBookingStatus::class,
             'payment_status' => BusPaymentStatus::class,
+            'currency' => 'string',
+            'exchange_rate_to_egp' => 'decimal:6',
         ];
     }
 

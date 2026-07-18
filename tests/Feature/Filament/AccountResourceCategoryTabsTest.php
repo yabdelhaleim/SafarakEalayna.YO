@@ -232,7 +232,7 @@ class AccountResourceCategoryTabsTest extends TestCase
             'currency' => 'EGP',
             'balance' => 0,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'is_active' => true,
             'is_module_vault' => true,
@@ -278,7 +278,7 @@ class AccountResourceCategoryTabsTest extends TestCase
             'currency' => 'EGP',
             'balance' => 0,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'is_active' => true,
             'created_by' => $this->user->id,
         ]);
@@ -288,7 +288,7 @@ class AccountResourceCategoryTabsTest extends TestCase
             'currency' => 'EGP',
             'balance' => 0,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'is_active' => true,
             'created_by' => $this->user->id,
         ]);
