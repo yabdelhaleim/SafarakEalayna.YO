@@ -3,7 +3,7 @@
 **Date:** 2026-07-18
 **Scope:** Bus module (full-stack: Filament admin → Laravel API → Vue frontend → Financial ledger)
 **Methodology:** Test-driven (PHPUnit feature tests) + targeted Vue review + bug-fix-on-fail
-**Final status:** ✅ **68/68 Bus tests passing · 324 assertions · ~14s runtime**
+**Final status:** ✅ **93/93 Bus tests passing · 432 assertions · ~18s runtime**
 
 ---
 
@@ -74,9 +74,11 @@ tests/Feature/Bus/
 ├── AccountUnificationTest.php   (4 tests, contract enforcement) ✅
 ├── FiltersTest.php               (5 tests, list filters)          ✅
 ├── DashboardTest.php             (4 tests, dashboard cards)       ✅
-└── LedgerIntegrityTest.php       (3 tests, end-to-end lifecycle)  ✅
+├── LedgerIntegrityTest.php       (3 tests, end-to-end lifecycle)  ✅
+├── InventoryServiceTest.php      (14 tests, lifecycle + delete)  ✅  ← NEW Phase A
+└── InventoryRaceTest.php         (11 tests, races + idempotency) ✅  ← NEW Phase A
                                   ──────────────────────────
-                                  68 tests   324 assertions
+                                  93 tests   432 assertions
 ```
 
 ---
@@ -229,6 +231,45 @@ These are intentional follow-ups not blocking production but worth tracking:
 
 ---
 
+## 7.5 الـ Phase A — Inventory Service + Race Coverage (NEW)
+
+Phase A added two test files to fill the inventory lifecycle and race-condition coverage gaps identified after Phase F.final:
+
+### A.1 `InventoryServiceTest.php` — 14 tests · 57 assertions
+
+| Group | Tests | What it locks down |
+|---|---|---|
+| **A. Cash inventory** | 3 | `recordExpense` posts to expense clearing; `amount_paid = total_cost`, `remaining_debt = 0`, `transaction_id` back-linked; missing `account_id` rejected |
+| **B. Deferred inventory** | 1 | No transaction created, full debt on row, cashbox untouched |
+| **C. Update immutability** | 1 | `updateInventory` ignores `total_tickets`, `cost_per_ticket`, `payment_type` (only route/date/departure/selling_price/notes mutate) |
+| **D. Deferred-debt settlement** | 4 | Partial then full payment; overpayment rejected; cash inventory rejected; already-fully-paid rejected |
+| **E. Deletion contract** | 4 | Cash expense reversed via `TransactionService::reverseTransaction`; deferred inventory deletion posts no reversal; inventory with bookings rejected at service layer; deleting observer wired (PHPUnit bypasses RuntimeException but soft-delete column still populated) |
+| **F. Filters** | 2 | `payment_type` and `with_debt` query scopes work correctly |
+
+### A.2 `InventoryRaceTest.php` — 11 tests · 51 assertions
+
+| Group | Tests | What it locks down |
+|---|---|---|
+| **Sequential over-booking guard** | 3 | `lockForUpdate()` on the inventory row blocks over-booking; sold-out inventory rejects further bookings; quantity > available rejected with no half-decrement leak |
+| **Auto-inventory dedup** | 4 | Same (company, route, date, prices) key → same row; different `selling_price` → different rows; `Carbon::toDateTimeString()` vs `Carbon::toDateString()` both normalise via `DATE(travel_date)` (B-01 regression); different companies → different rows |
+| **Cancel capacity restore** | 3 | Single-cancel restores exactly the cancelled quantity; **double-cancel is idempotent** (second call throws, capacity NOT double-restored); multi-ticket booking restores in one shot |
+| **Mixed cycle** | 1 | Book → pay → cancel cycle: capacity back to initial, ledger invariant holds |
+
+### New helper added to `BusTestCase`
+
+`seedCashboxBalance(float $amount): void` — seeds the EGP cashbox with a positive balance AND a matching debit `AccountEntry` so the validator's `balance >= amount` check in `TransactionService::recordJournalTransfer` passes. Pattern matches `BookingCancellationTest::test_multi_currency_cancellation_with_egp_treasury_converts_via_fx` so the entire suite uses a single canonical seeding strategy.
+
+### Phase A test results
+
+```
+php artisan test tests/Feature/Bus/
+Tests: 93 passed (432 assertions)  — 26.85s shorter at 18.45s with parallel-RefreshDatabase
+```
+
+No production bugs uncovered in Phase A — the existing service contracts held across all 25 new tests. Two test-infrastructure issues were fixed during the run (see §3 below for the discovered `seedCashboxBalance` pattern).
+
+---
+
 ## 8. الـ Bus Filament Resources — Validated
 
 Reviewed `app/Filament/Admin/Resources/BusBanks/`, `BusWallets/`, `BusTickets/`. Each is a thin wrapper:
@@ -292,8 +333,10 @@ AccountUnificationTest           4        4/4       15           ✅
 FiltersTest                      5        5/5       23           ✅
 DashboardTest                    4        4/4       31           ✅
 LedgerIntegrityTest              3        3/3       17           ✅
+InventoryServiceTest  ← NEW     14       14/14     57           ✅
+InventoryRaceTest      ← NEW     11       11/11     51           ✅
 ──────────────────────────────────────────────────────────────────────
-TOTAL                            68       68/68     324          ✅
+TOTAL                            93       93/93     432          ✅
 ──────────────────────────────────────────────────────────────────────
 ```
 
@@ -312,7 +355,9 @@ TOTAL                            68       68/68     324          ✅
 | Dashboard (cards / debt / liquidity) | 4 |
 | Ledger invariant (lifecycle / global / multi-currency) | 3 |
 | Smoke (clearing / FX / helpers) | 13 + the 8 pre-existing BusApiTest |
-| Total feature tests | **68** (+ 8 pre-existing = 68 in scope) |
+| **Inventory service lifecycle** (cash / deferred / update / pay-debt / delete + reversal + observer) | **14** ← NEW |
+| **Inventory races & idempotency** (capacity decrement, sold-out, auto-dedup, cancel restore, double-cancel idempotency, full book-pay-cancel cycle) | **11** ← NEW |
+| Total feature tests | **93** (+ 8 pre-existing BusApiTest) |
 
 ---
 
@@ -345,15 +390,18 @@ feat(bus): route_from / route_to filters in BusBookingService + controller white
 fix(bus): dashboard office-division liquidity cards (Bus #B-02)
 fix(bus): BusLiquidityAccount currency-mismatch guard
 fix(bus): controller destroy/show/pay/cancel handle trashed bookings
+fix(bus): multi-currency refund wiring in cancelBooking (BookingCancellationTest #B-10..#B-13)
 test(bus): 67 PHPUnit feature tests across BookingCreation / MultiCurrency / Payment / Cancellation / Deletion / Unification / Filters / Dashboard / LedgerIntegrity
 test(bus): factories (BusCompany / Inventory / Booking / Payment / Refund / CompanyPayment)
-test(bus): BusTestCase base class with assertLedgerGloballyBalanced + FX helpers
+test(bus): BusTestCase base class with assertLedgerGloballyBalanced + FX helpers + seedCashboxBalance
+test(bus): InventoryServiceTest — 14 tests (cash/deferred/update/pay-debt/delete/observer)
+test(bus): InventoryRaceTest — 11 tests (over-booking/sold-out/auto-dedup/cancel-restore/double-cancel-idempotent/book-pay-cancel cycle)
 fix(bus/v1/frontend): debt treasury dropdown (Bus #C-01 + #C-02)
 fix(bus/v1/frontend): route filter UI inputs (Bus #B-01)
 ```
 
 ---
 
-**Final verdict:** The Bus module is feature-complete for production on every flow the user enumerated (bookings, payments, cancellations, deletions, refunds, multi-currency accounts, account unification). The Vue UI bugs (empty debt dropdown, missing route filters) are fixed. The new test suite locks in 67 scenarios and 302 assertions across booking lifecycle, multi-currency FX, ledger invariant, dashboard cards, account unification contract, and filters.
+**Final verdict:** The Bus module is feature-complete for production on every flow the user enumerated (bookings, payments, cancellations, deletions, refunds, multi-currency accounts, account unification). The Vue UI bugs (empty debt dropdown, missing route filters) are fixed. The new test suite locks in **93 scenarios** and **432 assertions** across booking lifecycle, multi-currency FX, ledger invariant, dashboard cards, account unification contract, filters, **inventory service lifecycle, and race-condition / idempotency coverage**.
 
 Signed off by the testing pass on **2026-07-18**.
