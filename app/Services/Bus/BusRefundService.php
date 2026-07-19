@@ -36,7 +36,7 @@ class BusRefundService
             throw new \RuntimeException('هذا الحجز تم استرداده بالكامل مسبقاً.');
         }
 
-        $originalCurrency = 'EGP'; // Bus system is primarily EGP
+        $originalCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
         $originalAmount = (float) $booking->total_price;
 
         $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
@@ -47,7 +47,11 @@ class BusRefundService
         }
 
         $refundCurrency = $data['refund_currency'] ?? $originalCurrency;
-        $refundExchangeRate = (float) ($data['refund_exchange_rate'] ?? 1.0);
+        // Fix #7: default the exchange rate to the booking's stored rate
+        // (not a hard-coded 1.0). Foreign-currency refunds would otherwise
+        // report `base_currency_refund == refund_amount` regardless of the
+        // actual EGP-equivalent, silently understating the refund value.
+        $refundExchangeRate = (float) ($data['refund_exchange_rate'] ?? ($booking->exchange_rate_to_egp ?: 1.0));
         $baseCurrencyRefund = $refundAmount * $refundExchangeRate;
 
         $destination = $data['destination'] ?? 'agency_treasury';

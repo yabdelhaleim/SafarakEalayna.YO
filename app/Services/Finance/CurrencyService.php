@@ -15,6 +15,15 @@ class CurrencyService
      */
     public function convert(float $amount, string $fromCurrency, string $toCurrency, ?Carbon $date = null): array
     {
+        // Fix #16 — negative amounts produce phantom reverse ledger entries.
+        // CurrencyService is called from payment flows where $amount is always
+        // a monetary absolute value; a negative input is a caller bug.
+        if ($amount < 0) {
+            throw new \InvalidArgumentException(
+                "Currency conversion amount must be non-negative. Got: {$amount}"
+            );
+        }
+
         if ($fromCurrency === $toCurrency) {
             return [
                 'from_amount' => $amount,
@@ -122,20 +131,34 @@ class CurrencyService
      */
     public function setExchangeRate(array $data): ExchangeRate
     {
-        return DB::transaction(function () use ($data) {
+        // Fix #8: validate the rate at save time. Previously the rate
+        // field was stored as-is, so an admin could save rate=0 (silent
+        // `100 * 0 = 0` corruption on every conversion) or rate=-1 (phantom
+        // negative conversions). The inverse-rate and currencies-table
+        // code paths both guard `if ($rate > 0)` — the direct-rate path
+        // did not. The validator closes the gap at the entry point so the
+        // downstream code can rely on `rate > 0`.
+        $rate = (float) ($data['rate'] ?? 0);
+        if ($rate <= 0) {
+            throw new \InvalidArgumentException(
+                "Exchange rate must be a positive number. Got: {$data['rate']}"
+            );
+        }
+
+        return DB::transaction(function () use ($data, $rate) {
             $effectiveDate = $data['effective_date'] ?? now()->toDateString();
 
             // Phase 3.5 fix: use updateOrCreate so re-running with same
             // (from_currency, to_currency, effective_date) updates the rate
             // instead of violating the unique key.
-            $rate = ExchangeRate::updateOrCreate(
+            $exchangeRate = ExchangeRate::updateOrCreate(
                 [
                     'from_currency' => $data['from_currency'],
                     'to_currency' => $data['to_currency'],
                     'effective_date' => $effectiveDate,
                 ],
                 [
-                    'rate' => $data['rate'],
+                    'rate' => $rate,
                     'is_active' => $data['is_active'] ?? true,
                     'created_by' => Auth::id(),
                 ]
@@ -144,15 +167,15 @@ class CurrencyService
             // Audit Log
             AuditLog::create([
                 'user_id' => Auth::id(),
-                'action' => $rate->wasRecentlyCreated ? 'create_exchange_rate' : 'update_exchange_rate',
+                'action' => $exchangeRate->wasRecentlyCreated ? 'create_exchange_rate' : 'update_exchange_rate',
                 'model_type' => ExchangeRate::class,
-                'model_id' => $rate->id,
+                'model_id' => $exchangeRate->id,
                 'ip_address' => request()->ip(),
                 'user_agent' => request()->userAgent(),
-                'new_values' => $rate->toArray(),
+                'new_values' => $exchangeRate->toArray(),
             ]);
 
-            return $rate;
+            return $exchangeRate;
         });
     }
 

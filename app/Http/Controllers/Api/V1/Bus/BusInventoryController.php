@@ -29,6 +29,8 @@ class BusInventoryController extends Controller
             $filters = $request->only([
                 'company_id',
                 'travel_date',
+                'date_from',
+                'date_to',
                 'has_available',
                 'with_debt',
                 'payment_type',

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { fetchSettlementAccounts, filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
+import { isRequestCanceled } from '@/utils/api';
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -248,7 +249,9 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
         this.accommodationTypes = accs.data?.data ?? [];
         this.statuses = statuses.data?.data ?? this.statuses;
       } catch (e) {
-        console.error('fetchSettings hajj failed', e);
+        if (!isRequestCanceled(e)) {
+          console.error('fetchSettings hajj failed', e);
+        }
       } finally {
         this.loading.settings = false;
       }
@@ -263,7 +266,9 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
         });
         this.accounts = filterSettlementAccountsByModule(list, 'hajj_umra');
       } catch (e) {
-        console.error('fetchAccounts failed', e);
+        if (!isRequestCanceled(e)) {
+          console.error('fetchAccounts failed', e);
+        }
         this.accounts = [];
       } finally {
         this.loading.accounts = false;

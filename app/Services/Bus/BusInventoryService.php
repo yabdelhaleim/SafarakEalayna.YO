@@ -44,6 +44,20 @@ class BusInventoryService
             $query->where('travel_date', $filters['travel_date']);
         }
 
+        // Phase 6 — bus inventory filter hardening: date_from / date_to.
+        // The Vue BusInventoryIndex.vue binds these to <input type="date">
+        // (lines 82–94) but the controller/service were silently dropping
+        // them — the dates appeared to "work" only because the in-memory
+        // filteredInventory computed filtered the small dataset client-side.
+        // Server-side pagination now applies the range so the filters work
+        // even when the result set spans multiple pages.
+        if (isset($filters['date_from']) && $filters['date_from']) {
+            $query->whereDate('travel_date', '>=', $filters['date_from']);
+        }
+        if (isset($filters['date_to']) && $filters['date_to']) {
+            $query->whereDate('travel_date', '<=', $filters['date_to']);
+        }
+
         if (isset($filters['has_available']) && $filters['has_available']) {
             $query->hasAvailableTickets();
         }

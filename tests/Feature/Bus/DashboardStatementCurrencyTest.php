@@ -69,20 +69,11 @@ class DashboardStatementCurrencyTest extends BusTestCase
     // 2 — Dashboard monthly_revenue mixes currencies (BUG pinned)
     // ─────────────────────────────────────────────────────────────────────
 
-    public function test_dashboard_monthly_revenue_mixes_currencies_as_known_bug(): void
+    public function test_dashboard_monthly_revenue_converts_foreign_currencies_to_egp(): void
     {
-        // KNOWN BUG — pinned here. The dashboard's monthly_revenue sums
-        // the raw `total_price` column across bookings WITHOUT applying FX
-        // conversion. When a USD booking is posted, the dashboard reports
-        // its `total_price` (100) as if it were EGP, mixing currencies.
-        //
-        // What SHOULD happen (post-fix): each booking should be converted
-        // to EGP via CurrencyService::convert() before summing.
-        //
-        // For now this test PASSES by pinning the current (broken) sum.
-        // When the fix lands, this test should be flipped to assert
-        // monthly_revenue === 120 (EGP) + 5000 (USD→EGP) = 5120.
-
+        // Fix #4: the dashboard now groups bookings by currency and converts
+        // each group's subtotal to EGP via CurrencyService before summing.
+        // 1 USD booking at rate=50 + 1 EGP booking → 120 EGP + 5000 EGP = 5120.
         $egpCompany = $this->makeBusCompany(['name' => 'EGP Co'], 0);
         $usdCompany = $this->makeBusCompany(['name' => 'USD Co'], 0);
 
@@ -124,14 +115,11 @@ class DashboardStatementCurrencyTest extends BusTestCase
         $response = $this->getJson('/api/v1/bus/dashboard');
         $response->assertOk();
 
-        // BUG: dashboard sums raw values → 120 + 100 = 220 (mixes currencies).
-        // Expected after fix: 120 (EGP) + 5000 (USD→EGP) = 5120.
         $this->assertEqualsWithDelta(
-            220.0,
+            5120.0,
             (float) $response->json('data.stats.monthly_revenue'),
             0.01,
-            'BUG: monthly_revenue sums raw total_price (120 EGP + 100 USD = 220, currencies mixed). '
-            .'Fix: apply CurrencyService::convert() before summing.'
+            'Fix #4: monthly_revenue converts to EGP (120 EGP + 5000 USD→EGP = 5120)'
         );
     }
 

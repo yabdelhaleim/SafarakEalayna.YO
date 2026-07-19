@@ -115,6 +115,23 @@ class BusBooking extends Model
         return $this->belongsTo(BusInventory::class, 'inventory_id');
     }
 
+    /**
+     * Audit-safe variant that includes soft-deleted inventory parents.
+     *
+     * Fix #14 — the default `inventory()` relation silently returns null when
+     * the BusInventory row has been soft-deleted. Any code that chains
+     * `$booking->inventory->route` after a soft-delete will crash with a null
+     * dereference. Audit queries (reports, reversal traces) should use this
+     * relation instead to avoid the null and surface the historical record.
+     *
+     * Usage:  $booking->inventoryWithTrashed()->first()
+     *         $booking->inventoryWithTrashed  (dynamic property, eager-loads)
+     */
+    public function inventoryWithTrashed(): BelongsTo
+    {
+        return $this->belongsTo(BusInventory::class, 'inventory_id')->withTrashed();
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class, 'customer_id');

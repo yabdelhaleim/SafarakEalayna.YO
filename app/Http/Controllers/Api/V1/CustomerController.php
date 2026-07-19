@@ -211,6 +211,17 @@ class CustomerController extends Controller
                 // Ensure customer has a ledger account
                 $customerAccount = $customer->account_id ? Account::find($customer->account_id) : null;
                 if (! $customerAccount) {
+                    $moduleStrForType = $validated['module'] ?? 'flight';
+                    $resolvedModuleType = match(strtolower($moduleStrForType)) {
+                        'bus' => 'bus',
+                        'fawry' => 'fawry',
+                        'online', 'online_service' => 'online',
+                        'wallet', 'wallet_transfer' => 'wallet_transfer',
+                        'visa' => 'visas',
+                        'hajj', 'umrah', 'hajj_umra' => 'hajj_umra',
+                        default => 'flights', // specific module under tourism
+                    };
+
                     $customerAccount = Account::create([
                         'name' => 'حساب العميل: '.$customer->full_name,
                         'type' => AccountType::Customer,
@@ -218,7 +229,7 @@ class CustomerController extends Controller
                         'currency' => 'EGP',
                         'is_active' => true,
                         'owner_type' => Account::OWNER_TYPE_OWNER,
-                        'module_type' => 'tourism',
+                        'module_type' => $resolvedModuleType,
                         'is_module_vault' => false,
                         'notes' => 'حساب تلقائي للعميل #'.$customer->id,
                         'created_by' => Auth::id() ?? 1,

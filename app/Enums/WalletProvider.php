@@ -16,6 +16,7 @@ enum WalletProvider: string
     case Paymob = 'paymob';
     case CashWalletGeneric = 'cash_wallet';
     case Postal = 'postal';
+    case Fawry = 'fawry';
     case Other = 'other';
 
     public function label(): string
@@ -29,6 +30,7 @@ enum WalletProvider: string
             self::Paymob => 'Paymob / بوابة دفع',
             self::CashWalletGeneric => 'محفظة كاش (عام)',
             self::Postal => 'بريد / مصاري',
+            self::Fawry => 'فوري',
             self::Other => 'أخرى',
         };
     }

@@ -10,6 +10,7 @@ enum TransactionModule: string
     case Online = 'online';
     case Fawry = 'fawry';
     case HajjUmra = 'hajj_umra';
+    case Hajj = 'hajj';        // legacy alias — القيم القديمة في قاعدة البيانات
     case Visa = 'visa';
     case Tourism = 'tourism';
     case Office = 'office';
@@ -23,7 +24,7 @@ enum TransactionModule: string
             self::Wallet => 'المحافظ والتحويلات',
             self::Online => 'الخدمات الإلكترونية',
             self::Fawry => 'فوري',
-            self::HajjUmra => 'الحج والعمرة',
+            self::HajjUmra, self::Hajj => 'الحج والعمرة',
             self::Visa => 'التأشيرات',
             self::Tourism => 'السياحة',
             self::Office => 'المكتب',

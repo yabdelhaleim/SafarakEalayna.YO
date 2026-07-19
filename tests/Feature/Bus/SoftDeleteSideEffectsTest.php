@@ -79,7 +79,7 @@ class SoftDeleteSideEffectsTest extends BusTestCase
             'account_id' => $this->cashboxEgp->id,
         ]);
 
-        $this->assertEquals(120.0, (float) $refund->refund_amount, 'No penalty → full refund');
+        $this->assertEquals(240.0, (float) $refund->refund_amount, 'No penalty → full refund of 2 × 120');
         $this->assertEquals(240.0, (float) $refund->original_amount);
         $this->assertEquals('EGP', $refund->original_currency);
 
@@ -103,7 +103,7 @@ class SoftDeleteSideEffectsTest extends BusTestCase
         // REFUND REQUEST IS STILL THERE — audit trail preserved.
         $refundAfterDelete = BusRefundRequest::find($refund->id);
         $this->assertNotNull($refundAfterDelete, 'GAP: BusRefundRequest should NOT be soft-deleted by deleteBookingWithReversal (audit trail contract)');
-        $this->assertEquals(120.0, (float) $refundAfterDelete->refund_amount);
+        $this->assertEquals(240.0, (float) $refundAfterDelete->refund_amount);
         $this->assertEquals('EGP', $refundAfterDelete->original_currency);
         $this->assertNull($refundAfterDelete->deleted_at);
 
@@ -151,8 +151,8 @@ class SoftDeleteSideEffectsTest extends BusTestCase
             'account_id' => $this->cashboxEgp->id,
         ]);
 
-        // Cashbox went from 10000 → 10240 (120 EGP received).
-        $this->assertEquals(10240.0, (float) $this->cashboxEgp->fresh()->balance);
+        // Cashbox went from 10000 → 10120 (120 EGP received).
+        $this->assertEquals(10120.0, (float) $this->cashboxEgp->fresh()->balance);
         // Customer AR holds 120 EGP debt.
         $this->assertEquals(120.0, (float) $customer->ledgerAccount->fresh()->balance);
 
@@ -209,22 +209,42 @@ class SoftDeleteSideEffectsTest extends BusTestCase
             'quantity' => 2,
         ]);
 
-        // Soft-delete the inventory.
+        // The BusInventory observer blocks soft-delete while active
+        // bookings exist — admin must first delete (or cancel) the
+        // bookings. We exercise that path here to reach the
+        // soft-deleted-inventory state.
+        $service->deleteBookingWithReversal($booking->id);
+        $this->assertNotNull(BusBooking::withTrashed()->find($booking->id)->deleted_at);
+
+        // Now the inventory can be soft-deleted (no active bookings remain).
         $inventory->delete();
         $this->assertNotNull(BusInventory::withTrashed()->find($inventory->id)->deleted_at);
 
-        // Relation still returns the booking.
+        // Relation still returns the booking (via withTrashed).
         $inventoryTrashed = BusInventory::withTrashed()->find($inventory->id);
-        $this->assertCount(1, $inventoryTrashed->bookings, 'Booking must remain visible via the parent relation');
-        $this->assertEquals($booking->id, $inventoryTrashed->bookings->first()->id);
+        $this->assertCount(1, $inventoryTrashed->bookings()->withTrashed()->get(), 'Booking must remain visible via the parent relation');
+        $this->assertEquals($booking->id, $inventoryTrashed->bookings()->withTrashed()->first()->id);
 
-        // Capacity is still queryable directly.
-        $this->assertEquals(3, (int) $inventoryTrashed->available_tickets, 'available_tickets preserved on soft-deleted inventory');
+        // Capacity is still queryable directly (withTrashed).
+        $this->assertEquals(5, (int) $inventoryTrashed->available_tickets, 'available_tickets preserved on soft-deleted inventory (after booking delete restored tickets)');
 
-        // For comparison: soft-deleting the BOOKING (not the inventory)
-        // does NOT exclude it from the relation — Laravel's hasMany
-        // doesn't auto-filter the child side either.
-        $booking->delete();
-        $this->assertCount(1, $inventoryTrashed->bookings()->withTrashed()->get(), 'withTrashed() on the relation still returns the soft-deleted booking');
+        // And from the booking side: KNOWN GAP — the booking's `inventory`
+        // belongsTo relation does NOT include trashed parents by default.
+        // Code that relies on `$booking->inventory` will silently get null
+        // after the inventory is soft-deleted. Auditors MUST use
+        // `->inventory()->withTrashed()->first()` to recover the parent.
+        $bookingTrashed = BusBooking::withTrashed()->find($booking->id);
+
+        $this->assertNull(
+            $bookingTrashed->inventory,
+            'GAP: soft-deleting the inventory makes the booking->inventory belongsTo return null. '
+            .'Fix: switch to ->inventory()->withTrashed()->first() in audit code.'
+        );
+
+        $this->assertEquals(
+            $inventory->id,
+            $bookingTrashed->inventory()->withTrashed()->first()->id,
+            'But withTrashed() recovers the soft-deleted inventory'
+        );
     }
 }

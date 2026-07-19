@@ -1,0 +1,319 @@
+{
+    "audit_date": "2026-07-19T13:04:24+00:00",
+    "passed": 56,
+    "failed": 2,
+    "warnings": 4,
+    "success_rate": 90.3,
+    "log": [
+        {
+            "status": "PASS",
+            "msg": "MySQL connected",
+            "detail": "safarakealayna"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [accounts]",
+            "detail": "31 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [account_entries]",
+            "detail": "37 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [transactions]",
+            "detail": "13 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [customers]",
+            "detail": "5 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [treasuries]",
+            "detail": "3 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [treasury_transactions]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [flight_carriers]",
+            "detail": "3 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [flight_bookings]",
+            "detail": "5 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [visa_bookings]",
+            "detail": "4 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [bus_bookings]",
+            "detail": "4 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [bus_companies]",
+            "detail": "1 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [hajj_umra_bookings]",
+            "detail": "3 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [programs]",
+            "detail": "1 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Total accounts: 31",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [bank]: 4",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [cashbox]: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [revenue]: 4",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [expense]: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [customer]: 5",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Accounts type [supplier]: 3",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "Accounts with negative balance (non-expense): 8",
+            "detail": null
+        },
+        {
+            "status": "FAIL",
+            "msg": "Trial balance UNBALANCED!",
+            "detail": "Diff: 183000 EGP"
+        },
+        {
+            "status": "FAIL",
+            "msg": "Desync accounts (balance != SUM entries): 1",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "  Account [رأس المال الافتتاحي] stored=183000.00 computed=0.00 diff=183000.00",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "FinancialReportService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "TrialBalanceExportService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "AccountingService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Company is profitable",
+            "detail": "104,400.00 EGP"
+        },
+        {
+            "status": "PASS",
+            "msg": "Customer accounts: 5",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Supplier accounts: 3",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "Bus outstanding debt: 75.00 EGP",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Treasuries count: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Treasury [خزينة الدولار] IN-SYNC",
+            "detail": "5,000.00 USD"
+        },
+        {
+            "status": "PASS",
+            "msg": "Flight carriers: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Flight systems: 1",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "All carrier balances synced with GL",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Visa booking statuses: 4",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Visa payments: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus companies: 1",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus inventory entries: 1",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus booking groups: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Hajj\/Umra booking groups: 2",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Programs: 1",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Customer created",
+            "detail": "ID: 22"
+        },
+        {
+            "status": "PASS",
+            "msg": "Cashbox account EXISTS",
+            "detail": "#48 bal=19900.00"
+        },
+        {
+            "status": "PASS",
+            "msg": "Revenue account EXISTS",
+            "detail": "#53 bal=-30750.00"
+        },
+        {
+            "status": "PASS",
+            "msg": "Transaction created",
+            "detail": "TX#20 amount=5750"
+        },
+        {
+            "status": "PASS",
+            "msg": "Double-entry posted",
+            "detail": "Cashbox +5750 | Revenue -5750"
+        },
+        {
+            "status": "PASS",
+            "msg": "Entry BALANCED: debit=credit=5750",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Visa booking created",
+            "detail": "ID: 9"
+        },
+        {
+            "status": "PASS",
+            "msg": "Hajj\/Umra booking created",
+            "detail": "ID: 8"
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus booking created",
+            "detail": "ID: 9 | Total=300 | Paid=150 | Outstanding=150"
+        },
+        {
+            "status": "PASS",
+            "msg": "ROLLBACK SUCCESS - database clean",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "DB has existing data — skipping durable seed",
+            "detail": "5 customers, 13 bookings"
+        },
+        {
+            "status": "PASS",
+            "msg": "All transactions are BALANCED (double-entry OK)",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "No transactions without entries",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "P&L report generated successfully",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Seeders found: 4",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Seeder [DatabaseSeeder.php] exists",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "Seeder [AccountSeeder.php] missing",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Last migrations: 5",
+            "detail": null
+        }
+    ]
+}

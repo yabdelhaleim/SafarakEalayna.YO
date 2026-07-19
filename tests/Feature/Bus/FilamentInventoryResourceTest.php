@@ -158,27 +158,24 @@ class FilamentInventoryResourceTest extends BusTestCase
 
     public function test_create_action_with_missing_company_id_throws_at_service_level(): void
     {
-        // Filament's `CreateAction::using()` callback receives the raw data
-        // array directly (no schema validation fires) — the validation
-        // responsibility falls on the underlying service. Missing company_id
-        // surfaces as a SQL constraint violation.
-        $threw = false;
-        try {
-            Livewire::test(ManageBusInventories::class)
-                ->callAction('create', data: [
-                    'route' => 'Test',
-                    'travel_date' => now()->addDays(2)->toDateString(),
-                    'departure_time' => '08:00',
-                    'total_tickets' => 10,
-                    'cost_per_ticket' => 50,
-                    'selling_price' => 80,
-                    'payment_type' => BusInventoryPaymentType::Deferred->value,
-                ]);
-        } catch (\Throwable $e) {
-            $threw = true;
-        }
+        // Filament's form fields are wired with `->required()` rules
+        // (BusInventoryResource.php:75-79) so validation fires BEFORE the
+        // `->using()` callback reaches the service. The test therefore
+        // asserts the Filament-level validation error instead of trying to
+        // catch a PHP exception (which never reaches the service).
+        Livewire::test(ManageBusInventories::class)
+            ->callAction('create', data: [
+                'route' => 'Test',
+                'travel_date' => now()->addDays(2)->toDateString(),
+                'departure_time' => '08:00',
+                'total_tickets' => 10,
+                'cost_per_ticket' => 50,
+                'selling_price' => 80,
+                'payment_type' => BusInventoryPaymentType::Deferred->value,
+                // company_id intentionally omitted
+            ])
+            ->assertHasActionErrors(['company_id']);
 
-        $this->assertTrue($threw, 'Service should reject create with missing company_id');
         $this->assertDatabaseMissing('bus_inventories', ['route' => 'Test']);
     }
 
@@ -186,24 +183,21 @@ class FilamentInventoryResourceTest extends BusTestCase
     {
         $company = $this->makeBusCompany([], 0);
 
-        $threw = false;
-        try {
-            Livewire::test(ManageBusInventories::class)
-                ->callAction('create', data: [
-                    'company_id' => $company->id,
-                    'route' => 'Zero Tickets',
-                    'travel_date' => now()->addDays(2)->toDateString(),
-                    'departure_time' => '08:00',
-                    'total_tickets' => 0,    // < 1 → SQL tinyint check
-                    'cost_per_ticket' => 50,
-                    'selling_price' => 80,
-                    'payment_type' => BusInventoryPaymentType::Deferred->value,
-                ]);
-        } catch (\Throwable $e) {
-            $threw = true;
-        }
+        // Same structural correction as the missing-company-id test above:
+        // Filament validates `minValue(1)` BEFORE invoking the service.
+        Livewire::test(ManageBusInventories::class)
+            ->callAction('create', data: [
+                'company_id' => $company->id,
+                'route' => 'Zero Tickets',
+                'travel_date' => now()->addDays(2)->toDateString(),
+                'departure_time' => '08:00',
+                'total_tickets' => 0,
+                'cost_per_ticket' => 50,
+                'selling_price' => 80,
+                'payment_type' => BusInventoryPaymentType::Deferred->value,
+            ])
+            ->assertHasActionErrors(['total_tickets']);
 
-        $this->assertTrue($threw);
         $this->assertDatabaseMissing('bus_inventories', ['route' => 'Zero Tickets']);
     }
 

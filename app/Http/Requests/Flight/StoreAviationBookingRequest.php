@@ -20,7 +20,7 @@ class StoreAviationBookingRequest extends FormRequest
             'customer.phone' => 'required|string',
             'customer.full_name' => 'required|string|min:5',
             'customer.national_id' => 'nullable|string|size:14',
-            'customer.customer_tier' => 'nullable|in:STANDARD,PREMIUM',
+            'customer.customer_tier' => 'nullable|in:STANDARD,PREMIUM,VIP,AGENT',
             'pricing.currency' => 'required|in:EGP,KWD,SAR,USD,EUR,AED',
             'pricing.purchase_price' => 'required_if:pricing.currency,EGP|numeric|min:0',
             'pricing.selling_price' => 'required_if:pricing.currency,EGP|numeric|min:0',

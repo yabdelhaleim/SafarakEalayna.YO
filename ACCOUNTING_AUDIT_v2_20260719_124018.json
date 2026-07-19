@@ -1,0 +1,314 @@
+{
+    "audit_date": "2026-07-19T12:40:18+00:00",
+    "passed": 47,
+    "failed": 2,
+    "warnings": 12,
+    "success_rate": 77,
+    "log": [
+        {
+            "status": "PASS",
+            "msg": "MySQL connected",
+            "detail": "safarakealayna"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [accounts]",
+            "detail": "3 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [account_entries]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [transactions]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [customers]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [treasuries]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [treasury_transactions]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [flight_carriers]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [flight_bookings]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [visa_bookings]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [bus_bookings]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [bus_companies]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [hajj_umra_bookings]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Table [programs]",
+            "detail": "0 rows"
+        },
+        {
+            "status": "PASS",
+            "msg": "Total accounts: 3",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [bank]",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [cashbox]",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [revenue]",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [expense]",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [customer]",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No accounts of type [supplier]",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "No unexpected negative balances",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Trial balance BALANCED",
+            "detail": "Diff: 0"
+        },
+        {
+            "status": "FAIL",
+            "msg": "Trial balance error",
+            "detail": "SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'stored,\n               COALESCE(SUM(ae.credit) - SUM(ae.debit), 0) as computed,\n' at line 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: \n        SELECT a.id, a.name, a.balance as stored,\n               COALESCE(SUM(ae.credit) - SUM(ae.debit), 0) as computed,\n               ABS(a.balance - COALESCE(SUM(ae.credit) - SUM(ae.debit), 0)) as diff\n        FROM accounts a\n        LEFT JOIN account_entries ae ON ae.account_id = a.id\n        WHERE a.deleted_at IS NULL\n        GROUP BY a.id, a.name, a.balance\n        HAVING diff > 0.50\n        ORDER BY diff DESC\n        LIMIT 20\n    )"
+        },
+        {
+            "status": "PASS",
+            "msg": "FinancialReportService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "TrialBalanceExportService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "AccountingService instantiated",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Company is profitable",
+            "detail": "0.00 EGP"
+        },
+        {
+            "status": "PASS",
+            "msg": "Customer accounts: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Supplier accounts: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "No outstanding bus debt",
+            "detail": null
+        },
+        {
+            "status": "FAIL",
+            "msg": "Treasuries check error",
+            "detail": "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'deleted_at' in 'where clause' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select * from `treasuries` where `deleted_at` is null)"
+        },
+        {
+            "status": "PASS",
+            "msg": "Flight carriers: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Flight systems: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "All carrier balances synced with GL",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Visa booking statuses: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Visa payments: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus companies: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus inventory entries: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Bus booking groups: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Hajj\/Umra booking groups: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Programs: 0",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Customer created",
+            "detail": "ID: 1"
+        },
+        {
+            "status": "PASS",
+            "msg": "Cashbox account CREATED",
+            "detail": "ID: 4"
+        },
+        {
+            "status": "PASS",
+            "msg": "Revenue account CREATED",
+            "detail": "ID: 5"
+        },
+        {
+            "status": "PASS",
+            "msg": "Transaction created",
+            "detail": "TX#1 amount=5750"
+        },
+        {
+            "status": "PASS",
+            "msg": "Double-entry posted",
+            "detail": "Cashbox +5750 | Revenue -5750"
+        },
+        {
+            "status": "PASS",
+            "msg": "Entry BALANCED: debit=credit=5750",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No visa_detail found - skip visa booking injection",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No program found - skip hajj booking injection",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "No bus_inventory found - skip bus booking injection",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "ROLLBACK SUCCESS - database clean",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "DB is EMPTY — consider running: php artisan db:seed",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "All transactions are BALANCED (double-entry OK)",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "No transactions without entries",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "P&L report generated successfully",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "bus_bookings: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select COUNT(*) as cnt, SUM(profit) as total_profit, SUM(selling_price) as revenue from `bus_bookings` where `deleted_at` is null limit 1)",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Seeders found: 3",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Seeder [DatabaseSeeder.php] exists",
+            "detail": null
+        },
+        {
+            "status": "WARN",
+            "msg": "Seeder [AccountSeeder.php] missing",
+            "detail": null
+        },
+        {
+            "status": "PASS",
+            "msg": "Last migrations: 5",
+            "detail": null
+        }
+    ]
+}

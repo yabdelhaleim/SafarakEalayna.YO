@@ -160,27 +160,16 @@ class AccountUnificationEdgeCasesTest extends BusTestCase
     // 3 — Per-currency AR edge case: USD customer, EGP booking (GAP)
     // ─────────────────────────────────────────────────────────────────────
 
-    public function test_usd_customer_egp_booking_keeps_existing_usd_account_as_known_gap(): void
+    public function test_usd_customer_egp_booking_opens_separate_egp_account_after_fix(): void
     {
-        // KNOWN EDGE CASE — pinned here so a future refactor either
-        // preserves the documented behavior or fixes the gap.
+        // Fix #3 (Phase 3.5 follow-up): ensureCustomerAccount used to
+        // short-circuit with `customerCurrency !== 'EGP'`, which meant a
+        // USD customer booking an EGP trip silently reused the USD account
+        // (the EGP sale got posted to a USD ledger, mixing currencies).
         //
-        // Contract today:
-        //   ensureCustomerAccount() short-circuits with
-        //     `customerCurrency !== 'EGP'`
-        //   BEFORE checking whether the existing account's currency
-        //   matches. Result: a customer whose primary AR is USD and who
-        //   books an EGP trip gets back the USD account (which is then
-        //   posted EGP amounts via the no-FX single-currency path).
-        //
-        // What SHOULD happen (post-fix):
-        //   A separate EGP account should be opened for EGP bookings,
-        //   so the USD ledger stays clean and the per-currency invariant
-        //   holds for every booking.
-        //
-        // For now this test PASSES by pinning the current behavior.
-        // If/when the gap is fixed, flip the assertions to require a
-        // separate EGP account to be created.
+        // New contract: the customer account's currency MUST match the
+        // booking currency. If it doesn't, a NEW per-currency account is
+        // opened (the original stays untouched as audit history).
         $customer = $this->makeCustomerWithBusAccount(0, 'USD');
         $usdAccountId = $customer->account_id;
 
@@ -206,36 +195,32 @@ class AccountUnificationEdgeCasesTest extends BusTestCase
 
         $customer->refresh();
 
-        // CURRENT (gap) behavior: the USD account is reused.
-        $this->assertEquals(
+        // Customer's primary AR slot moved to a NEW EGP account.
+        $this->assertNotEquals(
             $usdAccountId,
             $customer->account_id,
-            'GAP: ensureCustomerAccount returns the USD account for an EGP booking (currency mismatch is silently ignored). '
-            .'Fix should open a separate EGP account.'
+            'Fix #3: ensureCustomerAccount opens a separate EGP account when the existing AR is USD'
         );
 
-        $usedAccount = Account::findOrFail($customer->account_id);
-        $this->assertEquals('USD', $usedAccount->currency);
-        // The EGP sale amount got posted to a USD account.
-        $this->assertEquals(120.0, (float) $usedAccount->balance, 'GAP: USD account holds 120 (the EGP sale amount) — currencies mixed');
+        $newAccount = Account::findOrFail($customer->account_id);
+        $this->assertEquals('EGP', $newAccount->currency, 'New AR is in EGP');
+        $this->assertEquals(120.0, (float) $newAccount->balance, 'EGP AR holds the 120 EGP sale');
 
-        // GAP: the booking posted to the USD account (NOT the auto-created EGP
-        // account). The gap is that the same USD account now holds an EGP-
-        // denominated sale, mixing currencies. Filter to find which AR
-        // account actually received the sale by checking the balance.
-        $usdAccount = Account::query()->where('type', \App\Enums\AccountType::Customer->value)
-            ->where('currency', 'USD')->firstOrFail();
-        $egpAccount = Account::query()->where('type', \App\Enums\AccountType::Customer->value)
-            ->where('currency', 'EGP')->first();
+        // The original USD account still exists, untouched.
+        $originalUsd = Account::findOrFail($usdAccountId);
+        $this->assertEquals('USD', $originalUsd->currency);
+        $this->assertEquals(0.0, (float) $originalUsd->balance, 'Original USD account untouched');
 
-        $this->assertEquals(120.0, (float) $usdAccount->balance, 'GAP: the USD account holds 120 — EGP sale posted to a USD ledger');
-        $this->assertTrue(
-            $egpAccount === null || (float) $egpAccount->balance === 0.0,
-            'GAP: the EGP customer account was NOT used for the EGP sale (or does not exist)'
-        );
+        // Per-currency AR accounts: USD (manual) + EGP (CustomerLedgerObserver
+        // auto-create on first save) + EGP (new from this EGP booking) = 3.
+        $usdCount = Account::query()->where('type', \App\Enums\AccountType::Customer->value)
+            ->where('currency', 'USD')->count();
+        $egpCount = Account::query()->where('type', \App\Enums\AccountType::Customer->value)
+            ->where('currency', 'EGP')->count();
 
-        // Ledger still balances — the GAP is silent (no crash), it just
-        // violates the per-currency invariant.
+        $this->assertEquals(1, $usdCount, 'Exactly one USD customer AR account exists');
+        $this->assertEquals(2, $egpCount, 'Two EGP customer AR accounts exist (observer + new from booking)');
+
         $this->assertLedgerGloballyBalanced();
     }
 
@@ -270,60 +255,51 @@ class AccountUnificationEdgeCasesTest extends BusTestCase
     // 5 — getModuleVault('bus') architectural gap
     // ─────────────────────────────────────────────────────────────────────
 
-    public function test_get_module_vault_bus_always_returns_null_due_to_contract_mismatch(): void
+    public function test_get_module_vault_bus_returns_office_division_vault_after_fix(): void
     {
-        // KNOWN ARCHITECTURAL GAP — Account::getModuleVault('bus') queries
+        // Fix #1 (Phase 3.5 follow-up): getModuleVault used to query
         //     module_type='bus' AND is_module_vault=true
-        // but the saving hook (covered in test #4) makes it impossible to
-        // create a liquidity account with module_type='bus'. The vault
-        // therefore CANNOT EXIST under the current query.
+        // which could never match (AccountModuleContract forbids liquidity
+        // accounts from having module_type='bus' — must be a division).
         //
-        // This means BusBookingService::payBooking()'s fallback path
-        //   $vault = Account::getModuleVault('bus');
-        //   $accountId = $vault ? $vault->id : null;
-        // is dead code — it can never produce a vault, so the only path
-        // that actually posts a GL transaction is the explicit `account_id`
-        // one.
+        // New contract: the function resolves the module's division via
+        // AccountModuleDivision::divisionForModuleType() first, then
+        // looks for the division-tagged vault.
         //
-        // Fix candidates (out of scope for tests):
-        //   a) Change getModuleVault() to query by division + module filter,
-        //      e.g. `module_type='office' AND (module='bus' OR module IS NULL)
-        //           AND is_module_vault=true`.
-        //   b) Auto-create a default office-division cashbox as the BusVault
-        //      if none exists.
-        //   c) Drop the fallback and force callers to pass account_id.
-        //
-        // For now we pin the current behavior: the fallback can never fire.
+        // The BusTestCase seeds `$this->cashboxEgp` with module_type='office'
+        // + is_module_vault=true — that IS the BusVault (and the Fawry/
+        // Online/WalletTransfer vault too). We assert the resolution
+        // returns this exact seeded row.
+        $resolvedBus = Account::getModuleVault('bus');
+        $this->assertNotNull($resolvedBus, 'Fix #1: getModuleVault("bus") now resolves to the office-division vault');
+        $this->assertEquals($this->cashboxEgp->id, $resolvedBus->id, 'Returns the seeded office cashbox (the unified BusVault)');
+        $this->assertEquals('office', $resolvedBus->module_type);
 
-        // Even after creating the canonical office-division vault
-        // (the only legal shape under AccountModuleContract), the
-        // module_type='bus' query STILL returns null.
-        $vault = LedgerBalanceMutationGuard::run(fn () => Account::create([
-            'name' => 'Office Cashbox (Bus Vault)',
+        // Same resolution for the other office-division modules.
+        $this->assertEquals($this->cashboxEgp->id, Account::getModuleVault('fawry')?->id);
+        $this->assertEquals($this->cashboxEgp->id, Account::getModuleVault('online')?->id);
+        $this->assertEquals($this->cashboxEgp->id, Account::getModuleVault('wallet_transfer')?->id);
+
+        // And for tourism-division modules — they resolve to a 'tourism' vault.
+        // We create one explicitly because BusTestCase does not seed a tourism vault.
+        $tourismVault = LedgerBalanceMutationGuard::run(fn () => Account::create([
+            'name' => 'Tourism Cashbox',
             'type' => \App\Enums\AccountType::Cashbox,
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
             'owner_type' => Account::OWNER_TYPE_OFFICE,
-            'module_type' => 'office',  // ← legal: division marker
+            'module_type' => 'tourism',
             'is_module_vault' => true,
             'created_by' => $this->user->id,
         ]));
 
-        $this->assertNotNull($vault);
-        $this->assertEquals(
-            'office',
-            $vault->module_type,
-            'Sanity: the vault is correctly tagged as the office division'
-        );
+        $this->assertEquals($tourismVault->id, Account::getModuleVault('flights')?->id);
+        $this->assertEquals($tourismVault->id, Account::getModuleVault('visas')?->id);
+        $this->assertEquals($tourismVault->id, Account::getModuleVault('hajj_umra')?->id);
 
-        // The fallback query still returns null because of the
-        // module_type='bus' filter — the gap.
-        $this->assertNull(
-            Account::getModuleVault('bus'),
-            'GAP: getModuleVault("bus") can never return a result because liquidity '
-            .'accounts are forbidden from having module_type="bus" by AccountModuleContract.'
-        );
+        // Unknown module → null (graceful).
+        $this->assertNull(Account::getModuleVault('unknown_xyz'));
     }
 
     // ─────────────────────────────────────────────────────────────────────

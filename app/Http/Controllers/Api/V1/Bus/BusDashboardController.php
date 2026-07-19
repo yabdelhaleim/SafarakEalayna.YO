@@ -10,6 +10,7 @@ use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusInventory;
 use App\Models\Bus\BusCompany;
+use App\Services\Finance\CurrencyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -22,6 +23,11 @@ class BusDashboardController extends Controller
         $endOfMonth = Carbon::now()->endOfMonth();
 
         // 1. Monthly Revenue (exclude cancelled / refunded)
+        // Fix #4: group by currency and convert each group's subtotal to
+        // EGP before summing. The raw SUM mixed currencies silently —
+        // 1 USD booking + 1 EGP booking would report $220 instead of
+        // ~5120 EGP equivalent.
+        $currencyService = app(CurrencyService::class);
         $monthlyRevenue = (float) BusBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
             ->whereNotIn('status', [
@@ -29,7 +35,17 @@ class BusDashboardController extends Controller
                 BusBookingStatus::Refunded->value,
                 BusBookingStatus::PartiallyRefunded->value,
             ])
-            ->sum('total_price');
+            ->selectRaw('currency, COALESCE(SUM(total_price), 0) as subtotal')
+            ->groupBy('currency')
+            ->get()
+            ->sum(function ($row) use ($currencyService) {
+                $currency = (string) ($row->currency ?? 'EGP');
+                if ($currency === 'EGP') {
+                    return (float) $row->subtotal;
+                }
+
+                return (float) $currencyService->convert((float) $row->subtotal, $currency, 'EGP')['to_amount'];
+            });
 
         // 2. Total Bookings
         $totalBookings = BusBooking::count();
@@ -55,9 +71,23 @@ class BusDashboardController extends Controller
         $walletBalance = $wallets->sum('balance');
 
         // 4. Company Debts (Sum of balances from linked accounts)
-        $totalCompanyDebt = Account::query()
+        // Fix #6: group supplier accounts by currency and convert each
+        // group's debt to EGP before summing. The raw SUM mixed currencies —
+        // a USD supplier with -100 balance + EGP supplier with -200 would
+        // report -300 instead of the correct -5200 EGP equivalent.
+        $totalCompanyDebt = (float) Account::query()
             ->whereIn('id', BusCompany::query()->whereNotNull('account_id')->pluck('account_id'))
-            ->sum('balance');
+            ->selectRaw('currency, COALESCE(SUM(balance), 0) as subtotal')
+            ->groupBy('currency')
+            ->get()
+            ->sum(function ($row) use ($currencyService) {
+                $currency = (string) ($row->currency ?? 'EGP');
+                if ($currency === 'EGP') {
+                    return (float) $row->subtotal;
+                }
+
+                return (float) $currencyService->convert((float) $row->subtotal, $currency, 'EGP')['to_amount'];
+            });
 
         // 5. Recent Bookings (Limit 10)
         $recentBookings = BusBooking::query()

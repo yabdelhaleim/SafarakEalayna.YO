@@ -371,9 +371,38 @@ class Account extends Model
 
     public static function getModuleVault(string $moduleType): ?Account
     {
-        return self::where('module_type', $moduleType)
+        // AccountModuleContract forbids liquidity accounts from having
+        // `module_type='bus'`/`flights`/etc. (must be a DIVISION: 'office' or
+        // 'tourism'). The previous query `where('module_type', 'bus')` was
+        // therefore UNSATISFIABLE — every call returned null, and the
+        // payBooking() fallback path was dead code.
+        //
+        // Fix: resolve the module's division first, then look for the
+        // division-tagged vault. A `module`-specific vault (rare) wins over
+        // the generic division vault (the office cashbox seeded by
+        // BusTestCase is the latter — module_type='office', module=null).
+        //
+        // Defense-in-depth: AccountModuleDivision::divisionForModuleType
+        // defaults to 'office' for ANY unknown module (returning '' would
+        // be more correct, but changing that signature could ripple to
+        // other callers). We explicitly check membership in the known
+        // modules list before issuing the query, so an unknown module
+        // returns null rather than silently falling through to 'office'.
+        $knownModules = array_merge(
+            \App\Support\Finance\AccountModuleDivision::OFFICE,
+            \App\Support\Finance\AccountModuleDivision::TOURISM
+        );
+
+        if (! in_array($moduleType, $knownModules, true)) {
+            return null;
+        }
+
+        $division = \App\Support\Finance\AccountModuleDivision::divisionForModuleType($moduleType);
+
+        return self::where('module_type', $division)
             ->where('is_module_vault', true)
             ->where('is_active', true)
+            ->orderByRaw('CASE WHEN module = ? THEN 0 ELSE 1 END', [$moduleType])
             ->first();
     }
 }

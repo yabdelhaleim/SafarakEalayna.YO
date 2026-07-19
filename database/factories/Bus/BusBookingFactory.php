@@ -19,27 +19,36 @@ class BusBookingFactory extends Factory
 
     public function definition(): array
     {
-        $inventory = BusInventory::factory()->create();
-
-        $qty = $this->faker->numberBetween(1, 4);
-        $unit = (float) $inventory->selling_price;
-        $total = round($qty * $unit, 2);
-
+        // Fix #13 — removed the eager `BusInventory::factory()->create()` call.
+        //
+        // The old code called `->create()` inside `definition()`, which meant
+        // *every* `BusBooking::factory()` call (including ones that override
+        // `inventory_id` via `->forInventory()` or `->state([...])`) created a
+        // spare inventory row in the test database before the override was applied.
+        // That caused:
+        //   - Test-database pollution (orphan inventory rows on every factory call).
+        //   - Subtle ID-conflict failures in tests that asserted inventory state.
+        //
+        // Fix: pass a lazy `BusInventory::factory()` reference so Laravel's factory
+        // machinery creates the inventory only when needed and respects overrides.
+        // The `quantity`, `unit_price`, and `profit` fields now default to safe
+        // values; callers who need exact price-derived numbers should use
+        // `->forInventory($inventory)` which still computes them from the real model.
         return [
-            'inventory_id' => $inventory->id,
+            'inventory_id' => BusInventory::factory(),
             'customer_id' => Customer::factory(),
             'employee_id' => null,
-            'quantity' => $qty,
-            'unit_price' => $unit,
-            'total_price' => $total,
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'total_price' => 100.00,
             'paid_amount' => 0,
             'payment_status' => BusPaymentStatus::Pending,
-            'profit' => round(($unit - (float) $inventory->cost_per_ticket) * $qty, 2),
+            'profit' => 0.00,
             'status' => BusBookingStatus::Pending,
             'account_id' => null,
             'transaction_id' => null,
-            'currency' => $inventory->currency ?? 'EGP',
-            'exchange_rate_to_egp' => $inventory->exchange_rate_to_egp ?? 1.0,
+            'currency' => 'EGP',
+            'exchange_rate_to_egp' => 1.0,
             'notes' => null,
             'created_by' => User::query()->inRandomOrder()->value('id'),
         ];
