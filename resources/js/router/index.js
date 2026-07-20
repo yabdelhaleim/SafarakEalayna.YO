@@ -123,7 +123,7 @@ const routes = [
       {
         path: 'carriers/:id',
         name: 'flights.carriers.show',
-        component: () => import('@/views/flights/FlightCarriersDebt.vue'),
+        component: () => import('@/views/flights/FlightCarrierDetails.vue'),
         props: true,
         meta: { title: 'تفاصيل الناقل' },
       },
@@ -258,6 +258,13 @@ const routes = [
         name: 'visa.edit',
         component: () => import('@/views/visa/VisaEdit.vue'),
         props: true,
+      },
+      {
+        path: ':id/details',
+        name: 'visa.details',
+        component: () => import('@/views/visa/VisaDetails.vue'),
+        props: true,
+        meta: { title: 'تفاصيل التأشيرة' },
       },
     ],
   },
@@ -723,6 +730,13 @@ const routes = [
         meta: { title: 'إعدادات الطباعة' },
       },
     ],
+  },
+
+  // Aliases: tolerate the singular `/flight/...` form (matches the API prefix)
+  // Redirects users who hit the old/singular path to the canonical plural one.
+  {
+    path: '/flight/carriers/:id',
+    redirect: (to) => ({ name: 'flights.carriers.show', params: { id: to.params.id } }),
   },
 
   // Catch-all 404 route

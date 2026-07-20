@@ -20,9 +20,55 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Refactored 2026-07-20:
+ *   - cancel()/refund()/deleteBookingWithReversal() moved to VisaRefundService
+ *   - repostExpenseTransaction()/repostIncomeTransaction() moved to VisaModificationService
+ *   - This class now only owns: paginate/find/create/update/addPayment/
+ *     ensureCustomerAccount/resolveCustomer (the "happy path" CRUD + payments).
+ *
+ * Backwards compatibility: keep thin `cancel()` shim that delegates to
+ * VisaRefundService so existing callers (Filament pages, tests) do not break.
+ */
 class VisaBookingService
 {
     public function __construct(protected TransactionService $transactions) {}
+
+    /**
+     * @deprecated Use App\Services\Visa\VisaRefundService::cancel() directly.
+     * Kept as a thin shim so legacy Filament / tests keep working.
+     */
+    public function cancel(VisaBooking $booking, ?string $reason = null): VisaBooking
+    {
+        return app(VisaRefundService::class)->cancel($booking, $reason);
+    }
+
+    /**
+     * @deprecated Use App\Services\Visa\VisaRefundService::deleteWithReversal().
+     */
+    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
+    {
+        return app(VisaRefundService::class)->deleteWithReversal($bookingId, $userId);
+    }
+
+    /**
+     * @deprecated Use App\Services\Visa\VisaModificationService::repostExpense().
+     */
+    public function repostExpenseTransaction(VisaBooking $booking, Transaction $transaction, float $newAmount): Transaction
+    {
+        return app(VisaModificationService::class)->repostExpense($booking, $transaction, $newAmount);
+    }
+
+    /**
+     * @deprecated Use App\Services\Visa\VisaModificationService::repostIncome().
+     */
+    public function repostIncomeTransaction(VisaBooking $booking, Transaction $transaction, float $newAmount): Transaction
+    {
+        $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+
+        return app(VisaModificationService::class)
+            ->repostIncome($booking, $transaction, $newAmount, $customerAccount->id);
+    }
 
     public function paginate(array $filters): LengthAwarePaginator
     {
@@ -268,230 +314,6 @@ class VisaBookingService
             }
 
             return $this->find($booking->id);
-        });
-    }
-
-    /**
-     * Repost an expense transaction with a new amount by reversing the
-     * original (additive) and re-recording with the new amount.
-     *
-     * Mirrors `HajjUmraBookingService::repostExpenseTransaction()` —
-     * same shape, same invariants: original Transaction row stays, only
-     * inverse `account_entries` are added to it, and a NEW transaction
-     * carries the new amount.
-     */
-    protected function repostExpenseTransaction(VisaBooking $booking, Transaction $transaction, float $newAmount): Transaction
-    {
-        // Idempotency: if nothing changed, leave the row as-is.
-        $oldAmount = (float) $transaction->amount;
-        if ($oldAmount === $newAmount) {
-            return $transaction;
-        }
-
-        // Reverse the original (additive inverse entries on the same txn_id).
-        $this->transactions->reverseTransaction($transaction);
-
-        // Re-record with the new amount — resolver handles the supplier / vault routing.
-        $expenseAccountId = (int) $booking->account_id;
-        $supplierId = $booking->visaDetail?->visa_agent_id;
-        if ($supplierId) {
-            $agent = VisaAgent::find($supplierId);
-            if ($agent?->account_id) {
-                $expenseAccountId = (int) $agent->account_id;
-            }
-        }
-
-        return $this->transactions->recordExpense([
-            'amount' => $newAmount,
-            'from_account_id' => $expenseAccountId,
-            'module' => TransactionModule::Visa->value,
-            'related_type' => VisaBooking::class,
-            'related_id' => $booking->id,
-            'notes' => $transaction->notes,
-            'created_by' => $transaction->created_by ?? 1,
-        ]);
-    }
-
-    /**
-     * Repost an income transaction with a new amount — same pattern as
-     * repostExpenseTransaction(), mirrors HajjUmra.
-     */
-    protected function repostIncomeTransaction(VisaBooking $booking, Transaction $transaction, float $newAmount): Transaction
-    {
-        $oldAmount = (float) $transaction->amount;
-        if ($oldAmount === $newAmount) {
-            return $transaction;
-        }
-
-        // Additive reverse
-        $this->transactions->reverseTransaction($transaction);
-
-        $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
-
-        return $this->transactions->recordIncome([
-            'amount' => $newAmount,
-            'to_account_id' => $customerAccount->id,
-            'module' => TransactionModule::Visa->value,
-            'related_type' => VisaBooking::class,
-            'related_id' => $booking->id,
-            'notes' => $transaction->notes,
-            'created_by' => $transaction->created_by ?? 1,
-        ]);
-    }
-
-    public function cancel(VisaBooking $booking, ?string $reason = null): VisaBooking
-    {
-        return DB::transaction(function () use ($booking, $reason) {
-            $note = trim((string) $booking->notes);
-            if ($reason) {
-                $note = ($note === '' ? '' : $note."\n").'سبب الإلغاء: '.$reason;
-            }
-
-            // تحميل العلاقات المالية قبل الإلغاء
-            $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction']);
-
-            // ✦ Phase 2026-07-11 FIX (Q1+Q2+Q3): was destructive — used
-            //   voidTransactionJournal + $tx->delete() (4 sites) plus
-            //   $payment->delete() on VisaPayments themselves. This
-            //   destroyed the original `transactions` rows, every
-            //   `account_entries` row, AND the VisaPayment rows — leaving
-            //   no audit trail recoverable even if the transactions had
-            //   survived.
-            //
-            //   The replacement uses TransactionService::reverseTransaction(),
-            //   which ADDS inverse account_entries on the SAME
-            //   transaction_id and prefixes the transaction notes with
-            //   `عكس: `. Originals stay intact.
-            //
-            //   VisaPayment rows stay VISIBLE (no soft-delete here, no
-            //   hard-delete) per Q3 — only deleteBookingWithReversal()
-            //   soft-deletes them.
-            foreach ($booking->payments as $payment) {
-                if ($payment->transaction) {
-                    $this->transactions->reverseTransaction($payment->transaction);
-                }
-                // VisaPayment rows remain visible — soft-delete only via
-                // deleteBookingWithReversal(). The original Booking's
-                // cancelled payment rows are still useful for audit.
-            }
-
-            // عكس قيد الإيراد (additive)
-            if ($booking->incomeTransaction) {
-                $this->transactions->reverseTransaction($booking->incomeTransaction);
-            }
-
-            // عكس قيد المصروف (additive)
-            if ($booking->expenseTransaction) {
-                $this->transactions->reverseTransaction($booking->expenseTransaction);
-            }
-
-            $booking->update([
-                'status' => VisaStatus::Cancelled->value,
-                'notes'  => $note,
-                // Keep *_transaction_id pointers — reverseTransaction() ADDS
-                // entries on the same transaction_id; FK references stay valid.
-                // Previously these were nulled here, leaving dangling refs.
-            ]);
-
-            $booking->visaDetail?->update(['status' => VisaStatus::Cancelled->value]);
-
-            Log::info('Visa booking cancelled (additive reversal applied)', [
-                'booking_id' => $booking->id,
-                'reason' => $reason,
-                'payments_reversed' => $booking->payments->filter(fn ($p) => $p->transaction)->count(),
-                'income_reversed' => (bool) $booking->incomeTransaction,
-                'expense_reversed' => (bool) $booking->expenseTransaction,
-            ]);
-
-            return $this->find($booking->id);
-        });
-    }
-
-    /**
-     * Administrative soft-delete with full financial reversal.
-     *
-     * Mirrors the canonical `FlightBookingService::deleteBookingWithReversal()`
-     * and `HajjUmraBookingService::deleteBookingWithReversal()` patterns.
-     * Use this when an admin needs to fully remove a booking from active
-     * lists while:
-     *   ① posting additive `account_entries` reversals (never destroying
-     *      the original `transactions` / `account_entries` rows), AND
-     *   ② soft-deleting the booking row (hiding it from views/reports), AND
-     *   ③ soft-deleting the associated payment rows.
-     *
-     * For customer-initiated cancellation that should keep the booking row
-     * visible (status=Cancelled, payments visible), use `cancel($booking, $reason)` instead.
-     *
-     * Idempotency: throws RuntimeException if the booking is already
-     * soft-deleted.
-     *
-     * @throws \RuntimeException on duplicates
-     */
-    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
-    {
-        // Open the deletion gate so the model's `deleting` event allows the
-        // soft-delete. Same depth-counter pattern as LedgerBalanceMutationGuard,
-        // per-model isolation via the ModelDeletionGuard trait's per-class statics.
-        return VisaBooking::run(function () use ($bookingId, $userId) {
-            return DB::transaction(function () use ($bookingId, $userId) {
-                // 1) Lock + reload with relations.
-                $booking = VisaBooking::query()
-                    ->withTrashed()
-                    ->with(['payments.transaction', 'expenseTransaction', 'incomeTransaction'])
-                    ->lockForUpdate()
-                    ->findOrFail($bookingId);
-
-                // 2) Idempotency guard.
-                if ($booking->trashed()) {
-                    throw new \RuntimeException(
-                        'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
-                    );
-                }
-
-                $userIdEffective = $userId ?: (int) (Auth::id() ?: 1);
-
-                Log::info('VisaBookingService::deleteBookingWithReversal — starting', [
-                    'booking_id' => $booking->id,
-                    'status' => $booking->status?->value ?? (string) $booking->status,
-                    'payments_count' => $booking->payments->count(),
-                    'has_income' => (bool) $booking->incomeTransaction,
-                    'has_expense' => (bool) $booking->expenseTransaction,
-                    'user_id' => $userIdEffective,
-                ]);
-
-                // 3) Reverse every payment transaction (additive — never destructive).
-                foreach ($booking->payments as $payment) {
-                    if ($payment->transaction) {
-                        $this->transactions->reverseTransaction($payment->transaction);
-                    }
-                }
-
-                // 4) Reverse the booking's income + expense transactions (additive).
-                if ($booking->incomeTransaction) {
-                    $this->transactions->reverseTransaction($booking->incomeTransaction);
-                }
-                if ($booking->expenseTransaction) {
-                    $this->transactions->reverseTransaction($booking->expenseTransaction);
-                }
-
-                // 5) Mark the visaDetail as cancelled (status only, no ledger).
-                $booking->visaDetail?->update(['status' => VisaStatus::Cancelled->value]);
-
-                // 6) Soft-delete the payments (the new SoftDeletes trait enables this).
-                $booking->payments()->delete();
-
-                // 7) Soft-delete the booking row itself. Allowed because
-                //    we are inside VisaBooking::run(...) which flipped the
-                //    model's deletion gate open for the canonical reversal flow.
-                $booking->delete();
-
-                Log::info('VisaBookingService::deleteBookingWithReversal — complete', [
-                    'booking_id' => $booking->id,
-                    'user_id' => $userIdEffective,
-                ]);
-
-                return true;
-            });
         });
     }
 

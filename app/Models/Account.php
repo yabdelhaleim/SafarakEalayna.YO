@@ -14,6 +14,89 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Traits\ClearsCache;
 
+/**
+ * Account — the central financial record.
+ *
+ * Every monetary operation in this system touches an Account row.  The
+ * row holds:
+ *  - identity (name, type, currency, owner_type)
+ *  - division classification (module_type + optional module alias)
+ *  - the running balance (single column) which is **always** the net of
+ *    the row's own AccountEntry rows (see invariant below).
+ *
+ * ─── CRITICAL INVARIANTS ────────────────────────────────────────────────
+ *
+ * 1) `Account.balance = SUM(debit) - SUM(credit)` on `account_entries`
+ *    tied to this account.  This is enforced by:
+ *      - `LedgerBalanceMutationGuard::run()` in services that mutate rows
+ *      - `Account::booted()` updating-guard that rejects unauthorised
+ *        balance writes
+ *      - `AccountEntry` being append-only (no soft deletes)
+ *
+ * 2) Every double-entry transaction (`Transaction`) produces balanced
+ *    AccountEntry rows — debit == credit on each transaction_id.  This
+ *    is asserted in `JournalEntryProductionTest::test_each_transaction_has_balanced_entries`.
+ *
+ * ─── SIGN CONVENTION ────────────────────────────────────────────────────
+ *
+ * The sign of `balance` follows the project's ACCRUAL convention
+ * (positive = asset owned by us, positive = obligation owed TO us):
+ *
+ * ┌────────────────────────┬──────────────────────┬─────────────────────────┐
+ * │ Account Type           │ balance > 0 means    │ balance < 0 means       │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ cashbox / bank /       │ we have money there  │ we overdrew / owe the   │
+ * │ wallet  (liquidity)    │                      │ bank / wallet provider  │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ customer  (AR)         │ customer owes us     │ we owe the customer     │
+ * │                        │ (debt)               │ (credit balance)        │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ supplier  (AP)         │ unusual — supplier   │ we owe the supplier     │
+ * │                        │ owes us (rare)       │ (the normal case)       │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ expense-clearing       │ accumulated expense  │ —                       │
+ * │                        │ awaiting close-out   │                         │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ income-clearing        │ —                    │ accumulated income      │
+ * │                        │                      │ awaiting close-out      │
+ * ├────────────────────────┼──────────────────────┼─────────────────────────┤
+ * │ prepaid  (carrier,     │ we are owed the      │ we've consumed more     │
+ * │  system, agent)        │ service / outstanding│ service than we've paid │
+ * │                        │ balance              │ (consumed in advance)   │
+ * └────────────────────────┴──────────────────────┴─────────────────────────┘
+ *
+ * Historical note:  The original Convention was destructor-friendly —
+ * `cancel()` used to **delete** the original `transactions` and
+ * `account_entries` rows (`voidTransactionJournal`).  Phase 3b/2026-07-11
+ * replaced that with the **Additive Reversal** invariant: cancel/reverse
+ * flows now **append** inverse AccountEntry rows on the same
+ * transaction_id, prepending "عكس:" to the notes.  Originals stay
+ * intact for audit.  `Account.balance` always reflects the *net* of
+ * every entry written so far — positive or negative per the table above.
+ *
+ * ─── DIVISION / MODULE CLASSIFICATION ────────────────────────────────────
+ *
+ * `module_type` ∈ {`'office'`, `'tourism'`} — hard classification.
+ * `module` is an optional label inside the division
+ * (e.g. `'hajj_umra'`, `'visas'`, `'flights'`, `'bus'`).
+ *
+ * Liquidity accounts (cashbox/bank/wallet) MUST be one of
+ * `'office'` or `'tourism'`.  Subject accounts (customer, supplier)
+ * MUST be a specific module under that division.  See
+ * {@see \App\Support\Finance\AccountModuleContract}.
+ *
+ * ─── WRITES THAT ARE FORBIDDEN ──────────────────────────────────────────
+ *
+ * Direct `Account::balance` writes outside the canonical services are
+ * blocked by `Account::booted()` updating guard.  Use:
+ *  - `App\Services\Finance\TransactionService::record*()` for postings
+ *  - `App\Services\Finance\PrepaidLedgerService::recharge()` for prepaid
+ *  - `App\Services\Flight\FlightCarrierRechargeService::rechargeFromAccount()` for carriers
+ *  - `LedgerBalanceMutationGuard::run()` for one-off legitimate mutations
+ *
+ * If you find yourself wanting to call `$account->update(['balance' => …])`
+ * directly, STOP — write a service method instead.
+ */
 class Account extends Model
 {
     use HasFactory, ClearsCache;

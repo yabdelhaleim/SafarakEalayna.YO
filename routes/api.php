@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\Visa\VisaAgentApiController;
 use App\Http\Controllers\Api\V1\Visa\VisaAgentFinanceController;
+use App\Http\Controllers\Api\V1\Visa\VisaBookingController;
 use App\Http\Controllers\Api\V1\Visa\VisaTreasuryController;
 use App\Http\Controllers\Api\V1\VisaController;
 use App\Http\Controllers\Api\V1\Wallet\TransferDashboardController;
@@ -479,12 +480,14 @@ Route::prefix('v1')->middleware([
         Route::post('agents/{agent}/withdraw', [VisaAgentFinanceController::class, 'withdraw']);
         Route::post('agents/{agent}/repay', [VisaAgentFinanceController::class, 'repay']);
 
-        Route::get('bookings', [VisaController::class, 'index']);
-        Route::post('bookings', [VisaController::class, 'store']);
-        Route::get('bookings/{visa}', [VisaController::class, 'show']);
-        Route::match(['put', 'patch'], 'bookings/{visa}', [VisaController::class, 'update']);
-        Route::delete('bookings/{visa}', [VisaController::class, 'destroy']);
-        Route::post('bookings/{visa}/payments', [VisaController::class, 'addPayment']);
+        Route::get('bookings', [VisaBookingController::class, 'index']);
+        Route::post('bookings', [VisaBookingController::class, 'store']);
+        Route::get('bookings/{visa}', [VisaBookingController::class, 'show']);
+        Route::match(['put', 'patch'], 'bookings/{visa}', [VisaBookingController::class, 'update']);
+        Route::delete('bookings/{visa}', [VisaBookingController::class, 'destroy']);
+        Route::post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
+        Route::post('bookings/{visa}/refund', [VisaBookingController::class, 'refund']);
+        Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications']);
 
         // مديونيات عملاء التأشيرات
         Route::get('customer-balances', [VisaController::class, 'customerBalances']);

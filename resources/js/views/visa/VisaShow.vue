@@ -17,6 +17,12 @@
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-3">
+          <router-link
+            :to="{ name: 'visa.details', params: { id: id } }"
+            class="btn-airline-ghost rounded-xl px-4 py-2.5 text-sm font-bold text-indigo-300 border-indigo-300/30"
+          >
+            <Info class="mb-0.5 ml-2 inline h-4 w-4" /> تفاصيل التأشيرة
+          </router-link>
           <router-link :to="{ name: 'visa.edit', params: { id: id } }" class="btn-airline-ghost rounded-xl px-4 py-2.5 text-sm font-bold">
             <Edit2 class="mb-0.5 ml-2 inline h-4 w-4" /> تعديل
           </router-link>

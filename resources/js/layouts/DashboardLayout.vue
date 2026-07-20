@@ -562,6 +562,7 @@ import { useAuthStore } from '@/stores/authStore';
 import axios from 'axios';
 import { useFlightStore } from '@/stores/flightStore';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
+import { onGlobalError } from '@/utils/api';
 
 const router = useRouter();
 const route = useRoute();
@@ -633,6 +634,19 @@ const toasts = ref([]);
 watch(() => flightStore.toasts, (newToasts) => {
   toasts.value = [...newToasts];
 }, { deep: true });
+
+// Subscribe to the global toast bus — every api error in any module
+// surface here as a flash message so the user always sees feedback.
+let _globalErrorOff = null;
+onMounted(() => {
+    _globalErrorOff = onGlobalError((message, type) => {
+        // Hand off to the flightStore which already drives the toast UI.
+        flightStore.addToast(message, type);
+    });
+});
+onUnmounted(() => {
+    if (_globalErrorOff) _globalErrorOff();
+});
 
 // Auto-close sidebar on route change (Mobile only)
 watch(() => route.path, () => {
