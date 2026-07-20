@@ -6,6 +6,7 @@ use App\Filament\Pages\Auth\Login;
 use App\Filament\Resources\AirportResource;
 use App\Filament\Resources\TreasuryResource;
 use App\Http\Middleware\AuthenticateWithApiToken;
+use App\Http\Middleware\SetFilamentLocale;
 use Filament\Enums\ThemeMode;
 use Filament\FontProviders\GoogleFontProvider;
 use Filament\Http\Middleware\Authenticate;
@@ -84,6 +85,7 @@ class AdminPanelProvider extends PanelProvider
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
+                SetFilamentLocale::class,
                 AuthenticateWithApiToken::class, // SSO: authenticate via ?token= before Filament checks auth
                 AuthenticateSession::class,
                 ShareErrorsFromSession::class,
