@@ -118,9 +118,54 @@ class StoreFlightBookingRequest extends FormRequest
             'payment.method' => ['nullable', 'string', Rule::in($paymentMethods)],
             'payment.account_id' => 'nullable|integer|exists:accounts,id',
             'payment.notes' => 'nullable|string|max:1000',
+            // ✅ Bug fix: allow customer payment in a different currency than the booking currency.
+            // When payment.currency differs from booking.currency, the service layer persists
+            // it as original_currency/original_amount on the booking row.
+            'payment.currency' => ['nullable', 'string', 'size:3'],
+            'payment.original_amount' => ['nullable', 'numeric', 'min:0.0001'],
+            'payment.original_currency' => ['nullable', 'string', 'size:3'],
+            'original_currency' => ['nullable', 'string', 'size:3'],
+            'original_amount' => ['nullable', 'numeric', 'min:0.0001'],
             'initial_payment' => 'nullable|numeric|min:0',
             'payment_method' => ['nullable', 'string', Rule::in($paymentMethods)],
         ];
+    }
+
+    /**
+     * Semantic guard: original_currency must differ from booking sale currency.
+     *
+     * Reason: if a caller sets original_currency == currency, the field carries no
+     * information (no currency conversion happened). The model's saving observer
+     * nullifies it, but rejecting at validation time gives a clearer error message
+     * to API/Vue callers.
+     */
+    public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
+    {
+        $validator->after(function ($v) {
+            $bookingCurrency = $this->input('currency');
+            $originalCurrency = $this->input('original_currency');
+            $paymentCurrency = $this->input('payment.currency');
+
+            $bookingCurrency = $bookingCurrency ? strtoupper((string) $bookingCurrency) : null;
+            $originalCurrency = $originalCurrency ? strtoupper((string) $originalCurrency) : null;
+            $paymentCurrency = $paymentCurrency ? strtoupper((string) $paymentCurrency) : null;
+
+            if ($originalCurrency !== null && $bookingCurrency !== null
+                && $originalCurrency === $bookingCurrency) {
+                $v->errors()->add(
+                    'original_currency',
+                    'original_currency يجب أن يختلف عن currency (عملة البيع)، أو يُحذف. الحقل يُسجّل فقط عند الدفع بعملة مختلفة.'
+                );
+            }
+
+            if ($paymentCurrency !== null && $bookingCurrency !== null
+                && $paymentCurrency === $bookingCurrency) {
+                $v->errors()->add(
+                    'payment.currency',
+                    'payment.currency يجب أن يختلف عن currency (عملة البيع)، أو يُحذف. الحقل يُسجّل فقط عند الدفع بعملة مختلفة.'
+                );
+            }
+        });
     }
 
     protected function prepareForValidation(): void
@@ -172,6 +217,8 @@ class StoreFlightBookingRequest extends FormRequest
             'flight_number',
             'baggage_allowance_kg',
             'foreign_currency',
+            'original_currency',
+            'original_amount',
         ];
 
         $input = $this->all();

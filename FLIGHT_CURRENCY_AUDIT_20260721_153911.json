@@ -1,0 +1,40 @@
+{
+    "generated_at": "2026-07-21 15:39:10",
+    "database": "safarakealayna",
+    "counts": {
+        "flight_bookings": 13,
+        "flight_groups": 2,
+        "flight_carriers": 6,
+        "flight_systems": 3,
+        "airline_accounts": 0,
+        "flight_payments": 10,
+        "airline_transactions": 18,
+        "flight_system_transactions": 6,
+        "flight_group_transactions": 1
+    },
+    "currency_issues": [],
+    "hierarchy_issues": [],
+    "payment_issues": [],
+    "balance_issues": [],
+    "business_logic_issues": [],
+    "group_transactions_summary": [
+        {
+            "kind": "group_transactions_total",
+            "id": 1,
+            "name": "مجموعة الشعلة (E2E) (SHL_E2E)",
+            "account_id": 90,
+            "debits": 0,
+            "credits": 0,
+            "net": 0
+        },
+        {
+            "kind": "group_transactions_total",
+            "id": 2,
+            "name": "مجموعة فرياج (E2E) (FRJ_E2E)",
+            "account_id": 91,
+            "debits": 0,
+            "credits": 0,
+            "net": 0
+        }
+    ]
+}

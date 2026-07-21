@@ -301,8 +301,13 @@ class FlightBookingService
                         'agent_name' => $data['agent_name'] ?? 'Office',
                         'notes' => $data['notes'] ?? null,
                         'created_by' => $userId,
-                        'original_currency' => $currency,
-                        'original_amount' => $sellingPrice,
+                        // original_currency/original_amount represent the CUSTOMER's actual
+                        // payment currency/amount — only set when the customer pays in a
+                        // different currency than the booking's sale currency.
+                        // If equal to $currency, leave NULL (the model's saving guard also
+                        // enforces this as defense-in-depth).
+                        'original_currency' => $this->resolveCustomerOriginalCurrency($data, $currency),
+                        'original_amount' => $this->resolveCustomerOriginalAmount($data, $currency, $sellingPrice),
                         'booking_exchange_rate' => $exchangeRate,
                         'base_currency_amount' => $sellingPriceEGP,
                     ]);
@@ -519,6 +524,65 @@ class FlightBookingService
         }
 
         return $data;
+    }
+
+    /**
+     * Resolve the customer's actual payment currency.
+     *
+     * original_currency على حجز الطيران تمثل عملة الدفع الفعلية للعميل.
+     * لو العميل دفع بنفس عملة بيع الحجز، ترجع null (الحقل يصبح غير ضروري).
+     *
+     * Input sources (priority order):
+     *   1. $data['payment']['currency'] (customer's payment currency on the initial payment)
+     *   2. $data['original_currency'] (explicit override)
+     *
+     * Returns null when the customer's payment currency equals the booking sale currency
+     * (so the field doesn't pollute reports/refunds with redundant data).
+     */
+    protected function resolveCustomerOriginalCurrency(array $data, string $bookingCurrency): ?string
+    {
+        $paymentCurrency = $data['payment']['currency']
+            ?? $data['original_currency']
+            ?? null;
+
+        if ($paymentCurrency === null || $paymentCurrency === '') {
+            return null;
+        }
+
+        $paymentCurrency = strtoupper((string) $paymentCurrency);
+
+        // لو العميل دفع بنفس عملة البيع، الحقل لا يحمل معلومة → NULL
+        if ($paymentCurrency === strtoupper($bookingCurrency)) {
+            return null;
+        }
+
+        return $paymentCurrency;
+    }
+
+    /**
+     * Resolve the customer's actual payment amount in the customer's payment currency.
+     *
+     * Returns null when resolveCustomerOriginalCurrency() returns null (no conversion
+     * happened), or when no explicit amount was provided.
+     */
+    protected function resolveCustomerOriginalAmount(array $data, string $bookingCurrency, float $sellingPrice): ?float
+    {
+        $currency = $this->resolveCustomerOriginalCurrency($data, $bookingCurrency);
+        if ($currency === null) {
+            return null;
+        }
+
+        $originalAmount = $data['payment']['original_amount']
+            ?? $data['original_amount']
+            ?? null;
+
+        if ($originalAmount === null || $originalAmount === '' || (float) $originalAmount <= 0) {
+            // عندنا عملة مدفوع مختلفة لكن مفيش مبلغ → نحط NULL بدل ما نكتب sellingPrice
+            // (ده كان الـ bug القديم — كان بيحط sellingPrice كـ original_amount).
+            return null;
+        }
+
+        return (float) $originalAmount;
     }
 
     /**

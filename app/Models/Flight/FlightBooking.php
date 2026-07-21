@@ -140,6 +140,26 @@ class FlightBooking extends Model
                 .'استخدم FlightBookingService::createBooking / updateBooking / updatePrices.'
             );
         });
+
+        // Defense-in-depth: original_currency/original_amount are only meaningful when
+        // the customer actually paid in a currency different from the booking sale
+        // currency. If original_currency == currency (sale currency), the field carries
+        // no information and must be NULL to avoid polluting reports/refund logic.
+        // See Bug: audit FLIGHT_CURRENCY_AUDIT_20260721_150700.json
+        static::saving(function (FlightBooking $booking): void {
+            $origCurrency = $booking->original_currency !== null
+                ? strtoupper((string) $booking->original_currency)
+                : null;
+            $saleCurrency = $booking->currency !== null
+                ? strtoupper((string) $booking->currency)
+                : null;
+
+            if ($origCurrency !== null && $saleCurrency !== null
+                && $origCurrency === $saleCurrency) {
+                $booking->original_currency = null;
+                $booking->original_amount = null;
+            }
+        });
     }
 
     public function customer(): BelongsTo

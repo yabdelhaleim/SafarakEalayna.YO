@@ -1,0 +1,201 @@
+{
+    "generated_at": "2026-07-21 15:07:00",
+    "database": "safarakealayna",
+    "counts": {
+        "flight_bookings": 13,
+        "flight_groups": 2,
+        "flight_carriers": 6,
+        "flight_systems": 3,
+        "airline_accounts": 0,
+        "flight_payments": 10,
+        "airline_transactions": 18,
+        "flight_system_transactions": 6,
+        "flight_group_transactions": 1
+    },
+    "currency_issues": [
+        {
+            "booking_id": 6,
+            "reference": "FLT-20260721-B0AC4A",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "EGP",
+            "foreign_currency": null,
+            "original_currency": "EGP",
+            "selling_price": "9500.00",
+            "purchase_price": "8000.00",
+            "purchase_price_foreign": null,
+            "purchase_price_egp": "8000.00",
+            "exchange_rate": "1.0000",
+            "exchange_rate_used": "1.000000",
+            "booking_exchange_rate": "1.000000",
+            "base_currency_amount": "9500.00",
+            "issues": [
+                "original_currency(EGP) == currency(EGP) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 9,
+            "reference": "FLT-20260721-CE3C93",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "EGP",
+            "foreign_currency": null,
+            "original_currency": "EGP",
+            "selling_price": "15000.00",
+            "purchase_price": "12000.00",
+            "purchase_price_foreign": null,
+            "purchase_price_egp": "12000.00",
+            "exchange_rate": "1.0000",
+            "exchange_rate_used": "1.000000",
+            "booking_exchange_rate": "1.000000",
+            "base_currency_amount": "15000.00",
+            "issues": [
+                "original_currency(EGP) == currency(EGP) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 10,
+            "reference": "FLT-20260721-C4BA9E",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "EGP",
+            "foreign_currency": null,
+            "original_currency": "EGP",
+            "selling_price": "7500.00",
+            "purchase_price": "6000.00",
+            "purchase_price_foreign": null,
+            "purchase_price_egp": "6000.00",
+            "exchange_rate": "1.0000",
+            "exchange_rate_used": "1.000000",
+            "booking_exchange_rate": "1.000000",
+            "base_currency_amount": "7500.00",
+            "issues": [
+                "original_currency(EGP) == currency(EGP) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 11,
+            "reference": "FLT-20260721-EC3832",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "EGP",
+            "foreign_currency": null,
+            "original_currency": "EGP",
+            "selling_price": "8500.00",
+            "purchase_price": "7000.00",
+            "purchase_price_foreign": null,
+            "purchase_price_egp": "7000.00",
+            "exchange_rate": "1.0000",
+            "exchange_rate_used": "1.000000",
+            "booking_exchange_rate": "1.000000",
+            "base_currency_amount": "8500.00",
+            "issues": [
+                "original_currency(EGP) == currency(EGP) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 12,
+            "reference": "FLT-20260721-06E237",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "KWD",
+            "foreign_currency": "KWD",
+            "original_currency": "KWD",
+            "selling_price": "5512500.00",
+            "purchase_price": "31500.00",
+            "purchase_price_foreign": "200.00",
+            "purchase_price_egp": "31500.00",
+            "exchange_rate": "157.5000",
+            "exchange_rate_used": "157.500000",
+            "booking_exchange_rate": "157.500000",
+            "base_currency_amount": "5512500.00",
+            "issues": [
+                "original_currency(KWD) == currency(KWD) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 13,
+            "reference": "FLT-20260721-F55C96",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "KWD",
+            "foreign_currency": "KWD",
+            "original_currency": "KWD",
+            "selling_price": "5512500.00",
+            "purchase_price": "31500.00",
+            "purchase_price_foreign": "200.00",
+            "purchase_price_egp": "31500.00",
+            "exchange_rate": "157.5000",
+            "exchange_rate_used": "157.500000",
+            "booking_exchange_rate": "157.500000",
+            "base_currency_amount": "5512500.00",
+            "issues": [
+                "original_currency(KWD) == currency(KWD) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 14,
+            "reference": "FLT-20260721-A5AA71",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "KWD",
+            "foreign_currency": "KWD",
+            "original_currency": "KWD",
+            "selling_price": "5512500.00",
+            "purchase_price": "31500.00",
+            "purchase_price_foreign": "200.00",
+            "purchase_price_egp": "31500.00",
+            "exchange_rate": "157.5000",
+            "exchange_rate_used": "157.500000",
+            "booking_exchange_rate": "157.500000",
+            "base_currency_amount": "5512500.00",
+            "issues": [
+                "original_currency(KWD) == currency(KWD) — حقل غير ضروري"
+            ]
+        },
+        {
+            "booking_id": 15,
+            "reference": "FLT-20260721-0E8851",
+            "status": "CONFIRMED",
+            "deleted": "NO",
+            "currency": "SAR",
+            "foreign_currency": "SAR",
+            "original_currency": "SAR",
+            "selling_price": "193500.00",
+            "purchase_price": "12900.00",
+            "purchase_price_foreign": "1000.00",
+            "purchase_price_egp": "12900.00",
+            "exchange_rate": "12.9000",
+            "exchange_rate_used": "12.900000",
+            "booking_exchange_rate": "12.900000",
+            "base_currency_amount": "193500.00",
+            "issues": [
+                "original_currency(SAR) == currency(SAR) — حقل غير ضروري"
+            ]
+        }
+    ],
+    "hierarchy_issues": [],
+    "payment_issues": [],
+    "balance_issues": [],
+    "business_logic_issues": [],
+    "group_transactions_summary": [
+        {
+            "kind": "group_transactions_total",
+            "id": 1,
+            "name": "مجموعة الشعلة (E2E) (SHL_E2E)",
+            "account_id": 90,
+            "debits": 0,
+            "credits": 0,
+            "net": 0
+        },
+        {
+            "kind": "group_transactions_total",
+            "id": 2,
+            "name": "مجموعة فرياج (E2E) (FRJ_E2E)",
+            "account_id": 91,
+            "debits": 0,
+            "credits": 0,
+            "net": 0
+        }
+    ]
+}
