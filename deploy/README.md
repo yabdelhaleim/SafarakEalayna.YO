@@ -56,6 +56,31 @@ sudo find storage bootstrap/cache -type d -exec chmod 775 {} +
 sudo find storage bootstrap/cache -type f -exec chmod 664 {} +
 ```
 
+### Cache store
+
+The application can use the database cache store, but database/file stores do
+not support Laravel cache tags. Cache invalidation is therefore best-effort on
+those stores and never performs a global `cache:clear` during a booking write.
+
+If tag-based invalidation is required, use Redis in production and configure
+both the cache and queue connections explicitly in `.env`:
+
+```dotenv
+CACHE_STORE=redis
+REDIS_CLIENT=phpredis
+QUEUE_CONNECTION=redis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+```
+
+After changing `.env`, clear and rebuild the cached configuration:
+
+```bash
+php artisan config:clear
+php artisan config:cache
+```
+
+
 ### Nginx vhost (minimal)
 
 ```nginx
@@ -85,6 +110,54 @@ Enable + reload:
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/safarak /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Diagnosing a flight-booking 504
+
+If Nginx reports:
+
+```text
+upstream timed out ... while reading response header from upstream
+request: "POST /api/v1/flight/bookings ..."
+```
+
+the browser did not cause the error. Nginx waited for PHP-FPM to send the
+response headers and then reached its FastCGI read timeout. The booking
+transaction may still finish after the client receives 504, so check the
+bookings list before submitting the same booking again.
+
+Use these commands on the VPS while reproducing the issue:
+
+```bash
+# Nginx: confirms the exact timeout and request timestamp
+sudo tail -f /var/log/nginx/error.log
+
+# PHP-FPM: look for worker exhaustion, fatal errors, or slow requests
+sudo journalctl -u php8.3-fpm -f
+sudo tail -f /var/log/php8.3-fpm.log
+
+# MySQL: run while the request is stuck; inspect waiting transactions/locks
+mysql -u<user> -p <database> -e 'SHOW FULL PROCESSLIST\G'
+mysql -u<user> -p <database> -e 'SHOW ENGINE INNODB STATUS\G'
+```
+
+After deployment, `FlightBookingService::createBooking()` writes a
+`duration_ms` value to `storage/logs/laravel.log`. Compare that value with the
+Nginx timestamp:
+
+- A large `duration_ms` means the delay is inside PHP/database work; inspect
+  the MySQL lock/processlist output before changing proxy timeouts.
+- No matching completion/failure log means PHP-FPM was killed or stalled before
+  the service returned; inspect the PHP-FPM journal and worker limits.
+- A completion log after the Nginx timeout confirms the transaction committed
+  after the client had already received 504. Do not retry blindly.
+
+Do not solve this symptom by increasing `fastcgi_read_timeout` alone. That only
+makes the user wait longer and can leave more PHP-FPM workers occupied. Fix the
+blocking query/lock first, then reload Nginx after any vhost change:
+
+```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
 

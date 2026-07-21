@@ -209,8 +209,10 @@ class FlightBookingService
      */
     public function createBooking(array $data): FlightBooking
     {
+        $startedAt = microtime(true);
+
         try {
-            return DB::transaction(function () use ($data) {
+            $booking = DB::transaction(function () use ($data) {
                 $data = $this->prepareFlightBookingPayload($data);
 
                 $userId = Auth::id() ?: 1;
@@ -403,10 +405,20 @@ class FlightBookingService
                     'createdBy',
                 ]);
             });
+
+            Log::info('Flight booking request completed', [
+                'flight_booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
+                'user_id' => Auth::id(),
+            ]);
+
+            return $booking;
         } catch (\Exception $e) {
             Log::error('FlightBookingService::createBooking failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
                 'user_id' => Auth::id(),
                 'input' => $data,
             ]);

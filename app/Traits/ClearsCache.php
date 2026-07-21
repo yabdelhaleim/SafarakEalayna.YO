@@ -2,19 +2,14 @@
 
 namespace App\Traits;
 
-use Illuminate\Support\Facades\Cache;
+use App\Helpers\CacheHelper;
 
 trait ClearsCache
 {
     protected static function bootClearsCache(): void
     {
         $clearCache = function ($model): void {
-            $tag = $model->getTable();
-            try {
-                Cache::tags([$tag, 'dashboard'])->flush();
-            } catch (\Exception $e) {
-                Cache::flush();
-            }
+            CacheHelper::flushTags([$model->getTable(), 'dashboard']);
         };
 
         static::saved($clearCache);
