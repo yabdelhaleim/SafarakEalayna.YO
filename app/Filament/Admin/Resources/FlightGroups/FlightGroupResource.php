@@ -6,6 +6,7 @@ use App\Filament\Admin\Concerns\BelongsToFlightModuleNavigation;
 use App\Filament\Admin\Resources\FlightGroups\Pages\CreateFlightGroup;
 use App\Filament\Admin\Resources\FlightGroups\Pages\EditFlightGroup;
 use App\Filament\Admin\Resources\FlightGroups\Pages\ListFlightGroups;
+use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightGroup;
 use BackedEnum;
 use Filament\Tables\Actions\BulkActionGroup;
@@ -22,6 +23,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -96,6 +98,76 @@ class FlightGroupResource extends Resource
                             ->placeholder('example@email.com'),
                     ])
                     ->columns(3),
+                Section::make('المعلومات المالية')
+                    ->description('حدود الائتمان والعمولة')
+                    ->schema([
+                        TextInput::make('commission_rate')
+                            ->label('نسبة العمولة (%)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->nullable()
+                            ->placeholder('اختياري'),
+                        TextInput::make('credit_limit')
+                            ->label('حد الائتمان (الدين المسموح)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->default(999999999)
+                            ->suffix(fn ($get) => ' ' . strtoupper((string) (FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
+                            ->helperText(
+                                'الحد الأقصى للدين المسموح للمجموعة. '.
+                                'الافتراضي كبير (999,999,999) للسماح بالأجل التلقائي. '.
+                                'حدد رقماً لتحديد سقف أقصى للدين — لما يتجاوزه النظام هيرفض الحجز.'
+                            ),
+                    ])
+                    ->columns(2),
+                Section::make('إعدادات الإشعارات')
+                    ->description('تنبيهات عند اقتراب المجموعة من سقف الدين (info / warning / danger)')
+                    ->schema([
+                        Grid::make(3)->schema([
+                            TextInput::make('notification_threshold_info')
+                                ->label('عتبة معلومة (Info)')
+                                ->numeric()
+                                ->minValue(0)
+                                ->nullable()
+                                ->suffix(fn ($get) => ' ' . strtoupper((string) (FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
+                                ->helperText('إشعار بداية الاقتراب'),
+                            TextInput::make('notification_threshold_warning')
+                                ->label('عتبة تحذير (Warning)')
+                                ->numeric()
+                                ->minValue(0)
+                                ->nullable()
+                                ->suffix(fn ($get) => ' ' . strtoupper((string) (FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
+                                ->helperText('تحتاج متابعة'),
+                            TextInput::make('notification_threshold_danger')
+                                ->label('عتبة خطر (Danger)')
+                                ->numeric()
+                                ->minValue(0)
+                                ->nullable()
+                                ->suffix(fn ($get) => ' ' . strtoupper((string) (FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
+                                ->helperText('تدخل فوري'),
+                        ]),
+                        Grid::make(3)->schema([
+                            Toggle::make('notify_via_toast')
+                                ->label('Toast Popup فوري')
+                                ->helperText('يظهر مباشرة بعد الحجز')
+                                ->default(true)
+                                ->inline(false),
+                            Toggle::make('notify_via_widget')
+                                ->label('Dashboard Widget')
+                                ->helperText('يظهر في لوحة الطيران')
+                                ->default(true)
+                                ->inline(false),
+                            Toggle::make('notify_via_bell')
+                                ->label('In-App Notification 🔔')
+                                ->helperText('يظهر في جرس الإشعارات')
+                                ->default(true)
+                                ->inline(false),
+                        ]),
+                    ])
+                    ->columns(1)
+                    ->collapsible(),
                 Section::make('معلومات إضافية')
                     ->schema([
                         Textarea::make('notes')
@@ -150,6 +222,27 @@ class FlightGroupResource extends Resource
                 IconColumn::make('is_active')
                     ->label('نشط')
                     ->boolean(),
+                TextColumn::make('credit_limit')
+                    ->label('حد الائتمان')
+                    ->numeric(decimalPlaces: 2)
+                    ->suffix(fn ($record) => ' ' . strtoupper($record->carrier?->currency ?? 'EGP'))
+                    ->toggleable(),
+                TextColumn::make('last_threshold_level')
+                    ->label('آخر مستوى')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'info' => 'info',
+                        'warning' => 'warning',
+                        'danger' => 'danger',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {
+                        'info' => 'معلومة',
+                        'warning' => 'تحذير',
+                        'danger' => 'خطر',
+                        default => '—',
+                    })
+                    ->toggleable(),
                 TextColumn::make('created_at')
                     ->label('تاريخ الإنشاء')
                     ->dateTime('d/m/Y')
