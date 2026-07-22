@@ -26,16 +26,39 @@ use App\Traits\ClearsCache;
  *
  * ─── CRITICAL INVARIANTS ────────────────────────────────────────────────
  *
- * 1) `Account.balance = SUM(debit) - SUM(credit)` on `account_entries`
- *    tied to this account.  This is enforced by:
+ * 1) `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`
+ *    tied to this account.  This is the **PROJECT'S convention** — the
+ *    opposite of standard double-entry accounting.  Rationale:
+ *      - `AccountService::creditAccount()` INCREASES balance and writes
+ *        `credit` field on `AccountEntry` (line 363+).
+ *      - `AccountService::debitAccount()` DECREASES balance and writes
+ *        `debit` field (line 391+).
+ *      - `FinancialReportService.php:383` uses `SUM(credit - debit) as
+ *        net_change` for liquidity aggregation — confirming this
+ *        convention is the source of truth across services.
+ *      - `TransactionService::recordTransfer()` and `recordJournalTransfer()`
+ *        follow the same convention:
+ *          • source account (losing money) → `debit` entry
+ *          • destination account (gaining money) → `credit` entry
+ *    The invariant is enforced by:
  *      - `LedgerBalanceMutationGuard::run()` in services that mutate rows
  *      - `Account::booted()` updating-guard that rejects unauthorised
  *        balance writes
  *      - `AccountEntry` being append-only (no soft deletes)
+ *      - PHPUnit test `tests/Feature/Finance/AccountBalanceInvariantTest.php`
  *
  * 2) Every double-entry transaction (`Transaction`) produces balanced
- *    AccountEntry rows — debit == credit on each transaction_id.  This
- *    is asserted in `JournalEntryProductionTest::test_each_transaction_has_balanced_entries`.
+ *    AccountEntry rows — `SUM(debit on transaction) == SUM(credit on transaction)`
+ *    on the same `transaction_id`.  This is asserted in
+ *    `AccountBalanceInvariantTest::test_each_transaction_has_balanced_entries`.
+ *
+ * ⚠️  WARNING — 2026-07-22 History:
+ *   A previous commit (Finding #1 fix) attempted to "flip" entries to
+ *   "standard" double-entry direction, which broke invariant #1 by
+ *   writing entries with the wrong sign.  This was reverted so the
+ *   PROJECT'S convention now applies consistently:
+ *     balance = SUM(credit) - SUM(debit)  ⇐  CREDIT increases, DEBIT decreases
+ *   See `docs/ACCOUNTING_AUDIT_20260722.md` for the full remediation.
  *
  * ─── SIGN CONVENTION ────────────────────────────────────────────────────
  *

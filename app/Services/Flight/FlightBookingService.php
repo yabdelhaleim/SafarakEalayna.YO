@@ -2623,6 +2623,34 @@ class FlightBookingService
             'amount' => $debitAmount,
             'currency' => $groupCurrency,
         ]);
+
+        // ✅ Threshold notification hook (Part B)
+        // After the group ledger is debited, evaluate the new available balance
+        // against the configured thresholds (info / warning / danger). When a
+        // notification is fired, attach it to the booking so the controller
+        // can return it to the SPA for an immediate Toast.
+        try {
+            $thresholdService = app(\App\Services\Flight\FlightGroupThresholdService::class);
+            $thresholdWarning = $thresholdService->evaluateAndNotify($group);
+
+            if ($thresholdWarning !== null) {
+                // Attach a transient (non-persisted) attribute. The controller
+                // reads this and includes it in the JSON response.
+                $booking->setAttribute(
+                    '_group_threshold_warning',
+                    array_merge($thresholdWarning, [
+                        'group_id'   => $group->id,
+                        'group_name' => $group->name,
+                    ])
+                );
+            }
+        } catch (\Throwable $e) {
+            // Threshold evaluation must NEVER break the booking flow.
+            Log::warning('FlightGroup threshold evaluation failed', [
+                'group_id' => $group->id,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

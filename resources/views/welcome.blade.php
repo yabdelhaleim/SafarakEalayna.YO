@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="rtl">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,7 +7,7 @@
         <title>SafarakEalayna - Travel Management System</title>
         @vite(['resources/js/app.js'])
     </head>
-    <body class="bg-bg-deep text-text-main">
-        <div id="app"></div>
+    <body class="bg-bg-deep text-text-main" dir="rtl">
+        <div id="app" dir="rtl"></div>
     </body>
 </html>

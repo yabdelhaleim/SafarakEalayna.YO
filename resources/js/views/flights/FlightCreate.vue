@@ -3783,6 +3783,14 @@ const submitBooking = async () => {
     await store.fetchSystems();
     await loadSettlementAccounts();
 
+    // ✅ Part B: surface any group-threshold warning returned by the backend.
+    // The booking service attaches it to the response when the booking pushes
+    // a group's available balance below one of its configured thresholds.
+    const thresholdWarning = result?.group_threshold_warning;
+    if (thresholdWarning) {
+      store.showGroupThresholdToast(thresholdWarning);
+    }
+
     const rid = result?.id ?? props.bookingId;
     router.push(`/flights/${rid}`);
   } catch (error) {

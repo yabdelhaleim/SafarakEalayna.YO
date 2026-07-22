@@ -31,6 +31,7 @@ class AccountResource extends JsonResource
             'module_type' => $this->module_type,
             'module' => $this->module,
             'payment_status' => $this->payment_status,
+            'is_module_vault' => (bool) $this->is_module_vault,
             'owner_type' => $this->owner_type,
             'created_by_id' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->id),
             'created_by_name' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->name),

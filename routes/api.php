@@ -186,8 +186,12 @@ Route::prefix('v1')->middleware([
         Route::get('carriers/{carrier}/balance', [FlightCarrierController::class, 'balance']);
         Route::post('carriers/{carrier}/recharge', [FlightCarrierController::class, 'recharge']);
         Route::get('carriers/{carrier}/groups', [FlightGroupController::class, 'getByCarrier']);
+        // Part B: literal routes MUST come before parameterized routes to avoid
+        // Laravel binding "threshold-summary" as a {group} value.
+        Route::get('groups/threshold-summary', [FlightGroupController::class, 'thresholdSummary']);
         Route::get('groups/{group}/statement', [FlightGroupController::class, 'statement']);
         Route::post('groups/{group}/pay-debt', [FlightGroupController::class, 'payDebt']);
+        Route::put('groups/{group}/notifications', [FlightGroupController::class, 'updateNotifications']);
         Route::apiResource('groups', FlightGroupController::class)->names('flight_groups')->only(['index', 'show']);
 
         // Airports endpoints

@@ -38,7 +38,10 @@ class AccountController extends Controller
         $userRole = $request->user()?->role ?? 'guest';
         $cacheKey = 'accounts_list_' . $userRole . '_' . md5(serialize($params));
 
-        $data = \App\Helpers\CacheHelper::tags(['accounts'])->remember($cacheKey, 60, function () use ($request) {
+        // Cache TTL reduced 60s → 30s so financial listings update faster
+        // for end users. Combined with explicit `flushNamespace()` on writes
+        // (store/update/deactivate/transfer) this keeps listings ~real-time.
+        $data = \App\Helpers\CacheHelper::tags(['accounts'])->remember($cacheKey, 30, function () use ($request) {
             $paginator = $this->accountService->getAllAccounts($request->all());
 
             $baseQuery = $this->accountService->buildAccountsQuery($request->all());
@@ -138,6 +141,9 @@ class AccountController extends Controller
     public function store(StoreAccountRequest $request): JsonResponse
     {
         $account = $this->accountService->createAccount($request->validated());
+        // Invalidate any cached account listings immediately so the new
+        // account shows up without waiting for the TTL to expire.
+        \App\Helpers\CacheHelper::flushTags(['accounts']);
 
         return ApiResponse::success('Account created successfully.', new AccountResource($account), 201);
     }
@@ -152,6 +158,7 @@ class AccountController extends Controller
     public function update(UpdateAccountRequest $request, Account $account): JsonResponse
     {
         $account = $this->accountService->updateAccount($account, $request->validated());
+        \App\Helpers\CacheHelper::flushTags(['accounts']);
 
         return ApiResponse::success('Account updated successfully.', new AccountResource($account), 200);
     }
@@ -159,6 +166,7 @@ class AccountController extends Controller
     public function deactivate(Account $account): JsonResponse
     {
         $this->accountService->deactivateAccount($account);
+        \App\Helpers\CacheHelper::flushTags(['accounts']);
 
         return ApiResponse::success('Account deactivated successfully.', null, 200);
     }
@@ -212,6 +220,11 @@ class AccountController extends Controller
             }
 
             $transfer = $this->transactionService->recordTransfer($data);
+
+            // Transfer mutates two accounts' balances — flush the namespace
+            // so any cached account listings reflect the new balances
+            // immediately on the next request.
+            \App\Helpers\CacheHelper::flushTags(['accounts']);
 
             return ApiResponse::success('Transfer completed successfully.', new TransferResource($transfer), 201);
         } catch (\Exception $e) {

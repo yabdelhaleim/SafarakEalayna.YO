@@ -38,6 +38,9 @@ export const useFlightStore = defineStore('flight', {
     airlineAccounts: [],
     /** @type {null | { systems: [], carriers: [], settlement_accounts: [], recent_flight_transactions: [] }} */
     treasuryOverview: null,
+    /** Part B: threshold notification state */
+    /** @type {null | { warning_count: number, danger_count: number, safe_count: number, total_groups: number, top_groups: Array }} */
+    groupThresholdSummary: null,
     loading: {
       list: false,
       create: false,
@@ -53,7 +56,8 @@ export const useFlightStore = defineStore('flight', {
       flightReference: false,
       airlineAccounts: false,
       systemTypes: false,
-      treasuryOverview: false
+      treasuryOverview: false,
+      groupThresholdSummary: false
     },
     errors: {},
     toasts: [],
@@ -1076,6 +1080,89 @@ export const useFlightStore = defineStore('flight', {
       } finally {
         this.loading.groups = false;
       }
+    },
+
+    /**
+     * Part B: fetch a single group's notification settings.
+     * Returns the fresh group row with thresholds + channels.
+     */
+    async fetchGroup(groupId) {
+      try {
+        const response = await axios.get(`/api/v1/flight/groups/${groupId}`);
+        return response.data?.data || null;
+      } catch (error) {
+        if (isRequestCanceled(error)) return null;
+        console.error('Failed to fetch group', error);
+        this.addToast('فشل تحميل بيانات المجموعة', 'error');
+        return null;
+      }
+    },
+
+    /**
+     * Part B: update notification settings (thresholds + channels) for a group.
+     * @param {number} groupId
+     * @param {{
+     *   notification_threshold_info?: number|null,
+     *   notification_threshold_warning?: number|null,
+     *   notification_threshold_danger?: number|null,
+     *   notify_via_toast?: boolean,
+     *   notify_via_widget?: boolean,
+     *   notify_via_bell?: boolean
+     * }} payload
+     */
+    async updateGroupNotifications(groupId, payload) {
+      try {
+        const response = await axios.put(
+          `/api/v1/flight/groups/${groupId}/notifications`,
+          payload
+        );
+        this.addToast(response.data?.message || 'تم حفظ إعدادات الإشعارات', 'success');
+        return response.data?.data || null;
+      } catch (error) {
+        if (isRequestCanceled(error)) return null;
+        const msg = error.response?.data?.message || 'فشل حفظ إعدادات الإشعارات';
+        this.addToast(msg, 'error');
+        throw error;
+      }
+    },
+
+    /**
+     * Part B: aggregate summary used by GroupThresholdWidget.
+     */
+    async fetchGroupThresholdSummary(force = false) {
+      if (!force && this.groupThresholdSummary) return this.groupThresholdSummary;
+      this.loading.groupThresholdSummary = true;
+      try {
+        const response = await axios.get('/api/v1/flight/groups/threshold-summary', {
+          params: { top: 5 }
+        });
+        this.groupThresholdSummary = response.data?.data || null;
+        return this.groupThresholdSummary;
+      } catch (error) {
+        if (isRequestCanceled(error)) return null;
+        console.error('Failed to fetch group threshold summary', error);
+        return null;
+      } finally {
+        this.loading.groupThresholdSummary = false;
+      }
+    },
+
+    /**
+     * Part B: show a Toast in response to a booking that crossed a threshold.
+     * Called by FlightCreate.vue after a successful booking.
+     */
+    showGroupThresholdToast(warning) {
+      if (!warning || !warning.level) return;
+      const level = warning.level;
+      const type = level === 'danger' ? 'error' : (level === 'warning' ? 'warning' : 'info');
+      const title = level === 'danger'
+        ? '🔴 خطر — مجموعة قاربت على السقف'
+        : level === 'warning'
+          ? '⚠️ تحذير — مجموعة تقترب من السقف'
+          : 'ℹ️ معلومة — رصيد مجموعة منخفض';
+      const message = warning.message
+        || `مجموعة «${warning.group_name}»: المتاح ${warning.available} ${warning.currency}`;
+      this.addToast(`${title} — ${message}`, type);
     },
 
     async fetchAirports(params = {}) {

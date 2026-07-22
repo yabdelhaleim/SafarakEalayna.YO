@@ -1,0 +1,22 @@
+{
+    "success": 14,
+    "failed": 4,
+    "critical_failures": [
+        {
+            "key": "convert 100 USD → EGP",
+            "payload": "Array to string conversion"
+        },
+        {
+            "key": "delete account with balance → blocked",
+            "payload": "status=405, msg=\"The DELETE method is not supported for route api\\\/v1\\\/finance\\\/accounts\\\/5. Supported methods: GET, HEAD, PUT, PATCH.\""
+        },
+        {
+            "key": "delete empty account → 200",
+            "payload": "status=405, body=\"The DELETE method is not supported for route api\\\/v1\\\/finance\\\/accounts\\\/24. Supported methods: GET, HEAD, PUT, PATCH.\""
+        },
+        {
+            "key": "cancel balances back to original",
+            "payload": null
+        }
+    ]
+}

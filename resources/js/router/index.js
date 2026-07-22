@@ -127,6 +127,13 @@ const routes = [
         props: true,
         meta: { title: 'تفاصيل الناقل' },
       },
+      // Part B: dedicated Flight Groups management page
+      {
+        path: 'groups',
+        name: 'flights.groups.index',
+        component: () => import('@/views/flights/FlightGroupsIndex.vue'),
+        meta: { title: 'مجموعات الطيران', permission: 'manage_finance' },
+      },
     ],
   },
   // Hajj & Umra Module

@@ -157,6 +157,11 @@
 
         </section>
 
+        <!-- Part B: Group Threshold Widget (admin only) -->
+        <section v-if="isAdmin">
+          <GroupThresholdWidget />
+        </section>
+
         <!-- Main Grid -->
         <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
 
@@ -382,6 +387,9 @@ import {
 
 // Vault might not exist in older lucide — use Wallet as fallback
 import { Wallet as Vault } from 'lucide-vue-next';
+
+// Part B: Group threshold widget (admin dashboard surface)
+import GroupThresholdWidget from '@/components/flights/GroupThresholdWidget.vue';
 
 const store = useFlightStore();
 const authStore = useAuthStore();

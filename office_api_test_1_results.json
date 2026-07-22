@@ -1,0 +1,111 @@
+{
+    "success": 21,
+    "failed": 0,
+    "logs": [
+        {
+            "key": "login",
+            "success": true,
+            "payload": "status=200, hasToken=YES"
+        },
+        {
+            "key": "accounts.list (200)",
+            "success": true,
+            "payload": "status=200, items=15"
+        },
+        {
+            "key": "accounts.list has banks",
+            "success": true,
+            "payload": "first bank: البريد المصري — جنيه"
+        },
+        {
+            "key": "accounts.filter cashbox",
+            "success": true,
+            "payload": "all items type=cashbox? YES"
+        },
+        {
+            "key": "accounts.filter wallet+vodafone",
+            "success": true,
+            "payload": "items=5"
+        },
+        {
+            "key": "accounts.filter currency=USD",
+            "success": true,
+            "payload": "USD items=2"
+        },
+        {
+            "key": "accounts.filter is_active=true",
+            "success": true,
+            "payload": "active items=15"
+        },
+        {
+            "key": "accounts.search \"الأهلي\"",
+            "success": true,
+            "payload": "results=2"
+        },
+        {
+            "key": "create bank (KWD)",
+            "success": true,
+            "payload": "status=201, body=\"Account created successfully.\""
+        },
+        {
+            "key": "create wallet (postal)",
+            "success": true,
+            "payload": "status=201, message=\"Account created successfully.\""
+        },
+        {
+            "key": "create wallet without provider → 422",
+            "success": true,
+            "payload": "status=422, errors={\"wallet_provider\":[\"\\u0646\\u0648\\u0639 \\u0627\\u0644\\u0645\\u062d\\u0641\\u0638\\u0629 \\u0645\\u0637\\u0644\\u0648\\u0628 \\u0644\\u062d\\u0633\\u0627\\u0628 \\u0645\\u062d\\u0641\\u0638\\u0629\"],\"wallet_number\":[\"\\u0631\\u0642\\u0645 \\u0627\\u0644\\u0645\\u062d\\u0641\\u0638\\u0629 \\u0645\\u0637\\u0644\\u0648\\u0628 \\u0644\\u062d\\u0633\\u0627\\u0628 \\u0645\\u062d\\u0641\\u0638\\u0629\"]}"
+        },
+        {
+            "key": "show new bank",
+            "success": true,
+            "payload": "name=بنك QNB — كويتي (Test API)"
+        },
+        {
+            "key": "statement of new bank",
+            "success": true,
+            "payload": "opening_balance=0, period_credit=50000"
+        },
+        {
+            "key": "transfer cashbox1→cashbox2 (5000 EGP)",
+            "success": true,
+            "payload": "status=201, body=\"Transfer completed successfully.\""
+        },
+        {
+            "key": "transfer history list",
+            "success": true,
+            "payload": "transfers count=1"
+        },
+        {
+            "key": "cashbox1 balance = 25000 (expected 25000)",
+            "success": true,
+            "payload": null
+        },
+        {
+            "key": "cashbox2 balance = 15000 (expected 15000)",
+            "success": true,
+            "payload": null
+        },
+        {
+            "key": "reports\/debts?department=office",
+            "success": true,
+            "payload": "total_receivables=0, total_payables=0, items=0"
+        },
+        {
+            "key": "reports\/office-trial-balance",
+            "success": true,
+            "payload": "status=200"
+        },
+        {
+            "key": "health endpoint",
+            "success": true,
+            "payload": "status=200"
+        },
+        {
+            "key": "logout",
+            "success": true,
+            "payload": "status=200"
+        }
+    ]
+}

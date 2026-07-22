@@ -408,15 +408,20 @@ if ($transaction->type === TransactionType::Income->value || $transaction->type 
                 'attachment_path' => $data['attachment_path'] ?? null,
             ]);
 
-            // Finding #1 fix: ledger entry directions flipped to standard double-entry (see recordJournalTransfer).
+            // Ledger entry directions match the project's convention (balance = SUM(credit) - SUM(debit)).
+            // For ASSET accounts in this project: credit increases balance (per AccountService::creditAccount),
+            // debit decreases balance (per AccountService::debitAccount).
+            // Therefore, the from-account (losing money) must get a DEBIT entry, and the to-account
+            // (gaining money) must get a CREDIT entry — exactly matching FinancialReportService's
+            // SUM(credit - debit) formula. (Reverts Finding #1 "fix" that flipped directions by mistake.)
             $fromAccount->balance = (float) $fromAccount->balance - $debitAmount;
             $fromAccount->save();
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => 0.00,                  // flipped: was $debitAmount
-                'credit' => $debitAmount,          // flipped: was 0.00
+                'debit' => $debitAmount,
+                'credit' => 0.00,
                 'balance_after' => $fromAccount->balance,
             ]);
 
@@ -426,8 +431,8 @@ if ($transaction->type === TransactionType::Income->value || $transaction->type 
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => $creditAmount,          // flipped: was 0.00
-                'credit' => 0.00,                  // flipped: was $creditAmount
+                'debit' => 0.00,
+                'credit' => $creditAmount,
                 'balance_after' => $toAccount->balance,
             ]);
 
@@ -587,23 +592,17 @@ if ($transaction->type === TransactionType::Income->value || $transaction->type 
                 }
             }
 
-            // Finding #1 fix: ledger entry directions flipped to standard double-entry.
-            //   - from_account (source) gets CREDIT entry (was DEBIT).
-            //     For ASSET (cashbox): credit decreases asset → balance -= amount ✓
-            //     For LIABILITY (supplier): credit increases payable → balance -= amount ✓
-            //   - to_account (destination) gets DEBIT entry (was CREDIT).
-            //     For ASSET (cashbox/customer AR): debit increases asset → balance += amount ✓
-            //   This makes Account::balance = SUM(debit) - SUM(credit) match the
-            //   intuitive convention: customer AR positive = they owe us,
-            //   supplier AP negative = we owe them.
+            // Project convention: balance = SUM(credit) - SUM(debit) (see FinancialReportService line 383).
+            // Therefore: from-account losing money → DEBIT entry; to-account gaining money → CREDIT entry.
+            // (Reverts the previous "Finding #1 fix" that flipped directions and broke the invariant.)
             $fromAccount->balance = (float) $fromAccount->balance - $amount;
             $fromAccount->save();
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => 0.00,                  // flipped: was $amount
-                'credit' => $amount,              // flipped: was 0.00
+                'debit' => $amount,
+                'credit' => 0.00,
                 'balance_after' => $fromAccount->balance,
             ]);
 
@@ -613,8 +612,8 @@ if ($transaction->type === TransactionType::Income->value || $transaction->type 
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
-                'debit' => $toAmount,              // flipped: was 0.00
-                'credit' => 0.00,                  // flipped: was $toAmount
+                'debit' => 0.00,
+                'credit' => $toAmount,
                 'balance_after' => $toAccount->balance,
             ]);
 

@@ -351,14 +351,14 @@
               </span>
             </button>
 
-            <!-- Notifications Dropdown -->
+<!-- Notifications Dropdown -->
             <transition name="t-dropdown">
               <div v-if="isNotifDropdownOpen" class="notif-dropdown" @click.stop>
                 <div class="notif-header">
                   <div class="notif-header-title">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
                     <div>
-                      <h3>تنبيهات سفر المسافرين</h3>
+                      <h3>التنبيهات</h3>
                       <p v-if="unreadCount > 0">{{ unreadCount }} تنبيه جديد</p>
                       <p v-else>لا توجد تنبيهات جديدة</p>
                     </div>
@@ -380,43 +380,92 @@
                   </div>
                   <div v-else-if="notifications.length === 0" class="notif-empty">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-                    <p>لا توجد تنبيهات سفر حالياً</p>
-                    <span>ستظهر هنا عند اقتراب موعد مغادرة مسافر</span>
+                    <p>لا توجد تنبيهات حالياً</p>
+                    <span>ستظهر هنا تنبيهات سفر المسافرين وتجاوزات عتبات المجموعات</span>
                   </div>
-                  <button
-                    v-for="notif in notifications"
-                    :key="notif.id"
-                    type="button"
-                    class="notif-item"
-                    :class="{ 'notif-item--unread': !notif.read_at }"
-                    @click="openNotifDetail(notif)"
-                  >
-                    <div class="notif-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+
+                  <!-- Part B: group-threshold notifications (rendered FIRST so
+                       financial warnings are the most visible). -->
+                  <template v-if="groupThresholdNotifications.length > 0">
+                    <div class="notif-section-label">
+                      <span class="inline-flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
+                        تنبيهات عتبات المجموعات
+                      </span>
                     </div>
-                    <div class="notif-content">
-                      <div class="notif-item-top">
-                        <span class="notif-passenger-name">{{ notif.data.passenger_name }}</span>
-                        <span class="notif-days-badge">{{ getDaysBeforeLabel(notif.data.days_before) }}</span>
+                    <button
+                      v-for="notif in groupThresholdNotifications"
+                      :key="notif.id"
+                      type="button"
+                      class="notif-item notif-item--threshold"
+                      :class="[groupThresholdLevelClass(notif.data.level), { 'notif-item--unread': !notif.read_at }]"
+                      @click="openNotifDetail(notif)"
+                    >
+                      <div class="notif-icon">
+                        <svg v-if="notif.data.level === 'danger'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                        <svg v-else-if="notif.data.level === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                       </div>
-                      <p class="notif-message">{{ notif.data.message }}</p>
-                      <div class="notif-meta">
-                        <span v-if="notif.data.origin && notif.data.destination" class="notif-route">
-                          {{ notif.data.origin }} ← {{ notif.data.destination }}
-                        </span>
-                        <span>{{ formatNotifDate(notif.data.departure_date) }} · {{ notif.data.departure_time || '--:--' }}</span>
-                        <span v-if="notif.data.pnr" class="notif-pnr">PNR: {{ notif.data.pnr }}</span>
+                      <div class="notif-content">
+                        <div class="notif-item-top">
+                          <span class="notif-passenger-name">{{ notif.data.group_name }}</span>
+                          <span class="notif-days-badge">{{ groupThresholdLevelLabel(notif.data.level) }}</span>
+                        </div>
+                        <p class="notif-message">{{ notif.data.message }}</p>
+                        <div class="notif-meta">
+                          <span>المتاح: {{ notif.data.available_amount }} {{ notif.data.currency }}</span>
+                          <span>العتبة: {{ notif.data.threshold_amount }} {{ notif.data.currency }}</span>
+                        </div>
                       </div>
+                      <span class="notif-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-5 5 5 5"/></svg>
+                      </span>
+                    </button>
+                  </template>
+
+                  <!-- Passenger travel alerts (existing behaviour) -->
+                  <template v-if="passengerNotifications.length > 0">
+                    <div v-if="groupThresholdNotifications.length > 0" class="notif-section-label">
+                      <span>تنبيهات سفر المسافرين</span>
                     </div>
-                    <span class="notif-chevron" aria-hidden="true">
-                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-5 5 5 5"/></svg>
-                    </span>
-                  </button>
+                    <button
+                      v-for="notif in passengerNotifications"
+                      :key="notif.id"
+                      type="button"
+                      class="notif-item"
+                      :class="{ 'notif-item--unread': !notif.read_at }"
+                      @click="openNotifDetail(notif)"
+                    >
+                      <div class="notif-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                      </div>
+                      <div class="notif-content">
+                        <div class="notif-item-top">
+                          <span class="notif-passenger-name">{{ notif.data.passenger_name }}</span>
+                          <span class="notif-days-badge">{{ getDaysBeforeLabel(notif.data.days_before) }}</span>
+                        </div>
+                        <p class="notif-message">{{ notif.data.message }}</p>
+                        <div class="notif-meta">
+                          <span v-if="notif.data.origin && notif.data.destination" class="notif-route">
+                            {{ notif.data.origin }} ← {{ notif.data.destination }}
+                          </span>
+                          <span>{{ formatNotifDate(notif.data.departure_date) }} · {{ notif.data.departure_time || '--:--' }}</span>
+                          <span v-if="notif.data.pnr" class="notif-pnr">PNR: {{ notif.data.pnr }}</span>
+                        </div>
+                      </div>
+                      <span class="notif-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-5 5 5 5"/></svg>
+                      </span>
+                    </button>
+                  </template>
                 </div>
 
                 <div class="notif-footer">
+                  <router-link to="/flights/groups" @click="isNotifDropdownOpen = false" class="view-all-link">
+                    إعدادات مجموعات الطيران
+                  </router-link>
                   <router-link to="/flights/passengers" @click="isNotifDropdownOpen = false" class="view-all-link">
-                    عرض دليل المسافرين وإعدادات التنبيهات
+                    دليل المسافرين
                   </router-link>
                 </div>
               </div>
@@ -428,66 +477,127 @@
             <transition name="t-modal">
               <div v-if="selectedNotif" class="notif-detail-overlay" @click.self="closeNotifDetail">
                 <div class="notif-detail-modal" role="dialog" aria-labelledby="notif-detail-title">
-                  <div class="notif-detail-header">
-                    <div class="notif-detail-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
-                    </div>
-                    <div>
-                      <p class="notif-detail-label">تفاصيل تنبيه السفر</p>
-                      <h2 id="notif-detail-title">{{ selectedNotif.data.passenger_name }}</h2>
-                    </div>
-                    <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
-                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-                    </button>
-                  </div>
 
-                  <div class="notif-detail-body">
-                    <div class="notif-detail-alert">
-                      <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
-                      <p>{{ selectedNotif.data.message }}</p>
+                  <!-- ✅ GROUP-THRESHOLD NOTIFICATION DETAIL -->
+                  <template v-if="isGroupThresholdNotif(selectedNotif)">
+                    <div class="notif-detail-header" :class="groupThresholdLevelClass(selectedNotif.data.level)">
+                      <div class="notif-detail-icon">
+                        <svg v-if="selectedNotif.data.level === 'danger'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                        <svg v-else-if="selectedNotif.data.level === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                      </div>
+                      <div>
+                        <p class="notif-detail-label">{{ groupThresholdLevelLabel(selectedNotif.data.level) }} — تجاوز عتبة</p>
+                        <h2 id="notif-detail-title">{{ selectedNotif.data.group_name }}</h2>
+                      </div>
+                      <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+                      </button>
                     </div>
 
-                    <div class="notif-detail-grid">
-                      <div class="notif-detail-field">
-                        <span class="notif-detail-field-label">خط السفر</span>
-                        <span class="notif-detail-field-value notif-detail-route">
-                          {{ selectedNotif.data.origin || '—' }}
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                          {{ selectedNotif.data.destination || '—' }}
-                        </span>
+                    <div class="notif-detail-body">
+                      <div class="notif-detail-alert" :class="groupThresholdLevelClass(selectedNotif.data.level)">
+                        <span class="notif-days-badge notif-days-badge--lg">{{ groupThresholdLevelLabel(selectedNotif.data.level) }}</span>
+                        <p>{{ selectedNotif.data.message }}</p>
                       </div>
-                      <div class="notif-detail-field">
-                        <span class="notif-detail-field-label">تاريخ المغادرة</span>
-                        <span class="notif-detail-field-value">{{ formatNotifDate(selectedNotif.data.departure_date) }}</span>
-                      </div>
-                      <div class="notif-detail-field">
-                        <span class="notif-detail-field-label">وقت المغادرة</span>
-                        <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.departure_time || '—' }}</span>
-                      </div>
-                      <div class="notif-detail-field">
-                        <span class="notif-detail-field-label">PNR</span>
-                        <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.pnr || '—' }}</span>
+
+                      <div class="notif-detail-grid">
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">المتاح حالياً</span>
+                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.available_amount }} {{ selectedNotif.data.currency }}</span>
+                        </div>
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">عتبة الإشعار</span>
+                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.threshold_amount }} {{ selectedNotif.data.currency }}</span>
+                        </div>
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">كود المجموعة</span>
+                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.group_code }}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div class="notif-detail-footer">
-                    <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
-                    <button
-                      v-if="!selectedNotif.read_at"
-                      class="notif-detail-btn notif-detail-btn--ghost"
-                      @click="markAsRead(selectedNotif.id); closeNotifDetail()"
-                    >
-                      تحديد كمقروء
-                    </button>
-                    <button
-                      v-if="selectedNotif.data.flight_booking_id"
-                      class="notif-detail-btn notif-detail-btn--primary"
-                      @click="goToBooking(selectedNotif)"
-                    >
-                      عرض الحجز
-                    </button>
-                  </div>
+                    <div class="notif-detail-footer">
+                      <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
+                      <button
+                        v-if="!selectedNotif.read_at"
+                        class="notif-detail-btn notif-detail-btn--ghost"
+                        @click="markAsRead(selectedNotif.id); closeNotifDetail()"
+                      >
+                        تحديد كمقروء
+                      </button>
+                      <button
+                        class="notif-detail-btn notif-detail-btn--primary"
+                        @click="goToGroupSettings(selectedNotif)"
+                      >
+                        تعديل عتبات المجموعة
+                      </button>
+                    </div>
+                  </template>
+
+                  <!-- ✅ PASSENGER ALERT NOTIFICATION DETAIL (existing behaviour) -->
+                  <template v-else>
+                    <div class="notif-detail-header">
+                      <div class="notif-detail-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                      </div>
+                      <div>
+                        <p class="notif-detail-label">تفاصيل تنبيه السفر</p>
+                        <h2 id="notif-detail-title">{{ selectedNotif.data.passenger_name }}</h2>
+                      </div>
+                      <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+                      </button>
+                    </div>
+
+                    <div class="notif-detail-body">
+                      <div class="notif-detail-alert">
+                        <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
+                        <p>{{ selectedNotif.data.message }}</p>
+                      </div>
+
+                      <div class="notif-detail-grid">
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">خط السفر</span>
+                          <span class="notif-detail-field-value notif-detail-route">
+                            {{ selectedNotif.data.origin || '—' }}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                            {{ selectedNotif.data.destination || '—' }}
+                          </span>
+                        </div>
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">تاريخ المغادرة</span>
+                          <span class="notif-detail-field-value">{{ formatNotifDate(selectedNotif.data.departure_date) }}</span>
+                        </div>
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">وقت المغادرة</span>
+                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.departure_time || '—' }}</span>
+                        </div>
+                        <div class="notif-detail-field">
+                          <span class="notif-detail-field-label">PNR</span>
+                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.pnr || '—' }}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="notif-detail-footer">
+                      <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
+                      <button
+                        v-if="!selectedNotif.read_at"
+                        class="notif-detail-btn notif-detail-btn--ghost"
+                        @click="markAsRead(selectedNotif.id); closeNotifDetail()"
+                      >
+                        تحديد كمقروء
+                      </button>
+                      <button
+                        v-if="selectedNotif.data.flight_booking_id"
+                        class="notif-detail-btn notif-detail-btn--primary"
+                        @click="goToBooking(selectedNotif)"
+                      >
+                        عرض الحجز
+                      </button>
+                    </div>
+                  </template>
                 </div>
               </div>
             </transition>
@@ -739,7 +849,8 @@ async function fetchNotifications() {
   isNotifRefreshing.value = true;
   try {
     const response = await axios.get('/api/v1/flight/passengers/notifications?type=unread');
-    notifications.value = response.data.data.items || [];
+    const items = response.data.data.items || [];
+    notifications.value = items;
     unreadCount.value = response.data.data.pagination?.total || 0;
   } catch (e) {
     console.error('Failed to fetch notifications', e);
@@ -747,6 +858,33 @@ async function fetchNotifications() {
     isNotifRefreshing.value = false;
   }
 }
+
+/**
+ * Part B: classify notifications into passenger vs group-threshold so the
+ * bell can render appropriate styling and the detail modal can route
+ * to the right page (group settings vs booking).
+ */
+const notifType = (n) => n?.data?.notification_type || 'passenger_alert';
+const isGroupThresholdNotif = (n) => notifType(n) === 'flight_group_threshold';
+
+const passengerNotifications = computed(() =>
+  (notifications.value || []).filter(n => !isGroupThresholdNotif(n))
+);
+const groupThresholdNotifications = computed(() =>
+  (notifications.value || []).filter(n => isGroupThresholdNotif(n))
+);
+
+const groupThresholdLevelClass = (level) => ({
+  info: 'bg-info/10 text-info border border-info/20',
+  warning: 'bg-warning/10 text-warning border border-warning/20',
+  danger: 'bg-error/10 text-error border border-error/20',
+}[level] || 'bg-white/10 text-text-muted');
+
+const groupThresholdLevelLabel = (level) => ({
+  info: 'معلومة',
+  warning: 'تحذير',
+  danger: 'خطر',
+}[level] || level);
 
 function toggleNotifDropdown() {
   isNotifDropdownOpen.value = !isNotifDropdownOpen.value;
@@ -772,6 +910,18 @@ function goToBooking(notif) {
   }
   closeNotifDetail();
   router.push(`/flights/${bookingId}`);
+}
+
+/**
+ * Part B: navigate to the FlightGroups page (notification settings).
+ */
+function goToGroupSettings(notif) {
+  const groupId = notif?.data?.group_id;
+  if (!notif.read_at) {
+    markAsRead(notif.id);
+  }
+  closeNotifDetail();
+  router.push('/flights/groups');
 }
 
 async function markAsRead(id) {

@@ -91,9 +91,13 @@ class FlightGroupResource extends Resource
                             ->label('حد الائتمان (الدين المسموح)')
                             ->numeric()
                             ->minValue(0)
-                            ->default(0)
+                            ->default(999999999)
                             ->suffix(fn ($get) => ' ' . strtoupper((string) (\App\Models\Flight\FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
-                            ->helperText('الحد الأقصى للدين المسموح للمجموعة. ضع رقماً أكبر من صفر للسماح بحجز بالأجل (حد مسموح: رصيد الحساب + هذا الرقم).')
+                            ->helperText(
+                                'الحد الأقصى للدين المسموح للمجموعة. '.
+                                'الافتراضي كبير (999,999,999) للسماح بالأجل التلقائي. '.
+                                'حدد رقماً لتحديد سقف أقصى للدين — لما يتجاوزه النظام هيرفض الحجز.'
+                            )
                             ->live()
                             ->afterStateUpdated(function ($state, callable $set) {
                                 $set('credit_limit', max(0, (float) $state));

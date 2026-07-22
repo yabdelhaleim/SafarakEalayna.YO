@@ -213,6 +213,7 @@ class TreasuryService
                 'balance' => (float) $acc->balance,
                 'currency' => $acc->currency,
                 'module_type' => $acc->module_type,
+                'is_module_vault' => (bool) $acc->is_module_vault,
             ])
             ->toArray();
     }

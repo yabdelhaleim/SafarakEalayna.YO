@@ -1,0 +1,22 @@
+{
+    "summary": {
+        "success": 79,
+        "failed": 0,
+        "critical_failures": []
+    },
+    "trials": {
+        "total_receivables_db": 36400,
+        "total_payables_db": 2000,
+        "total_receivables_api": 36400,
+        "total_payables_api": 2000,
+        "net_balance_api": 34400,
+        "balances_by_currency": {
+            "EGP": 231500,
+            "KWD": 350,
+            "SAR": 13000,
+            "USD": 6099.8,
+            "AED": 1000
+        }
+    },
+    "failures": []
+}

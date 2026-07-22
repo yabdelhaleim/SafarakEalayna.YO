@@ -27,43 +27,102 @@ class FlightGroupController extends Controller
         return ApiResponse::success('Flight groups retrieved successfully', $groups);
     }
 
-    /**
-     * Get all active groups
-     */
-    public function index(Request $request)
-    {
-        $groups = FlightGroup::active()
-            ->with('carrier:id,name,code,currency')
-            ->withSum(['groupTransactions as total_debt' => function ($q) {
-                $q->where('type', 'debt');
-            }], 'amount')
-            ->withSum(['groupTransactions as total_payment' => function ($q) {
-                $q->where('type', 'payment');
-            }], 'amount')
-            ->orderBy('name')
-            ->get()
-            ->map(function ($group) {
-                $group->balance = ($group->total_debt ?? 0) - ($group->total_payment ?? 0);
+/**
+ * Get all active groups
+ */
+public function index(Request $request)
+{
+    $groups = FlightGroup::active()
+        ->with('carrier:id,name,code,currency')
+        ->withSum(['groupTransactions as total_debt' => function ($q) {
+            $q->where('type', 'debt');
+        }], 'amount')
+        ->withSum(['groupTransactions as total_payment' => function ($q) {
+            $q->where('type', 'payment');
+        }], 'amount')
+        ->orderBy('name')
+        ->get()
+        ->map(function ($group) {
+            $group->balance = ($group->total_debt ?? 0) - ($group->total_payment ?? 0);
 
-                return $group;
-            });
+            return $group;
+        });
 
-        return ApiResponse::success('Flight groups retrieved successfully', $groups);
+    return ApiResponse::success('Flight groups retrieved successfully', $groups);
+}
+
+/**
+ * Get single group
+ */
+public function show(FlightGroup $group)
+{
+    $group->load('carrier');
+
+    $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
+    $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
+    $group->balance = $totalDebt - $totalPayment;
+
+    return ApiResponse::success('Flight group retrieved successfully', $group);
+}
+
+/**
+ * Update notification settings (thresholds + channels) for a group.
+ *
+ * Part B of the threshold-notification feature. Lets the SPA save the
+ * user's preferences without touching any financial fields.
+ */
+public function updateNotifications(Request $request, FlightGroup $group)
+{
+    $data = $request->validate([
+        'notification_threshold_info'    => 'nullable|numeric|min:0',
+        'notification_threshold_warning' => 'nullable|numeric|min:0',
+        'notification_threshold_danger'  => 'nullable|numeric|min:0',
+        'notify_via_toast'               => 'boolean',
+        'notify_via_widget'              => 'boolean',
+        'notify_via_bell'                => 'boolean',
+    ]);
+
+    // Sanity hint: thresholds should be ordered info > warning > danger
+    // (more remaining = less severe). We don't hard-fail because admins may
+    // intentionally override, but we surface a warning in the response.
+    $orderingWarning = null;
+    $i = (float) ($data['notification_threshold_info'] ?? 0);
+    $w = (float) ($data['notification_threshold_warning'] ?? 0);
+    $d = (float) ($data['notification_threshold_danger'] ?? 0);
+    if ($i > 0 && $w > 0 && $i <= $w) {
+        $orderingWarning = 'عتبة "معلومة" يجب أن تكون أكبر من عتبة "تحذير".';
+    } elseif ($w > 0 && $d > 0 && $w <= $d) {
+        $orderingWarning = 'عتبة "تحذير" يجب أن تكون أكبر من عتبة "خطر".';
     }
 
-    /**
-     * Get single group
-     */
-    public function show(FlightGroup $group)
-    {
-        $group->load('carrier');
+    $group->fill([
+        'notification_threshold_info'    => $data['notification_threshold_info'] ?? null,
+        'notification_threshold_warning' => $data['notification_threshold_warning'] ?? null,
+        'notification_threshold_danger'  => $data['notification_threshold_danger'] ?? null,
+        'notify_via_toast'               => $request->boolean('notify_via_toast', true),
+        'notify_via_widget'              => $request->boolean('notify_via_widget', true),
+        'notify_via_bell'                => $request->boolean('notify_via_bell', true),
+    ]);
+    $group->save();
 
-        $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
-        $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
-        $group->balance = $totalDebt - $totalPayment;
+    return ApiResponse::success(
+        $orderingWarning ?? 'تم تحديث إعدادات الإشعارات بنجاح.',
+        $group->fresh()
+    );
+}
 
-        return ApiResponse::success('Flight group retrieved successfully', $group);
-    }
+/**
+ * Aggregate summary of group-threshold state for the dashboard widget.
+ */
+public function thresholdSummary(Request $request)
+{
+    $service = app(\App\Services\Flight\FlightGroupThresholdService::class);
+
+    return ApiResponse::success(
+        'Threshold summary retrieved',
+        $service->buildSummary((int) $request->query('top', 5))
+    );
+}
 
     /**
      * Get a group's statement (history of all transactions)
@@ -232,6 +291,10 @@ class FlightGroupController extends Controller
                 $totalDebt = $group->groupTransactions()->where('type', 'debt')->sum('amount');
                 $totalPayment = $group->groupTransactions()->where('type', 'payment')->sum('amount');
                 $newBalance = $totalDebt - $totalPayment;
+
+                // 4. Part B: reset threshold tracking so that future descent triggers
+                // a fresh notification after the payment improves available balance.
+                $group->resetThresholdTracking();
 
                 return ApiResponse::success(
                     $isReceiving ? 'تم تسجيل سند القبض وتحصيل الدفعة بنجاح.' : 'تم تسجيل سند الصرف وتأكيد السداد بنجاح.',

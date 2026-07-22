@@ -25,9 +25,9 @@ return new class extends Migration
     {
         Schema::table('flight_groups', function (Blueprint $table) {
             $table->decimal('credit_limit', 15, 2)
-                ->default(0)
+                ->default(999999999)
                 ->after('commission_rate')
-                ->comment('الحد الأقصى للدين المسموح للمجموعة. 0 = لا دين مسموح.');
+                ->comment('الحد الأقصى للدين المسموح للمجموعة. الافتراضي كبير (999,999,999) للسماح بالأجل التلقائي.');
         });
     }
 

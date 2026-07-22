@@ -153,9 +153,19 @@ class FlightController extends Controller
         try {
             $booking = $this->bookingService->createBooking($request->validated());
 
+            // ✅ Part B: surface any group threshold warning in the response
+            // so the SPA can show an immediate Toast after a successful booking.
+            $payload = new FlightBookingResource($booking);
+            $resourceData = $payload->resolve($request);
+            $thresholdWarning = $booking->getAttribute('_group_threshold_warning');
+
+            if (is_array($thresholdWarning)) {
+                $resourceData['group_threshold_warning'] = $thresholdWarning;
+            }
+
             return ApiResponse::success(
                 'Booking created successfully.',
-                new FlightBookingResource($booking),
+                $resourceData,
                 201
             );
         } catch (\Exception $e) {

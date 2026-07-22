@@ -1,0 +1,278 @@
+{
+    "admin_id": 1,
+    "customers": [
+        {
+            "id": 1,
+            "name": "أحمد محمد علي"
+        },
+        {
+            "id": 2,
+            "name": "فاطمة حسن"
+        },
+        {
+            "id": 3,
+            "name": "خالد عبدالله"
+        }
+    ],
+    "suppliers": [
+        {
+            "id": 1,
+            "name": "شركة باصات القاهرة — سوبر جيت"
+        },
+        {
+            "id": 2,
+            "name": "شركة باصات الإسكندرية — جولد باص"
+        },
+        {
+            "id": 3,
+            "name": "مورد المحافظ الإلكترونية"
+        }
+    ],
+    "banks": [
+        {
+            "id": 4,
+            "name": "البنك الأهلي المصري — جنيه",
+            "currency": "EGP",
+            "balance": 50000
+        },
+        {
+            "id": 5,
+            "name": "البنك الأهلي المصري — دولار",
+            "currency": "USD",
+            "balance": 5000
+        },
+        {
+            "id": 6,
+            "name": "بنك مصر — جنيه",
+            "currency": "EGP",
+            "balance": 25000
+        },
+        {
+            "id": 7,
+            "name": "بنك CIB — ريال سعودي",
+            "currency": "SAR",
+            "balance": 8000
+        },
+        {
+            "id": 8,
+            "name": "البريد المصري — جنيه",
+            "currency": "EGP",
+            "balance": 5000
+        },
+        {
+            "id": 9,
+            "name": "بنك QNB — كويتي",
+            "currency": "KWD",
+            "balance": 100
+        }
+    ],
+    "cashboxes": [
+        {
+            "id": 10,
+            "name": "خزينة المكتب الرئيسية — جنيه",
+            "currency": "EGP",
+            "balance": 30000,
+            "vault": true
+        },
+        {
+            "id": 11,
+            "name": "خزينة الفرع الثاني — جنيه",
+            "currency": "EGP",
+            "balance": 10000,
+            "vault": false
+        },
+        {
+            "id": 12,
+            "name": "خزينة المكتب — دولار",
+            "currency": "USD",
+            "balance": 2000,
+            "vault": false
+        },
+        {
+            "id": 13,
+            "name": "خزينة المكتب — درهم إماراتي",
+            "currency": "AED",
+            "balance": 1000,
+            "vault": false
+        }
+    ],
+    "wallets": [
+        {
+            "id": 14,
+            "name": "محفظة فودافون كاش رئيسية",
+            "provider": "vodafone_cash",
+            "number": "01001234567",
+            "balance": 15000
+        },
+        {
+            "id": 15,
+            "name": "محفظة إنستاباي",
+            "provider": "instapay",
+            "number": "01012345678",
+            "balance": 8000
+        },
+        {
+            "id": 16,
+            "name": "محفظة أورنج كاش",
+            "provider": "orange_cash",
+            "number": "01022223333",
+            "balance": 5000
+        },
+        {
+            "id": 17,
+            "name": "محفظة اتصالات كاش",
+            "provider": "etisalat_cash",
+            "number": "01055554444",
+            "balance": 3000
+        },
+        {
+            "id": 18,
+            "name": "محفظة WE Pay",
+            "provider": "we_pay",
+            "number": "01555556666",
+            "balance": 2000
+        }
+    ],
+    "logs": [
+        {
+            "key": "admin.exists",
+            "success": true,
+            "payload": "admin@safarakealayna.com"
+        },
+        {
+            "key": "rate.USD->EGP (exists)",
+            "success": true,
+            "payload": 1
+        },
+        {
+            "key": "rate.SAR->EGP (exists)",
+            "success": true,
+            "payload": 2
+        },
+        {
+            "key": "rate.AED->EGP (exists)",
+            "success": true,
+            "payload": 3
+        },
+        {
+            "key": "rate.KWD->EGP (exists)",
+            "success": true,
+            "payload": 4
+        },
+        {
+            "key": "rate.EGP->USD (exists)",
+            "success": true,
+            "payload": 5
+        },
+        {
+            "key": "rate.EGP->SAR (exists)",
+            "success": true,
+            "payload": 6
+        },
+        {
+            "key": "customer.01001234567",
+            "success": true,
+            "payload": "id=1, AR id=1"
+        },
+        {
+            "key": "customer.01002345678",
+            "success": true,
+            "payload": "id=2, AR id=2"
+        },
+        {
+            "key": "customer.01003456789",
+            "success": true,
+            "payload": "id=3, AR id=3"
+        },
+        {
+            "key": "supplier.SUPERJET-CAI",
+            "success": true,
+            "payload": "id=1"
+        },
+        {
+            "key": "supplier.GOLD-Alex",
+            "success": true,
+            "payload": "id=2"
+        },
+        {
+            "key": "supplier.WALLET-SUP",
+            "success": true,
+            "payload": "id=3"
+        },
+        {
+            "key": "bank.البنك الأهلي المصري — جنيه",
+            "success": true,
+            "payload": "id=4, balance=50000.00 EGP"
+        },
+        {
+            "key": "bank.البنك الأهلي المصري — دولار",
+            "success": true,
+            "payload": "id=5, balance=5000.00 USD"
+        },
+        {
+            "key": "bank.بنك مصر — جنيه",
+            "success": true,
+            "payload": "id=6, balance=25000.00 EGP"
+        },
+        {
+            "key": "bank.بنك CIB — ريال سعودي",
+            "success": true,
+            "payload": "id=7, balance=8000.00 SAR"
+        },
+        {
+            "key": "bank.البريد المصري — جنيه",
+            "success": true,
+            "payload": "id=8, balance=5000.00 EGP"
+        },
+        {
+            "key": "bank.بنك QNB — كويتي",
+            "success": true,
+            "payload": "id=9, balance=100.00 KWD"
+        },
+        {
+            "key": "cashbox.خزينة المكتب الرئيسية — جنيه",
+            "success": true,
+            "payload": "id=10, vault=YES"
+        },
+        {
+            "key": "cashbox.خزينة الفرع الثاني — جنيه",
+            "success": true,
+            "payload": "id=11, vault=NO"
+        },
+        {
+            "key": "cashbox.خزينة المكتب — دولار",
+            "success": true,
+            "payload": "id=12, vault=NO"
+        },
+        {
+            "key": "cashbox.خزينة المكتب — درهم إماراتي",
+            "success": true,
+            "payload": "id=13, vault=NO"
+        },
+        {
+            "key": "wallet.محفظة فودافون كاش رئيسية",
+            "success": true,
+            "payload": "id=14, balance=15000.00"
+        },
+        {
+            "key": "wallet.محفظة إنستاباي",
+            "success": true,
+            "payload": "id=15, balance=8000.00"
+        },
+        {
+            "key": "wallet.محفظة أورنج كاش",
+            "success": true,
+            "payload": "id=16, balance=5000.00"
+        },
+        {
+            "key": "wallet.محفظة اتصالات كاش",
+            "success": true,
+            "payload": "id=17, balance=3000.00"
+        },
+        {
+            "key": "wallet.محفظة WE Pay",
+            "success": true,
+            "payload": "id=18, balance=2000.00"
+        }
+    ]
+}

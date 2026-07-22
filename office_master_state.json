@@ -1,0 +1,153 @@
+{
+    "admin": {
+        "id": 1,
+        "email": "admin@safarakealayna.com",
+        "password": "Master@2026!"
+    },
+    "banks": [
+        {
+            "id": 1,
+            "name": "البنك الأهلي المصري — جنيه",
+            "currency": "EGP",
+            "balance": 50000
+        },
+        {
+            "id": 3,
+            "name": "بنك مصر — جنيه",
+            "currency": "EGP",
+            "balance": 25000
+        },
+        {
+            "id": 5,
+            "name": "البريد المصري — جنيه",
+            "currency": "EGP",
+            "balance": 5000
+        },
+        {
+            "id": 2,
+            "name": "البنك الأهلي المصري — دولار",
+            "currency": "USD",
+            "balance": 5000
+        },
+        {
+            "id": 4,
+            "name": "بنك CIB — ريال سعودي",
+            "currency": "SAR",
+            "balance": 8000
+        },
+        {
+            "id": 6,
+            "name": "بنك QNB — كويتي",
+            "currency": "KWD",
+            "balance": 100
+        }
+    ],
+    "cashboxes": [
+        {
+            "id": 7,
+            "name": "خزينة المكتب الرئيسية — جنيه (VAULT)",
+            "currency": "EGP",
+            "balance": 30000,
+            "vault": true
+        },
+        {
+            "id": 8,
+            "name": "خزينة الفرع الثاني — جنيه",
+            "currency": "EGP",
+            "balance": 10000,
+            "vault": false
+        },
+        {
+            "id": 9,
+            "name": "خزينة المكتب — دولار",
+            "currency": "USD",
+            "balance": 2000,
+            "vault": false
+        },
+        {
+            "id": 10,
+            "name": "خزينة المكتب — درهم إماراتي",
+            "currency": "AED",
+            "balance": 1000,
+            "vault": false
+        },
+        {
+            "id": 11,
+            "name": "خزينة المكتب — ريال سعودي",
+            "currency": "SAR",
+            "balance": 5000,
+            "vault": false
+        }
+    ],
+    "wallets": [
+        {
+            "id": 12,
+            "name": "محفظة فودافون كاش رئيسية",
+            "provider": "vodafone_cash",
+            "number": "01001234567",
+            "balance": 15000
+        },
+        {
+            "id": 13,
+            "name": "محفظة إنستاباي",
+            "provider": "instapay",
+            "number": "01012345678",
+            "balance": 8000
+        },
+        {
+            "id": 14,
+            "name": "محفظة أورنج كاش",
+            "provider": "orange_cash",
+            "number": "01022223333",
+            "balance": 5000
+        },
+        {
+            "id": 15,
+            "name": "محفظة اتصالات كاش",
+            "provider": "etisalat_cash",
+            "number": "01055554444",
+            "balance": 3000
+        },
+        {
+            "id": 16,
+            "name": "محفظة WE Pay",
+            "provider": "we_pay",
+            "number": "01555556666",
+            "balance": 2000
+        }
+    ],
+    "customers": [
+        {
+            "id": 1,
+            "name": "أحمد محمد علي",
+            "account_id": 17
+        },
+        {
+            "id": 2,
+            "name": "فاطمة حسن إبراهيم",
+            "account_id": 18
+        },
+        {
+            "id": 3,
+            "name": "خالد عبدالله سعيد",
+            "account_id": 19
+        }
+    ],
+    "suppliers": [
+        {
+            "id": 1,
+            "name": "شركة باصات القاهرة — سوبر جيت",
+            "code": "SUPERJET-CAI"
+        },
+        {
+            "id": 2,
+            "name": "شركة باصات الإسكندرية — جولد باص",
+            "code": "GOLD-Alex"
+        },
+        {
+            "id": 3,
+            "name": "مورد المحافظ الإلكترونية",
+            "code": "WALLET-SUP"
+        }
+    ]
+}
