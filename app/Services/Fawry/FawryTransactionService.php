@@ -110,26 +110,31 @@ public function createTransaction(array $data): FawryTransaction
                 $createdBy = Auth::id() ?: ($data['created_by'] ?? $data['employee_id'] ?? 1);
                 $clientIp = request()->ip() ?? $data['client_ip'] ?? null;
 
-                $fawryTransaction = FawryTransaction::create([
-                    'client_id' => $data['client_id'] ?? null,
-                    'client_name' => $clientName,
-                    'operation_type' => $data['operation_type'],
-                    'client_amount' => $data['client_amount'],
-                    'fawry_price' => $data['fawry_price'],
-                    'selling_price' => $data['selling_price'],
-                    'profit' => $profit,
-                    'employee_id' => $data['employee_id'],
-                    'account_id' => $data['account_id'],
-                    'fawry_machine_id' => $data['fawry_machine_id'] ?? null,
-                    'payment_method' => $data['payment_method'],
-                    'amount' => $data['amount'],
-                    'reference_number' => $data['reference_number'] ?? null,
-                    'notes' => $data['notes'] ?? null,
-                    'currency_id' => $data['currency_id'] ?? null,
-                    'payment_details' => $data['payment_details'] ?? null,
-                    'created_by_user_id' => $createdBy,
-                    'client_ip' => $clientIp,
-                ]);
+                // Wrap the create in runProfitMutation() so the saving observer
+                // guard (which fires before creating) lets the profit write through.
+                // Mirrors the BusBookingService pattern.
+                $fawryTransaction = FawryTransaction::runProfitMutation(function () use ($data, $clientName, $profit, $createdBy, $clientIp) {
+                    return FawryTransaction::create([
+                        'client_id' => $data['client_id'] ?? null,
+                        'client_name' => $clientName,
+                        'operation_type' => $data['operation_type'],
+                        'client_amount' => $data['client_amount'],
+                        'fawry_price' => $data['fawry_price'],
+                        'selling_price' => $data['selling_price'],
+                        'profit' => $profit,
+                        'employee_id' => $data['employee_id'],
+                        'account_id' => $data['account_id'],
+                        'fawry_machine_id' => $data['fawry_machine_id'] ?? null,
+                        'payment_method' => $data['payment_method'],
+                        'amount' => $data['amount'],
+                        'reference_number' => $data['reference_number'] ?? null,
+                        'notes' => $data['notes'] ?? null,
+                        'currency_id' => $data['currency_id'] ?? null,
+                        'payment_details' => $data['payment_details'] ?? null,
+                        'created_by_user_id' => $createdBy,
+                        'client_ip' => $clientIp,
+                    ]);
+                });
 
                 // Get operation type label from database
                 $operationType = FawryOperationType::where('code', $data['operation_type'])->first();

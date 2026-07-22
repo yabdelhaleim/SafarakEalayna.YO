@@ -48,7 +48,6 @@ class FawryTreasuryController extends Controller
             'wallets' => $groups['wallets'],
             'banks' => $groups['banks'],
             'cashboxes' => $groups['cashboxes'],
-            'treasuries' => $groups['treasuries'],
         ]);
     }
 

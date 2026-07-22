@@ -83,9 +83,22 @@ class FlightGroupResource extends Resource
                             ->minValue(0)
                             ->maxValue(100)
                             ->suffix('%')
+                            ->nullable()
+                            ->placeholder('اختياري')
+                            ->helperText('اختياري: نسبة العمولة التي تحصل عليها المجموعة من قيمة التذكرة. اتركه فارغاً إن لم تطبَّق عمولة.'),
+
+                        Forms\Components\TextInput::make('credit_limit')
+                            ->label('حد الائتمان (الدين المسموح)')
+                            ->numeric()
+                            ->minValue(0)
                             ->default(0)
-                            ->helperText('نسبة العمولة التي تحصل عليها المجموعة'),
-                    ])->columns(1),
+                            ->suffix(fn ($get) => ' ' . strtoupper((string) (\App\Models\Flight\FlightCarrier::find($get('flight_carrier_id'))?->currency ?? 'EGP')))
+                            ->helperText('الحد الأقصى للدين المسموح للمجموعة. ضع رقماً أكبر من صفر للسماح بحجز بالأجل (حد مسموح: رصيد الحساب + هذا الرقم).')
+                            ->live()
+                            ->afterStateUpdated(function ($state, callable $set) {
+                                $set('credit_limit', max(0, (float) $state));
+                            }),
+                    ])->columns(2),
 
                 Forms\Components\Section::make('معلومات إضافية')
                     ->schema([

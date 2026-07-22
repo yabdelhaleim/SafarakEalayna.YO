@@ -115,26 +115,31 @@ class OnlineTransactionService
                 $status = OnlineTransactionStatus::tryFrom($data['status'] ?? OnlineTransactionStatus::Completed->value)
                     ?? OnlineTransactionStatus::Completed;
 
-                $tx = OnlineTransaction::create([
-                    'service_type_id' => $serviceType->id,
-                    'provider_id' => $provider?->id,
-                    'customer_id' => $data['customer_id'] ?? null,
-                    'customer_name' => $customerName,
-                    'customer_phone' => $customerPhone,
-                    'customer_country' => $data['customer_country'] ?? null,
-                    'employee_id' => $data['employee_id'] ?? null,
-                    'purchase_price' => $purchase,
-                    'selling_price' => $selling,
-                    'amount_paid' => $amountPaid,
-                    'profit' => $profit,
-                    'payment_method' => $data['payment_method'],
-                    'account_id' => $data['account_id'],
-                    'reference_number' => $data['reference_number'] ?? null,
-                    'status' => $status->value,
-                    'failure_reason' => $data['failure_reason'] ?? null,
-                    'notes' => $data['notes'] ?? null,
-                    'created_by' => Auth::id(),
-                ]);
+                // Wrap the create in runProfitMutation() so the saving observer
+                // guard lets the explicit `profit` write through. Mirrors the
+                // BusBookingService / FawryTransactionService pattern.
+                $tx = OnlineTransaction::runProfitMutation(function () use ($data, $serviceType, $provider, $customerName, $customerPhone, $purchase, $selling, $amountPaid, $profit, $status) {
+                    return OnlineTransaction::create([
+                        'service_type_id' => $serviceType->id,
+                        'provider_id' => $provider?->id,
+                        'customer_id' => $data['customer_id'] ?? null,
+                        'customer_name' => $customerName,
+                        'customer_phone' => $customerPhone,
+                        'customer_country' => $data['customer_country'] ?? null,
+                        'employee_id' => $data['employee_id'] ?? null,
+                        'purchase_price' => $purchase,
+                        'selling_price' => $selling,
+                        'amount_paid' => $amountPaid,
+                        'profit' => $profit,
+                        'payment_method' => $data['payment_method'],
+                        'account_id' => $data['account_id'],
+                        'reference_number' => $data['reference_number'] ?? null,
+                        'status' => $status->value,
+                        'failure_reason' => $data['failure_reason'] ?? null,
+                        'notes' => $data['notes'] ?? null,
+                        'created_by' => Auth::id(),
+                    ]);
+                });
 
                 if ($status === OnlineTransactionStatus::Completed) {
                     $this->postFinancialEntries($tx, $serviceType, $provider, $purchase, $selling, $customerName);
@@ -200,7 +205,12 @@ class OnlineTransactionService
                     $data['profit'] = $selling - $purchase;
                 }
 
-                $tx->fill($data)->save();
+                // Wrap the fill+save in runProfitMutation() so the saving
+                // observer guard lets the auto-computed `profit` write through.
+                // Mirrors FawryTransactionService::updateTransaction pattern.
+                OnlineTransaction::runProfitMutation(function () use ($tx, $data) {
+                    $tx->fill($data)->save();
+                });
 
                 // 🛡️ ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
                 // HajjUmraBookingService / VisaBookingService Phase 8):
@@ -214,8 +224,10 @@ class OnlineTransactionService
                         $newSelling = (float) ($data['selling_price'] ?? $tx->selling_price);
                         $newIncome = $this->repostIncomeTransaction($tx, $newSelling);
                         if ($newIncome) {
-                            $tx->income_transaction_id = $newIncome->id;
-                            $tx->save();
+                            OnlineTransaction::runProfitMutation(function () use ($tx, $newIncome) {
+                                $tx->income_transaction_id = $newIncome->id;
+                                $tx->save();
+                            });
                         }
                     }
 
@@ -223,8 +235,10 @@ class OnlineTransactionService
                         $newPurchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
                         $newExpense = $this->repostExpenseTransaction($tx, $newPurchase);
                         if ($newExpense) {
-                            $tx->expense_transaction_id = $newExpense->id;
-                            $tx->save();
+                            OnlineTransaction::runProfitMutation(function () use ($tx, $newExpense) {
+                                $tx->expense_transaction_id = $newExpense->id;
+                                $tx->save();
+                            });
                         }
                     }
 

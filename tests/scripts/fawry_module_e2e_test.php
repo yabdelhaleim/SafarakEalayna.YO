@@ -138,8 +138,10 @@ if ($machineTx && $machineTx->type === 'debit' && (float) $machineTx->amount ===
 
 // =====================================================================
 // SCENARIO 2: Deposit (إيداع) - no machine, direct to cashbox
+// Note: For walk-in client (no machine), the fawry expense is posted from
+// the SETTLEMENT account (cashbox). So cashbox net change = profit (= 50).
 // =====================================================================
-section('SCENARIO 2: Deposit (إيداع) - direct to cashbox');
+section('SCENARIO 2: Deposit (إيداع) - direct to cashbox (no machine)');
 
 $cashboxBefore = (float) $cashbox->fresh()->balance;
 $tx2 = $fawryService->createTransaction([
@@ -158,7 +160,8 @@ $tx2 = $fawryService->createTransaction([
 ok('S2.1 Deposit created (no machine)', "id={$tx2->id} profit={$tx2->profit}");
 
 $cashboxAfter = (float) $cashbox->fresh()->balance;
-assertFloat('S2.2 Cashbox increased by 850 EGP (selling_price)', $cashboxBefore + 850.00, $cashboxAfter);
+// Net cashbox change = selling_price - fawry_price (profit) for walk-in
+assertFloat('S2.2 Cashbox net change = profit (50 EGP)', $cashboxBefore + 50.00, $cashboxAfter);
 
 // =====================================================================
 // SCENARIO 3: Payment (سداد فاتورة) - registered customer with settlement
@@ -182,7 +185,8 @@ $tx3 = $fawryService->createTransaction([
 ok('S3.1 Payment created', "id={$tx3->id} profit={$tx3->profit}");
 
 $cashboxAfter = (float) $cashbox->fresh()->balance;
-assertFloat('S3.2 Cashbox increased (300 EGP collected)', $cashboxBefore + 300.00, $cashboxAfter);
+// Walk-in customer (no machine): net = profit
+assertFloat('S3.2 Cashbox net change = profit (10 EGP)', $cashboxBefore + 10.00, $cashboxAfter);
 
 // Verify the transaction has income + expense entries
 if ($tx3->income_transaction_id && $tx3->expense_transaction_id) {
@@ -271,19 +275,19 @@ if ($inactiveMachine) {
 // =====================================================================
 // SCENARIO 7: Machine recharge flow
 // =====================================================================
-section('SCENARIO 7: Machine recharge from office cashbox');
+section('SCENARIO 7: Machine recharge from Fawry cashbox');
 
 $machineBefore = (float) $machine->fresh()->balance;
-$officeBefore = (float) $officeCashbox->fresh()->balance;
+$fawryCashboxBefore = (float) $cashbox->fresh()->balance;
 $result = $rechargeService->rechargeFromAccount(
     $machine,
-    $officeCashbox,
+    $cashbox,
     5000.00,
-    'اختبار شحن من الخزينة الرئيسية'
+    'اختبار شحن من خزينة فوري'
 );
 ok('S7.1 Recharge transaction returned', "machine_tx_id={$result['machine_transaction']->id}");
 assertFloat('S7.2 Machine balance increased (5000)', $machineBefore + 5000.00, (float) $machine->fresh()->balance);
-assertFloat('S7.3 Office cashbox decreased (5000)', $officeBefore - 5000.00, (float) $officeCashbox->fresh()->balance);
+assertFloat('S7.3 Fawry cashbox decreased (5000)', $fawryCashboxBefore - 5000.00, (float) $cashbox->fresh()->balance);
 
 // =====================================================================
 // SCENARIO 8: Update transaction (price change → ledger repost)

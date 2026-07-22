@@ -120,8 +120,19 @@ class FawryMachineApiController extends Controller
 
         try {
             $machine = FawryMachine::findOrFail($id);
-            $source = Account::where('module_type', 'fawry')
-                ->where('is_active', true)
+            // Accept any active Fawry-module or office-division account whose
+            // name indicates a Fawry cashbox/wallet/bank. Cashboxes per
+            // AccountModuleContract cannot carry module_type='fawry', so a
+            // strict equality would block legitimate office cashboxes tagged
+            // for the fawry module.
+            $source = Account::where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereIn('module_type', ['fawry', 'office'])
+                        ->where(function ($q2) {
+                            $q2->where('name', 'like', '%فوري%')
+                                ->orWhere('name', 'like', '%Fawry%');
+                        });
+                })
                 ->findOrFail($validated['from_account_id']);
 
             $service = app(FawryMachineRechargeService::class);

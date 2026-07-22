@@ -81,10 +81,71 @@ class WalletTransactionService
                 $amount = (float) $data['amount'];
                 $fee = (float) ($data['service_fee'] ?? 0);
 
-                // total_amount: للإرسال العميل يدفع amount+fee، للاستقبال يأخذ amount-fee
-                $totalAmount = match ($type) {                    WalletTransactionType::Send => $amount + $fee,                    WalletTransactionType::Receive => $amount - $fee,                };                // customer_name من العميل المرتبط أو من النص الحر                $customerName = $data['customer_name'] ?? '';                if (! empty($data['customer_id'])) {                    $customer = Customer::find($data['customer_id']);                    if ($customer) {                        $customerName = $customer->full_name ?? $customer->name ?? $customerName;                    }                }                $walletTypeName = WalletType::find($data['wallet_type_id'])?->name ?? '';                $createdBy = Auth::id() ?? ($data['created_by'] ?? 1);                // Determine amount_paid                $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $totalAmount;                $record = WalletTransaction::create([                    'wallet_type_id' => $data['wallet_type_id'],                    'customer_id' => $data['customer_id'] ?? null,                    'customer_name' => $customerName,                    'wallet_number' => $data['wallet_number'],                    'type' => $type->value,                    'amount' => $amount,                    'service_fee' => $fee,                    'total_amount' => $totalAmount,                    'amount_paid' => $amountPaid,                    'wallet_account_id' => $data['wallet_account_id'],                    'cash_account_id' => $data['cash_account_id'],                    'employee_id' => $data['employee_id'] ?? null,                    'created_by' => $createdBy,                    'notes' => $data['notes'] ?? null,                ]);                [$incomeTransaction, $expenseTransaction] = match ($type) {                    WalletTransactionType::Send => $this->accountForSend(                        $record, $amount, $fee, $walletTypeName, $customerName, $createdBy                    ),                    WalletTransactionType::Receive => $this->accountForReceive(                        $record, $amount, $fee, $walletTypeName, $customerName, $createdBy                    ),                };                $record->update([                    'income_transaction_id' => $incomeTransaction->id,                    'expense_transaction_id' => $expenseTransaction->id,                ]);                Log::info('WalletTransaction created', [                    'id' => $record->id,                    'type' => $type->value,                    'amount' => $amount,                    'service_fee' => $fee,                    'customer_name' => $customerName,                    'created_by' => $createdBy,                ]);                return $record->fresh([                    'walletType', 'customer', 'walletAccount', 'cashAccount',                    'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',                ]);
+                // total_amount: للИслаرسال العميل يدفع amount+fee، للاستقبال يأخذ amount-fee
+                $totalAmount = match ($type) {
+                    WalletTransactionType::Send => $amount + $fee,
+                    WalletTransactionType::Receive => $amount - $fee,
+                };
+                // customer_name من العميل المرتبط أو من النص الحر
+                $customerName = $data['customer_name'] ?? '';
+                if (! empty($data['customer_id'])) {
+                    $customer = Customer::find($data['customer_id']);
+                    if ($customer) {
+                        $customerName = $customer->full_name ?? $customer->name ?? $customerName;
+                    }
+                }
+                $walletTypeName = WalletType::find($data['wallet_type_id'])?->name ?? '';
+                $createdBy = Auth::id() ?? ($data['created_by'] ?? 1);
+                $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $totalAmount;
+                $record = WalletTransaction::create([
+                    'wallet_type_id' => $data['wallet_type_id'],
+                    'customer_id' => $data['customer_id'] ?? null,
+                    'customer_name' => $customerName,
+                    'wallet_number' => $data['wallet_number'],
+                    'type' => $type->value,
+                    'amount' => $amount,
+                    'service_fee' => $fee,
+                    'total_amount' => $totalAmount,
+                    'amount_paid' => $amountPaid,
+                    'wallet_account_id' => $data['wallet_account_id'],
+                    'cash_account_id' => $data['cash_account_id'],
+                    'employee_id' => $data['employee_id'] ?? null,
+                    'created_by' => $createdBy,
+                    'notes' => $data['notes'] ?? null,
+                ]);
+                // Wrap in try/catch(Throwable) to surface inner exceptions clearly.
+                // Outer try only catches \Exception, but accountForSend/accountForReceive
+                // may throw \TypeError or \Error which silently bypass the catch.
+                try {
+                    [$incomeTransaction, $expenseTransaction] = match ($type) {
+                        WalletTransactionType::Send => $this->accountForSend(
+                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                        ),
+                        WalletTransactionType::Receive => $this->accountForReceive(
+                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                        ),
+                    };
+                } catch (\Throwable $inner) {
+                    throw $inner;
+                }
+                $record->update([
+                    'income_transaction_id' => $incomeTransaction->id,
+                    'expense_transaction_id' => $expenseTransaction->id,
+                ]);
+                Log::info('WalletTransaction created', [
+                    'id' => $record->id,
+                    'type' => $type->value,
+                    'amount' => $amount,
+                    'service_fee' => $fee,
+                    'customer_name' => $customerName,
+                    'created_by' => $createdBy,
+                ]);
+                return $record->fresh([
+                    'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
+                ]);
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('WalletTransactionService::createTransaction failed', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id(),
@@ -124,9 +185,35 @@ class WalletTransactionService
                     $type = $transaction->type instanceof WalletTransactionType
                         ? $transaction->type
                         : WalletTransactionType::from((string) $transaction->type);
-                    $data['total_amount'] = match ($type) {                        WalletTransactionType::Send => $newAmount + $newFee,                        WalletTransactionType::Receive => $newAmount - $newFee,                    };                }                $transaction->update($data);                // 🛡️ ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as                // OnlineTransactionService / HajjUmraBookingService /                // VisaBookingService): when amount/service_fee/accounts/                // amount_paid change, the OLD ledger entries must be                // reversed (additive — never destructive) and NEW entries                // posted with the corrected values. Without this, the                // model would show the new amounts while the linked                // Transaction / AccountEntry rows stayed at the old values                // — silent data drift between model and ledger.                if ($anyLedgerAffectingChange) {                    $newMain = $this->repostMainTransactions($transaction);                    if ($newMain !== null) {                        [$newIncome, $newExpense] = $newMain;                        $transaction->update([                            'income_transaction_id' => $newIncome->id,                            'expense_transaction_id' => $newExpense->id,                        ]);                    }                    $this->repostSettlementTransaction($transaction);                }                return $transaction->fresh([                    'walletType', 'customer', 'walletAccount', 'cashAccount',                    'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',                ]);
+                    $data['total_amount'] = match ($type) {
+                        WalletTransactionType::Send => $newAmount + $newFee,
+                        WalletTransactionType::Receive => $newAmount - $newFee,
+                    };
+                }
+                $transaction->update($data);
+                // ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
+                // OnlineTransactionService / HajjUmraBookingService /
+                // VisaBookingService): when amount/service_fee/accounts/
+                // amount_paid change, the OLD ledger entries must be
+                // reversed (additive — never destructive) and NEW entries
+                // posted with the corrected values.
+                if ($anyLedgerAffectingChange) {
+                    $newMain = $this->repostMainTransactions($transaction);
+                    if ($newMain !== null) {
+                        [$newIncome, $newExpense] = $newMain;
+                        $transaction->update([
+                            'income_transaction_id' => $newIncome->id,
+                            'expense_transaction_id' => $newExpense->id,
+                        ]);
+                    }
+                    $this->repostSettlementTransaction($transaction);
+                }
+                return $transaction->fresh([
+                    'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
+                ]);
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('WalletTransactionService::updateTransaction failed', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id(),
