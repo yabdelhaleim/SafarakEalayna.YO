@@ -69,16 +69,27 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div class="space-y-2">
             <label class="text-xs font-bold text-text-muted">العميل المسجّل</label>
-            <select
-              v-model="form.customer_id"
-              class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main"
-              @change="onCustomerSelected"
-            >
-              <option :value="null" class="bg-card-bg">— بدون اختيار (عميل جديد) —</option>
-              <option v-for="c in store.customers" :key="c.id" :value="c.id" class="bg-card-bg">
-                {{ c.name }} {{ c.phone ? `— ${c.phone}` : '' }}
-              </option>
-            </select>
+            <div class="flex gap-2">
+              <select
+                v-model="form.customer_id"
+                class="flex-1 w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main"
+                @change="onCustomerSelected"
+              >
+                <option :value="null" class="bg-card-bg">— بدون اختيار (عميل جديد) —</option>
+                <option v-for="c in store.customers" :key="c.id" :value="c.id" class="bg-card-bg">
+                  {{ c.name }} {{ c.phone ? `— ${c.phone}` : '' }}
+                </option>
+              </select>
+              <button
+                type="button"
+                @click="openNewCustomerModal"
+                class="shrink-0 inline-flex items-center gap-1.5 px-3 py-3 bg-violet-500/10 border border-violet-500/30 rounded-xl text-xs font-bold text-violet-300 hover:bg-violet-500/20 hover:border-violet-500/50 transition"
+                title="إضافة عميل جديد لموديول الخدمات الإلكترونية"
+              >
+                <UserPlus class="w-4 h-4" />
+                <span>عميل جديد</span>
+              </button>
+            </div>
           </div>
 
           <div class="space-y-2">
@@ -280,6 +291,120 @@
         </router-link>
       </div>
     </form>
+
+    <!-- Quick "Add new customer" modal — scoped to Online module -->
+    <Teleport to="body">
+      <div
+        v-if="showNewCustomerModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        @click.self="closeNewCustomerModal"
+      >
+        <div class="flight-panel w-full max-w-md !p-6">
+          <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-violet-500/10 rounded-lg">
+                <UserPlus class="w-5 h-5 text-violet-400" />
+              </div>
+              <div>
+                <h3 class="text-base font-black text-text-main">إضافة عميل جديد</h3>
+                <p class="text-[11px] text-text-muted">سيتم ربط العميل بموديول الخدمات الإلكترونية فقط.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              @click="closeNewCustomerModal"
+              class="p-2 text-text-muted hover:text-text-main transition rounded-lg hover:bg-white/5"
+              aria-label="إغلاق"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <form class="space-y-4" @submit.prevent="submitNewCustomer">
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-text-muted">اسم العميل <span class="text-error">*</span></label>
+              <input
+                v-model="newCustomer.full_name"
+                type="text"
+                required
+                maxlength="255"
+                placeholder="مثال: حسين علي"
+                :class="[
+                  'w-full px-4 py-3 bg-white/[0.03] border rounded-xl text-sm focus:outline-none text-text-main',
+                  newCustomerErrors.full_name
+                    ? 'border-red-500/50 focus:border-red-500'
+                    : 'border-white/10 focus:border-violet-500/50',
+                ]"
+                @input="clearNewCustomerError('full_name')"
+              />
+              <p v-if="newCustomerErrors.full_name" class="text-[11px] font-bold text-red-400">
+                {{ newCustomerErrors.full_name }}
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-text-muted">رقم التليفون</label>
+              <input
+                v-model="newCustomer.phone"
+                type="text"
+                maxlength="64"
+                placeholder="مثال: 01024607766"
+                :class="[
+                  'w-full px-4 py-3 bg-white/[0.03] border rounded-xl text-sm font-mono focus:outline-none text-text-main',
+                  newCustomerErrors.phone
+                    ? 'border-red-500/50 focus:border-red-500'
+                    : 'border-white/10 focus:border-violet-500/50',
+                ]"
+                @input="clearNewCustomerError('phone')"
+              />
+              <p v-if="newCustomerErrors.phone" class="text-[11px] font-bold text-red-400">
+                {{ newCustomerErrors.phone }}
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-text-muted">البريد الإلكتروني (اختياري)</label>
+              <input
+                v-model="newCustomer.email"
+                type="email"
+                maxlength="255"
+                placeholder="example@domain.com"
+                :class="[
+                  'w-full px-4 py-3 bg-white/[0.03] border rounded-xl text-sm focus:outline-none text-text-main',
+                  newCustomerErrors.email
+                    ? 'border-red-500/50 focus:border-red-500'
+                    : 'border-white/10 focus:border-violet-500/50',
+                ]"
+                @input="clearNewCustomerError('email')"
+              />
+              <p v-if="newCustomerErrors.email" class="text-[11px] font-bold text-red-400">
+                {{ newCustomerErrors.email }}
+              </p>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button
+                type="submit"
+                :disabled="creatingCustomer || !newCustomer.full_name.trim()"
+                class="flex-1 rounded-xl bg-violet-600 py-3 text-sm font-black text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Loader2 v-if="creatingCustomer" class="mb-0.5 ml-2 inline h-4 w-4 animate-spin" />
+                <CheckCircle v-else class="mb-0.5 ml-2 inline h-4 w-4" />
+                {{ creatingCustomer ? 'جاري الإضافة...' : 'إضافة وحفظ' }}
+              </button>
+              <button
+                type="button"
+                @click="closeNewCustomerModal"
+                :disabled="creatingCustomer"
+                class="flex-1 rounded-xl bg-white/5 py-3 text-sm font-bold text-text-main transition hover:bg-white/10"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -290,6 +415,8 @@ import {
   ArrowRight,
   Globe,
   User,
+  UserPlus,
+  X,
   Banknote,
   CreditCard,
   CheckCircle,
@@ -323,6 +450,99 @@ const form = ref(initialForm());
 
 function resetForm() {
   form.value = initialForm();
+}
+
+/* ===========================================================
+ * QUICK-ADD CUSTOMER (scoped to Online module)
+ * =========================================================== */
+const showNewCustomerModal = ref(false);
+const creatingCustomer = ref(false);
+const newCustomer = ref({
+  full_name: '',
+  phone: '',
+  email: '',
+});
+const newCustomerErrors = ref({
+  full_name: '',
+  phone: '',
+  email: '',
+});
+
+function resetNewCustomerForm() {
+  newCustomer.value = { full_name: '', phone: '', email: '' };
+  newCustomerErrors.value = { full_name: '', phone: '', email: '' };
+}
+
+function openNewCustomerModal() {
+  resetNewCustomerForm();
+  showNewCustomerModal.value = true;
+}
+
+function closeNewCustomerModal() {
+  if (creatingCustomer.value) return;
+  showNewCustomerModal.value = false;
+}
+
+function clearNewCustomerError(field) {
+  if (newCustomerErrors.value[field]) {
+    newCustomerErrors.value[field] = '';
+  }
+}
+
+function setNewCustomerErrors(errors) {
+  if (!errors || typeof errors !== 'object') return;
+  // Whitelist known fields; ignore anything else (displayed via toast).
+  for (const field of ['full_name', 'phone', 'email']) {
+    const messages = errors[field];
+    if (Array.isArray(messages) && messages.length > 0) {
+      newCustomerErrors.value[field] = messages[0];
+    }
+  }
+}
+
+async function submitNewCustomer() {
+  // Client-side validation — clears stale errors first
+  newCustomerErrors.value = { full_name: '', phone: '', email: '' };
+
+  const name = newCustomer.value.full_name.trim();
+  if (!name) {
+    newCustomerErrors.value.full_name = 'اسم العميل مطلوب.';
+    return;
+  }
+
+  const email = newCustomer.value.email.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    newCustomerErrors.value.email = 'البريد الإلكتروني غير صحيح.';
+    return;
+  }
+
+  creatingCustomer.value = true;
+  try {
+    const payload = {
+      full_name: name,
+      phone: newCustomer.value.phone.trim() || null,
+      email: email || null,
+    };
+    const created = await store.createCustomer(payload);
+    if (created?.id) {
+      // Auto-select the newly created customer in the dropdown and
+      // pre-fill the name/phone inputs so the transaction form stays
+      // in sync.
+      form.value.customer_id = created.id;
+      form.value.customer_name = created.name ?? name;
+      form.value.customer_phone = created.phone ?? '';
+      closeNewCustomerModal();
+    }
+  } catch (error) {
+    // Surface field-level validation errors inline; everything else goes
+    // through the toast (handled in the store).
+    const serverErrors = error?.response?.data?.errors;
+    if (serverErrors) {
+      setNewCustomerErrors(serverErrors);
+    }
+  } finally {
+    creatingCustomer.value = false;
+  }
 }
 
 const profit = computed(() => {

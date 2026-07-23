@@ -437,6 +437,146 @@ class AccountBalanceInvariantTest extends TestCase
     }
 
     /**
+     * A reversal must swap each ledger leg and restore both account balances.
+     */
+    public function test_reversal_preserves_account_balance_invariant(): void
+    {
+        $transactionService = app(TransactionService::class);
+
+        $transfer = $transactionService->recordJournalTransfer([
+            'from_account_id' => $this->accounts['bank']->id,
+            'to_account_id' => $this->accounts['cash1']->id,
+            'amount' => 1200.00,
+            'module' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $transactionService->reverseTransaction($transfer);
+
+        $this->accounts['bank']->refresh();
+        $this->accounts['cash1']->refresh();
+        self::assertEqualsWithDelta(30000.00, (float) $this->accounts['bank']->balance, 0.01);
+        self::assertEqualsWithDelta(5000.00, (float) $this->accounts['cash1']->balance, 0.01);
+        $this->assertInvariant($this->accounts['bank']);
+        $this->assertInvariant($this->accounts['cash1']);
+
+        $entries = AccountEntry::query()
+            ->where('transaction_id', $transfer->id)
+            ->orderBy('id')
+            ->get();
+        self::assertCount(4, $entries);
+        self::assertEqualsWithDelta((float) $entries[0]->debit, (float) $entries[2]->credit, 0.01);
+        self::assertEqualsWithDelta((float) $entries[0]->credit, (float) $entries[2]->debit, 0.01);
+        self::assertEqualsWithDelta((float) $entries[1]->debit, (float) $entries[3]->credit, 0.01);
+        self::assertEqualsWithDelta((float) $entries[1]->credit, (float) $entries[3]->debit, 0.01);
+
+        // Idempotency contract: a second reverseTransaction() on an already
+        // reversed transaction must be a no-op (no extra ledger entries,
+        // balances unchanged) rather than throwing. See the dedicated
+        // test_reverse_transaction_is_idempotent_on_double_call below.
+        $result = $transactionService->reverseTransaction($transfer->fresh());
+        self::assertSame($transfer->id, $result->id);
+
+        $entriesAfterDouble = AccountEntry::query()
+            ->where('transaction_id', $transfer->id)
+            ->orderBy('id')
+            ->get();
+        self::assertCount(4, $entriesAfterDouble, 'No extra ledger entries from a double reversal.');
+    }
+
+    /**
+     * Calling reverseTransaction() on an already-reversed transaction is a
+     * no-op (idempotent) — it returns the original transaction unchanged
+     * without adding more ledger entries or double-adjusting account balances.
+     */
+    public function test_reverse_transaction_is_idempotent_on_double_call(): void
+    {
+        $transactionService = app(TransactionService::class);
+
+        $transfer = $transactionService->recordJournalTransfer([
+            'from_account_id' => $this->accounts['bank']->id,
+            'to_account_id' => $this->accounts['cash1']->id,
+            'amount' => 800.00,
+            'module' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        // 1st reversal: creates the inverse entries.
+        $transactionService->reverseTransaction($transfer);
+
+        $entriesAfterFirst = AccountEntry::query()
+            ->where('transaction_id', $transfer->id)
+            ->orderBy('id')
+            ->get();
+
+        self::assertCount(4, $entriesAfterFirst);
+        $balancesAfterFirst = [
+            'bank' => (float) $this->accounts['bank']->fresh()->balance,
+            'cash1' => (float) $this->accounts['cash1']->fresh()->balance,
+        ];
+
+        // 2nd reversal must be a no-op.
+        $result = $transactionService->reverseTransaction($transfer->fresh());
+        self::assertSame($transfer->id, $result->id);
+
+        $entriesAfterSecond = AccountEntry::query()
+            ->where('transaction_id', $transfer->id)
+            ->orderBy('id')
+            ->get();
+        self::assertCount(4, $entriesAfterSecond, 'Idempotent: no extra ledger entries were created.');
+
+        self::assertEqualsWithDelta(
+            $balancesAfterFirst['bank'],
+            (float) $this->accounts['bank']->fresh()->balance,
+            0.01,
+            'Bank balance unchanged after idempotent second reversal.'
+        );
+        self::assertEqualsWithDelta(
+            $balancesAfterFirst['cash1'],
+            (float) $this->accounts['cash1']->fresh()->balance,
+            0.01,
+            'Cash1 balance unchanged after idempotent second reversal.'
+        );
+    }
+
+    /**
+     * A converted destination amount must be reversed using its own ledger value.
+     */
+    public function test_multi_currency_reversal_uses_each_ledger_leg_amount(): void
+    {
+        $usd = Account::create([
+            'name' => 'Test Cashbox USD',
+            'type' => AccountType::Cashbox,
+            'currency' => 'USD',
+            'balance' => 0,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'is_module_vault' => false,
+            'created_by' => $this->user->id,
+        ]);
+        $this->openWith($usd, 100);
+
+        $transactionService = app(TransactionService::class);
+        $transaction = $transactionService->recordJournalTransfer([
+            'from_account_id' => $this->accounts['bank']->id,
+            'to_account_id' => $usd->id,
+            'amount' => 3000.00,
+            'converted_amount' => 100.00,
+            'exchange_rate' => 30.0,
+            'module' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $transactionService->reverseTransaction($transaction);
+
+        $this->assertInvariant($this->accounts['bank']);
+        $this->assertInvariant($usd);
+        self::assertEqualsWithDelta(30000.00, (float) $this->accounts['bank']->fresh()->balance, 0.01);
+        self::assertEqualsWithDelta(100.00, (float) $usd->fresh()->balance, 0.01);
+    }
+
+    /**
      * ─────────────────────────────────────────────────────────────
      * ASSERT 7: Direct `Account::balance` writes outside the
      *           canonical services are FORBIDDEN (the booted-guard).

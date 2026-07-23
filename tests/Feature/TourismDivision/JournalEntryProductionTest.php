@@ -200,14 +200,14 @@ class JournalEntryProductionTest extends TourismTestCase
             'account_id' => $this->cashbox->id,
         ])->assertCreated();
 
-        // Check every touched account: balance == SUM(debit) - SUM(credit)
+        // Check every touched account: balance == SUM(credit) - SUM(debit)
         $touched = [$this->cashbox->id, $customer->ledgerAccount()->first()->id];
         foreach ($touched as $id) {
-            $net = (float) AccountEntry::query()->where('account_id', $id)->sum('debit')
-                - (float) AccountEntry::query()->where('account_id', $id)->sum('credit');
+            $ledgerBalance = (float) AccountEntry::query()->where('account_id', $id)->sum('credit')
+                - (float) AccountEntry::query()->where('account_id', $id)->sum('debit');
             $stored = (float) Account::find($id)->balance;
-            $this->assertEqualsWithDelta($net, $stored, 0.02,
-                "Account #{$id}: stored balance {$stored} must equal ledger net {$net}");
+            $this->assertEqualsWithDelta($stored, $ledgerBalance, 0.02,
+                "Account #{$id}: stored balance {$stored} must equal ledger balance {$ledgerBalance}");
         }
     }
 }

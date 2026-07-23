@@ -5,6 +5,7 @@ namespace App\Http\Requests\Visa;
 use App\Enums\VisaEntryType;
 use App\Enums\VisaStatus;
 use App\Enums\VisaType;
+use App\Models\Account;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -13,6 +14,43 @@ class StoreVisaBookingRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $bookingCurrency = $this->normalizeCurrency($this->input('currency'));
+
+            foreach ([
+                'account_id',
+                'initial_payment.account_id',
+            ] as $field) {
+                $accountId = (int) $this->input($field);
+                if ($accountId <= 0) {
+                    continue;
+                }
+
+                $account = Account::find($accountId);
+                if (! $account) {
+                    continue;
+                }
+
+                $accountCurrency = $this->normalizeCurrency($account->currency);
+                if ($bookingCurrency !== $accountCurrency) {
+                    $validator->errors()->add(
+                        $field,
+                        "الحجز بعملة {$bookingCurrency} لكن الحساب المختار بعملة {$accountCurrency}. اختر حساباً بنفس عملة الحجز."
+                    );
+                }
+            }
+        });
+    }
+
+    protected function normalizeCurrency($currency): string
+    {
+        $normalized = strtoupper(trim((string) ($currency ?: 'EGP')));
+
+        return $normalized !== '' ? $normalized : 'EGP';
     }
 
     public function rules(): array

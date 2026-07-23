@@ -229,7 +229,13 @@ class FlightBookingService
                 } else {
                     $purchasePriceForeign = (float) ($data['purchase_price_foreign'] ?? 0);
                     $purchasePriceEGP = $purchasePriceForeign * $exchangeRate;
-                    $sellingPriceEGP = $sellingPrice * $exchangeRate;
+                    // 2026-07-23 fix: selling_price is ALWAYS in EGP, regardless of booking currency.
+                    // The Vue form labels the field "سعر البيع للعميل (EGP)" and sends the
+                    // EGP value directly. Multiplying by exchange_rate here would double-convert
+                    // and produce wildly wrong numbers (e.g. user types 1,360,000 EGP for a KWD
+                    // booking → backend would store 217,600,000 EGP). The foreign-currency
+                    // equivalent can be derived on demand as `selling_price / exchange_rate`.
+                    $sellingPriceEGP = $sellingPrice;
                 }
 
                 $profit = $sellingPriceEGP - $purchasePriceEGP;
@@ -545,18 +551,35 @@ class FlightBookingService
             ?? $data['original_currency']
             ?? null;
 
-        if ($paymentCurrency === null || $paymentCurrency === '') {
-            return null;
+        if ($paymentCurrency !== null && $paymentCurrency !== '') {
+            $paymentCurrency = strtoupper((string) $paymentCurrency);
+
+            // لو العميل دفع بنفس عملة البيع، الحقل لا يحمل معلومة → NULL
+            if ($paymentCurrency === strtoupper($bookingCurrency)) {
+                return null;
+            }
+
+            return $paymentCurrency;
         }
 
-        $paymentCurrency = strtoupper((string) $paymentCurrency);
-
-        // لو العميل دفع بنفس عملة البيع، الحقل لا يحمل معلومة → NULL
-        if ($paymentCurrency === strtoupper($bookingCurrency)) {
-            return null;
+        // 2026-07-23 fix: detect payment currency from payment account when not explicit.
+        // The Vue dropdown does not surface `payment.currency`, so the common UI path is
+        // to send only `payment.account_id`. Without this branch, booking.original_currency
+        // would stay NULL and RefundService would treat booking.selling_price (in EGP) as
+        // the booking-currency-denominated refund cap — wrong for KWD/SAR/USD bookings paid
+        // from an EGP cashbox.
+        $accountId = (int) ($data['payment']['account_id'] ?? $data['account_id'] ?? 0);
+        if ($accountId > 0) {
+            $account = Account::find($accountId);
+            if ($account) {
+                $paymentCurrency = strtoupper((string) $account->currency);
+                if ($paymentCurrency !== strtoupper($bookingCurrency)) {
+                    return $paymentCurrency;
+                }
+            }
         }
 
-        return $paymentCurrency;
+        return null;
     }
 
     /**
@@ -572,17 +595,35 @@ class FlightBookingService
             return null;
         }
 
+        // Explicit overrides win.
         $originalAmount = $data['payment']['original_amount']
             ?? $data['original_amount']
             ?? null;
+        if ($originalAmount !== null && $originalAmount !== '' && (float) $originalAmount > 0) {
+            return (float) $originalAmount;
+        }
 
-        if ($originalAmount === null || $originalAmount === '' || (float) $originalAmount <= 0) {
+        // Fall back to payment.amount (in payment currency).
+        $paymentAmount = $data['payment']['amount'] ?? null;
+        if ($paymentAmount === null || $paymentAmount === '' || (float) $paymentAmount <= 0) {
             // عندنا عملة مدفوع مختلفة لكن مفيش مبلغ → نحط NULL بدل ما نكتب sellingPrice
             // (ده كان الـ bug القديم — كان بيحط sellingPrice كـ original_amount).
             return null;
         }
 
-        return (float) $originalAmount;
+        // 2026-07-23 fix: when the customer pays in EGP for a foreign-currency booking,
+        // payment.amount is in EGP but RefundService treats booking.original_amount as
+        // booking-currency-denominated (used as the refund cap for non-EGP bookings).
+        // Convert at the booking's exchange rate so refund math stays consistent.
+        if ($currency === 'EGP' && strtoupper($bookingCurrency) !== 'EGP') {
+            $rate = (float) ($data['exchange_rate'] ?? 1.0);
+            if ($rate <= 0) {
+                $rate = 1.0;
+            }
+            return round((float) $paymentAmount / $rate, 4);
+        }
+
+        return (float) $paymentAmount;
     }
 
     /**
@@ -1711,29 +1752,59 @@ class FlightBookingService
                 $paymentCurrency = $account ? strtoupper($account->currency) : 'EGP';
                 $customerCurrency = strtoupper($customerAccount->currency);
 
-                // Bug #14 fix: enforce currency match between booking and payment account.
-                // If booking is in a foreign currency, the payment account MUST be in the same currency
-                // (no auto-conversion for foreign-currency bookings — the customer pays in the booking's currency).
-                // If booking is in EGP, the payment account can be EGP or any foreign currency
-                // (foreign currency gets converted to EGP at the booking's exchange rate).
+                // Bug #14 fix (2026-07-23): symmetric currency handling for booking + payment.
+                //
+                // Rules:
+                //   - EGP booking + EGP payment                → pass through.
+                //   - EGP booking + foreign payment            → convert at booking rate
+                //                                                   (AR/cash in EGP, original_amount in foreign).
+                //   - foreign booking + same-foreign payment   → pass through
+                //                                                   (AR/cash in foreign, no conversion).
+                //   - foreign booking + EGP payment            → NEW: allowed when customer AR is EGP
+                //                                                   (AR/cash in EGP, original_amount in booking ccy).
+                //   - foreign booking + mismatched-foreign     → reject (e.g. booking=KWD, pay=SAR).
+                //
+                // This mirrors the existing EGP-booking + foreign-payment branch below and
+                // fixes the user-reported "حجز من سيستم دينار" scenario where the only
+                // available cashbox is EGP.
                 $bookingCurrency = strtoupper((string) $booking->currency);
-                if ($bookingCurrency !== 'EGP' && $paymentCurrency !== $bookingCurrency) {
+                $isBookingForeign = $bookingCurrency !== 'EGP';
+                $isPaymentEgp = $paymentCurrency === 'EGP';
+                $isCustomerEgp = $customerCurrency === 'EGP';
+                $isForeignMismatch = $isBookingForeign
+                    && $paymentCurrency !== $bookingCurrency
+                    && !($isPaymentEgp && $isCustomerEgp);
+
+                if ($isForeignMismatch) {
                     throw new \Exception(
                         "عملة حساب الدفع ({$paymentCurrency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
-                        "يجب استخدام حساب بنفس عملة الحجز."
+                        "يجب استخدام حساب بنفس عملة الحجز، أو حساب EGP ".
+                        "(سيُحوَّل المبلغ بسعر الحجز تلقائياً إذا كان حساب العميل بالجنيه المصري)."
                     );
                 }
 
                 $transferAmount = $amount;
                 $convertedAmount = null;
 
-                if ($customerCurrency === 'EGP' && $paymentCurrency !== 'EGP') {
+                if ($bookingCurrency === 'EGP' && $isCustomerEgp && $paymentCurrency !== 'EGP') {
+                    // EGP booking + foreign payment: convert foreign amount to EGP for cash box + AR.
                     $rate = (float) ($booking->exchange_rate ?? 1.0);
                     if ($rate <= 0) {
                         $rate = 1.0;
                     }
                     $transferAmount = $amount * $rate;
                     $convertedAmount = $amount;
+                } elseif ($isBookingForeign && $isPaymentEgp && $isCustomerEgp) {
+                    // NEW: foreign booking + EGP payment. AR is EGP and cash box is EGP, so
+                    // transferAmount stays in EGP (no conversion needed for the ledger).
+                    // Record convertedAmount = the foreign-currency equivalent at the booking's
+                    // rate so refunds and reporting see a consistent booking-currency value.
+                    $rate = (float) ($booking->exchange_rate ?? 1.0);
+                    if ($rate <= 0) {
+                        $rate = 1.0;
+                    }
+                    $convertedAmount = round($amount / $rate, 4);
+                    // transferAmount remains $amount (in EGP).
                 }
 
                 // Validate total payments won't exceed selling_price

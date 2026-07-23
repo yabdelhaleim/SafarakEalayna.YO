@@ -239,11 +239,25 @@ class OnlineTransactionController extends Controller
             $clientId = $request->query('client_id');
             $clientName = $request->query('client_name');
 
+            // Pagination — large statement ledgers (1000+ entries) used to
+            // crush the API. We now support `page` + `per_page` (default 50,
+            // max 200) and return envelope metadata so the UI can render
+            // "next/prev" controls. `running_balance` reflects the cumulative
+            // up to the LAST page returned (across all prior pages inclusive).
+            $perPage = (int) $request->query('per_page', 50);
+            $perPage = max(1, min($perPage, 200));
+            $page = max(1, (int) $request->query('page', 1));
+
             $customer = $clientId ? Customer::find($clientId) : null;
             $customerAccount = $customer?->account_id ? Account::find($customer->account_id) : null;
 
             if ($customerAccount) {
-                $entries = AccountEntry::with([
+                // Two-phase fetch so we can compute the running balance
+                // correctly across pagination: first pull the COMPLETE list
+                // of (id, drift) tuples in chronological order, then slice
+                // out the requested page. This keeps the running balance
+                // monotonically increasing across pages.
+                $allEntries = AccountEntry::with([
                     'transaction.createdBy',
                     'transaction.fromAccount',
                     'transaction.toAccount',
@@ -258,12 +272,13 @@ class OnlineTransactionController extends Controller
                         $q->where('module', 'online');
                     })
                     ->orderBy('created_at', 'asc')
+                    ->orderBy('id', 'asc')
                     ->get();
 
                 $running = 0.0;
-                $formatted = [];
+                $fullFormatted = [];
 
-                foreach ($entries as $entry) {
+                foreach ($allEntries as $entry) {
                     $tx = $entry->transaction;
                     if (! $tx) {
                         continue;
@@ -283,7 +298,7 @@ class OnlineTransactionController extends Controller
 
                     $typeLabel = $credit > 0 ? 'عملية' : 'سداد دفعة';
 
-                    $formatted[] = [
+                    $fullFormatted[] = [
                         'id' => $tx->id,
                         'date' => $entry->created_at->format('Y-m-d H:i'),
                         'machine' => $accountName,
@@ -294,25 +309,45 @@ class OnlineTransactionController extends Controller
                         'running_balance' => $running,
                     ];
                 }
+
+                $total = count($fullFormatted);
+                $reversed = array_reverse($fullFormatted);
+                $paged = array_slice($reversed, ($page - 1) * $perPage, $perPage);
+                $lastPage = max(1, (int) ceil($total / $perPage));
             } else {
-                $txs = OnlineTransaction::query()
+                // ── Fallback path ─────────────────────────────────────────────
+                // Two cases fall through here:
+                //   (A) Walk-in clients — `customer_id IS NULL`, matched by free-form
+                //       `customer_name`.
+                //   (B) Registered customer without an account row — `customer_id`
+                //       is set but no GL row to query. The previous implementation
+                //       returned an empty list, hiding every online tx for that
+                //       customer. We now fall back to OnlineTransaction directly.
+                $txsQ = OnlineTransaction::query()
                     ->with(['account', 'employee'])
-                    ->whereNull('customer_id')
-                    ->where('customer_name', $clientName)
-                    ->where('status', 'completed')
-                    ->orderBy('created_at', 'asc')
+                    ->where('status', 'completed');
+
+                if ($customer) {
+                    $txsQ->where('customer_id', $customer->id);
+                } else {
+                    $txsQ->whereNull('customer_id')
+                        ->where('customer_name', $clientName);
+                }
+
+                $allTxs = $txsQ->orderBy('created_at', 'asc')
+                    ->orderBy('id', 'asc')
                     ->get();
 
                 $running = 0.0;
-                $formatted = [];
-                foreach ($txs as $tx) {
+                $fullFormatted = [];
+                foreach ($allTxs as $tx) {
                     $amountPaid = (float) ($tx->amount_paid ?? $tx->selling_price);
                     $totalAmount = (float) $tx->selling_price;
                     $debt = $totalAmount - $amountPaid;
 
                     $running += $debt;
 
-                    $formatted[] = [
+                    $fullFormatted[] = [
                         'id' => $tx->id,
                         'date' => $tx->created_at->format('Y-m-d H:i'),
                         'machine' => $tx->account?->name ?? '—',
@@ -323,11 +358,22 @@ class OnlineTransactionController extends Controller
                         'running_balance' => $running,
                     ];
                 }
+
+                $total = count($fullFormatted);
+                $reversed = array_reverse($fullFormatted);
+                $paged = array_slice($reversed, ($page - 1) * $perPage, $perPage);
+                $lastPage = max(1, (int) ceil($total / $perPage));
             }
 
             return ApiResponse::success('Statement retrieved successfully.', [
-                'transactions' => array_reverse($formatted),
+                'transactions' => $paged,
                 'running_balance' => $running,
+                'pagination' => [
+                    'total' => $total,
+                    'per_page' => $perPage,
+                    'current_page' => $page,
+                    'last_page' => $lastPage,
+                ],
             ]);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

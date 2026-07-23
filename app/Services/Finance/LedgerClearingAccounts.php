@@ -133,6 +133,67 @@ class LedgerClearingAccounts
         return $this->ensureClearingAccountExists($name, 'general', 'treasury_operations');
     }
 
+    /**
+     * Returns the unified AR (Accounts Receivable) account used to track
+     * مديونيات عملاء فوري غير مسجلين (walk-in Fawry clients).
+     *
+     * The account is created lazily on first call with:
+     *  - type = Customer (subject AR mirror — visible in receivables report)
+     *  - module_type = 'fawry' (specific module per AccountModuleContract
+     *    Subject rule; divisions 'office'/'tourism' are RESERVED for
+     *    liquidity vaults)
+     *  - is_module_vault = false
+     *  - owner_type = OWNER_TYPE_OWNER
+     *
+     * Per-client debt is sourced from `fawry_transactions` columns
+     * (selling_price - amount) grouped by client_name. This single account
+     * aggregates only the running balance across all walk-in transactions.
+     *
+     * Legacy walk-in transactions (created before this method existed)
+     * did NOT post to this account — they credited the settlement account
+     * directly. The debt for those is read from the columns instead of
+     * the GL.
+     */
+    public function fawryWalkInArAccountId(): int
+    {
+        $name = 'ذمم عملاء فوري غير مسجلين';
+
+        $existing = Account::query()
+            ->where('name', $name)
+            ->where('is_active', true)
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Customer,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'fawry',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب AR تلقائي لمعاملات فوري للعملاء غير المسجلين (walk-in). '
+                        .'تُحفظ المديونية مقسمة على مستوى اسم العميل في fawry_transactions.',
+                    'created_by' => Auth::id() ?? 1,
+                ]
+            );
+
+            Log::info('Fawry walk-in AR account automatically created', [
+                'name' => $account->name,
+                'id' => $account->id,
+                'module_type' => $account->module_type,
+            ]);
+
+            return (int) $account->id;
+        }));
+    }
+
     protected function normalizeModuleKey(string|TransactionModule|null $module): string
     {
         if ($module instanceof TransactionModule) {

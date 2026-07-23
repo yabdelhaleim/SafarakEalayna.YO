@@ -310,7 +310,7 @@
                       <select v-model="form.initial_payment.account_id"
                         class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none">
                         <option :value="null">— نفس حساب التسوية —</option>
-                        <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
+                        <option v-for="acc in currencyMatchedAccounts" :key="acc.id" :value="acc.id">
                           {{ acc.name }} ({{ acc.currency }})
                         </option>
                       </select>
@@ -438,7 +438,7 @@
 <script setup>
 import { ref, computed, onMounted, onActivated } from 'vue';
 import { useVisaStore } from '@/stores/visaStore';
-import { filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
+import { filterSettlementAccountsByCurrency, filterSettlementAccountsByModule } from '@/composables/useTreasuryAccountGroups';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { 
@@ -462,8 +462,13 @@ const settlementCategoryChips = [
   { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
 ];
 
-const filteredAccounts = computed(() => {
+const currencyMatchedAccounts = computed(() => {
   const accounts = filterSettlementAccountsByModule(store.accounts || [], 'visa');
+  return filterSettlementAccountsByCurrency(accounts, form.value.currency || 'EGP');
+});
+
+const filteredAccounts = computed(() => {
+  const accounts = currencyMatchedAccounts.value;
   if (settlementCategoryUi.value === 'cash') {
     return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
   }

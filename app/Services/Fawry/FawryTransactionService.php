@@ -283,17 +283,53 @@ public function createTransaction(array $data): FawryTransaction
                 ]);
             }
         } else {
-            // Walk-in client: البيع مباشرة على الخزينة (لا يوجد settlement منفصل)
-            $walkInIncome = $this->transactionService->recordIncome([
+            // Walk-in client (no Customer record). Route the receivable
+            // through the unified walk-in AR account ("ذمم عملاء فوري غير
+            // مسجلين") so the debt:
+            //   1) lives in the GL (visible in trial balance / office
+            //      receivables report)
+            //   2) is pay-able via POST /api/v1/fawry/walk-in/pay-debt
+            //      by FIFO allocation against fawry_transactions.amount
+            //
+            // Two journal transfers:
+            //   [a] credit AR account for $sellingPrice (full debt)
+            //   [b] if $amountPaid > 0: debit AR account →
+            //       credit settlement account for the cash received
+            // Net effect on AR account balance = $sellingPrice − $amountPaid.
+            //
+            // Legacy walk-in transactions (created before this block was
+            // introduced) credited the settlement account directly with no
+            // AR entry. Their debt is sourced from the columns instead
+            // (see FinancialReportService::getDebtsReport walk-in branch).
+            $walkInArAccountId = app(LedgerClearingAccounts::class)->fawryWalkInArAccountId();
+            $contraAccountId = app(LedgerClearingAccounts::class)->incomeContraIdForModule('fawry');
+
+            $saleIncome = $this->transactionService->recordJournalTransfer([
                 'amount' => $sellingPrice,
-                'to_account_id' => $accountId,
+                'from_account_id' => $contraAccountId,
+                'to_account_id' => $walkInArAccountId,
                 'module' => TransactionModule::Fawry->value,
                 'related_type' => FawryTransaction::class,
                 'related_id' => $fawryTransaction->id,
-                'notes' => "تحصيل فوري - {$operationLabel}: {$clientName}",
+                'notes' => "مديونية فوري (عميل غير مسجل - {$clientName}) - {$operationLabel}",
                 'created_by' => $createdBy,
+                'allow_from_negative' => true,
             ]);
-            $incomeTransactionId = $walkInIncome->id;
+            $incomeTransactionId = $saleIncome->id;
+
+            // Cash received at creation time → transfer from AR to settlement
+            if ($amountPaid > 0) {
+                $this->transactionService->recordJournalTransfer([
+                    'amount' => $amountPaid,
+                    'from_account_id' => $walkInArAccountId,
+                    'to_account_id' => $accountId,
+                    'module' => TransactionModule::Fawry->value,
+                    'related_type' => FawryTransaction::class,
+                    'related_id' => $fawryTransaction->id,
+                    'notes' => "سداد جزء من فوري (عميل غير مسجل - {$clientName}) - {$operationLabel}",
+                    'created_by' => $createdBy,
+                ]);
+            }
         }
 
         return [$incomeTransactionId, $expenseTransactionId];

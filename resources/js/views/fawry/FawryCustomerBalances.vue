@@ -731,22 +731,35 @@ const submitPayment = async () => {
   }
   submitting.value = true;
   try {
-    const id = selectedCustomer.value.client_id || selectedCustomer.value.id;
-    await axios.post(`/api/v1/customers/${id}/pay-debt`, {
-      amount: paymentForm.value.amount,
-      account_id: paymentForm.value.account_id,
-      notes: paymentForm.value.notes || undefined,
-      module: 'fawry',
-    });
+    if (selectedCustomer.value.client_id) {
+      // Registered customer (existing flow)
+      await axios.post(`/api/v1/customers/${selectedCustomer.value.client_id}/pay-debt`, {
+        amount: paymentForm.value.amount,
+        account_id: paymentForm.value.account_id,
+        notes: paymentForm.value.notes || undefined,
+        module: 'fawry',
+      });
+    } else {
+      // Walk-in client (no Customer record) ─ FIFO allocation by client_name
+      if (!selectedCustomer.value.client_name) {
+        throw new Error('اسم العميل مطلوب لتسديد مديونية عميل غير مسجّل.');
+      }
+      await axios.post('/api/v1/fawry/walk-in/pay-debt', {
+        client_name: selectedCustomer.value.client_name,
+        amount: paymentForm.value.amount,
+        account_id: paymentForm.value.account_id,
+        notes: paymentForm.value.notes || undefined,
+      });
+    }
     store.addToast('تم تسديد الدين بنجاح ✓', 'success');
     showPaymentModal.value = false;
-    
+
     // Reload both the customer balances and the settlement accounts list in parallel
     await Promise.all([
       fetchBalances(),
       loadAccounts()
     ]);
-    
+
     if (modalOpen.value) {
       const row = records.value.find(r => r.client_id === selectedCustomerId.value || r.id === selectedCustomerId.value);
       if (row) {
@@ -755,7 +768,8 @@ const submitPayment = async () => {
     }
   } catch (error) {
     console.error('Failed to submit payment:', error);
-    store.addToast('حدث خطأ أثناء عملية التسديد، يرجى المحاولة مرة أخرى.', 'error');
+    const msg = error?.response?.data?.message || 'حدث خطأ أثناء عملية التسديد، يرجى المحاولة مرة أخرى.';
+    store.addToast(msg, 'error');
   } finally {
     submitting.value = false;
   }

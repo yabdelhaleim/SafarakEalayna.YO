@@ -319,6 +319,41 @@
                 </tbody>
               </table>
             </div>
+
+            <!-- Pagination controls -->
+            <div
+              v-if="modalStatementPagination.last_page > 1"
+              class="flex items-center justify-between border-t border-white/5 px-4 py-3"
+            >
+              <div class="text-xs text-text-muted">
+                صفحة
+                <span class="font-bold text-text-main">{{ modalStatementPagination.current_page }}</span>
+                من
+                <span class="font-bold text-text-main">{{ modalStatementPagination.last_page }}</span>
+                <span class="mx-1">·</span>
+                إجمالي
+                <span class="font-bold text-text-main">{{ modalStatementPagination.total }}</span>
+                معاملة
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="loadStatementPage(modalStatementPagination.current_page - 1)"
+                  :disabled="modalStatementPagination.current_page <= 1 || modalStatementLoading"
+                  class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-text-main transition hover:border-violet-500/40 hover:text-violet-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  السابق
+                </button>
+                <button
+                  type="button"
+                  @click="loadStatementPage(modalStatementPagination.current_page + 1)"
+                  :disabled="modalStatementPagination.current_page >= modalStatementPagination.last_page || modalStatementLoading"
+                  class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-text-main transition hover:border-violet-500/40 hover:text-violet-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -568,6 +603,13 @@ const selectedCustomerName = ref('');
 const selectedCustomerPhone = ref('');
 const selectedCustomerRunningBalance = ref(0.0);
 const modalTransactions = ref([]);
+const modalStatementPagination = ref({
+  total: 0,
+  per_page: 50,
+  current_page: 1,
+  last_page: 1,
+});
+const modalStatementLoading = ref(false);
 
 // Payment modal state
 const showPaymentModal = ref(false);
@@ -682,20 +724,53 @@ const openDetails = async (row) => {
   selectedCustomerName.value = row.client_name;
   selectedCustomerPhone.value = row.phone;
   modalTransactions.value = [];
+  modalStatementPagination.value = {
+    total: 0,
+    per_page: 50,
+    current_page: 1,
+    last_page: 1,
+  };
   modalOpen.value = true;
+  await loadStatementPage(1);
+};
 
+/**
+ * Load a single page of the customer statement. Backend returns reverse-
+ * chronological order (newest first); pagination envelope lets the UI
+ * render "next/prev" controls. `running_balance` is the cumulative value
+ * across the entire ledger, not just the current page.
+ */
+const loadStatementPage = async (page) => {
+  if (!selectedCustomerId.value && !selectedCustomerName.value) {
+    return;
+  }
+  modalStatementLoading.value = true;
   try {
     const res = await axios.get('/api/v1/online/customer-statement', {
       params: {
-        client_id: row.client_id,
-        client_name: row.client_name,
+        client_id: selectedCustomerId.value,
+        client_name: selectedCustomerName.value,
+        page,
+        per_page: modalStatementPagination.value.per_page,
         _t: Date.now(),
       },
     });
-    modalTransactions.value = res.data?.data?.transactions || [];
-    selectedCustomerRunningBalance.value = res.data?.data?.running_balance || 0.0;
+    const data = res.data?.data ?? {};
+    modalTransactions.value = data.transactions || [];
+    selectedCustomerRunningBalance.value = data.running_balance || 0.0;
+    if (data.pagination) {
+      modalStatementPagination.value = {
+        total: data.pagination.total ?? 0,
+        per_page: data.pagination.per_page ?? 50,
+        current_page: data.pagination.current_page ?? page,
+        last_page: data.pagination.last_page ?? 1,
+      };
+    }
   } catch (error) {
     console.error('Failed to load customer statement:', error);
+    modalTransactions.value = [];
+  } finally {
+    modalStatementLoading.value = false;
   }
 };
 

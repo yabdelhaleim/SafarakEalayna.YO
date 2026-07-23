@@ -110,16 +110,16 @@ class TrialBalanceProductionTest extends TourismTestCase
             'account_id' => $this->cashbox->id,
         ])->assertCreated();
 
-        // Check every active account: stored balance == SUM(debit) - SUM(credit)
+        // Check every active account: stored balance == SUM(credit) - SUM(debit)
         $accounts = Account::query()->where('is_active', true)->get();
         foreach ($accounts as $account) {
-            $net = (float) AccountEntry::query()->where('account_id', $account->id)->sum('debit')
-                - (float) AccountEntry::query()->where('account_id', $account->id)->sum('credit');
+            $ledgerBalance = (float) AccountEntry::query()->where('account_id', $account->id)->sum('credit')
+                - (float) AccountEntry::query()->where('account_id', $account->id)->sum('debit');
             $this->assertEqualsWithDelta(
+                $ledgerBalance,
                 (float) $account->balance,
-                $net,
                 0.02,
-                "Account #{$account->id} ({$account->name}) balance mismatch: stored={$account->balance}, ledger_net={$net}"
+                "Account #{$account->id} ({$account->name}) balance mismatch: stored={$account->balance}, ledger_balance={$ledgerBalance}"
             );
         }
     }

@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\Fawry\FawryMachineApiController;
 use App\Http\Controllers\Api\V1\Fawry\FawrySettingsController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTransactionController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTreasuryController;
+use App\Http\Controllers\Api\V1\Fawry\FawryWalkInPaymentController;
 use App\Http\Controllers\Api\V1\Finance\AccountController;
 use App\Http\Controllers\Api\V1\Finance\SupplierAccountController;
 use App\Http\Controllers\Api\V1\Finance\ApprovalController;
@@ -48,6 +49,7 @@ use App\Http\Controllers\Api\V1\HajjUmra\UmrahSupplierApiController;
 use App\Http\Controllers\Api\V1\HajjUmraController;
 use App\Http\Controllers\Api\V1\HajjUmraReferenceController;
 use App\Http\Controllers\Api\V1\InvoiceController;
+use App\Http\Controllers\Api\V1\Online\OnlineCustomerController;
 use App\Http\Controllers\Api\V1\Online\OnlineServiceProviderController;
 use App\Http\Controllers\Api\V1\Online\OnlineServiceTypeController;
 use App\Http\Controllers\Api\V1\Online\OnlineSettingsController;
@@ -317,6 +319,7 @@ Route::prefix('v1')->middleware([
             Route::get('payment-methods', [OnlineSettingsController::class, 'paymentMethods']);
             Route::get('accounts', [OnlineSettingsController::class, 'accounts']);
             Route::get('customers', [OnlineSettingsController::class, 'customers']);
+            Route::post('customers', [OnlineCustomerController::class, 'store']);
             Route::get('employees', [OnlineSettingsController::class, 'employees']);
             Route::get('statuses', [OnlineSettingsController::class, 'statuses']);
         });
@@ -355,6 +358,8 @@ Route::prefix('v1')->middleware([
         Route::get('accounts', [FawryMachineApiController::class, 'fawryAccounts']);
         Route::get('customer-balances', [FawryTransactionController::class, 'customerBalances']);
         Route::get('customer-statement', [FawryTransactionController::class, 'customerStatement']);
+        // Walk-in client debt repayment (no Customer record; uses client_name)
+        Route::post('walk-in/pay-debt', [FawryWalkInPaymentController::class, 'payDebt']);
         Route::get('transactions/daily-summary', [FawryTransactionController::class, 'dailySummary']);
         Route::apiResource('transactions', FawryTransactionController::class)
             ->parameters(['transactions' => 'fawryTransaction'])

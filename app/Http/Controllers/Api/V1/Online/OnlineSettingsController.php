@@ -70,10 +70,16 @@ class OnlineSettingsController extends Controller
 
     public function accounts(): JsonResponse
     {
+        // Online module is part of the Office division. We accept:
+        //   - module_type='online'  (module-specific vaults)
+        //   - module_type='office'  (unified department-wide vault)
+        // This mirrors the OnlineLiquidityAccount rule and the Filament form
+        // (see OnlineTransactionResource::account_id select). User wants the
+        // single unified Office safe to be selectable from Online transactions.
         $accounts = Account::active()
-            ->where('module_type', 'online')
+            ->whereIn('module_type', ['online', 'office'])
             ->orderBy('name')
-            ->get(['id', 'name', 'type', 'balance', 'currency', 'wallet_provider', 'wallet_number', 'is_active'])
+            ->get(['id', 'name', 'type', 'balance', 'currency', 'wallet_provider', 'wallet_number', 'is_active', 'module_type'])
             ->map(fn (Account $a) => [
                 'id' => $a->id,
                 'name' => $a->name,
@@ -82,6 +88,7 @@ class OnlineSettingsController extends Controller
                 'currency' => $a->currency,
                 'wallet_provider' => $a->wallet_provider,
                 'wallet_number' => $a->wallet_number,
+                'module_type' => $a->module_type instanceof \BackedEnum ? $a->module_type->value : $a->module_type,
             ]);
 
         return ApiResponse::success('تم جلب الحسابات النشطة.', $accounts);
@@ -89,15 +96,24 @@ class OnlineSettingsController extends Controller
 
     public function customers(): JsonResponse
     {
+        // Scope customer list to those with at least one online transaction.
+        // Lets users see only the module's customers (the saved-at-create
+        // mapping first kicks in once they have a transaction). Newly created
+        // online customers surface after the first transaction they save.
         $customers = Customer::query()
+            ->where(function ($q) {
+                $q->where('module_type', 'online')
+                    ->orWhereHas('onlineTransactions');
+            })
             ->orderBy('full_name')
             ->limit(500)
-            ->get(['id', 'full_name', 'phone', 'email'])
+            ->get(['id', 'full_name', 'phone', 'email', 'module_type'])
             ->map(fn (Customer $c) => [
                 'id' => $c->id,
                 'name' => $c->full_name,
                 'phone' => $c->phone,
                 'email' => $c->email,
+                'module_type' => $c->module_type instanceof \BackedEnum ? $c->module_type->value : $c->module_type,
             ]);
 
         return ApiResponse::success('تم جلب العملاء.', $customers);

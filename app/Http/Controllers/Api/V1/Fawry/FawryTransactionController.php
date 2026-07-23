@@ -343,13 +343,25 @@ class FawryTransactionController extends Controller
                     ];
                 }
             } else {
-                // Walk-in client fallback (no ledger account)
-                $txs = FawryTransaction::query()
-                    ->with(['account', 'employee'])
-                    ->whereNull('client_id')
-                    ->where('client_name', $clientName)
-                    ->orderBy('created_at', 'asc')
-                    ->get();
+                // ── Fallback path ─────────────────────────────────────────────
+                // Two cases fall through here:
+                //   (A) Walk-in clients — `client_id IS NULL`, matched by free-form
+                //       `client_name`.
+                //   (B) Registered customer without an account row — `client_id`
+                //       is set but no GL row to query. The previous implementation
+                //       returned an empty list, hiding every Fawry tx for that
+                //       customer. We now fall back to FawryTransaction directly.
+                $txsQ = FawryTransaction::query()
+                    ->with(['account', 'employee']);
+
+                if ($customer) {
+                    $txsQ->where('client_id', $customer->id);
+                } else {
+                    $txsQ->whereNull('client_id')
+                        ->where('client_name', $clientName);
+                }
+
+                $txs = $txsQ->orderBy('created_at', 'asc')->get();
 
                 $running = 0.0;
                 $formatted = [];

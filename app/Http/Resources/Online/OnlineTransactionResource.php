@@ -77,6 +77,31 @@ class OnlineTransactionResource extends JsonResource
             'expense_transaction_id' => $this->expense_transaction_id,
             'income_transaction_id' => $this->income_transaction_id,
 
+            // Eager-loaded ledger transactions — used by the audit / repair
+            // screens to trace a transaction back to its GL entries without
+            // making follow-up API calls. The legacy `*_transaction_id`
+            // scalars above remain for backward compatibility.
+            'expense_transaction' => $this->whenLoaded('expenseTransaction', fn () => $this->expenseTransaction ? [
+                'id' => $this->expenseTransaction->id,
+                'amount' => (float) $this->expenseTransaction->amount,
+                'from_account_id' => $this->expenseTransaction->from_account_id,
+                'to_account_id' => $this->expenseTransaction->to_account_id,
+                'type' => $this->expenseTransaction->type,
+                'module' => $this->expenseTransaction->module,
+                'reference' => $this->expenseTransaction->reference,
+                'created_at' => $this->expenseTransaction->created_at?->toIso8601String(),
+            ] : null),
+            'income_transaction' => $this->whenLoaded('incomeTransaction', fn () => $this->incomeTransaction ? [
+                'id' => $this->incomeTransaction->id,
+                'amount' => (float) $this->incomeTransaction->amount,
+                'from_account_id' => $this->incomeTransaction->from_account_id,
+                'to_account_id' => $this->incomeTransaction->to_account_id,
+                'type' => $this->incomeTransaction->type,
+                'module' => $this->incomeTransaction->module,
+                'reference' => $this->incomeTransaction->reference,
+                'created_at' => $this->incomeTransaction->created_at?->toIso8601String(),
+            ] : null),
+
             'created_by' => $this->whenLoaded('createdBy', fn () => $this->createdBy ? [
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,

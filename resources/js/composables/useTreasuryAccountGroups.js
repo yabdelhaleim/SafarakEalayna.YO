@@ -209,6 +209,19 @@ export function filterSettlementAccountsByModule(accounts, module) {
   return (accounts || []).filter((account) => accountBelongsToModule(account, module));
 }
 
+export function normalizeAccountCurrency(currency, fallback = 'EGP') {
+  const normalized = String(currency ?? '').trim().toUpperCase();
+  return normalized || fallback;
+}
+
+export function filterSettlementAccountsByCurrency(accounts, currency) {
+  const targetCurrency = normalizeAccountCurrency(currency);
+
+  return (accounts || []).filter((account) => (
+    normalizeAccountCurrency(account?.currency) === targetCurrency
+  ));
+}
+
 /**
  * Liquidity accounts for settlements; when module is set, never falls back to all modules.
  *

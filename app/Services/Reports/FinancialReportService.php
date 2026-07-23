@@ -498,56 +498,34 @@ class FinancialReportService
                 });
             }
 
-            // Apply module-specific conditions for customers
+            // Apply module-specific conditions for customers.
+            //
+            // Fix: do NOT rely on `accounts.module_type` to filter customers. Each
+            // module's `ensureCustomerAccount()` rewrites that column whenever a
+            // different module touches the same customer — so a customer who used
+            // Fawry first and Wallet later would have `module_type='wallet_transfer'`
+            // and drop out of every other module's filter. Match purely on the
+            // existence of related transactions; that is stable and unique per
+            // module.
             if ($module) {
                 switch ($module) {
                     case 'flight':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('flightBookings')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'flights');
-                                });
-                        });
+                        $customerQuery->whereHas('flightBookings');
                         break;
                     case 'bus':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('busBookings')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'bus');
-                                });
-                        });
+                        $customerQuery->whereHas('busBookings');
                         break;
                     case 'hajj_umra':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('hajjUmraBookings')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'hajj_umra');
-                                });
-                        });
+                        $customerQuery->whereHas('hajjUmraBookings');
                         break;
                     case 'visa':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('visaBookings')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'visas');
-                                });
-                        });
+                        $customerQuery->whereHas('visaBookings');
                         break;
                     case 'fawry':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('fawryTransactions')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'fawry');
-                                });
-                        });
+                        $customerQuery->whereHas('fawryTransactions');
                         break;
                     case 'online':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('onlineTransactions')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'online');
-                                });
-                        });
+                        $customerQuery->whereHas('onlineTransactions');
                         break;
                     case 'general':
                         $customerQuery->whereDoesntHave('flightBookings')
@@ -556,18 +534,10 @@ class FinancialReportService
                             ->whereDoesntHave('visaBookings')
                             ->whereDoesntHave('fawryTransactions')
                             ->whereDoesntHave('onlineTransactions')
-                            ->whereDoesntHave('walletTransactions')
-                            ->whereDoesntHave('ledgerAccount', function ($sub) {
-                                $sub->whereIn('module_type', ['flights', 'bus', 'hajj_umra', 'visas', 'fawry', 'online', 'wallet_transfer']);
-                            });
+                            ->whereDoesntHave('walletTransactions');
                         break;
                     case 'wallet':
-                        $customerQuery->where(function ($q) {
-                            $q->whereHas('walletTransactions')
-                                ->orWhereHas('ledgerAccount', function ($sub) {
-                                    $sub->where('module_type', 'wallet_transfer');
-                                });
-                        });
+                        $customerQuery->whereHas('walletTransactions');
                         break;
                 }
             } elseif ($department) {
@@ -575,10 +545,7 @@ class FinancialReportService
                     $customerQuery->where(function ($q) {
                         $q->whereHas('hajjUmraBookings')
                             ->orWhereHas('visaBookings')
-                            ->orWhereHas('flightBookings')
-                            ->orWhereHas('ledgerAccount', function ($sub) {
-                                $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
-                            });
+                            ->orWhereHas('flightBookings');
                     });
                 } elseif ($department === 'office') {
                     $customerQuery->where(function ($q) {
@@ -586,16 +553,14 @@ class FinancialReportService
                             ->orWhereHas('fawryTransactions')
                             ->orWhereHas('onlineTransactions')
                             ->orWhereHas('walletTransactions')
-                            ->orWhereHas('ledgerAccount', function ($sub) {
-                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet_transfer']);
-                            })
                             ->orWhere(function ($sub) {
+                                // A purely "office" customer with no transactions yet
+                                // (e.g. open balance from a manual journal entry) —
+                                // take only those who have NOT touched any tourism
+                                // module.
                                 $sub->whereDoesntHave('hajjUmraBookings')
                                     ->whereDoesntHave('visaBookings')
-                                    ->whereDoesntHave('flightBookings')
-                                    ->whereDoesntHave('ledgerAccount', function ($sub2) {
-                                        $sub2->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
-                                    });
+                                    ->whereDoesntHave('flightBookings');
                             });
                     });
                 }
@@ -617,69 +582,65 @@ class FinancialReportService
                     continue;
                 }
 
-                // Deduce customer active department and module
-                // Priority: ledger account module_type → booking counts (fallback)
+                // Deduce customer active department and module.
+                //
+                // Fix: prefer booking/transaction counts — they are stable per
+                // module and never get overwritten. The ledger account's
+                // `module_type` is intentionally skipped as a primary signal
+                // because `ensureCustomerAccount()` rewrites it whenever any
+                // module touches the customer (so a Fawry+Wallet customer would
+                // otherwise always be classified under whichever module touched
+                // them last).
+                //
+                // When the caller has filtered by a specific module, that
+                // module wins priority so the customer surfaces under the
+                // filter they asked for (a customer with Fawry+Wallet usage
+                // must appear in BOTH `?module=fawry` AND `?module=wallet`
+                // filters, not just the priority winner).
                 $custDept = 'office';
                 $custMod = 'general';
-                $deptFromAccount = false;
 
-                if ($c->ledgerAccount) {
-                    $accModule = $c->ledgerAccount->module_type;
-                    if (in_array($accModule, ['tourism', 'flights', 'hajj_umra', 'visas'])) {
-                        $custDept = 'tourism';
-                        $custMod = $accModule === 'tourism' ? 'general' : ($accModule === 'flights' ? 'flight' : $accModule);
-                        $deptFromAccount = true;
-                    } elseif (in_array($accModule, ['office', 'bus', 'fawry', 'online', 'wallet_transfer'])) {
-                        $custDept = 'office';
-                        $custMod = $accModule === 'office' ? 'general' : $accModule;
-                        $deptFromAccount = true;
-                    }
-                }
+                $hasTourism = $c->flight_bookings_count > 0
+                    || $c->hajj_umra_bookings_count > 0
+                    || $c->visa_bookings_count > 0;
+                $hasBus = $c->bus_bookings_count > 0;
+                $hasFawry = $c->fawry_transactions_count > 0;
+                $hasOnline = $c->online_transactions_count > 0;
+                $hasWallet = $c->wallet_transactions_count > 0;
 
-                // Only use booking counts to determine department when the ledger account
-                // does NOT already point to a clear department (i.e. module_type is ambiguous).
-                // This prevents office customers who also have a flight booking from being
-                // misclassified as tourism and disappearing from the office receivables report.
-                if (! $deptFromAccount) {
-                    if ($c->flight_bookings_count > 0 || $c->hajj_umra_bookings_count > 0 || $c->visa_bookings_count > 0) {
-                        $custDept = 'tourism';
-                        if ($c->flight_bookings_count > 0) {
-                            $custMod = 'flight';
-                        } elseif ($c->hajj_umra_bookings_count > 0) {
-                            $custMod = 'hajj_umra';
-                        } else {
-                            $custMod = 'visa';
-                        }
+                // If caller filtered by a module this customer uses,
+                // honour that filter directly.
+                if ($module === 'flight' && $c->flight_bookings_count > 0) {
+                    $custDept = 'tourism'; $custMod = 'flight';
+                } elseif ($module === 'hajj_umra' && $c->hajj_umra_bookings_count > 0) {
+                    $custDept = 'tourism'; $custMod = 'hajj_umra';
+                } elseif ($module === 'visa' && $c->visa_bookings_count > 0) {
+                    $custDept = 'tourism'; $custMod = 'visa';
+                } elseif ($module === 'bus' && $hasBus) {
+                    $custDept = 'office'; $custMod = 'bus';
+                } elseif ($module === 'fawry' && $hasFawry) {
+                    $custDept = 'office'; $custMod = 'fawry';
+                } elseif ($module === 'online' && $hasOnline) {
+                    $custDept = 'office'; $custMod = 'online';
+                } elseif ($module === 'wallet' && $hasWallet) {
+                    $custDept = 'office'; $custMod = 'wallet';
+                } elseif ($hasTourism) {
+                    $custDept = 'tourism';
+                    if ($c->flight_bookings_count > 0) {
+                        $custMod = 'flight';
+                    } elseif ($c->hajj_umra_bookings_count > 0) {
+                        $custMod = 'hajj_umra';
                     } else {
-                        if ($c->bus_bookings_count > 0) {
-                            $custDept = 'office';
-                            $custMod = 'bus';
-                        } elseif ($c->fawry_transactions_count > 0) {
-                            $custDept = 'office';
-                            $custMod = 'fawry';
-                        } elseif ($c->online_transactions_count > 0) {
-                            $custDept = 'office';
-                            $custMod = 'online';
-                        } elseif ($c->wallet_transactions_count > 0) {
-                            $custDept = 'office';
-                            $custMod = 'wallet';
-                        }
+                        $custMod = 'visa';
                     }
-                } else {
-                    // Account module_type gave us the department, but we can still refine
-                    // the module from booking counts if the module is still 'general'.
-                    if ($custMod === 'general') {
-                        if ($custDept === 'office') {
-                            if ($c->bus_bookings_count > 0) { $custMod = 'bus'; }
-                            elseif ($c->fawry_transactions_count > 0) { $custMod = 'fawry'; }
-                            elseif ($c->online_transactions_count > 0) { $custMod = 'online'; }
-                            elseif ($c->wallet_transactions_count > 0) { $custMod = 'wallet'; }
-                        } elseif ($custDept === 'tourism') {
-                            if ($c->flight_bookings_count > 0) { $custMod = 'flight'; }
-                            elseif ($c->hajj_umra_bookings_count > 0) { $custMod = 'hajj_umra'; }
-                            elseif ($c->visa_bookings_count > 0) { $custMod = 'visa'; }
-                        }
-                    }
+                } elseif ($hasBus) {
+                    $custDept = 'office'; $custMod = 'bus';
+                } elseif ($hasFawry) {
+                    $custDept = 'office'; $custMod = 'fawry';
+                } elseif ($hasOnline) {
+                    $custDept = 'office'; $custMod = 'online';
+                } elseif ($hasWallet) {
+                    $custDept = 'office'; $custMod = 'wallet';
                 }
 
                 if ($department && $custDept !== $department) {
@@ -704,6 +665,85 @@ class FinancialReportService
                     'account_id' => $c->account_id,
                     'statement_url' => $c->account_id ? "/finance/account-statement/{$c->account_id}" : null,
                 ];
+            }
+        }
+
+        // 1b. WALK-IN FAWRY CLIENTS (no Customer record; client_id IS NULL).
+        //
+        // These are Fawry transactions where the operator skipped the
+        // customer dropdown at creation time. The debt is sourced from
+        // `fawry_transactions` columns (selling_price − amount) grouped by
+        // client_name — the same source of truth used by
+        // FawryTransactionController::customerBalances.
+        //
+        // The unified walk-in AR account ("ذمم عملاء فوري غير مسجلين")
+        // holds the GL mirror but per-client breakdown is not enforceable
+        // through the GL alone (one account → many client_names). So we
+        // join the two: report uses the columns for per-client balance,
+        // GL account is referenced for printing/statement.
+        if ($entityType === 'all' || $entityType === 'walkin_fawry') {
+            $walkInIncluded = ($department === null || $department === 'office')
+                && ($module === null || $module === 'fawry');
+
+            if ($walkInIncluded) {
+                $walkInQuery = DB::table('fawry_transactions')
+                    ->whereNull('client_id')
+                    ->select('client_name')
+                    ->selectRaw('COALESCE(SUM(selling_price), 0) as total_sales')
+                    ->selectRaw('COALESCE(SUM(amount), 0) as total_paid')
+                    ->selectRaw('COALESCE(SUM(selling_price - amount), 0) as balance')
+                    ->selectRaw('COUNT(*) as tx_count')
+                    ->selectRaw('MAX(created_at) as last_tx')
+                    ->groupBy('client_name')
+                    ->havingRaw('SUM(selling_price - amount) > 0.005');
+
+                if ($search) {
+                    $walkInQuery->where('client_name', 'like', '%'.$search.'%');
+                }
+
+                // Resolve the walk-in AR account lazily (creates it on first use)
+                $walkInArAccountId = null;
+                if (class_exists(\App\Services\Finance\LedgerClearingAccounts::class)) {
+                    try {
+                        $walkInArAccountId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+                            ->fawryWalkInArAccountId();
+                    } catch (\Throwable $e) {
+                        // Account creation deferred — fall back to null
+                        $walkInArAccountId = null;
+                    }
+                }
+
+                foreach ($walkInQuery->get() as $w) {
+                    $balance = (float) $w->balance;
+                    if ($balance == 0.0) {
+                        continue;
+                    }
+
+                    $dir = $balance > 0 ? 'receivables' : 'payables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => 'walkin_fawry_'.md5((string) $w->client_name),
+                        'name' => (string) $w->client_name,
+                        'phone' => '—',
+                        'entity_type' => 'walkin_fawry',
+                        'entity_type_label' => 'عميل فوري غير مسجل',
+                        'department' => 'office',
+                        'department_label' => 'قسم مكتب',
+                        'module' => 'fawry',
+                        'module_label' => 'فوري',
+                        'balance' => $balance,
+                        'currency' => 'EGP',
+                        'account_id' => $walkInArAccountId,
+                        'statement_url' => '/fawry/customer-balances?search='.urlencode((string) $w->client_name),
+                        'walk_in' => true,
+                        'tx_count' => (int) $w->tx_count,
+                        'total_sales' => (float) $w->total_sales,
+                        'total_paid' => (float) $w->total_paid,
+                    ];
+                }
             }
         }
 

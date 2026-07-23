@@ -381,6 +381,8 @@ import {
   Landmark,
 } from 'lucide-vue-next';
 
+import { filterSettlementAccountsByCurrency } from '@/composables/useTreasuryAccountGroups';
+
 import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
@@ -401,7 +403,8 @@ const settlementCategoryChips = [
 ];
 
 const filteredAccounts = computed(() => {
-  const accounts = store.accounts || [];
+  const currency = booking.value?.pricing?.currency || booking.value?.currency || 'EGP';
+  const accounts = filterSettlementAccountsByCurrency(store.accounts || [], currency);
   if (settlementCategoryUi.value === 'cash') {
     return accounts.filter(a => a.type === 'cashbox' || a.type === 'treasury');
   }

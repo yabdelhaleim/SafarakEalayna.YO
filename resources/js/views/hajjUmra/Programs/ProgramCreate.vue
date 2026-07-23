@@ -205,6 +205,8 @@ const form = ref({
 });
 
 const saveProgram = async () => {
+  if (isSaving.value) return;
+
   isSaving.value = true;
   errorMessage.value = '';
   try {

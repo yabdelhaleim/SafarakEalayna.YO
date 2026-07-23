@@ -1181,6 +1181,26 @@
                       >
                         لا يوجد حساب من هذا النوع. غيّر التصنيف أعلاه أو أنشئ حساباً مطابقاً من Filament.
                       </p>
+                      <!-- 2026-07-23 (الطلب الثاني): تنبيه عند عدم وجود خزينة بعملة الحجز.
+                           بعد الفلترة الصارمة، الـ dropdown لا يعرض إلا الحسابات بنفس عملة الحجز. -->
+                      <p
+                        v-else-if="!bookingCurrencyHasMatchingAccount && form.currency && form.currency !== 'EGP'"
+                        class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100/95"
+                      >
+                        ⚠️ لا توجد أي خزينة/بنك/محفظة نشطة بعملة
+                        <span class="font-bold">{{ form.currency }}</span>
+                        في الحسابات المتاحة لشعبة الطيران. يجب إنشاء حساب جديد بنفس عملة الحجز قبل المتابعة —
+                        الدفع يجب أن يكون بنفس عملة الحجز (مثلاً دينار كويتي لحجز دينار كويتي).
+                        <a
+                          :href="adminFilamentBankAccountsUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 font-bold text-amber-200 transition hover:border-amber-400/40 hover:bg-amber-500/15"
+                        >
+                          <Landmark class="h-3.5 w-3.5" />
+                          أنشئ حساباً جديداً من Filament
+                        </a>
+                      </p>
 
                       <div
                         v-if="selectedSettlementAccount"
@@ -2792,16 +2812,48 @@ const profitMarginOnSale = computed(() => {
   return (calculatedProfit.value / s) * 100;
 });
 
-/** حسابات التصنيف الحالي (محافظ فعلية بأرقامها، أو بنوك، أو خزائن). */
+/**
+ * حسابات التصنيف الحالي (محافظ فعلية بأرقامها، أو بنوك، أو خزائن).
+ *
+ * 2026-07-23 (الطلب الثاني): فلترة صارمة بعملة الحجز.
+ *   - حجز EGP  → الحسابات EGP فقط.
+ *   - حجز KWD  → الحسابات KWD فقط.
+ *   - حجز SAR  → الحسابات SAR فقط.
+ *   - وهكذا…
+ * إذا لم يُحدَّد `form.currency` بعد (الحجز لم يُدخل بعد) → لا نُصفّي بحسب العملة
+ * ليبقى المستخدم قادراً على رؤية الحسابات المتاحة لتعبئة الحقول الأخرى.
+ */
 const settlementPickerOptions = computed(() => {
   const types = SETTLEMENT_CATEGORY_TYPES[settlementCategoryUi.value];
   if (!types?.length) return [];
   const want = new Set(types);
-  const rows = settlementAccounts.value.filter(
-    (a) => a.is_active !== false && want.has(normalizeAccountType(a.type)),
-  );
+  const bookingCcy = String(form.value.currency || '').toUpperCase();
+
+  const rows = settlementAccounts.value.filter((a) => {
+    if (a.is_active === false) return false;
+    if (!want.has(normalizeAccountType(a.type))) return false;
+    // فلترة بعملة الحجز (إلا إذا لم تُحدَّد بعد، نُظهر الكل لتسهيل التعبئة).
+    if (bookingCcy && String(a.currency || '').toUpperCase() !== bookingCcy) {
+      return false;
+    }
+    return true;
+  });
   return [...rows].sort((a, b) =>
     String(a.name || '').localeCompare(String(b.name || ''), 'ar', { sensitivity: 'base' }),
+  );
+});
+
+/**
+ * 2026-07-23: هل توجد أي خزينة/بنك/محفظة بنفس عملة الحجز الحالية؟
+ * يُستخدم لإظهار رسالة "لا يوجد حساب بعملة KWD" مع رابط Filament لإنشاء حساب.
+ */
+const bookingCurrencyHasMatchingAccount = computed(() => {
+  const bookingCcy = String(form.value.currency || '').toUpperCase();
+  if (!bookingCcy || bookingCcy === 'EGP') return true; // EGP دائماً متاح في الخزائن
+  return settlementAccounts.value.some(
+    (a) =>
+      a.is_active !== false &&
+      String(a.currency || '').toUpperCase() === bookingCcy,
   );
 });
 

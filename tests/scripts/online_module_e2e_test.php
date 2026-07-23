@@ -17,6 +17,7 @@ require __DIR__ . '/../../vendor/autoload.php';
 $app = require __DIR__ . '/../../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
+use App\Enums\AccountType;
 use App\Enums\OnlineTransactionStatus;
 use App\Models\Account;
 use App\Models\AccountEntry;
@@ -31,6 +32,159 @@ use App\Services\Online\OnlineServiceProviderService;
 use App\Services\Online\OnlineServiceTypeService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+
+/**
+ * Idempotent fixture loader. Ensures the master data the scenarios below
+ * rely on exists BEFORE the scenarios run. Each helper checks first and
+ * only creates when missing — re-running the script will not duplicate
+ * rows. Fixtures are tagged with very specific names so they don't
+ * collide with production data.
+ */
+function ensureUser(): User
+{
+    $user = User::first();
+    if ($user) {
+        return $user;
+    }
+
+    return User::create([
+        'name' => 'E2E Test User',
+        'email' => 'e2e-online@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+        'is_active' => true,
+    ]);
+}
+
+function ensureServiceType(string $code, string $nameAr, string $nameEn): OnlineServiceType
+{
+    $type = OnlineServiceType::where('code', $code)->first();
+    if ($type) {
+        return $type;
+    }
+
+    return OnlineServiceType::create([
+        'code' => $code,
+        'name_ar' => $nameAr,
+        'name_en' => $nameEn,
+        'is_active' => true,
+        'order' => 0,
+        'color' => '#7c3aed',
+        'icon' => 'globe',
+    ]);
+}
+
+function ensureProvider(string $code, string $nameAr, string $nameEn, ?int $defaultPurchaseAccountId = null): OnlineServiceProvider
+{
+    $provider = OnlineServiceProvider::where('code', $code)->first();
+    if ($provider) {
+        return $provider;
+    }
+
+    return OnlineServiceProvider::create([
+        'code' => $code,
+        'name_ar' => $nameAr,
+        'name_en' => $nameEn,
+        'is_active' => true,
+        'order' => 0,
+        'color' => '#10b981',
+        'icon' => 'building',
+        'default_purchase_account_id' => $defaultPurchaseAccountId,
+    ]);
+}
+
+function ensureCashbox(string $name, string $moduleType = 'office', string $currency = 'EGP'): Account
+{
+    // Per Account::saving hook + AccountModuleContract:
+    //   Liquidity accounts (cashbox/wallet/bank) MUST have module_type
+    //   set to a DIVISION ('office' or 'tourism'), NOT a specific module.
+    //   That is the canonical Phase 5+ setup. The OnlineLiquidityAccount
+    //   rule still accepts these vaults in the Online dropdown because
+    //   'online' is part of the Office division.
+    //
+    //   If you want a dedicated "online-only" cashbox, mark it as
+    //   `module_type='office'` and use `is_module_vault=true` with a
+    //   recognizable name. Trying to set module_type='online' on a
+    //   liquidity account will throw InvalidArgumentException at save.
+    $validDivisions = ['office', 'tourism'];
+    if (! in_array($moduleType, $validDivisions, true)) {
+        throw new \InvalidArgumentException(
+            "Liquidity account '{$name}' must use a DIVISION module_type "
+            ."(office/tourism), not '{$moduleType}'. The OnlineLiquidityAccount "
+            .'rule resolves division vaults into the Online dropdown automatically.'
+        );
+    }
+
+    $acc = Account::where('name', $name)->first();
+    if ($acc) {
+        return $acc;
+    }
+
+    return Account::create([
+        'name' => $name,
+        'type' => AccountType::Cashbox,
+        'balance' => 0,
+        'currency' => $currency,
+        'is_active' => true,
+        'owner_type' => Account::OWNER_TYPE_OWNER,
+        'module_type' => $moduleType,
+        'is_module_vault' => false,
+    ]);
+}
+
+function ensureCustomer(string $phone, string $name): Customer
+{
+    $customer = Customer::where('phone', $phone)->first();
+    if ($customer) {
+        return $customer;
+    }
+
+    return Customer::create([
+        'full_name' => $name,
+        'phone' => $phone,
+        'type' => 'individual',
+        'module_type' => 'online',
+        'status' => 'active',
+    ]);
+}
+
+// ----- Bootstrap fixtures (idempotent) -----
+$testUser = ensureUser();
+Auth::loginUsingId($testUser->id);
+$txService = app(OnlineTransactionService::class);
+$providerService = app(OnlineServiceProviderService::class);
+$typeService = app(OnlineServiceTypeService::class);
+
+$stampsType = ensureServiceType('stamps', 'طوابع', 'Stamps');
+$visasType = ensureServiceType('visas_online', 'تأشيرات Online', 'Visas Online');
+$trainingType = ensureServiceType('training_courses', 'دورات تدريبية', 'Training Courses');
+
+// All cashboxes below use module_type='office' (the Office division).
+// The OnlineLiquidityAccount rule + OnlineSettingsController::accounts()
+// resolve division vaults into the Online dropdown automatically — there's
+// no need to mark them as 'online' (Phase 5+ contract).
+$cashbox = ensureCashbox('خزينة الخدمات الإلكترونية النقدية', 'office', 'EGP');
+$usdCashbox = ensureCashbox('خزينة الخدمات الإلكترونية الدولارية', 'office', 'USD');
+$officeCashbox = ensureCashbox('خزينة المكتب الموحدة', 'office', 'EGP');
+
+$momtazProvider = ensureProvider('momtaz', 'ممتاز', 'Momtaz', $cashbox->id);
+$etidalProvider = ensureProvider('etidal', 'اعتدال', 'Etidal', $cashbox->id);
+
+$customerA = ensureCustomer('01620020001', 'عميل A - تجريبي');
+$customerB = ensureCustomer('01620020002', 'عميل B - تجريبي');
+$customerC = ensureCustomer('01620020003', 'عميل C - تجريبي');
+
+echo "Test data (idempotent fixtures):\n";
+echo "  Service types: stamps=#{$stampsType->id}, visas=#{$visasType->id}, training=#{$trainingType->id}\n";
+echo "  Providers: momtaz=#{$momtazProvider->id}, etidal=#{$etidalProvider->id}\n";
+echo "  Cashbox: EGP=#{$cashbox->id}, USD=#{$usdCashbox->id}, Office=#{$officeCashbox->id}\n";
+echo "  Customers: A=#{$customerA->id}, B=#{$customerB->id}, C=#{$customerC->id}\n";
+echo "\n";
+
+// (The legacy Auth::loginUsingId + test data lookup block below is kept
+// for backward compatibility — it now resolves to the same fixtures we
+// just ensured exist.)
+Auth::loginUsingId($testUser->id);
 
 $results = [];
 $failures = [];
@@ -65,31 +219,6 @@ function assertFloat(string $name, float $expected, float $actual, float $epsilo
         fail($name, "expected={$expected} actual={$actual}");
     }
 }
-
-Auth::loginUsingId(1);
-$txService = app(OnlineTransactionService::class);
-$providerService = app(OnlineServiceProviderService::class);
-$typeService = app(OnlineServiceTypeService::class);
-
-// Test data
-$stampsType = OnlineServiceType::where('code', 'stamps')->first();
-$visasType = OnlineServiceType::where('code', 'visas_online')->first();
-$trainingType = OnlineServiceType::where('code', 'training_courses')->first();
-$momtazProvider = OnlineServiceProvider::where('code', 'momtaz')->first();
-$etidalProvider = OnlineServiceProvider::where('code', 'etidal')->first();
-$cashbox = Account::where('name', 'خزينة الخدمات الإلكترونية النقدية')->first();
-$usdCashbox = Account::where('name', 'خزينة الخدمات الإلكترونية الدولارية')->first();
-$officeCashbox = Account::find(1);
-$customerA = Customer::where('phone', '01620020001')->first();
-$customerB = Customer::where('phone', '01620020002')->first();
-$customerC = Customer::where('phone', '01620020003')->first();
-
-echo "Test data:\n";
-echo "  Service types: stamps=#{$stampsType->id}, visas=#{$visasType->id}\n";
-echo "  Providers: momtaz=#{$momtazProvider->id}, etidal=#{$etidalProvider->id}\n";
-echo "  Cashbox: #{$cashbox->id} balance={$cashbox->balance}\n";
-echo "  Customers: A=#{$customerA->id}, B=#{$customerB->id}\n";
-echo "\n";
 
 // =====================================================================
 // SCENARIO 1: Completed online transaction with provider (default_purchase_account_id = cashbox)
@@ -294,8 +423,11 @@ assertFloat('S7.4 Profit recomputed = 900', 900.00, (float) $updatedTx->profit);
 section('SCENARIO 8: Service type CRUD via service');
 
 try {
+    // Use a unique suffix per run so the scenario is idempotent even
+    // when run repeatedly against the same DB.
+    $uniqueCode = 'extra_service_' . substr(md5(uniqid('', true)), 0, 8);
     $newType = $typeService->create([
-        'code' => 'extra_service',
+        'code' => $uniqueCode,
         'name_ar' => 'خدمة اختبارية',
         'name_en' => 'Test Service',
         'color' => '#FF00FF',
@@ -303,7 +435,7 @@ try {
         'is_active' => 1,
         'order' => 99,
     ]);
-    ok('S8.1 Service type created', "id={$newType->id}");
+    ok('S8.1 Service type created', "id={$newType->id} code={$uniqueCode}");
     $typeService->update($newType, ['name_ar' => 'خدمة اختبارية معدلة']);
     $newType->refresh();
     if ($newType->name_ar === 'خدمة اختبارية معدلة') ok('S8.2 Service type updated');
@@ -321,8 +453,10 @@ try {
 section('SCENARIO 9: Provider CRUD via service');
 
 try {
+    // Unique suffix per run — same idempotency trick as S8.
+    $uniqueCode = 'test_provider_' . substr(md5(uniqid('', true)), 0, 8);
     $newProvider = $providerService->create([
-        'code' => 'test_provider',
+        'code' => $uniqueCode,
         'name_ar' => 'مزود اختبار',
         'name_en' => 'Test Provider',
         'color' => '#00FFFF',
@@ -331,7 +465,7 @@ try {
         'is_active' => 1,
         'order' => 99,
     ]);
-    ok('S9.1 Provider created', "id={$newProvider->id}");
+    ok('S9.1 Provider created', "id={$newProvider->id} code={$uniqueCode}");
     $providerService->update($newProvider, ['name_ar' => 'مزود اختبار معدل']);
     $newProvider->refresh();
     if ($newProvider->name_ar === 'مزود اختبار معدل') ok('S9.2 Provider updated');

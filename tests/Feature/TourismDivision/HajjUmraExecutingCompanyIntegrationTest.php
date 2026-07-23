@@ -147,8 +147,14 @@ class HajjUmraExecutingCompanyIntegrationTest extends TourismTestCase
         $this->assertNotNull($tx, 'withdraw transaction exists');
         $this->assertTransactionBalanced($tx, 'withdraw transfer');
 
-        // And the supplier account ledger-net reflects the withdrawal
+        // Account.balance uses credit - debit. The business-facing due is its inverse.
         $this->assertAccountLedgerConsistent($company->account_id, 'EC after withdraw');
+        $this->assertEqualsWithDelta(
+            -1 * (float) $company->fresh()->account->balance,
+            $this->supplierNetDue($company->account_id),
+            0.02,
+            'EC net_due follows the inverse of the stored ledger balance'
+        );
     }
 
     public function test_repay_rejects_when_cashbox_balance_insufficient(): void
@@ -316,8 +322,14 @@ class HajjUmraExecutingCompanyIntegrationTest extends TourismTestCase
         $credit = (float) AccountEntry::query()->whereNotNull('transaction_id')->sum('credit');
         $this->assertEqualsWithDelta($debit, $credit, 0.02, 'global double-entry holds after EC cycle');
 
-        // The EC's account ledger-net equals its stored balance
+        // The EC's stored ledger balance uses credit - debit.
         $accountId = $company->fresh()->account_id;
         $this->assertAccountLedgerConsistent($accountId, 'EC account after cycle');
+        $this->assertEqualsWithDelta(
+            -1 * (float) Account::findOrFail($accountId)->balance,
+            $this->supplierNetDue($accountId),
+            0.02,
+            'EC due remains the inverse of its stored ledger balance'
+        );
     }
 }

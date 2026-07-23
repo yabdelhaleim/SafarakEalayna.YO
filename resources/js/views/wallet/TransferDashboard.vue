@@ -181,7 +181,12 @@
                     @click="$router.push({ name: 'wallet.show', params: { id: tx.id } })"
                   >
                     <td class="px-5 py-3.5">
-                      <p class="font-bold text-white/90 text-sm">{{ tx.client_name || '—' }}</p>
+                      <!--
+                        Backend returns WalletTransaction models directly; the field
+                        on the model is `customer_name` (NOT `client_name`).
+                        Some callers still expect `client_name`, so we accept both.
+                      -->
+                      <p class="font-bold text-white/90 text-sm">{{ tx.customer_name || tx.client_name || '—' }}</p>
                     </td>
                     <td class="px-5 py-3.5">
                       <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/5 text-white/60">

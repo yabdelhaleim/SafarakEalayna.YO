@@ -362,7 +362,7 @@
           >
             <option value="">اختر الحساب</option>
             <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
-              {{ formatSettlementOption(acc) }}
+              {{ formatSettlementOption(acc) }}{{ acc.is_module_vault ? ' ⭐ الخزنة الموحدة' : '' }}
             </option>
           </select>
           <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-1">
@@ -683,8 +683,39 @@ const onPaymentMethodChange = () => {
   const method = selectedPaymentMethod.value;
   if (method?.defaultAccountId) {
     form.value.account_id = method.defaultAccountId;
+  } else {
+    autoSelectOfficeVault();
   }
 };
+
+/**
+ * Auto-select the office-division unified vault (`is_module_vault=true`)
+ * as the default settlement account. The operator can still override
+ * it from the dropdown, but with the unified office treasury the
+ * vault is the canonical default for the whole department.
+ *
+ * Behaviour:
+ *  - Skips if the user already picked an account (avoid stealing their choice).
+ *  - Falls back to the first settled account if no vault is configured.
+ *  - Syncs the chip category (cash / wallet / bank) to match the vault type.
+ */
+function autoSelectOfficeVault() {
+  if (form.value.account_id) return;
+  if (!settlementAccounts.value.length) return;
+
+  const vault = settlementAccounts.value.find((a) => a.is_module_vault);
+  const target = vault || settlementAccounts.value[0];
+
+  form.value.account_id = target.id;
+
+  if (target.type === 'cashbox' || target.type === 'treasury') {
+    settlementCategoryUi.value = 'cash';
+  } else if (target.type === 'wallet') {
+    settlementCategoryUi.value = 'wallet';
+  } else if (target.type === 'bank') {
+    settlementCategoryUi.value = 'bank';
+  }
+}
 
 const loadSettlementAccounts = async () => {
   try {
@@ -760,6 +791,11 @@ onMounted(async () => {
     loadSettlementAccounts(),
     store.fetchMachines({ is_active: 1 }),
   ]);
+
+  // Default to the office-division unified vault so the operator doesn't
+  // have to pick from 17 accounts every time. The form is still editable
+  // — they can override from the dropdown if needed.
+  autoSelectOfficeVault();
 });
 
 onActivated(() => {

@@ -195,11 +195,13 @@ const routes = [
             path: 'create',
             name: 'hajj.programs.create',
             component: () => import('@/views/hajjUmra/Programs/ProgramCreate.vue'),
+            meta: { title: 'إنشاء برنامج جديد', noKeepAlive: true },
           },
           {
             path: ':id/edit',
             name: 'hajj.programs.edit',
             component: () => import('@/views/hajjUmra/Programs/ProgramEdit.vue'),
+            meta: { title: 'تعديل البرنامج', noKeepAlive: true },
           },
         ],
       },

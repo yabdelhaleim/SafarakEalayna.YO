@@ -3,6 +3,7 @@
 namespace App\Services\Online;
 
 use App\Enums\AccountType;
+use App\Enums\CustomerType;
 use App\Enums\OnlineTransactionStatus;
 use App\Enums\TransactionModule;
 use App\Models\Account;
@@ -105,6 +106,13 @@ class OnlineTransactionService
                     ? OnlineServiceProvider::find($data['provider_id'])
                     : null;
 
+                // If no customer_id was passed but a name was typed, try to
+                // attach to an existing customer or auto-create a new one
+                // scoped to the Online module. This guarantees every Online
+                // transaction is linked to a Customer record so debt can be
+                // tracked and the customer surfaces in the module's list.
+                $data = $this->ensureCustomerIsLinked($data);
+
                 [$customerName, $customerPhone] = $this->resolveCustomerNameAndPhone($data);
 
                 $purchase = (float) $data['purchase_price'];
@@ -181,6 +189,13 @@ class OnlineTransactionService
     {
         try {
             return DB::transaction(function () use ($tx, $data) {
+                // Capture pre-update values for the account/customer so we can
+                // pass them to repostCashPaymentTransaction(). After $tx->fill()
+                // runs, getOriginal() will return the pre-update values anyway,
+                // but capturing them here is cleaner and avoids subtle bugs.
+                $originalAccountId = (int) $tx->account_id;
+                $originalCustomerId = (int) ($tx->customer_id ?? 0);
+
                 if (array_key_exists('customer_id', $data) || array_key_exists('customer_name', $data) || array_key_exists('customer_phone', $data)) {
                     [$customerName, $customerPhone] = $this->resolveCustomerNameAndPhone(array_merge(
                         $tx->only(['customer_id', 'customer_name', 'customer_phone']),
@@ -198,6 +213,10 @@ class OnlineTransactionService
                     && (float) $data['purchase_price'] !== (float) $tx->purchase_price;
                 $amountPaidChanged = array_key_exists('amount_paid', $data)
                     && (float) $data['amount_paid'] !== (float) $tx->amount_paid;
+                $accountChanged = array_key_exists('account_id', $data)
+                    && (int) $data['account_id'] !== $originalAccountId;
+                $customerChanged = array_key_exists('customer_id', $data)
+                    && (int) $data['customer_id'] !== $originalCustomerId;
 
                 if ($sellingChanged || $purchaseChanged) {
                     $purchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
@@ -220,7 +239,11 @@ class OnlineTransactionService
                 // non-Completed transactions since postFinancialEntries
                 // never posted anything for them in the first place.
                 if ($tx->status === OnlineTransactionStatus::Completed) {
-                    if ($sellingChanged) {
+                    // If account or customer changed, the income (AR) and
+                    // expense (provider default account) destination may have
+                    // moved too. We MUST reverse the old entries and repost
+                    // to the new destinations.
+                    if ($sellingChanged || $accountChanged || $customerChanged) {
                         $newSelling = (float) ($data['selling_price'] ?? $tx->selling_price);
                         $newIncome = $this->repostIncomeTransaction($tx, $newSelling);
                         if ($newIncome) {
@@ -242,9 +265,14 @@ class OnlineTransactionService
                         }
                     }
 
-                    if ($amountPaidChanged) {
+                    if ($amountPaidChanged || $accountChanged || $customerChanged) {
                         $newAmountPaid = (float) ($data['amount_paid'] ?? $tx->amount_paid);
-                        $this->repostCashPaymentTransaction($tx, $newAmountPaid);
+                        $this->repostCashPaymentTransaction(
+                            $tx,
+                            $newAmountPaid,
+                            $originalAccountId,
+                            $originalCustomerId ?: null,
+                        );
                     }
                 }
 
@@ -253,6 +281,8 @@ class OnlineTransactionService
                     'selling_changed' => $sellingChanged,
                     'purchase_changed' => $purchaseChanged,
                     'amount_paid_changed' => $amountPaidChanged,
+                    'account_changed' => $accountChanged,
+                    'customer_changed' => $customerChanged,
                     'updated_by' => Auth::id(),
                 ]);
 
@@ -379,7 +409,7 @@ class OnlineTransactionService
     }
 
     /**
-     * Repost the cash payment transaction when amount_paid changes.
+     * Repost the cash payment transaction when amount_paid or account_id changes.
      *
      * The cash payment is the OPTIONAL second income transaction created
      * in `postFinancialEntries` when `customer_id` is set AND `amount_paid > 0`.
@@ -393,24 +423,59 @@ class OnlineTransactionService
      * in the from/to direction, NOT in the `type` column. So we must
      * filter by the account pair, not by `type`.)
      *
+     * Account-swap edge case: if the user edits the transaction and chooses
+     * a new vault (account_id changed), the old transfer was posted with
+     * the OLD pair (customer → oldAccount). A naive equality filter on
+     * the NEW to_account_id would miss it, leaving the old transfer
+     * un-reversed and corrupting the GL. We therefore search by EITHER
+     * the previous or the new (old/new is captured via $original attributes).
+     *
      * Handles all 4 transitions (X→Y where X and Y can be 0):
      *   X>0, Y>0: reverse old + create new
      *   X>0, Y=0: reverse old only
      *   X=0, Y>0: create new only
      *   X=0, Y=0: no-op
      */
-    protected function repostCashPaymentTransaction(OnlineTransaction $tx, float $newAmountPaid): void
-    {
+    protected function repostCashPaymentTransaction(
+        OnlineTransaction $tx,
+        float $newAmountPaid,
+        ?int $oldAccountId = null,
+        ?int $oldCustomerId = null,
+    ): void {
         if (! $tx->customer_id) {
             return; // Cash payment only exists for customer-based transactions
         }
 
         $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
 
+        // Build the candidate set of (from_account, to_account) pairs the
+        // cash-payment transfer could have been posted with. We must check
+        // both the OLD pair (in case the user swapped vault or customer)
+        // AND the NEW pair (in case customer/vault switched).
+        $oldVaultId = $oldAccountId ?? $tx->account_id;
+        $oldCustomerAccountId = $oldCustomerId
+            ? ($this->ensureCustomerAccount($oldCustomerId)->id ?? $customerAccount->id)
+            : $customerAccount->id;
+
+        $candidatePairs = [
+            ['from' => $oldCustomerAccountId, 'to' => $oldVaultId],
+            ['from' => $customerAccount->id, 'to' => $tx->account_id],
+        ];
+
+        // Fetch any cash-payment transfers posted on this transaction that
+        // match one of the candidate pairs. We use OR-where on the pair
+        // to handle the swap case.
         $cashPaymentTx = Transaction::where('related_type', OnlineTransaction::class)
             ->where('related_id', $tx->id)
-            ->where('from_account_id', $customerAccount->id)
-            ->where('to_account_id', $tx->account_id)
+            ->where(function ($q) use ($candidatePairs) {
+                foreach ($candidatePairs as $pair) {
+                    $q->orWhere(function ($inner) use ($pair) {
+                        $inner->where('from_account_id', $pair['from'])
+                            ->where('to_account_id', $pair['to']);
+                    });
+                }
+            })
+            ->orderBy('id', 'asc')
             ->first();
 
         if ($cashPaymentTx) {
@@ -637,5 +702,75 @@ class OnlineTransactionService
         }
 
         return [$name ?? '', $phone];
+    }
+
+    /**
+     * Ensure every Online transaction is linked to a Customer record.
+     *
+     * Flow:
+     *  1. If `customer_id` is provided → use it as-is.
+     *  2. Else if a free-text `customer_name` is provided:
+     *     a. Try to match an existing Customer by phone (if supplied) OR
+     *        by exact full_name match — to avoid duplicating an existing
+     *        customer when the user types a name that already exists.
+     *     b. If no match is found, create a new Customer scoped to the
+     *        Online module (`module_type='online'`).
+     *     c. Mutate `$data` so the downstream code sees the resolved
+     *        `customer_id` and the persisted customer record is created
+     *        inside the same DB transaction.
+     *
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    private function ensureCustomerIsLinked(array $data): array
+    {
+        if (! empty($data['customer_id'])) {
+            return $data;
+        }
+
+        $name = isset($data['customer_name']) ? trim((string) $data['customer_name']) : '';
+        $phone = isset($data['customer_phone']) ? trim((string) $data['customer_phone']) : '';
+
+        if ($name === '') {
+            return $data;
+        }
+
+        // Match by phone first (more reliable), then by exact name.
+        $existing = null;
+        if ($phone !== '') {
+            $existing = Customer::query()
+                ->where('phone', $phone)
+                ->first();
+        }
+        if (! $existing) {
+            $existing = Customer::query()
+                ->where('full_name', $name)
+                ->first();
+        }
+
+        if ($existing) {
+            $data['customer_id'] = $existing->id;
+            // Backfill module_type if it's missing — keeps the customer
+            // visible in the Online module list going forward.
+            if (empty($existing->module_type)) {
+                $existing->module_type = 'online';
+                $existing->save();
+            }
+            return $data;
+        }
+
+        // No match → create a fresh Customer scoped to this module.
+        $customer = Customer::create([
+            'full_name' => $name,
+            'phone' => $phone ?: null,
+            'type' => CustomerType::Individual->value,
+            'module_type' => 'online',
+            'status' => 'active',
+            'created_by' => Auth::id(),
+        ]);
+
+        $data['customer_id'] = $customer->id;
+
+        return $data;
     }
 }

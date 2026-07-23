@@ -263,13 +263,31 @@ class WalletTransactionController extends Controller
                     ];
                 }
             } else {
-                // Walk-in client fallback
-                $txs = WalletTransaction::query()
-                    ->with(['walletAccount', 'employee'])
-                    ->whereNull('customer_id')
-                    ->where('customer_name', $clientName)
-                    ->orderBy('created_at', 'asc')
-                    ->get();
+                // ── Fallback path ─────────────────────────────────────────────
+                // Two cases fall through here:
+                //   (A) Walk-in clients — `customer_id IS NULL` and matched by
+                //       free-form `customer_name`. (Original behaviour.)
+                //   (B) Registered customer whose `account_id` is null or points
+                //       at a deleted Account — `customer_id` is set but there is
+                //       no GL row to query. The previous implementation returned
+                //       an empty list, hiding every settlement/op. We now
+                //       fall back to WalletTransaction directly so the modal
+                //       still shows the customer history.
+                $txsQ = WalletTransaction::query()
+                    ->with(['walletAccount', 'employee']);
+
+                if ($customer) {
+                    // Registered customer without an account row — pull their wallet
+                    // tx by `customer_id` (covers the case where the customer was
+                    // linked at tx time but account was never linked back).
+                    $txsQ->where('customer_id', $customer->id);
+                } else {
+                    // True walk-in — `customer_id IS NULL`, matched by name.
+                    $txsQ->whereNull('customer_id')
+                        ->where('customer_name', $clientName);
+                }
+
+                $txs = $txsQ->orderBy('created_at', 'asc')->get();
 
                 foreach ($txs as $tx) {
                     $amountPaid = (float) $tx->amount_paid;

@@ -19,10 +19,12 @@ use Tests\TestCase;
  * Shared base for the Tourism-Division production test suite.
  *
  * Convention reminders:
- *  - Account::balance = SUM(debit) - SUM(credit) on its AccountEntry rows.
+ *  - Account::balance = SUM(credit) - SUM(debit) on its AccountEntry rows.
  *  - Customer AR > 0  ⇒ العميل عليه مديونية.
  *  - Customer AR < 0  ⇒ عندنا رصيد دائن للعميل.
- *  - Supplier AP > 0  ⇒ إحنا مديونين للمورّد.
+ *  - Supplier/Executing Company balance < 0 ⇒ إحنا مديونين له.
+ *  - Supplier/Executing Company net_due = SUM(debit) - SUM(credit)
+ *    (the business-facing amount due, equal to -Account::balance).
  *  - Liquidity accounts (cashbox/wallet/bank) MUST have module_type in
  *    {'office','tourism'}; subject accounts MUST have a specific module.
  *  - All API responses use `success` (not `status`) as the boolean flag.
@@ -93,8 +95,8 @@ abstract class TourismTestCase extends TestCase
                 AccountEntry::query()->create([
                     'account_id' => $account->id,
                     'transaction_id' => null,
-                    'debit' => $openingBalance,
-                    'credit' => 0.00,
+                    'debit' => 0.00,
+                    'credit' => $openingBalance,
                     'balance_after' => $openingBalance,
                     'notes' => 'رصيد افتتاحي',
                 ]);
@@ -143,16 +145,24 @@ abstract class TourismTestCase extends TestCase
     protected function assertAccountLedgerConsistent(int $accountId, string $context = ''): void
     {
         $entries = AccountEntry::query()->where('account_id', $accountId)->get();
-        $net = (float) $entries->sum('debit') - (float) $entries->sum('credit');
-        $expectedBalance = (float) Account::find($accountId)->balance;
+        $ledgerBalance = (float) $entries->sum('credit') - (float) $entries->sum('debit');
+        $storedBalance = (float) Account::findOrFail($accountId)->balance;
 
         $this->assertEqualsWithDelta(
-            $net,
-            $expectedBalance,
+            $ledgerBalance,
+            $storedBalance,
             0.02,
-            "Account #{$accountId}: stored balance {$expectedBalance} != ledger net {$net}. {$context}"
+            "Account #{$accountId}: stored balance {$storedBalance} != ledger balance {$ledgerBalance}. {$context}"
         );
     }
+
+    protected function supplierNetDue(int $accountId): float
+    {
+        $entries = AccountEntry::query()->where('account_id', $accountId)->get();
+
+        return (float) $entries->sum('debit') - (float) $entries->sum('credit');
+    }
+
 
     protected function assertCustomerBalance(Customer $customer, float $expected, string $context = ''): void
     {

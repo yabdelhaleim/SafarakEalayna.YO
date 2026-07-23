@@ -50,8 +50,8 @@
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
       <!-- Loading Skeleton -->
       <div v-if="loading && !data" class="space-y-8">
-        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
-          <div v-for="i in 5" :key="i" class="h-32 rounded-2xl bg-white/5 animate-pulse"></div>
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div v-for="i in 6" :key="i" class="h-32 rounded-2xl bg-white/5 animate-pulse"></div>
         </div>
         <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
           <div class="lg:col-span-2 h-80 rounded-2xl bg-white/5 animate-pulse"></div>
@@ -61,7 +61,7 @@
 
       <template v-else-if="data">
         <!-- KPI Cards -->
-        <section :class="['grid gap-5', isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2']">
+        <section :class="['grid gap-5', isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6' : 'grid-cols-1 sm:grid-cols-2']">
           <!-- Monthly Revenue -->
           <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 transition hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/10">
             <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition"></div>
@@ -146,7 +146,27 @@
               <p class="font-mono text-2xl font-black text-white tabular-nums">
                 {{ fmt(data.stats.customers_debt) }}
               </p>
-              <p class="text-[11px] text-white/30 mt-1">جنيه مصري</p>
+              <p class="text-[11px] text-white/30 mt-1">جنيه مصري — عملاء مسجّلون</p>
+            </div>
+          </div>
+
+          <!-- Walk-in Clients Debt (مديونيات غير مسجّلين) -->
+          <div v-if="isAdmin" class="group relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-6 transition hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/10">
+            <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/15 blur-2xl group-hover:bg-amber-500/25 transition"></div>
+            <div class="relative">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+                  <UserX class="h-5 w-5" />
+                </div>
+                <span v-if="Number(data.stats.walkin_clients_count || 0) > 0" class="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+                  {{ data.stats.walkin_clients_count }} عميل
+                </span>
+              </div>
+              <p class="text-xs font-bold uppercase tracking-wider text-amber-400/70 mb-1">مديونيات غير مسجّلين</p>
+              <p class="font-mono text-2xl font-black text-white tabular-nums">
+                {{ fmt(data.stats.walkin_debt) }}
+              </p>
+              <p class="text-[11px] text-white/30 mt-1">جنيه مصري — حساب «ذمم عملاء فوري غير مسجلين»</p>
             </div>
           </div>
         </section>
@@ -351,6 +371,7 @@ import {
   Users,
   AlertCircle,
   AlertTriangle,
+  UserX,
 } from 'lucide-vue-next';
 
 // Vault might not exist in older lucide — use Wallet as fallback

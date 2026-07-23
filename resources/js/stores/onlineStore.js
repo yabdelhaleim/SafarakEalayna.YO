@@ -126,6 +126,44 @@ export const useOnlineStore = defineStore('online', {
       }
     },
 
+    /**
+     * Quick-create a customer scoped to the Online (الخدمات الإلكترونية) module.
+     *
+     * Triggered by the "Add new customer" button on the Online transaction page
+     * when the customer the user is typing doesn't exist in the dropdown yet.
+     * After creation, the new customer is auto-appended to the local list so
+     * the dropdown reflects it immediately.
+     *
+     * @param {{full_name:string, phone?:string, email?:string}} payload
+     * @returns {Promise<{id:number,name:string,phone:?string,email:?string}>}
+     */
+    async createCustomer(payload) {
+      try {
+        const response = await axios.post('/api/v1/online/settings/customers', payload);
+        const created = ENVELOPE(response);
+        if (created) {
+          // Mirror the same shape as the customers list so the dropdown
+          // can render it without extra mapping.
+          this.customers.unshift({
+            id: created.id,
+            name: created.name,
+            phone: created.phone,
+            email: created.email,
+            module_type: 'online',
+          });
+        }
+        this.addToast('تم إضافة العميل بنجاح');
+        return created;
+      } catch (error) {
+        const detail = firstValidationMessage(error.response?.data?.errors);
+        this.addToast(
+          detail || error.response?.data?.message || 'فشل إنشاء العميل',
+          'error',
+        );
+        throw error;
+      }
+    },
+
     async fetchEmployees() {
       try {
         const response = await axios.get('/api/v1/online/settings/employees');

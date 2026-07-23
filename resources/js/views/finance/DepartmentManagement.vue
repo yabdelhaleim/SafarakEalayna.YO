@@ -255,6 +255,7 @@
               <template v-else>
                 <option value="bus_company">شركات باصات</option>
                 <option value="supplier">موردون / شركات</option>
+                <option value="walkin_fawry">عملاء فوري غير مسجّلين</option>
               </template>
             </select>
           </div>
@@ -274,11 +275,30 @@
               <tbody>
                 <tr v-for="item in filteredReceivables" :key="`rec-${item.entity_type}-${item.id}`">
                   <td>
-                    <div class="font-bold text-white">{{ item.name }}</div>
+                    <div class="flex items-center gap-2">
+                      <div class="font-bold text-white">{{ item.name }}</div>
+                      <span
+                        v-if="item.walk_in || item.entity_type === 'walkin_fawry'"
+                        class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-400 border border-amber-500/20"
+                        title="عميل فوري غير مسجّل — مديونيته في حساب 'ذمم عملاء فوري غير مسجلين'"
+                      >
+                        غير مسجّل
+                      </span>
+                    </div>
                     <div class="text-[10px] text-muted">{{ item.department_label }}</div>
+                    <div v-if="item.entity_type === 'walkin_fawry' && item.tx_count" class="text-[10px] text-muted/70 mt-0.5">
+                      {{ item.tx_count }} معاملة — مبيعات {{ formatMoney(item.total_sales) }} — مدفوع {{ formatMoney(item.total_paid) }}
+                    </div>
                   </td>
                   <td>
-                    <span :class="['entity-badge', item.entity_type === 'customer' ? 'entity-badge--customer' : 'entity-badge--group']">
+                    <span
+                      :class="[
+                        'entity-badge',
+                        item.entity_type === 'customer' ? 'entity-badge--customer' :
+                        item.entity_type === 'walkin_fawry' ? 'entity-badge--walkin' :
+                        'entity-badge--group'
+                      ]"
+                    >
                       {{ item.entity_type_label }}
                     </span>
                   </td>
@@ -607,6 +627,7 @@ onBeforeUnmount(() => {
 .entity-badge--customer { background: rgba(212,168,67,.1); color: var(--gold, #d4a843); }
 .entity-badge--group { background: rgba(59,130,246,.1); color: #60a5fa; }
 .entity-badge--supplier { background: rgba(239,68,68,.1); color: #f87171; }
+.entity-badge--walkin { background: rgba(245,158,11,.1); color: #fbbf24; border: 1px solid rgba(245,158,11,.2); }
 .module-tag { display: inline-block; padding: 0.25rem 0.625rem; border-radius: 0.375rem; font-size: 0.6875rem; font-weight: 700; }
 .module-dot { width: 0.625rem; height: 0.625rem; border-radius: 50%; display: inline-block; }
 .module-dot--blue, .module-tag.module-dot--blue { background: rgba(59,130,246,.15); color: #60a5fa; }

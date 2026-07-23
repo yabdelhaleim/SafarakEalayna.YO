@@ -232,80 +232,101 @@ class TransactionService
     }
 
     /**
-     * Reverse a previously recorded income or expense transaction.
-     * Income reversal: debits (reduces) the to_account.
-     * Expense reversal: credits (increases) the from_account.
+     * Reverse a previously recorded transaction using its actual ledger legs.
+     *
+     * Reversal entries are append-only and swap each original leg's debit/credit
+     * values. Using the ledger legs instead of Transaction::amount preserves
+     * converted amounts for multi-currency transfers.
+     *
+     * Idempotent: a second (or further) call on an already-reversed transaction
+     * is a no-op that returns the original transaction unchanged. This matters
+     * for flow-level operations like Fawry update-then-delete where the same
+     * transaction may be visited twice through different code paths.
      */
     public function reverseTransaction(Transaction $transaction): Transaction
     {
         return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($transaction) {
-            $reversalNote = 'عكس: '.($transaction->notes ?? '');
+            $transaction = Transaction::query()
+                ->lockForUpdate()
+                ->findOrFail($transaction->id);
 
-            // Finding #1 fix: reversal entry directions flipped to be opposite of the (now flipped) original.
-//   - Income reversal (original was: to gets DEBIT entry, balance += amount):
-//       to.balance -= amount, adds CREDIT entry (was DEBIT).
-//   - Expense reversal (original was: from gets CREDIT entry, balance -= amount):
-//       from.balance += amount, adds DEBIT entry (was CREDIT).
-//   - Transfer reversal (original was: from CREDIT + to DEBIT):
-//       from gets DEBIT (was CREDIT), to gets CREDIT (was DEBIT). Balance updates unchanged.
-if ($transaction->type === TransactionType::Income->value || $transaction->type === TransactionType::Income) {
-                $account = Account::where('id', $transaction->to_account_id)->lockForUpdate()->firstOrFail();
-                $account->balance -= (float) $transaction->amount;
+            $entries = AccountEntry::query()
+                ->where('transaction_id', $transaction->id)
+                ->orderBy('account_id')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($entries->isEmpty()) {
+                throw new \RuntimeException('لا يمكن عكس معاملة بلا قيود محاسبية.');
+            }
+
+            if ($entries->contains(fn (AccountEntry $entry): bool =>
+                (float) $entry->debit > 0 && (float) $entry->credit > 0
+            )) {
+                throw new \RuntimeException('لا يمكن عكس قيد يحتوي مديناً ودائناً في نفس السطر.');
+            }
+
+            $hasReversal = AccountEntry::query()
+                ->where('transaction_id', $transaction->id)
+                ->where(function ($query) {
+                    $query->where('notes', 'like', 'عكس:%')
+                        ->orWhere('notes', 'like', 'عكس %');
+                })
+                ->exists();
+
+            // Idempotency: a transaction already in a reversed state must not be
+            // reversed again — return it unchanged so callers (e.g. Fawry/Online
+            // deleteTransaction that walks every linked transaction including
+            // ones already reversed by a prior update) keep working.
+            if ($hasReversal || str_starts_with((string) $transaction->notes, 'عكس:')) {
+                Log::warning('reverseTransaction called on an already-reversed transaction; no-op', [
+                    'transaction_id' => $transaction->id,
+                    'type' => $transaction->type,
+                    'user_id' => Auth::id(),
+                ]);
+
+                return $transaction;
+            }
+
+            $accounts = Account::query()
+                ->whereIn('id', $entries->pluck('account_id')->unique()->values())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            foreach ($entries as $entry) {
+                $account = $accounts->get($entry->account_id);
+                if (! $account) {
+                    throw new \RuntimeException('الحساب المرتبط بالقيد غير موجود.');
+                }
+
+                $debit = round((float) $entry->debit, 2);
+                $credit = round((float) $entry->credit, 2);
+                $delta = round($credit - $debit, 2);
+
+                $account->balance = round((float) $account->balance - $delta, 2);
                 $account->save();
 
                 AccountEntry::create([
                     'account_id' => $account->id,
                     'transaction_id' => $transaction->id,
-                    'debit' => 0.00,                       // flipped: was $amount
-                    'credit' => $transaction->amount,       // flipped: was 0.00
+                    'debit' => $credit,
+                    'credit' => $debit,
                     'balance_after' => $account->balance,
-                ]);
-            } elseif ($transaction->type === TransactionType::Expense->value || $transaction->type === TransactionType::Expense) {
-                $account = Account::where('id', $transaction->from_account_id)->lockForUpdate()->firstOrFail();
-                $account->balance += (float) $transaction->amount;
-                $account->save();
-
-                AccountEntry::create([
-                    'account_id' => $account->id,
-                    'transaction_id' => $transaction->id,
-                    'debit' => $transaction->amount,        // flipped: was 0.00
-                    'credit' => 0.00,                       // flipped: was $transaction->amount
-                    'balance_after' => $account->balance,
-                ]);
-            } elseif ($transaction->type === TransactionType::Transfer->value || $transaction->type === TransactionType::Transfer) {
-                $fromAccount = Account::where('id', $transaction->from_account_id)->lockForUpdate()->firstOrFail();
-                $toAccount = Account::where('id', $transaction->to_account_id)->lockForUpdate()->firstOrFail();
-
-                $fromAccount->balance = (float) $fromAccount->balance + $transaction->amount;
-                $fromAccount->save();
-
-                AccountEntry::create([
-                    'account_id' => $fromAccount->id,
-                    'transaction_id' => $transaction->id,
-                    'debit' => $transaction->amount,        // flipped: was 0.00
-                    'credit' => 0.00,                       // flipped: was $transaction->amount
-                    'balance_after' => $fromAccount->balance,
-                ]);
-
-                $toAccount->balance = (float) $toAccount->balance - $transaction->amount;
-                $toAccount->save();
-
-                AccountEntry::create([
-                    'account_id' => $toAccount->id,
-                    'transaction_id' => $transaction->id,
-                    'debit' => 0.00,                        // flipped: was $transaction->amount
-                    'credit' => $transaction->amount,       // flipped: was 0.00
-                    'balance_after' => $toAccount->balance,
+                    'notes' => 'عكس القيد #'.$entry->id,
                 ]);
             }
 
-            $transaction->notes = $reversalNote;
+            $transaction->notes = 'عكس: '.($transaction->notes ?? '');
             $transaction->save();
 
             Log::info('Transaction reversed', [
                 'transaction_id' => $transaction->id,
                 'type' => $transaction->type,
                 'amount' => $transaction->amount,
+                'entries_reversed' => $entries->count(),
                 'user_id' => Auth::id(),
             ]);
 

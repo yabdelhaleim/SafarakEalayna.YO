@@ -57,13 +57,37 @@ class FawryDashboardController extends Controller
         // transaction (TransactionModule::Fawry), sum (credit - debit) on
         // its account_entries where the underlying transactions have
         // module='fawry'. Positive = customer owes us (receivable).
+        //
+        // The `accounts.module_type = 'fawry'` filter excludes the unified
+        // walk-in AR account ("ذمم عملاء فوري غير مسجلين") so it isn't
+        // double-counted with `walkin_debt` below.
         $stats['customers_debt'] = (float) DB::table('account_entries')
             ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
             ->join('accounts', 'account_entries.account_id', '=', 'accounts.id')
             ->where('accounts.type', AccountType::Customer->value)
+            ->where('accounts.module_type', 'fawry')
             ->where('transactions.module', TransactionModule::Fawry->value)
             ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
             ->value('debt') ?? 0.0;
+
+        // 3b. Walk-in clients debt (مديونيات غير المسجلين)
+        //
+        // Walk-in clients have no Customer record. Per-client balance is
+        // sourced from `fawry_transactions.selling_price - amount` grouped
+        // by client_name where client_id IS NULL. The unified AR account
+        // holds the GL mirror but per-client breakdown is not enforceable
+        // there (one account → many client_names), so the report still has
+        // to read the columns for the split.
+        $stats['walkin_debt'] = (float) DB::table('fawry_transactions')
+            ->whereNull('client_id')
+            ->selectRaw('COALESCE(SUM(selling_price - amount), 0) as debt')
+            ->value('debt') ?? 0.0;
+
+        $stats['walkin_clients_count'] = (int) DB::table('fawry_transactions')
+            ->whereNull('client_id')
+            ->whereRaw('selling_price > amount')
+            ->distinct()
+            ->count('client_name');
 
         // 4. Machines Info (ماكينات الشحن)
         $stats['machines'] = [
