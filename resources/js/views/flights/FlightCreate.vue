@@ -899,10 +899,19 @@
                   <div>
                     <label class="block text-sm font-medium text-gray-300 mb-2">
                       عملة الشراء من المورد
+                      <span
+                        v-if="recommendedCurrency && recommendedCurrency !== 'EGP'"
+                        class="ms-2 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
+                        :title="currencyAutoLockHint"
+                      >
+                        <Lock class="h-3 w-3" />
+                        محددة تلقائياً
+                      </span>
                     </label>
                     <select
                       v-model="form.currency"
                       class="flight-select"
+                      :disabled="pricingCurrencyOptions.length <= 1"
                       @change="onCurrencyChange"
                     >
                       <option
@@ -914,7 +923,14 @@
                       </option>
                     </select>
                     <p class="mt-2 text-xs leading-relaxed text-text-muted">
-                      اختر العملة التي اشتريت بها من المورد؛ سيتم التحويل تلقائياً للجنيه المصري.
+                      <span v-if="recommendedCurrency && recommendedCurrency !== 'EGP'">
+                        العملة محددة تلقائياً بناءً على
+                        <span class="font-bold text-amber-200">{{ currencyAutoLockReason }}</span>
+                        — يُسمح بـ EGP كخيار بديل فقط؛ لتغيير العملة غيّر الساين أو السيستم أو المطار في الخطوات السابقة.
+                      </span>
+                      <span v-else>
+                        اختر العملة التي اشتريت بها من المورد؛ سيتم التحويل تلقائياً للجنيه المصري.
+                      </span>
                     </p>
                   </div>
 
@@ -1142,6 +1158,22 @@
                       <p class="mt-2 text-xs leading-relaxed text-sky-200/80">
                         {{ paymentMethodSettlementHint }}
                       </p>
+                      <!-- 2026-07-24: قاعدة تشغيلية — الدفع دائماً بخزينة مصرية.
+                           حتى لو الحجز بعملة أجنبية (KWD/SAR/...)، المستخدم يسجل
+                           الدفعة الأولى هنا بالجنيه المصري والنظام يحولها لاحقاً. -->
+                      <div
+                        v-if="form.currency && form.currency !== 'EGP'"
+                        class="mt-3 rounded-lg border border-sky-500/25 bg-sky-500/10 p-3 text-[11px] leading-relaxed text-sky-100/95"
+                      >
+                        <p class="font-bold text-sky-200">قاعدة الدفع: خزينة مصرية (EGP)</p>
+                        <p class="mt-1 text-sky-100/85">
+                          مبلغ الدفع يُسجَّل هنا
+                          <span class="font-bold">بالجنيه المصري</span>
+                          بصرف النظر عن عملة الحجز
+                          <span class="font-bold">{{ form.currency }}</span>.
+                          التحويل بعملة الحجز يتم على النظام آلياً عبر سعر الصرف.
+                        </p>
+                      </div>
                       <div
                         class="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-3 text-[11px] leading-relaxed text-sky-100/95"
                       >
@@ -1181,16 +1213,25 @@
                       >
                         لا يوجد حساب من هذا النوع. غيّر التصنيف أعلاه أو أنشئ حساباً مطابقاً من Filament.
                       </p>
-                      <!-- 2026-07-23 (الطلب الثاني): تنبيه عند عدم وجود خزينة بعملة الحجز.
-                           بعد الفلترة الصارمة، الـ dropdown لا يعرض إلا الحسابات بنفس عملة الحجز. -->
+                      <!-- 2026-07-24: تنبيه عند عدم وجود خزينة مصرية (EGP).
+                           بعد قرار التشغيل الجديد، الدفع دائماً بخزينة EGP بصرف النظر
+                           عن عملة الحجز (KWD, SAR, USD, ...) — النظام يتحول تلقائياً. -->
                       <p
-                        v-else-if="!bookingCurrencyHasMatchingAccount && form.currency && form.currency !== 'EGP'"
+                        v-else-if="!bookingCurrencyHasMatchingAccount"
                         class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100/95"
                       >
-                        ⚠️ لا توجد أي خزينة/بنك/محفظة نشطة بعملة
-                        <span class="font-bold">{{ form.currency }}</span>
-                        في الحسابات المتاحة لشعبة الطيران. يجب إنشاء حساب جديد بنفس عملة الحجز قبل المتابعة —
-                        الدفع يجب أن يكون بنفس عملة الحجز (مثلاً دينار كويتي لحجز دينار كويتي).
+                        ⚠️ لا توجد أي خزينة/بنك/محفظة نشطة
+                        <span class="font-bold">بالجنيه المصري (EGP)</span>
+                        في الحسابات المتاحة لشعبة الطيران. الدفع دائماً يتم بخزينة مصرية
+                        بصرف النظر عن عملة الحجز —
+                        <span v-if="form.currency && form.currency !== 'EGP'">
+                          حتى لو الحجز
+                          <span class="font-bold">{{ form.currency }}</span>
+                          (النظام يحول المبلغ للجنيه المصري تلقائياً).
+                        </span>
+                        <span v-else>
+                          يجب إنشاء حساب EGP من Filament قبل المتابعة.
+                        </span>
                         <a
                           :href="adminFilamentBankAccountsUrl"
                           target="_blank"
@@ -1241,11 +1282,24 @@
                     >
                       <h4 class="font-bold text-white">الدفع المبدئي (اختياري)</h4>
                       <p class="text-xs text-text-muted">
-                        يُسجَّل بنفس طريقة التحصيل أعلاه. اترك المبلغ ٠ إن لم يتم استلام دفعة الآن.
+                        يُسجَّل بنفس طريقة التحصيل أعلاه. اترك المبلغ ٠ إن لم يتم استلام دفعة الآن.
                       </p>
 
                       <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-300">مبلغ الدفع</label>
+                        <label class="mb-2 block text-sm font-medium text-gray-300">
+                          مبلغ الدفع
+                          <span class="text-[11px] font-bold text-sky-300">
+                            (بالجنيه المصري {{ settlementAccountCurrencySymbol }})
+                          </span>
+                          <span
+                            v-if="form.currency && form.currency !== 'EGP'"
+                            class="ms-2 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
+                            :title="`الحجز بعملة ${form.currency}، لكن الدفع يُسجَّل هنا بالجنيه المصري بصرف النظر عن عملة الحجز`"
+                          >
+                            <Lock class="h-3 w-3" />
+                            EGP فقط
+                          </span>
+                        </label>
                         <div class="relative">
                           <input
                             v-model.number="form.initial_payment"
@@ -1258,6 +1312,17 @@
                           />
                           <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">{{ settlementAccountCurrencySymbol }}</span>
                         </div>
+                        <p
+                          v-if="form.currency && form.currency !== 'EGP' && form.initial_payment > 0"
+                          class="mt-1.5 text-[11px] text-sky-200/90"
+                        >
+                          ≈
+                          <span class="font-mono font-bold">
+                            {{ formatMoney(initialPaymentEgp, 'EGP') }}
+                          </span>
+                          بعد تحويل
+                          {{ form.currency }} × {{ Number(form.exchange_rate).toFixed(4) }}
+                        </p>
                       </div>
 
                       <!-- Quick Amount Buttons -->
@@ -2173,6 +2238,7 @@ import {
   Landmark,
   Banknote,
   Activity,
+  Lock,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -2580,6 +2646,67 @@ const PRICING_CURRENCY_FALLBACK = [
   { code: 'GBP', name: 'جنيه إسترليني', exchangeRate: 61.2 },
 ];
 
+/**
+ * 2026-07-24: خريطة ISO 3166-1 alpha-2 → عملة الدولة الافتراضية.
+ * تُستخدم لتحديد العملة تلقائياً عند اختيار دولة غير مصرية في
+ * الساين (carrier) أو السيستم (flight_system) أو مطار الوصول.
+ * عدم وجود كود الدولة في الخريطة يعني عدم فرض عملة بعينها.
+ */
+const COUNTRY_TO_CURRENCY = {
+  EG: 'EGP',
+  SA: 'SAR',
+  AE: 'AED',
+  KW: 'KWD',
+  QA: 'QAR',
+  BH: 'BHD',
+  OM: 'OMR',
+  JO: 'JOD',
+  LB: 'LBP',
+  IQ: 'IQD',
+  SY: 'SYP',
+  PS: 'ILS',
+  YE: 'YER',
+  TR: 'TRY',
+  GB: 'GBP',
+  IE: 'EUR',
+  US: 'USD',
+  CA: 'CAD',
+  FR: 'EUR',
+  DE: 'EUR',
+  IT: 'EUR',
+  ES: 'EUR',
+  NL: 'EUR',
+  GR: 'EUR',
+  CH: 'CHF',
+  IN: 'INR',
+  PK: 'PKR',
+  BD: 'BDT',
+  MY: 'MYR',
+  ID: 'IDR',
+  TH: 'THB',
+  RU: 'RUB',
+  CN: 'CNY',
+  JP: 'JPY',
+  KR: 'KRW',
+  AU: 'AUD',
+  NZ: 'NZD',
+  ZA: 'ZAR',
+  NG: 'NGN',
+  KE: 'KES',
+  MA: 'MAD',
+  TN: 'TND',
+  DZ: 'DZD',
+  ET: 'ETB',
+  SD: 'SDG',
+  LY: 'LYD',
+};
+
+const countryCodeToCurrency = (countryCode) => {
+  if (!countryCode) return null;
+  const code = String(countryCode).toUpperCase().trim();
+  return COUNTRY_TO_CURRENCY[code] || null;
+};
+
 // Computed
 const circumferenceWide = computed(() => 2 * Math.PI * 22);
 const progressOffsetWide = computed(() => {
@@ -2776,9 +2903,146 @@ const routeSummaryLabel = computed(() => {
   return '';
 });
 
+/**
+ * 2026-07-24: العملة الموصى بها لحجز الـ Pricing.
+ * الأولوية:
+ *   1) عملة السيستم المختار (لو booking_source = 'system')
+ *   2) عملة الساين/الناقل المختار (لو booking_source = 'direct')
+ *   3) عملة المجموعة/الشركة (لو booking_source = 'group')
+ *   4) دولة مطار الوصول (to_airport.country_code)
+ *   5) دولة مطار الانطلاق (from_airport.country_code)
+ * تُستخدم لتصفية dropdown العملة (pricingCurrencyOptions) وضبط
+ * form.currency تلقائياً لمنع اختيار عملة خاطئة.
+ */
+const recommendedCurrency = computed(() => {
+  const source = form.value.booking_source;
+
+  // 1) System booking → خذ عملة النظام مباشرة
+  if (source === 'system') {
+    const sys = selectedFlightSystem.value;
+    if (sys?.currency) {
+      return String(sys.currency).toUpperCase();
+    }
+  }
+
+  // 2) Direct booking → خذ عملة الساين/الناقل
+  if (source === 'direct') {
+    const carrier = resolvedCarrier.value;
+    if (carrier?.currency) {
+      return String(carrier.currency).toUpperCase();
+    }
+  }
+
+  // 3) Group booking → خذ عملة الناقل المرتبط بالمجموعة
+  if (source === 'group') {
+    const gid = form.value.flight_group_id;
+    const group = availableGroups.value.find((g) => sameId(g.id, gid));
+    if (group?.carrier?.currency) {
+      return String(group.carrier.currency).toUpperCase();
+    }
+  }
+
+  // 4) Fallback: دولة مطار الوصول
+  const dest = form.value.to_airport;
+  if (dest?.country_code) {
+    const ccy = countryCodeToCurrency(dest.country_code);
+    if (ccy) return ccy;
+  }
+
+  // 4b) Multi-city: استخدم آخر مطار وصول في الـ legs
+  if (form.value.trip_type === 'multi_city' && Array.isArray(form.value.legs) && form.value.legs.length) {
+    const lastLeg = form.value.legs[form.value.legs.length - 1];
+    if (lastLeg?.to_airport?.country_code) {
+      const ccy = countryCodeToCurrency(lastLeg.to_airport.country_code);
+      if (ccy) return ccy;
+    }
+  }
+
+  // 5) Fallback: دولة مطار الانطلاق
+  const origin = form.value.from_airport;
+  if (origin?.country_code) {
+    const ccy = countryCodeToCurrency(origin.country_code);
+    if (ccy) return ccy;
+  }
+
+  return null;
+});
+
+/**
+ * 2026-07-24: سبب قفل العملة (يظهر في الـ tooltip والـ hint).
+ * يُستخدم لشرح للمستخدم لماذا تم تحديد العملة تلقائياً.
+ */
+const currencyAutoLockReason = computed(() => {
+  const source = form.value.booking_source;
+
+  if (source === 'system') {
+    const sys = selectedFlightSystem.value;
+    if (sys?.currency) return `عملة السيستم (${sys.name || 'النظام'})`;
+  }
+  if (source === 'direct') {
+    const carrier = resolvedCarrier.value;
+    if (carrier?.currency) return `عملة الساين (${carrier.name || 'الناقل'})`;
+  }
+  if (source === 'group') {
+    const gid = form.value.flight_group_id;
+    const group = availableGroups.value.find((g) => sameId(g.id, gid));
+    if (group?.carrier?.currency) return `عملة ناقل المجموعة (${group.name || 'المجموعة'})`;
+  }
+
+  const dest = form.value.to_airport;
+  if (dest?.country_code) {
+    const country = dest.country_name_en || dest.country_name_ar || dest.country_code;
+    return `دولة الوجهة (${country})`;
+  }
+
+  // Multi-city: استخدم آخر مطار في الـ legs
+  if (form.value.trip_type === 'multi_city' && Array.isArray(form.value.legs) && form.value.legs.length) {
+    const lastLeg = form.value.legs[form.value.legs.length - 1];
+    if (lastLeg?.to_airport?.country_code) {
+      const country = lastLeg.to_airport.country_name_en || lastLeg.to_airport.country_name_ar || lastLeg.to_airport.country_code;
+      return `دولة آخر وجهة (${country})`;
+    }
+  }
+
+  const origin = form.value.from_airport;
+  if (origin?.country_code) {
+    const country = origin.country_name_en || origin.country_name_ar || origin.country_code;
+    return `دولة الانطلاق (${country})`;
+  }
+  return '';
+});
+
+const currencyAutoLockHint = computed(() => {
+  const reason = currencyAutoLockReason.value;
+  const ccy = recommendedCurrency.value;
+  if (!reason || !ccy) return '';
+  return `تم تحديد العملة ${ccy} تلقائياً حسب ${reason}.`;
+});
+
 const pricingCurrencyOptions = computed(() => {
   const list = store.currencies;
-  return Array.isArray(list) && list.length > 0 ? list : PRICING_CURRENCY_FALLBACK;
+  const baseList = Array.isArray(list) && list.length > 0 ? list : PRICING_CURRENCY_FALLBACK;
+
+  // 2026-07-24: فلتر تلقائي على dropdown عملة التسعير.
+  // لو العملة الموصى بها (RecommendedCurrency) معروفة — لأنها
+  // إما من السيستم أو الساين أو دولة المطار — نُصفّي القائمة
+  // لتلك العملة فقط (مع EGP كـ fallback آمن) لمنع اختيار خاطئ.
+  const recommended = recommendedCurrency.value;
+  if (!recommended) {
+    return baseList; // لم تُحدَّد توصية بعد، اعرض الكل.
+  }
+
+  // موصى بها EGP → اترك القائمة كما هي (الوضع التقليدي).
+  if (recommended === 'EGP') {
+    return baseList;
+  }
+
+  // موصى بها عملة غير مصرية → عرض العملة الموصى + EGP كخيار ثانوي.
+  const filtered = baseList.filter((c) => {
+    const code = String(c.code || '').toUpperCase();
+    return code === recommended || code === 'EGP';
+  });
+  return filtered.length > 0 ? filtered : baseList;
 });
 
 const sellingPriceEgp = computed(() => {
@@ -2815,25 +3079,23 @@ const profitMarginOnSale = computed(() => {
 /**
  * حسابات التصنيف الحالي (محافظ فعلية بأرقامها، أو بنوك، أو خزائن).
  *
- * 2026-07-23 (الطلب الثاني): فلترة صارمة بعملة الحجز.
- *   - حجز EGP  → الحسابات EGP فقط.
- *   - حجز KWD  → الحسابات KWD فقط.
- *   - حجز SAR  → الحسابات SAR فقط.
- *   - وهكذا…
- * إذا لم يُحدَّد `form.currency` بعد (الحجز لم يُدخل بعد) → لا نُصفّي بحسب العملة
- * ليبقى المستخدم قادراً على رؤية الحسابات المتاحة لتعبئة الحقول الأخرى.
+ * 2026-07-24: الدفع دائماً بخزينة مصرية (EGP) بصرف النظر عن عملة الحجز.
+ *   - حجز KWD → الدفع في خزينة EGP (النظام يحول).
+ *   - حجز SAR → الدفع في خزينة EGP (النظام يحول).
+ *   - حجز EGP → الدفع في خزينة EGP (الحالة الطبيعية).
+ * هذا القرار التشغيلي: العميل يسدد محلياً بالجنيه المصري، والوكالة تتولى
+ * تحصيل/تحويل المبلغ الأجنبي للمورد من حسابتها المحلية.
  */
 const settlementPickerOptions = computed(() => {
   const types = SETTLEMENT_CATEGORY_TYPES[settlementCategoryUi.value];
   if (!types?.length) return [];
   const want = new Set(types);
-  const bookingCcy = String(form.value.currency || '').toUpperCase();
 
   const rows = settlementAccounts.value.filter((a) => {
     if (a.is_active === false) return false;
     if (!want.has(normalizeAccountType(a.type))) return false;
-    // فلترة بعملة الحجز (إلا إذا لم تُحدَّد بعد، نُظهر الكل لتسهيل التعبئة).
-    if (bookingCcy && String(a.currency || '').toUpperCase() !== bookingCcy) {
+    // 2026-07-24: فلترة صارمة بالخزينة المصرية (EGP) فقط.
+    if (String(a.currency || '').toUpperCase() !== 'EGP') {
       return false;
     }
     return true;
@@ -2844,16 +3106,14 @@ const settlementPickerOptions = computed(() => {
 });
 
 /**
- * 2026-07-23: هل توجد أي خزينة/بنك/محفظة بنفس عملة الحجز الحالية؟
- * يُستخدم لإظهار رسالة "لا يوجد حساب بعملة KWD" مع رابط Filament لإنشاء حساب.
+ * 2026-07-24: هل توجد أي خزينة/بنك/محفظة مصرية نشطة؟
+ * يُستخدم لإظهار تنبيه "لا توجد خزينة EGP متاحة" مع رابط Filament.
  */
 const bookingCurrencyHasMatchingAccount = computed(() => {
-  const bookingCcy = String(form.value.currency || '').toUpperCase();
-  if (!bookingCcy || bookingCcy === 'EGP') return true; // EGP دائماً متاح في الخزائن
   return settlementAccounts.value.some(
     (a) =>
       a.is_active !== false &&
-      String(a.currency || '').toUpperCase() === bookingCcy,
+      String(a.currency || '').toUpperCase() === 'EGP',
   );
 });
 
@@ -4049,6 +4309,42 @@ watch(
         form.value.currency = selectedGroup.carrier.currency || 'EGP';
       }
     }
+  }
+);
+
+/**
+ * 2026-07-24: اضبط form.currency تلقائياً على العملة الموصى بها
+ * (المستخرجة من الساين/السيستم/المجموعة/دولة المطار).
+ * - لو الموصى عملة غير مصرية → اضبطها فوراً.
+ * - لو الموصى EGP → لا نُجبر التغيير؛ المستخدم قد يكون اختار عملة
+ *   أخرى عمداً (مثلاً USD لعميل محدد) ولن نُكسر اختياره.
+ * - لو لا توجد توصية بعد (المستخدم لم يحدد المصدر ولا المطار) → لا
+ *   نلمس العملة الحالية.
+ */
+watch(
+  recommendedCurrency,
+  (newCurrency) => {
+    if (!newCurrency) return;
+    if (newCurrency === 'EGP') return;
+    if (form.value.currency === newCurrency) return;
+
+    // طبّق العملة الموصى على الفور
+    const previous = form.value.currency;
+    form.value.currency = newCurrency;
+
+    // أعد حساب سعر الصرف الأجنبي فوراً إن لزم
+    const cur = pricingCurrencyOptions.value.find(
+      (x) => String(x.code).toUpperCase() === newCurrency,
+    );
+    const rate = finiteNum(cur?.exchangeRate ?? cur?.exchange_rate, 0);
+    if (rate > 0 && previous !== 'EGP') {
+      form.value.exchange_rate = rate;
+    }
+    if (newCurrency === 'EGP') {
+      form.value.purchase_price_foreign = 0;
+      form.value.exchange_rate = 0;
+    }
+    syncPurchaseEgpFromForeign();
   }
 );
 </script>

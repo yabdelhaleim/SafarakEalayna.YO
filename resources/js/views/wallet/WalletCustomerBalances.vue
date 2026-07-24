@@ -328,21 +328,24 @@
     <Teleport to="body">
       <div v-if="showPaymentModal"
         class="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-        @click.self="showPaymentModal = false">
+        @click.self="closePaymentModal">
         <div class="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0d] shadow-2xl animate-in zoom-in duration-200" dir="rtl">
           <!-- Modal header -->
           <div class="flex items-center justify-between border-b border-white/5 bg-emerald-500/5 px-6 py-5">
-            <h3 class="flex items-center gap-3 text-lg font-black text-emerald-400">
-              <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15">
+            <h3 class="flight-panel__title !text-xl !mb-0 flex items-center gap-3">
+              <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
                 <WalletIcon class="h-5 w-5"/>
-              </div>
-              تسديد مديونية العميل (المحافظ)
+              </span>
+              تسديد دفعة
             </h3>
-            <button type="button" @click="showPaymentModal = false"
+            <button type="button" @click="closePaymentModal"
               class="flex h-8 w-8 items-center justify-center rounded-lg text-white/30 hover:bg-white/10 hover:text-white transition">
               ✕
             </button>
           </div>
+          <p class="flight-panel__subtitle px-6 pt-3 !mb-0">
+            المتبقي: <span class="font-mono font-black text-red-400">{{ formatMoney(Math.abs(Number(selectedCustomer?.total_debt) || 0)) }}</span>
+          </p>
 
           <form @submit.prevent="submitPayment" class="space-y-5 p-6">
             <!-- Customer + debt info -->
@@ -364,60 +367,79 @@
               </div>
             </div>
 
-            <!-- Source account -->
+            <!-- Amount -->
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">حساب الاستلام / التحصيل <span class="text-red-400">*</span></label>
-              <select v-model="paymentForm.account_id" required
-                class="form-select-dark py-3">
-                <option value="">— اختر حساب التحصيل —</option>
-                <option v-for="acc in walletAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} — {{ formatMoney(acc.balance) }}
-                </option>
+              <label class="mb-2 block text-sm text-text-muted text-right">المبلغ <span class="text-red-400">*</span></label>
+              <input
+                v-model.number="paymentForm.amount"
+                type="number" step="0.01" required
+                min="0.01"
+                :max="Math.abs(Number(selectedCustomer?.total_debt) || 0)"
+                class="flight-input font-mono"
+              />
+            </div>
+
+            <!-- Payment method chips -->
+            <div>
+              <label class="mb-2 block text-sm text-text-muted text-right">طريقة الدفع</label>
+              <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+                <button
+                  v-for="chip in settlementCategoryChips"
+                  :key="chip.id"
+                  type="button"
+                  @click="settlementCategoryUi = chip.id"
+                  :class="[
+                    'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                    settlementCategoryUi === chip.id
+                      ? 'bg-white/10 border-gold text-gold'
+                      : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                  ]"
+                >
+                  <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+                  {{ chip.label }}
+                </button>
+              </div>
+              <select v-model="paymentForm.payment_method" required class="flight-select">
+                <option value="cash">نقدي</option>
+                <option value="bank_transfer">تحويل بنكي</option>
+                <option value="cash_wallet">محفظة</option>
+                <option value="postal_transfer">بريد</option>
+                <option value="office_safe">خزينة مكتب</option>
+                <option value="office_drawer">درج مكتب</option>
               </select>
             </div>
 
-            <!-- Amount -->
+            <!-- Settlement account -->
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">المبلغ المستلم <span class="text-red-400">*</span></label>
-              <div class="relative">
-                <input
-                  v-model.number="paymentForm.amount"
-                  type="number" step="0.01" required
-                  :max="Math.abs(Number(selectedCustomer?.total_debt) || 0)"
-                  class="w-full rounded-xl border border-white/15 bg-white/[0.05] py-3 pr-4 pl-16 font-mono text-white outline-none transition focus:border-emerald-500/50 text-right"
-                />
-                <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/30">ج.م</span>
-              </div>
-              <!-- Quick amounts -->
-              <div class="mt-2 flex gap-2">
-                <button v-for="pct in [25,50,75,100]" :key="pct" type="button"
-                  @click="paymentForm.amount = roundMoney(Math.abs(Number(selectedCustomer?.total_debt)||0) * pct / 100)"
-                  class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/40 hover:border-emerald-400/40 hover:text-emerald-400 transition">
-                  {{ pct }}٪
-                </button>
-              </div>
+              <label class="mb-2 block text-sm text-text-muted text-right">حساب التحصيل <span class="text-red-400">*</span></label>
+              <select v-model="paymentForm.account_id" required class="flight-select">
+                <option value="">— اختر الحساب —</option>
+                <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
+              <p v-if="!filteredAccounts.length" class="mt-2 text-xs text-warning text-right">
+                لا توجد حسابات متوفرة في هذا القسم.
+              </p>
             </div>
 
             <!-- Notes -->
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">ملاحظات</label>
-              <input
-                v-model="paymentForm.notes"
-                type="text"
-                placeholder="مثال: تسديد جزء من مديونية المحافظ والتحويلات"
-                class="w-full rounded-xl border border-white/15 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50"
-              />
+              <label class="mb-2 block text-sm text-text-muted text-right">ملاحظات</label>
+              <textarea v-model="paymentForm.notes" rows="2" class="flight-input resize-none"
+                placeholder="مثال: تسديد جزء من مديونية المحافظ والتحويلات"/>
             </div>
 
             <div class="flex gap-3 pt-2">
-              <button type="submit" :disabled="submitting || !paymentForm.account_id || !paymentForm.amount"
-                class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3 text-sm font-black text-black shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
-                <Loader2 v-if="submitting" class="h-4 w-4 animate-spin"/>
-                <CheckCircle v-else class="h-4 w-4"/>
-                {{ submitting ? 'جاري التسجيل...' : 'تأكيد السداد' }}
+              <button type="submit"
+                :disabled="submitting || !paymentForm.account_id || !paymentForm.amount"
+                class="flex-1 rounded-xl bg-success py-3 font-bold text-black transition hover:bg-success/90 disabled:cursor-not-allowed disabled:opacity-40">
+                <Loader2 v-if="submitting" class="mb-0.5 ml-2 inline h-4 w-4 animate-spin"/>
+                <CheckCircle v-else class="mb-0.5 ml-2 inline h-4 w-4"/>
+                {{ submitting ? 'جاري التسديد…' : 'تسديد' }}
               </button>
-              <button type="button" @click="showPaymentModal = false"
-                class="rounded-xl border border-white/10 px-6 py-3 text-sm text-white/50 hover:bg-white/5 transition">
+              <button type="button" @click="closePaymentModal"
+                class="btn-airline-ghost flex-1">
                 إلغاء
               </button>
             </div>
@@ -543,6 +565,8 @@ import {
   ListOrdered,
   Wallet as WalletIcon,
   CheckCircle,
+  Banknote,
+  Landmark,
 } from 'lucide-vue-next';
 
 const store = useWalletStore();
@@ -577,8 +601,30 @@ const selectedCustomer = ref(null);
 const walletAccounts = ref([]);
 const paymentForm = ref({
   amount: 0,
+  payment_method: 'cash',
   account_id: '',
   notes: '',
+});
+
+// Settlement category (chips) — same UX as the bus payment modal
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ', icon: WalletIcon, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+
+const filteredAccounts = computed(() => {
+  if (settlementCategoryUi.value === 'cash') {
+    return walletAccounts.value.filter((a) => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return walletAccounts.value.filter((a) => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return walletAccounts.value.filter((a) => a.type === 'bank');
+  }
+  return walletAccounts.value;
 });
 
 // Print statement state
@@ -704,21 +750,31 @@ const roundMoney = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const loadAccounts = async () => {
   try {
-    walletAccounts.value = await fetchSettlementAccounts(axios, { module: 'wallet' });
+    walletAccounts.value = await fetchSettlementAccounts(axios, {
+      module: 'wallet_transfer',
+      includePost: false,
+    });
   } catch (e) {
     console.error('Failed to load wallet accounts:', e);
     walletAccounts.value = [];
   }
 };
 
-const openPaymentModal = (row) => {
+const openPaymentModal = async (row) => {
   selectedCustomer.value = row;
+  settlementCategoryUi.value = 'cash';
   paymentForm.value = {
-    amount: roundMoney(Number(row.total_debt) || 0),
+    amount: roundMoney(Math.abs(Number(row.total_debt) || 0)),
+    payment_method: 'cash',
     account_id: '',
     notes: '',
   };
+  await loadAccounts();
   showPaymentModal.value = true;
+};
+
+const closePaymentModal = () => {
+  showPaymentModal.value = false;
 };
 
 const openPaymentModalFromDetails = () => {
@@ -738,18 +794,20 @@ const submitPayment = async () => {
     const id = selectedCustomer.value.client_id || selectedCustomer.value.id;
     await axios.post(`/api/v1/customers/${id}/pay-debt`, {
       amount: paymentForm.value.amount,
-      account_id: paymentForm.value.account_id,
+      account_id:
+        paymentForm.value.account_id === '' ? null : parseInt(String(paymentForm.value.account_id), 10),
+      payment_method: paymentForm.value.payment_method,
       notes: paymentForm.value.notes || undefined,
       module: 'wallet',
     });
     store.addToast('تم تسديد الدين بنجاح ✓', 'success');
-    showPaymentModal.value = false;
-    
+    closePaymentModal();
+
     await Promise.all([
       fetchBalances(),
       loadAccounts()
     ]);
-    
+
     if (modalOpen.value) {
       const row = records.value.find(r => r.client_id === selectedCustomerId.value || r.id === selectedCustomerId.value);
       if (row) {
@@ -758,7 +816,8 @@ const submitPayment = async () => {
     }
   } catch (error) {
     console.error('Failed to submit payment:', error);
-    store.addToast('حدث خطأ أثناء عملية التسديد، يرجى المحاولة مرة أخرى.', 'error');
+    const msg = error?.response?.data?.message || 'حدث خطأ أثناء عملية التسديد، يرجى المحاولة مرة أخرى.';
+    store.addToast(msg, 'error');
   } finally {
     submitting.value = false;
   }

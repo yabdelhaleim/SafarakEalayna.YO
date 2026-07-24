@@ -323,11 +323,11 @@
       </div>
     </div>
 
-    <!-- Payment Modal -->
+    <!-- ✅ Payment Modal - account_id فقط -->
     <Teleport to="body">
       <div v-if="showPaymentModal"
         class="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-        @click.self="showPaymentModal = false">
+        @click.self="closePaymentModal">
         <div class="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0d] shadow-2xl animate-in zoom-in duration-200" dir="rtl">
           <!-- Modal header -->
           <div class="flex items-center justify-between border-b border-white/5 bg-emerald-500/5 px-6 py-5">
@@ -335,54 +335,62 @@
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15">
                 <Wallet class="h-5 w-5"/>
               </div>
-              تسديد مديونية العميل (فوري)
+              تسديد دفعة
             </h3>
-            <button type="button" @click="showPaymentModal = false"
+            <button type="button" @click="closePaymentModal"
               class="flex h-8 w-8 items-center justify-center rounded-lg text-white/30 hover:bg-white/10 hover:text-white transition">
               ✕
             </button>
           </div>
 
           <form @submit.prevent="submitPayment" class="space-y-5 p-6">
-            <!-- Customer + debt info -->
-            <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-4">
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/15 text-sm font-black text-red-400">
-                  {{ selectedCustomer?.client_name?.charAt(0) || '?' }}
+
+            <!-- بيانات العميل -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/15 text-sm font-black text-red-400">
+                    {{ selectedCustomer?.client_name?.charAt(0) || '?' }}
+                  </div>
+                  <div>
+                    <p class="text-[10px] text-white/35 uppercase tracking-wider">العميل</p>
+                    <p class="font-bold text-white text-sm">{{ selectedCustomer?.client_name }}</p>
+                  </div>
                 </div>
-                <div>
-                  <p class="text-[10px] text-white/35 uppercase tracking-wider">العميل</p>
-                  <p class="font-bold text-white">{{ selectedCustomer?.client_name }}</p>
+                <div class="text-left">
+                  <p class="text-[10px] text-white/35 uppercase tracking-wider">رقم العميل</p>
+                  <p class="font-mono text-sm font-bold text-gold">
+                    {{ selectedCustomer?.client_id || selectedCustomer?.id || '—' }}
+                  </p>
                 </div>
               </div>
-              <div class="text-left">
-                <p class="text-[10px] text-white/35 uppercase tracking-wider">المديونية الحالية</p>
-                <p class="font-mono text-lg font-black text-red-400">
-                  {{ formatMoney(Math.abs(Number(selectedCustomer?.total_debt) || 0)) }}
-                </p>
+
+              <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <span class="text-sm text-text-muted">إجمالي المبيعات</span>
+                <span class="font-mono font-bold text-white">{{ formatMoney(selectedCustomer?.total_sales) }}</span>
+              </div>
+              <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <span class="text-sm text-text-muted">المدفوع سابقاً</span>
+                <span class="font-mono font-bold text-emerald-400">{{ formatMoney(selectedCustomer?.total_paid) }}</span>
+              </div>
+              <div class="flex items-center justify-between rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3">
+                <span class="text-sm font-semibold text-red-400">المتبقي</span>
+                <span class="font-mono font-black text-red-400">{{ formatMoney(Math.abs(Number(selectedCustomer?.total_debt) || 0)) }}</span>
               </div>
             </div>
 
-            <!-- Source account -->
+            <!-- مبلغ الدفعة -->
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">حساب الاستلام / التحصيل <span class="text-red-400">*</span></label>
-              <select v-model="paymentForm.account_id" required
-                class="form-select-dark py-3">
-                <option value="">— اختر حساب التحصيل —</option>
-                <option v-for="acc in fawryAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} — {{ formatMoney(acc.balance) }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Amount -->
-            <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">المبلغ المستلم <span class="text-red-400">*</span></label>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">
+                مبلغ الدفعة *
+                <span class="text-text-muted text-xs font-normal">(المتبقي: {{ formatMoney(Math.abs(Number(selectedCustomer?.total_debt) || 0)) }})</span>
+              </label>
               <div class="relative">
                 <input
                   v-model.number="paymentForm.amount"
-                  type="number" step="0.01" required
+                  type="number" step="0.01" min="0.01" required
                   :max="Math.abs(Number(selectedCustomer?.total_debt) || 0)"
+                  placeholder="أدخل المبلغ..."
                   class="w-full rounded-xl border border-white/15 bg-white/[0.05] py-3 pr-4 pl-16 font-mono text-white outline-none transition focus:border-emerald-500/50 text-right"
                 />
                 <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/30">ج.م</span>
@@ -397,25 +405,63 @@
               </div>
             </div>
 
-            <!-- Notes -->
+            <!-- تصنيف طريقة الدفع + الحساب -->
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">طريقة الدفع *</label>
+              <div class="mb-3 flex flex-wrap gap-2">
+                <button
+                  v-for="chip in settlementCategoryChips"
+                  :key="chip.id"
+                  type="button"
+                  @click="settlementCategoryUi = chip.id"
+                  :class="[
+                    'flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all',
+                    settlementCategoryUi === chip.id
+                      ? 'border-emerald-400 bg-white/10 text-emerald-400'
+                      : 'border-white/10 bg-white/[0.02] text-white/40 hover:border-white/20'
+                  ]"
+                >
+                  <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+                  {{ chip.label }}
+                </button>
+              </div>
+
+              <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">
+                الحساب *
+                <span class="text-text-muted text-xs font-normal">(سيُضاف إليه المبلغ)</span>
+              </label>
+              <select v-model="paymentForm.account_id" required
+                class="form-select-dark py-3">
+                <option value="">— اختر حساب التحصيل —</option>
+                <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }} — {{ formatMoney(acc.balance) }}
+                </option>
+              </select>
+              <p v-if="filteredAccounts.length === 0 && !loadingAccounts" class="mt-1 text-xs text-red-400">
+                لا توجد حسابات متاحة في هذا التصنيف
+              </p>
+            </div>
+
+            <!-- ملاحظات -->
             <div>
               <label class="mb-2 block text-xs font-bold uppercase tracking-widest text-white/40">ملاحظات</label>
               <input
                 v-model="paymentForm.notes"
                 type="text"
-                placeholder="مثال: تسديد جزء من مديونية فوري"
+                placeholder="ملاحظات اختيارية..."
                 class="w-full rounded-xl border border-white/15 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50"
               />
             </div>
 
             <div class="flex gap-3 pt-2">
-              <button type="submit" :disabled="submitting || !paymentForm.account_id || !paymentForm.amount"
+              <button type="submit"
+                :disabled="submitting || !paymentForm.account_id || !paymentForm.amount"
                 class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3 text-sm font-black text-black shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
                 <Loader2 v-if="submitting" class="h-4 w-4 animate-spin"/>
                 <CheckCircle v-else class="h-4 w-4"/>
-                {{ submitting ? 'جاري التسجيل...' : 'تأكيد السداد' }}
+                {{ submitting ? 'جاري التسديد...' : 'تسديد' }}
               </button>
-              <button type="button" @click="showPaymentModal = false"
+              <button type="button" @click="closePaymentModal"
                 class="rounded-xl border border-white/10 px-6 py-3 text-sm text-white/50 hover:bg-white/5 transition">
                 إلغاء
               </button>
@@ -542,6 +588,8 @@ import {
   ListOrdered,
   Wallet,
   CheckCircle,
+  Banknote,
+  Landmark,
 } from 'lucide-vue-next';
 
 const store = useFawryStore();
@@ -574,8 +622,28 @@ const showPaymentModal = ref(false);
 const submitting = ref(false);
 const selectedCustomer = ref(null);
 const fawryAccounts = ref([]);
+const loadingAccounts = ref(false);
+const settlementCategoryUi = ref('cash');
+const settlementCategoryChips = [
+  { id: 'cash', label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-emerald-400' },
+  { id: 'wallet', label: 'محافظ', icon: Wallet, iconClass: 'text-sky-300' },
+  { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
+];
+const filteredAccounts = computed(() => {
+  if (settlementCategoryUi.value === 'cash') {
+    return fawryAccounts.value.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+  }
+  if (settlementCategoryUi.value === 'wallet') {
+    return fawryAccounts.value.filter(a => a.type === 'wallet');
+  }
+  if (settlementCategoryUi.value === 'bank') {
+    return fawryAccounts.value.filter(a => a.type === 'bank');
+  }
+  return fawryAccounts.value;
+});
 const paymentForm = ref({
   amount: 0,
+  payment_method: 'cash',
   account_id: '',
   notes: '',
 });
@@ -699,22 +767,39 @@ const openDetails = async (row) => {
 const roundMoney = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const loadAccounts = async () => {
+  loadingAccounts.value = true;
   try {
     fawryAccounts.value = await fetchSettlementAccounts(axios, { module: 'fawry' });
   } catch (e) {
     console.error('Failed to load fawry accounts:', e);
     fawryAccounts.value = [];
+  } finally {
+    loadingAccounts.value = false;
   }
 };
 
 const openPaymentModal = (row) => {
   selectedCustomer.value = row;
   paymentForm.value = {
-    amount: roundMoney(Number(row.total_debt) || 0),
+    amount: roundMoney(Math.abs(Number(row.total_debt) || 0)),
+    payment_method: 'cash',
     account_id: '',
     notes: '',
   };
+  settlementCategoryUi.value = 'cash';
   showPaymentModal.value = true;
+};
+
+const closePaymentModal = () => {
+  showPaymentModal.value = false;
+  selectedCustomer.value = null;
+  paymentForm.value = {
+    amount: 0,
+    payment_method: 'cash',
+    account_id: '',
+    notes: '',
+  };
+  settlementCategoryUi.value = 'cash';
 };
 
 const openPaymentModalFromDetails = () => {
@@ -736,6 +821,7 @@ const submitPayment = async () => {
       await axios.post(`/api/v1/customers/${selectedCustomer.value.client_id}/pay-debt`, {
         amount: paymentForm.value.amount,
         account_id: paymentForm.value.account_id,
+        payment_method: paymentForm.value.payment_method,
         notes: paymentForm.value.notes || undefined,
         module: 'fawry',
       });
@@ -748,11 +834,12 @@ const submitPayment = async () => {
         client_name: selectedCustomer.value.client_name,
         amount: paymentForm.value.amount,
         account_id: paymentForm.value.account_id,
+        payment_method: paymentForm.value.payment_method,
         notes: paymentForm.value.notes || undefined,
       });
     }
     store.addToast('تم تسديد الدين بنجاح ✓', 'success');
-    showPaymentModal.value = false;
+    closePaymentModal();
 
     // Reload both the customer balances and the settlement accounts list in parallel
     await Promise.all([
