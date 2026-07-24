@@ -184,14 +184,15 @@
 
               <!-- Actions -->
               <td class="px-6 py-4 text-left">
-                <div class="flex gap-2 justify-end">
+                <div class="flex flex-wrap gap-2 justify-end">
                   <button
-                    v-if="row.client_id && Number(row.total_debt) > 0"
+                    v-if="Number(row.total_debt) > 0"
                     @click="openPaymentModal(row)"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500 hover:text-black"
+                    title="تسديد دفعة على مديونية العميل"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-black text-emerald-400 transition hover:bg-emerald-500 hover:text-black shadow-lg shadow-emerald-500/10"
                   >
                     <Wallet class="w-3.5 h-3.5" />
-                    تسديد
+                    تسديد دفعة
                   </button>
                   <button
                     @click="openDetails(row)"

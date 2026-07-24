@@ -905,7 +905,7 @@
                         :title="currencyAutoLockHint"
                       >
                         <Lock class="h-3 w-3" />
-                        محددة تلقائياً
+                        محددة تلقائياً (مقفلة)
                       </span>
                     </label>
                     <select
@@ -924,9 +924,10 @@
                     </select>
                     <p class="mt-2 text-xs leading-relaxed text-text-muted">
                       <span v-if="recommendedCurrency && recommendedCurrency !== 'EGP'">
-                        العملة محددة تلقائياً بناءً على
+                        العملة محددة تلقائياً ومقفلة بناءً على
                         <span class="font-bold text-amber-200">{{ currencyAutoLockReason }}</span>
-                        — يُسمح بـ EGP كخيار بديل فقط؛ لتغيير العملة غيّر الساين أو السيستم أو المطار في الخطوات السابقة.
+                        — لتغيير العملة غيّر الساين أو السيستم أو المطار في الخطوات السابقة.
+                        الدفع بعد ذلك يتم بخزينة مصرية (EGP) بصرف النظر عن عملة الشراء.
                       </span>
                       <span v-else>
                         اختر العملة التي اشتريت بها من المورد؛ سيتم التحويل تلقائياً للجنيه المصري.
@@ -3026,7 +3027,8 @@ const pricingCurrencyOptions = computed(() => {
   // 2026-07-24: فلتر تلقائي على dropdown عملة التسعير.
   // لو العملة الموصى بها (RecommendedCurrency) معروفة — لأنها
   // إما من السيستم أو الساين أو دولة المطار — نُصفّي القائمة
-  // لتلك العملة فقط (مع EGP كـ fallback آمن) لمنع اختيار خاطئ.
+  // لتلك العملة فقط (بدون EGP كخيار ثانوي) لمنع اختيار خاطئ.
+  // تعريف "الكويتي عمله الكويت" — الساين الكويتي = KWD فقط.
   const recommended = recommendedCurrency.value;
   if (!recommended) {
     return baseList; // لم تُحدَّد توصية بعد، اعرض الكل.
@@ -3037,12 +3039,20 @@ const pricingCurrencyOptions = computed(() => {
     return baseList;
   }
 
-  // موصى بها عملة غير مصرية → عرض العملة الموصى + EGP كخيار ثانوي.
+  // موصى بها عملة غير مصرية → عرض العملة الموصى فقط (بدون EGP).
   const filtered = baseList.filter((c) => {
     const code = String(c.code || '').toUpperCase();
-    return code === recommended || code === 'EGP';
+    return code === recommended;
   });
-  return filtered.length > 0 ? filtered : baseList;
+
+  // لو العملة الموصى غير موجودة في القائمة، أضفها كخيار افتراضي
+  if (filtered.length === 0) {
+    return [
+      { code: recommended, name: recommended, exchangeRate: 0 },
+      ...baseList,
+    ];
+  }
+  return filtered;
 });
 
 const sellingPriceEgp = computed(() => {
