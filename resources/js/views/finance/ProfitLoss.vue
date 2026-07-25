@@ -191,10 +191,19 @@
             الإيرادات (Revenues)
           </h3>
           <div class="space-y-3 pr-4 relative z-10">
-            <div v-for="(rev, index) in reportData.revenuesList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-emerald-500/30 transition-all">
-              <span class="text-white/90 font-medium">{{ rev.name }}</span>
-              <span class="text-emerald-400 font-bold font-display">{{ formatCurrency(rev.amount) }}</span>
-            </div>
+            <button
+              v-for="(rev, index) in reportData.revenuesList"
+              :key="`rev-${index}`"
+              type="button"
+              @click="openDrilldown(rev, 'revenue', 'الإيرادات')"
+              class="w-full flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-emerald-500/40 hover:bg-white/[0.08] transition-all cursor-pointer group text-right"
+            >
+              <span class="text-white/90 font-medium flex items-center gap-2 min-w-0">
+                <Search class="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                <span class="truncate">{{ rev.name }}</span>
+              </span>
+              <span class="text-emerald-400 font-bold font-display shrink-0">{{ formatCurrency(rev.amount) }}</span>
+            </button>
             <div v-if="reportData.revenuesList.length === 0" class="text-center py-4 text-emerald-400/50 text-sm">
               لا توجد إيرادات مسجلة في هذه الفترة
             </div>
@@ -219,10 +228,19 @@
             تكلفة المبيعات (Cost of Goods Sold - COGS)
           </h3>
           <div class="space-y-3 pr-4 relative z-10">
-            <div v-for="(cogs, index) in reportData.cogsList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-orange-500/30 transition-all">
-              <span class="text-white/90 font-medium">{{ cogs.name }}</span>
-              <span class="text-orange-400 font-bold font-display">{{ formatCurrency(cogs.amount) }}</span>
-            </div>
+            <button
+              v-for="(cogs, index) in reportData.cogsList"
+              :key="`cogs-${index}`"
+              type="button"
+              @click="openDrilldown(cogs, 'cogs', 'تكلفة المبيعات')"
+              class="w-full flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-orange-500/40 hover:bg-white/[0.08] transition-all cursor-pointer group text-right"
+            >
+              <span class="text-white/90 font-medium flex items-center gap-2 min-w-0">
+                <Search class="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                <span class="truncate">{{ cogs.name }}</span>
+              </span>
+              <span class="text-orange-400 font-bold font-display shrink-0">{{ formatCurrency(cogs.amount) }}</span>
+            </button>
             <div v-if="reportData.cogsList.length === 0" class="text-center py-4 text-orange-400/50 text-sm">
               لا توجد تكاليف مبيعات مسجلة في هذه الفترة
             </div>
@@ -254,14 +272,19 @@
             المردودات والإلغاءات (Refunds)
           </h3>
           <div class="space-y-3 pr-4">
-            <div
+            <button
               v-for="(item, index) in reportData.refundsList"
               :key="`refund-${index}`"
-              class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5"
+              type="button"
+              @click="openDrilldown(item, 'refund', 'المردودات')"
+              class="w-full flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-amber-500/40 hover:bg-white/[0.08] transition-all cursor-pointer group text-right"
             >
-              <span class="text-white/90 font-medium">{{ item.name }}</span>
-              <span class="text-amber-400 font-bold font-display">{{ formatCurrency(item.amount) }}</span>
-            </div>
+              <span class="text-white/90 font-medium flex items-center gap-2 min-w-0">
+                <Search class="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                <span class="truncate">{{ item.name }}</span>
+              </span>
+              <span class="text-amber-400 font-bold font-display shrink-0">{{ formatCurrency(item.amount) }}</span>
+            </button>
           </div>
           <div class="flex justify-between font-black text-white mt-5 border-t border-amber-500/30 pt-4 text-lg">
             <span>إجمالي المردودات</span>
@@ -277,10 +300,19 @@
             المصروفات التشغيلية والعمومية (Operating Expenses)
           </h3>
           <div class="space-y-3 pr-4 relative z-10">
-            <div v-for="(exp, index) in reportData.expensesList" :key="index" class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-rose-500/30 transition-all">
-              <span class="text-white/90 font-medium">{{ exp.name }}</span>
-              <span class="text-rose-400 font-bold font-display">{{ formatCurrency(exp.amount) }}</span>
-            </div>
+            <button
+              v-for="(exp, index) in reportData.expensesList"
+              :key="`exp-${index}`"
+              type="button"
+              @click="openDrilldown(exp, 'expense', 'المصروفات التشغيلية')"
+              class="w-full flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 hover:border-rose-500/40 hover:bg-white/[0.08] transition-all cursor-pointer group text-right"
+            >
+              <span class="text-white/90 font-medium flex items-center gap-2 min-w-0">
+                <Search class="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                <span class="truncate">{{ exp.name }}</span>
+              </span>
+              <span class="text-rose-400 font-bold font-display shrink-0">{{ formatCurrency(exp.amount) }}</span>
+            </button>
             <div v-if="reportData.expensesList.length === 0" class="text-center py-4 text-rose-400/50 text-sm">
               لا توجد مصروفات مسجلة في هذه الفترة
             </div>
@@ -314,6 +346,13 @@
 
       </div>
     </div>
+
+    <!-- Drill-down modal (additive — opens when operator clicks a P&L line) -->
+    <OperationDrilldownModal
+      :show="showDrilldown"
+      v-bind="drilldownPayload || {}"
+      @close="closeDrilldown"
+    />
   </div>
 </template>
 
@@ -330,12 +369,14 @@ import {
   Scale,
   Printer,
   FileText,
-  Coins
+  Coins,
+  Search
 } from 'lucide-vue-next';
 import axios from 'axios';
 import { useAsyncState } from '@/composables/useAsyncState';
 import KPICardSkeleton from '@/components/skeletons/KPICardSkeleton.vue';
 import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
+import OperationDrilldownModal from '@/components/finance/OperationDrilldownModal.vue';
 
 const globalError = ref('');
 let fetchController = null;
@@ -376,6 +417,59 @@ const grossProfit = computed(() => {
   }
   return reportData.value.totalRevenues - reportData.value.totalCogs;
 });
+
+// ── Drill-down modal state (additive — does not affect P&L data flow) ──
+// When the operator clicks any line in revenuesList / cogsList /
+// refundsList / expensesList, we open a modal that calls
+// GET /api/v1/reports/profit-by-operation to show the per-transaction
+// breakdown. The endpoint uses the same GL engine as the main P&L
+// (ProfitLossReportService) so the row-level numbers reconcile with
+// the totals displayed here.
+const showDrilldown = ref(false);
+const drilldownPayload = ref(null);
+
+function openDrilldown(item, category, categoryLabel) {
+  // `item.module` is provided by ProfitLossReportService::formatModuleList()
+  // for revenues/cogs/refunds. expensesList is bucketed by NAME (not module),
+  // so it doesn't carry `module` — in that case we fall back to '' which
+  // makes the modal query across all modules.
+  const moduleKey = item?.module || '';
+  drilldownPayload.value = {
+    module: moduleKey,
+    moduleLabel: getArabicModuleLabel(moduleKey),
+    category,
+    categoryLabel,
+    itemName: item?.name || '',
+    itemAmount: Number(item?.amount) || 0,
+    fromDate: filters.value.from,
+    toDate: filters.value.to,
+  };
+  showDrilldown.value = true;
+}
+
+function closeDrilldown() {
+  showDrilldown.value = false;
+  drilldownPayload.value = null;
+}
+
+function getArabicModuleLabel(mod) {
+  const map = {
+    flight: 'وحدة الطيران',
+    hajj_umra: 'الحج والعمرة',
+    visa: 'التأشيرات',
+    tourism: 'السياحة عامة',
+    bus: 'وحدة الباص',
+    fawry: 'فوري',
+    online: 'الخدمات الإلكترونية',
+    wallet: 'المحافظ والتحويلات',
+    wallets: 'المحافظ والتحويلات',
+    wallet_transfer: 'المحافظ والتحويلات',
+    office: 'المكتب عامة',
+    service: 'الخدمات',
+    general: 'عام',
+  };
+  return map[mod] || mod || 'عام';
+}
 
 const formatCurrency = (val) => {
   if (!val && val !== 0) return '0.00 EGP';

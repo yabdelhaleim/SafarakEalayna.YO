@@ -31,7 +31,10 @@ export const useAuthStore = defineStore('auth', {
       const name = state.user?.name || '';
       return name.charAt(0) || 'م';
     },
-    isAdmin: (state) => state.user?.role === 'admin',
+    // Treat 'admin' and 'owner' as privileged roles (matches the
+    // `authStore.isAdmin || authStore.user?.role === 'owner'` workaround
+    // already used across the app — keeps one source of truth).
+    isAdmin: (state) => ['admin', 'owner'].includes(state.user?.role),
   },
 
   actions: {

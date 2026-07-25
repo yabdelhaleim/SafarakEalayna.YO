@@ -91,8 +91,8 @@
           </div>
           <!-- Name + role -->
           <div class="user-info">
-            <span class="user-name">مدير النظام</span>
-            <span class="user-role">مدير النظام</span>
+            <span class="user-name">{{ userName }}</span>
+            <span class="user-role">{{ userRole }}</span>
           </div>
           <ChevronDown class="user-chevron" :class="{ 'rotate-180': isUserMenuOpen }" />
         </button>
@@ -106,8 +106,8 @@
                 <span>{{ userInitial }}</span>
               </div>
               <div>
-                <p class="dropdown-name">مدير النظام</p>
-                <p class="dropdown-email">admin@system.com</p>
+                <p class="dropdown-name">{{ userName }}</p>
+                <p class="dropdown-email">{{ userEmail }}</p>
               </div>
             </div>
 
@@ -134,7 +134,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/authStore';
 import {
   Search, Bell, RefreshCw,
   ChevronDown, ChevronLeft,
@@ -146,19 +147,30 @@ const emit = defineEmits(['toggle-sidebar']);
 
 /* ─── Route ─── */
 const route = useRoute();
+const router = useRouter();
+const authStore = useAuthStore();
 
 /* ─── State ─── */
 const searchQuery      = ref('');
 const isSearchFocused  = ref(false);
 const isRefreshing     = ref(false);
 const isUserMenuOpen   = ref(false);
-const notificationCount = ref(3);     // TODO: fetch from API
+const notificationCount = ref(0);     // hidden by default; pass-through from store once wired
 const userMenuRef      = ref(null);
 
 /* ─── Computed ─── */
 const pageTitle    = computed(() => route.meta?.title    || 'لوحة التحكم');
 const pageSubtitle = computed(() => route.meta?.subtitle || '');
-const userInitial  = computed(() => 'م');    // TODO: from auth store
+
+// All identity values come from the auth store — no hardcoded strings.
+const userName    = computed(() => authStore.userName || 'مستخدم');
+const userEmail   = computed(() => authStore.user?.email || '');
+const userRole    = computed(() => {
+  if (authStore.isAdmin) return 'مدير النظام';
+  if (authStore.user?.role === 'owner') return 'مالك';
+  return 'موظف';
+});
+const userInitial = computed(() => authStore.userInitial || 'م');
 
 const breadcrumbs = computed(() => {
   const crumbs = [{ label: 'الرئيسية', to: '/dashboard' }];
@@ -177,10 +189,10 @@ const handleRefresh = () => {
   setTimeout(() => { isRefreshing.value = false; }, 1200);
 };
 
-const handleLogout = () => {
-  if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-    console.log('Logging out...');
-  }
+const handleLogout = async () => {
+  if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
+  await authStore.logout();
+  router.push('/login');
 };
 
 /* ─── Close dropdown on outside click ─── */
