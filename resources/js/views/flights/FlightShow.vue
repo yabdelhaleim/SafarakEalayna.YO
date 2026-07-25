@@ -97,7 +97,7 @@
               <span class="text-lg font-black text-white">{{ ticketSegments.length }}</span>
               <span class="text-[10px] font-bold text-text-muted uppercase tracking-wider">مقطع</span>
             </div>
-            <div class="flex flex-col items-center justify-center min-w-[140px] rounded-2xl border border-white/5 bg-sky-500/10 p-3 backdrop-blur-md border-sky-500/20">
+            <div v-if="isAdmin" class="flex flex-col items-center justify-center min-w-[140px] rounded-2xl border border-white/5 bg-sky-500/10 p-3 backdrop-blur-md border-sky-500/20">
               <DollarSign class="h-5 w-5 text-success mb-1" />
               <span class="text-lg font-black text-white">{{ formatCurrency(booking.pricing?.sellingPrice) }}</span>
               <span class="text-[10px] font-bold text-sky-300 uppercase tracking-wider">إجمالي البيع</span>

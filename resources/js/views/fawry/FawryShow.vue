@@ -99,7 +99,7 @@
         </div>
       </div>
 
-      <div class="flight-panel !p-6 sm:!p-8">
+      <div v-if="isAdmin" class="flight-panel !p-6 sm:!p-8">
         <h2 class="flight-panel__title mb-4 flex items-center gap-2">
           <Banknote class="h-5 w-5 text-gold" />
           المبالغ والتسعير
@@ -141,13 +141,13 @@
           class="grid grid-cols-1 gap-3"
           :class="transaction.client_id ? 'sm:grid-cols-3' : 'sm:grid-cols-2'"
         >
-          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div v-if="isAdmin" class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <p class="text-xs text-text-muted">المبلغ المدفوع</p>
             <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-400">
               {{ formatCurrency(transaction.amount) }}
             </p>
           </div>
-          <div v-if="transaction.client_id" class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div v-if="transaction.client_id && isAdmin" class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <p class="text-xs text-text-muted">الآجل المتبقي</p>
             <p class="mt-1 font-mono text-lg font-bold tabular-nums text-error">
               {{ formatCurrency(Math.max(0, (transaction.selling_price || 0) - (transaction.amount || 0))) }}

@@ -139,7 +139,7 @@
               <th class="px-6 py-4 font-semibold">المسافرون</th>
               <th class="px-6 py-4 font-semibold">السيستم</th>
               <th class="px-6 py-4 font-semibold">الموظف</th>
-              <th class="px-6 py-4 font-semibold">السعر / الربح</th>
+              <th v-if="isAdmin" class="px-6 py-4 font-semibold">السعر / الربح</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
             </tr>
@@ -221,7 +221,7 @@
                     {{ booking.employee?.name || booking.createdByName || '—' }}
                   </span>
                 </td>
-                <td class="px-6 py-4">
+                <td v-if="isAdmin" class="px-6 py-4">
                   <div class="flex flex-col">
                     <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} {{ booking.pricing.currency || 'EGP' }}</span>
                     <div :class="['flex items-center gap-1 text-[10px] font-bold', booking.pricing.profit >= 0 ? 'text-success' : 'text-error']">

@@ -67,7 +67,7 @@
       </div>
 
       <!-- Total Revenue -->
-      <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-success/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-success/10">
+      <div v-if="isAdmin" class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-success/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-success/10">
         <div class="flex justify-between items-start mb-4">
           <div class="p-3 bg-success/10 rounded-xl text-success group-hover:scale-110 transition-transform">
             <Banknote class="w-6 h-6" />
@@ -85,7 +85,7 @@
       </div>
 
       <!-- Total Profit -->
-      <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-purple/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple/10">
+      <div v-if="isAdmin" class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-purple/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple/10">
         <div class="flex justify-between items-start mb-4">
           <div class="p-3 bg-purple/10 rounded-xl text-purple group-hover:scale-110 transition-transform">
             <TrendingUp class="w-6 h-6" />
@@ -194,8 +194,8 @@
             <tr class="border-b border-white/10 bg-white/5">
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">العميل</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">نوع العملية</th>
-              <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">المبلغ</th>
-              <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">الربح</th>
+              <th v-if="isAdmin" class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">المبلغ</th>
+              <th v-if="isAdmin" class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">الربح</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">طريقة الدفع</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">التاريخ</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">إجراءات</th>
@@ -221,10 +221,10 @@
                   {{ transaction.operation_type_label || store.getOperationTypeLabel(transaction.operation_type) }}
                 </span>
               </td>
-              <td class="px-6 py-4 font-mono font-semibold text-text-main">
+              <td v-if="isAdmin" class="px-6 py-4 font-mono font-semibold text-text-main">
                 {{ formatCurrency(transaction.selling_price) }}
               </td>
-              <td class="px-6 py-4 font-mono font-semibold text-success">
+              <td v-if="isAdmin" class="px-6 py-4 font-mono font-semibold text-success">
                 +{{ formatCurrency(transaction.profit) }}
               </td>
               <td class="px-6 py-4">

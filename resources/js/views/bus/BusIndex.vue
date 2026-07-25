@@ -68,7 +68,7 @@
         </div>
       </div>
 
-      <div class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-blue-400/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-400/10">
+      <div v-if="isAdmin" class="p-6 bg-card-bg border border-white/10 rounded-2xl flex flex-col justify-between group hover:border-blue-400/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-400/10">
         <div class="flex justify-between items-start mb-4">
           <div class="p-3 bg-blue-500/10 rounded-xl text-blue-500 group-hover:scale-110 transition-transform">
             <DollarSign class="w-6 h-6" />
@@ -175,9 +175,9 @@
               <th class="px-6 py-4 font-semibold">الرحلة</th>
               <th class="px-6 py-4 font-semibold">تاريخ السفر</th>
               <th class="px-6 py-4 font-semibold">مقاعد</th>
-              <th class="px-6 py-4 font-semibold">السعر</th>
+              <th v-if="isAdmin" class="px-6 py-4 font-semibold">السعر</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
-              <th class="px-6 py-4 font-semibold">الدفعة</th>
+              <th v-if="isAdmin" class="px-6 py-4 font-semibold">الدفعة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
             </tr>
           </thead>
@@ -225,7 +225,7 @@
                     <span class="font-semibold">{{ booking.quantity }}</span>
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                <td v-if="isAdmin" class="px-6 py-4">
                   <div class="flex flex-col">
                     <span class="font-mono font-bold text-sm">{{ booking.total_price?.toLocaleString() }}</span>
                     <span class="text-xs text-text-muted">جنيه</span>
@@ -241,7 +241,7 @@
                     {{ statusLabels[booking.status] || booking.status }}
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                <td v-if="isAdmin" class="px-6 py-4">
                   <div class="flex flex-col">
                     <div class="flex items-center gap-2">
                       <span class="font-mono text-sm">{{ booking.paid_amount?.toLocaleString() }}</span>

@@ -94,8 +94,8 @@
               <th class="px-6 py-4 font-semibold">العميل</th>
               <th class="px-6 py-4 font-semibold">البرنامج</th>
               <th class="px-6 py-4 font-semibold">نوع الرحلة</th>
-              <th class="px-6 py-4 font-semibold">السعر / الربح</th>
-              <th class="px-6 py-4 font-semibold">المدفوعات</th>
+              <th v-if="isAdmin" class="px-6 py-4 font-semibold">السعر / الربح</th>
+              <th v-if="isAdmin" class="px-6 py-4 font-semibold">المدفوعات</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
             </tr>
@@ -106,6 +106,7 @@
                 <td v-for="j in 8" :key="j" class="px-6 py-4">
                   <div class="h-4 animate-shimmer rounded w-full"></div>
                 </td>
+                <!-- colspan note: skeleton uses 8 columns (full admin view); non-admin sees 6 -->
               </tr>
             </template>
             <template v-else-if="filteredBookings.length > 0">
@@ -138,7 +139,7 @@
                       {{ booking.program?.program_type === 'hajj' ? '🕋 حج' : '🕋 عمرة' }}
                     </div>
                   </td>
-                  <td class="px-6 py-4">
+                  <td v-if="isAdmin" class="px-6 py-4">
                     <div class="flex flex-col">
                       <span class="font-mono text-sm">{{ Number(booking.pricing?.selling_price || 0).toLocaleString() }} {{ booking.pricing?.currency || 'EGP' }}</span>
                       <div :class="['flex items-center gap-1 text-[10px] font-bold', (booking.pricing?.profit ?? 0) >= 0 ? 'text-success' : 'text-error']">
@@ -148,7 +149,7 @@
                       </div>
                     </div>
                   </td>
-                  <td class="px-6 py-4">
+                  <td v-if="isAdmin" class="px-6 py-4">
                     <div class="flex flex-col">
                       <div class="w-24 bg-white/10 rounded-full h-2 mb-1">
                         <div class="h-2 rounded-full transition-all"
