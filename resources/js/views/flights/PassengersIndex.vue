@@ -1,368 +1,361 @@
 <template>
-  <div class="passengers-page space-y-6 pb-12">
-    <!-- Header Page Section -->
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight text-white">دليل المسافرين</h1>
-        <p class="text-slate-400 mt-1">عرض وإدارة جميع المسافرين على رحلات الطيران وتخصيص تنبيهات مواعيد السفر.</p>
-      </div>
-      <div>
-        <button
-          @click="isSettingsModalOpen = true"
-          class="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-lg shadow-primary-600/20 transition-all border border-primary-500/30"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a9.001 9.001 0 01-11.962-9.412 8.903 8.903 0 000 13.046m11.962-3.634a9.001 9.001 0 00-11.962-9.412m11.962 9.412a8.902 8.902 0 001.272-4.757 8.902 8.902 0 00-1.272-4.756M13.857 17.082a9.008 9.008 0 01-1.273-4.757c0-1.748.498-3.38 1.357-4.757m0 9.514a8.997 8.997 0 012.272-4.757 8.997 8.997 0 01-2.272-4.757M8.684 10.748a3.075 3.075 0 11-1.034-4.836M12 12a3 3 0 100-6 3 3 0 000 6z" />
-          </svg>
-          تخصيص إعدادات التنبيهات
+  <div class="passengers-page animate-in fade-in duration-700 pb-12">
+    <header class="flight-hero">
+      <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <span class="inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-[11px] font-bold text-sky-300">
+              <Users class="h-3.5 w-3.5" />
+              عمليات المسافرين
+            </span>
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-bold text-text-muted">
+              <span class="h-1.5 w-1.5 rounded-full bg-success" :class="{ 'animate-pulse': loading }"></span>
+              {{ loading ? 'جاري التحديث' : `${pagination.total} مسافر` }}
+            </span>
+          </div>
+          <h1 class="text-3xl font-black tracking-tight text-text-main sm:text-4xl">دليل المسافرين</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-7 text-text-muted">
+            ابحث في بيانات المسافرين، راجع خطوط السير ومواعيد المغادرة، واضبط تنبيهات السفر من شاشة تشغيل واحدة.
+          </p>
+        </div>
+
+        <button type="button" class="btn-airline shrink-0 shadow-xl" @click="openSettingsModal">
+          <BellRing class="h-5 w-5" />
+          إعدادات تنبيهات السفر
         </button>
       </div>
-    </div>
+    </header>
 
-    <!-- Search and Filters Box -->
-    <div class="glass border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <!-- Search Input -->
-        <div class="md:col-span-2 relative">
-          <label for="search-input" class="sr-only">بحث عن مسافر</label>
-          <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
-            </svg>
+    <main class="mx-auto max-w-7xl space-y-6">
+      <section class="flight-panel !p-4 sm:!p-5" aria-labelledby="passenger-filters-title">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="passenger-filters-title" class="flex items-center gap-2 text-sm font-extrabold text-text-main">
+              <SlidersHorizontal class="h-4 w-4 text-gold" />
+              البحث والتصفية
+            </h2>
+            <p class="mt-1 text-xs text-text-muted">استخدم اسماً أو وثيقة أو رقم PNR للوصول السريع.</p>
           </div>
-          <input
-            id="search-input"
-            v-model="filters.search"
-            type="text"
-            placeholder="بحث باسم المسافر، رقم جواز السفر، الهوية الوطنية، أو PNR..."
-            class="w-full pr-11 pl-4 py-3 bg-slate-900/60 border border-slate-700/60 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-primary-500 transition-colors"
-            @input="debounceSearch"
-          />
+          <div class="flex items-center gap-2">
+            <span v-if="activeFiltersCount" class="rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[11px] font-bold text-gold">
+              {{ activeFiltersCount }} فلتر نشط
+            </span>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-text-muted transition hover:bg-white/5 hover:text-gold disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="!activeFiltersCount"
+              @click="resetFilters"
+            >
+              <RotateCcw class="h-3.5 w-3.5" />
+              إعادة التعيين
+            </button>
+          </div>
         </div>
 
-        <!-- Trip Status Filter -->
-        <div>
-          <select
-            v-model="filters.trip_status"
-            class="w-full px-4 py-3 bg-slate-900/60 border border-slate-700/60 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
-            @change="fetchPassengers(1)"
-          >
-            <option value="all">كل الرحلات</option>
-            <option value="upcoming">(موصى به) المسافرون قريباً / لم يسافر بعد</option>
-            <option value="past">المسافرون السابقون</option>
-          </select>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <label class="relative md:col-span-2 xl:col-span-5">
+            <span class="sr-only">بحث عن مسافر</span>
+            <Search class="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <Loader2 v-if="loading && filters.search" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-sky-400" />
+            <input
+              v-model="filters.search"
+              type="search"
+              class="flight-input !py-3 pr-11 text-sm"
+              placeholder="الاسم، الجواز، الرقم القومي، أو PNR..."
+              @input="debounceSearch"
+            />
+          </label>
+
+          <label class="xl:col-span-3">
+            <span class="sr-only">حالة الرحلة</span>
+            <select v-model="filters.trip_status" class="flight-select !py-3 text-sm" @change="fetchPassengers(1)">
+              <option value="upcoming">المسافرون القادمون</option>
+              <option value="past">المسافرون السابقون</option>
+              <option value="all">كل الرحلات</option>
+            </select>
+          </label>
+
+          <label class="xl:col-span-2">
+            <span class="mb-1 block text-[10px] font-bold text-text-muted xl:hidden">المغادرة من</span>
+            <input v-model="filters.departure_date_from" type="date" class="flight-input !py-3 text-sm" aria-label="تاريخ المغادرة من" @change="fetchPassengers(1)" />
+          </label>
+
+          <label class="xl:col-span-2">
+            <span class="mb-1 block text-[10px] font-bold text-text-muted xl:hidden">المغادرة إلى</span>
+            <input v-model="filters.departure_date_to" type="date" class="flight-input !py-3 text-sm" aria-label="تاريخ المغادرة إلى" @change="fetchPassengers(1)" />
+          </label>
+        </div>
+      </section>
+
+      <section class="flight-panel !overflow-hidden !p-0" aria-label="قائمة المسافرين">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+          <div>
+            <h2 class="text-base font-extrabold text-text-main">سجل المسافرين</h2>
+            <p class="mt-0.5 text-xs text-text-muted">كل صف يمثل مسافراً على خط سير محدد.</p>
+          </div>
+          <span v-if="!loading && !errorMessage" class="font-mono text-xs font-bold text-sky-300">
+            {{ passengers.length }} نتيجة في الصفحة
+          </span>
         </div>
 
-        <!-- Reset Button -->
-        <div class="flex items-end">
-          <button
-            @click="resetFilters"
-            class="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            إعادة تعيين الفلاتر
+        <div v-if="loading" aria-live="polite">
+          <div class="hidden overflow-hidden md:block">
+            <div v-for="row in 7" :key="row" class="grid grid-cols-6 gap-6 border-b border-white/5 px-6 py-5">
+              <div v-for="cell in 6" :key="cell" class="h-4 animate-shimmer rounded-lg" :class="cell === 1 ? 'w-full' : 'w-3/4'"></div>
+            </div>
+          </div>
+          <div class="divide-y divide-white/5 md:hidden">
+            <div v-for="row in 5" :key="row" class="space-y-3 p-5">
+              <div class="h-5 w-1/2 animate-shimmer rounded-lg"></div>
+              <div class="h-4 w-3/4 animate-shimmer rounded-lg"></div>
+              <div class="h-16 w-full animate-shimmer rounded-xl"></div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="errorMessage" class="flex flex-col items-center px-6 py-16 text-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl border border-error/20 bg-error/10 text-error">
+            <WifiOff class="h-8 w-8" />
+          </div>
+          <h3 class="mt-5 text-xl font-black text-text-main">تعذر تحميل دليل المسافرين</h3>
+          <p class="mt-2 max-w-md text-sm leading-6 text-text-muted">{{ errorMessage }}</p>
+          <button type="button" class="btn-airline-ghost mt-6" @click="fetchPassengers(pagination.current_page)">
+            <RefreshCw class="h-4 w-4" />
+            إعادة المحاولة
           </button>
         </div>
-      </div>
 
-      <!-- Date Range Fields Row -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-800/40">
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1.5">تاريخ المغادرة من</label>
-          <input
-            v-model="filters.departure_date_from"
-            type="date"
-            class="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-700/60 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
-            @change="fetchPassengers(1)"
-          />
+        <div v-else-if="passengers.length === 0" class="flex flex-col items-center px-6 py-16 text-center">
+          <div class="relative flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-white/5">
+            <UserSearch class="h-9 w-9 text-sky-300" />
+            <span class="absolute -left-2 -top-2 h-5 w-5 rounded-full border-4 border-card-bg bg-gold"></span>
+          </div>
+          <h3 class="mt-5 text-xl font-black text-text-main">لا توجد نتائج مطابقة</h3>
+          <p class="mt-2 max-w-md text-sm leading-6 text-text-muted">جرّب تعديل عبارة البحث أو إزالة نطاق التاريخ والحالة الحالية.</p>
+          <button v-if="activeFiltersCount" type="button" class="mt-5 text-sm font-bold text-gold hover:underline" @click="resetFilters">عرض المسافرين القادمين</button>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1.5">تاريخ المغادرة إلى</label>
-          <input
-            v-model="filters.departure_date_to"
-            type="date"
-            class="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-700/60 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
-            @change="fetchPassengers(1)"
-          />
-        </div>
-      </div>
-    </div>
 
-    <!-- Passengers Listing -->
-    <div class="glass border border-slate-700/50 rounded-2xl shadow-xl overflow-hidden">
-      <div v-if="loading" class="flex flex-col items-center justify-center py-20 space-y-4">
-        <div class="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-slate-400 font-medium animate-pulse">جاري تحميل دليل المسافرين...</p>
-      </div>
+        <template v-else>
+          <div class="hidden overflow-x-auto md:block">
+            <table class="w-full min-w-[1100px] border-collapse text-right">
+              <thead>
+                <tr class="border-b border-white/10 bg-white/[0.035] text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                  <th class="px-5 py-4">المسافر</th>
+                  <th class="px-5 py-4">الحجز والعميل</th>
+                  <th class="px-5 py-4">المسار</th>
+                  <th class="px-5 py-4">موعد السفر</th>
+                  <th class="px-5 py-4">التبعية</th>
+                  <th class="px-5 py-4">التشغيل</th>
+                  <th class="px-5 py-4 text-center">الإجراء</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/5">
+                <tr v-for="(pax, index) in passengers" :key="passengerKey(pax, index)" class="group transition-colors hover:bg-white/[0.035]">
+                  <td class="px-5 py-4">
+                    <div class="flex min-w-[210px] items-center gap-3">
+                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">
+                        {{ initials(pax) }}
+                      </div>
+                      <div class="min-w-0">
+                        <button type="button" class="group/name flex max-w-[190px] items-center gap-1.5 text-right" title="نسخ اسم المسافر" @click="copyToClipboard(fullName(pax), 'تم نسخ اسم المسافر')">
+                          <span class="truncate text-sm font-extrabold text-text-main">{{ fullName(pax) }}</span>
+                          <Copy class="h-3 w-3 shrink-0 text-text-muted opacity-0 transition group-hover/name:opacity-100" />
+                        </button>
+                        <div class="mt-1 flex flex-wrap gap-x-2 text-[10px] text-text-muted">
+                          <span>جواز: <b class="font-mono text-text-main/75">{{ pax.passport_number || '—' }}</b></span>
+                          <span>قومي: <b class="font-mono text-text-main/75">{{ pax.national_id || '—' }}</b></span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
 
-      <div v-else-if="passengers.length === 0" class="text-center py-20 space-y-4">
-        <div class="w-16 h-16 bg-slate-800/50 rounded-3xl flex items-center justify-center mx-auto border border-slate-700/30">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-slate-400">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-white">لا يوجد مسافرون مطابِقون للبحث</h3>
-        <p class="text-slate-400 max-w-sm mx-auto">تأكد من عدم وجود أخطاء إملائية في البحث، أو قم بإلغاء الفلاتر النشطة.</p>
-      </div>
-
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-right border-collapse min-w-[1200px]">
-          <thead>
-            <tr class="border-b border-slate-800 bg-slate-900/40 text-slate-400 font-semibold text-[11px] uppercase">
-              <th class="px-4 py-3.5 text-right">المسافر</th>
-              <th class="px-4 py-3.5 text-right">رقم الحجز (PNR)</th>
-              <th class="px-4 py-3.5 text-right">العميل (بالعربي)</th>
-              <th class="px-4 py-3.5 text-right">التبعية والجروب</th>
-              <th class="px-4 py-3.5 text-right">خط الطيران والسير</th>
-              <th class="px-4 py-3.5 text-right">تاريخ وساعة السفر</th>
-              <th class="px-4 py-3.5 text-center">العدد</th>
-              <th class="px-4 py-3.5 text-center">تاريخ الحجز</th>
-              <th class="px-4 py-3.5 text-right">الموظف</th>
-              <th class="px-4 py-3.5 text-right">ملاحظات</th>
-              <th class="px-4 py-3.5 text-center">أدوات</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60">
-            <tr v-for="pax in passengers" :key="pax.passenger_id + '-' + pax.departure_date + '-' + pax.leg_number" class="hover:bg-slate-900/20 transition-colors text-xs text-slate-300">
-              <!-- Passenger Name (Copiable) -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-300 font-bold uppercase text-[11px] shrink-0">
-                    {{ pax.first_name ? pax.first_name[0] : '' }}{{ pax.last_name ? pax.last_name[0] : '' }}
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-1.5">
-                      <span class="font-bold text-white text-sm">{{ pax.first_name }} {{ pax.last_name }}</span>
-                      <button
-                        @click="copyToClipboard(pax.first_name + ' ' + pax.last_name, 'تم نسخ اسم المسافر')"
-                        class="text-slate-500 hover:text-slate-300 p-0.5 rounded transition-colors"
-                        title="نسخ الاسم"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H5.25m14.25 2.25V7.875c0-.621-.504-1.125-1.125-1.125H11.25a1.125 1.125 0 00-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125h12.75c0-.621.504-1.125 1.125-1.125V11.25a1.125 1.125 0 00-1.125-1.125z" />
-                        </svg>
+                  <td class="px-5 py-4">
+                    <div class="min-w-[150px]">
+                      <button v-if="pax.booking?.pnr" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-gold/20 bg-gold/10 px-2 py-1 font-mono text-xs font-black text-gold transition hover:bg-gold/15" @click="copyToClipboard(pax.booking.pnr, 'تم نسخ PNR الحجز')">
+                        {{ pax.booking.pnr }}
+                        <Copy class="h-3 w-3" />
                       </button>
+                      <span v-else class="text-xs text-text-muted">بدون PNR</span>
+                      <p class="mt-1.5 max-w-[180px] truncate text-xs font-bold text-text-main">{{ pax.customer?.name || 'عميل غير محدد' }}</p>
+                      <p class="mt-0.5 font-mono text-[10px] text-text-muted">{{ pax.booking?.booking_number || '—' }}</p>
                     </div>
-                    <div class="text-[10px] text-slate-500 mt-0.5">
-                      جواز: {{ pax.passport_number || '—' }} | قومي: {{ pax.national_id || '—' }}
-                    </div>
-                  </div>
-                </div>
-              </td>
+                  </td>
 
-              <!-- PNR (Copiable) -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <div class="space-y-0.5">
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-xs px-2 py-0.5 rounded font-mono font-black bg-primary-950 text-primary-400 border border-primary-800/40">
-                      {{ pax.booking?.pnr || 'بدون PNR' }}
-                    </span>
-                    <button
-                      v-if="pax.booking?.pnr"
-                      @click="copyToClipboard(pax.booking.pnr, 'تم نسخ PNR الحجز')"
-                      class="text-slate-500 hover:text-slate-300 p-0.5"
-                      title="نسخ PNR"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H5.25m14.25 2.25V7.875c0-.621-.504-1.125-1.125-1.125H11.25a1.125 1.125 0 00-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125h12.75c0-.621.504-1.125 1.125-1.125V11.25a1.125 1.125 0 00-1.125-1.125z" />
-                      </svg>
+                  <td class="px-5 py-4">
+                    <div class="min-w-[150px]">
+                      <div class="flex items-center gap-2 font-mono text-xs font-black text-text-main">
+                        <span>{{ pax.booking?.from_airport || '—' }}</span>
+                        <ArrowLeft class="h-3.5 w-3.5 text-sky-400" />
+                        <span>{{ pax.booking?.to_airport || '—' }}</span>
+                      </div>
+                      <p class="mt-1.5 max-w-[170px] truncate text-[11px] text-text-muted">{{ pax.booking?.airline_name || 'شركة الطيران غير محددة' }}</p>
+                    </div>
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <div class="min-w-[165px]">
+                      <span class="inline-flex items-center gap-1.5 text-xs font-bold" :class="isUpcoming(pax.departure_date) ? 'text-success' : 'text-text-muted'">
+                        <CalendarDays class="h-3.5 w-3.5" />
+                        {{ formatDepartureDate(pax.departure_date) }}
+                      </span>
+                      <p class="mt-1.5 flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
+                        <Clock3 class="h-3 w-3" />
+                        {{ formatTime(pax.departure_time) }}
+                      </p>
+                    </div>
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <span class="inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold" :class="affiliationClass(pax)">{{ pax.affiliation || 'عميل فردي' }}</span>
+                    <p v-if="pax.group_name && pax.group_name !== '—'" class="mt-1.5 max-w-[140px] truncate text-[10px] font-bold text-gold">{{ pax.group_name }}</p>
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <div class="min-w-[120px] text-xs">
+                      <p class="font-bold text-text-main">{{ pax.employee_name || '—' }}</p>
+                      <p class="mt-1 text-[10px] text-text-muted">حجز: {{ formatBookingDate(pax.booking_date) }}</p>
+                      <p v-if="pax.booking_notes" class="mt-1 max-w-[145px] truncate text-[10px] text-warning" :title="pax.booking_notes">{{ pax.booking_notes }}</p>
+                    </div>
+                  </td>
+
+                  <td class="px-5 py-4 text-center">
+                    <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 p-2.5 text-text-muted transition hover:border-sky-400/30 hover:bg-sky-500/10 hover:text-sky-300" title="عرض الحجز" aria-label="عرض الحجز">
+                      <Eye class="h-4 w-4" />
+                    </router-link>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="divide-y divide-white/5 md:hidden">
+            <article v-for="(pax, index) in passengers" :key="passengerKey(pax, index)" class="space-y-4 p-5 transition hover:bg-white/[0.025]">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex min-w-0 items-center gap-3">
+                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">{{ initials(pax) }}</div>
+                  <div class="min-w-0">
+                    <button type="button" class="flex max-w-full items-center gap-1.5 text-right" @click="copyToClipboard(fullName(pax), 'تم نسخ اسم المسافر')">
+                      <span class="truncate text-sm font-black text-text-main">{{ fullName(pax) }}</span>
+                      <Copy class="h-3 w-3 shrink-0 text-text-muted" />
                     </button>
-                  </div>
-                  <div class="text-[10px] text-slate-500">
-                    رقم السيستم: <span class="font-mono text-slate-400">{{ pax.booking?.booking_number }}</span>
+                    <p class="mt-1 truncate text-[10px] text-text-muted">جواز: {{ pax.passport_number || '—' }} · قومي: {{ pax.national_id || '—' }}</p>
                   </div>
                 </div>
-              </td>
+                <span class="shrink-0 rounded-full border px-2 py-1 text-[9px] font-bold" :class="affiliationClass(pax)">{{ pax.affiliation || 'فردي' }}</span>
+              </div>
 
-              <!-- Customer Name (Arabic) -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <span class="font-bold text-white">{{ pax.customer?.name || '—' }}</span>
-              </td>
-
-              <!-- Affiliation & Group -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <div class="space-y-0.5">
-                  <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" :class="pax.affiliation === 'عميل مجموعات' ? 'bg-amber-950 text-amber-400 border border-amber-800/40' : 'bg-slate-800 text-slate-400 border border-slate-700/40'">
-                    {{ pax.affiliation }}
-                  </span>
-                  <div v-if="pax.group_name && pax.group_name !== '—'" class="text-[10px] text-amber-500 font-semibold mt-1">
-                    {{ pax.group_name }}
-                  </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button v-if="pax.booking?.pnr" type="button" class="rounded-xl border border-gold/20 bg-gold/10 p-3 text-right" @click="copyToClipboard(pax.booking.pnr, 'تم نسخ PNR الحجز')">
+                  <span class="block text-[9px] font-bold text-text-muted">PNR</span>
+                  <span class="mt-1 flex items-center gap-1 font-mono text-xs font-black text-gold"><Copy class="h-3 w-3" />{{ pax.booking.pnr }}</span>
+                </button>
+                <div class="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+                  <span class="block text-[9px] font-bold text-text-muted">موعد السفر</span>
+                  <span class="mt-1 block text-xs font-bold" :class="isUpcoming(pax.departure_date) ? 'text-success' : 'text-text-main'">{{ formatShortDate(pax.departure_date) }}</span>
+                  <span class="mt-0.5 block font-mono text-[10px] text-text-muted">{{ formatTime(pax.departure_time) }}</span>
                 </div>
-              </td>
+              </div>
 
-              <!-- Route & Airline -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <div class="space-y-0.5">
-                  <div class="flex items-center gap-1 text-white font-semibold">
-                    <span>{{ pax.booking?.from_airport }}</span>
-                    <span>←</span>
-                    <span>{{ pax.booking?.to_airport }}</span>
+              <div class="rounded-xl border border-white/5 bg-black/10 p-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-2 font-mono text-xs font-black text-text-main">
+                    <MapPin class="h-3.5 w-3.5 text-sky-400" />
+                    {{ pax.booking?.from_airport || '—' }}
+                    <ArrowLeft class="h-3 w-3 text-text-muted" />
+                    {{ pax.booking?.to_airport || '—' }}
                   </div>
-                  <div class="text-[10px] text-slate-400">
-                    {{ pax.booking?.airline_name || '—' }}
-                  </div>
+                  <span class="shrink-0 rounded-full bg-white/5 px-2 py-1 text-[9px] font-bold text-text-muted">{{ pax.booking?.passenger_count || 1 }} مسافر</span>
                 </div>
-              </td>
+                <p class="mt-2 text-[10px] text-text-muted">{{ pax.booking?.airline_name || 'شركة الطيران غير محددة' }}</p>
+              </div>
 
-              <!-- Travel Date & Time -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <div class="space-y-0.5">
-                  <span :class="isUpcoming(pax.departure_date) ? 'text-emerald-400 font-semibold' : 'text-slate-500'">
-                    {{ formatDepartureDate(pax.departure_date) }}
-                  </span>
-                  <div class="text-[10px] font-mono text-slate-400">
-                    ساعة الإقلاع: {{ pax.departure_time || '—' }}
-                  </div>
+              <div class="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+                <div class="min-w-0 text-[10px] text-text-muted">
+                  <p class="truncate font-bold text-text-main">{{ pax.customer?.name || 'عميل غير محدد' }}</p>
+                  <p class="mt-0.5 truncate">الموظف: {{ pax.employee_name || '—' }}</p>
                 </div>
-              </td>
-
-              <!-- Number of passengers -->
-              <td class="px-4 py-3 text-center whitespace-nowrap">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 font-black text-xs text-white">
-                  {{ pax.booking?.passenger_count }}
-                </span>
-              </td>
-
-              <!-- Booking Date -->
-              <td class="px-4 py-3 text-center whitespace-nowrap">
-                <div class="text-xs text-slate-400">
-                  {{ formatBookingDate(pax.booking_date) }}
-                </div>
-              </td>
-
-              <!-- Employee Name -->
-              <td class="px-4 py-3 whitespace-nowrap">
-                <span class="text-slate-300 font-medium">{{ pax.employee_name }}</span>
-              </td>
-
-              <!-- Notes -->
-              <td class="px-4 py-3 max-w-[150px] truncate" :title="pax.booking_notes">
-                <span class="text-xs text-slate-400">{{ pax.booking_notes || '—' }}</span>
-              </td>
-
-              <!-- Actions/Details Links -->
-              <td class="px-4 py-3 text-center whitespace-nowrap">
-                <router-link
-                  v-if="pax.booking?.id"
-                  :to="`/flights/${pax.booking.id}`"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg border border-slate-700 text-xs transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
+                <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20">
+                  <Eye class="h-3.5 w-3.5" />
                   عرض الحجز
                 </router-link>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </div>
+            </article>
+          </div>
+        </template>
 
-      <!-- Pagination Block -->
-      <div v-if="pagination.total > 0" class="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-slate-900/40 border-t border-slate-800/80">
-        <div class="text-sm text-slate-400">
-          عرض <span class="font-bold text-white">{{ passengers.length }}</span> من إجمالي <span class="font-bold text-white">{{ pagination.total }}</span> مسافر.
+        <div v-if="!loading && !errorMessage && pagination.total > 0" class="flex flex-col gap-4 border-t border-white/10 bg-white/[0.025] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p class="text-center text-xs text-text-muted sm:text-right">
+            الصفحة <b class="text-text-main">{{ pagination.current_page }}</b> من <b class="text-text-main">{{ pagination.last_page }}</b>
+            <span class="mx-1 text-white/20">·</span>
+            إجمالي <b class="text-text-main">{{ pagination.total }}</b> مسافر
+          </p>
+          <div class="flex items-center justify-center gap-2">
+            <button type="button" class="pagination-button" :disabled="pagination.current_page === 1" aria-label="الصفحة السابقة" @click="fetchPassengers(pagination.current_page - 1)">
+              <ChevronRight class="h-4 w-4" />
+            </button>
+            <span class="flex h-9 min-w-9 items-center justify-center rounded-lg bg-gold px-3 text-xs font-black text-black">{{ pagination.current_page }}</span>
+            <button type="button" class="pagination-button" :disabled="!pagination.has_more" aria-label="الصفحة التالية" @click="fetchPassengers(pagination.current_page + 1)">
+              <ChevronLeft class="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-1.5">
-          <!-- Prev Button -->
-          <button
-            @click="fetchPassengers(pagination.current_page - 1)"
-            :disabled="pagination.current_page === 1"
-            class="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-45 disabled:hover:bg-slate-800 text-white border border-slate-700 rounded-lg transition-colors"
-            aria-label="الصفحة السابقة"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
-          </button>
+      </section>
+    </main>
 
-          <!-- Pages -->
-          <span class="text-sm text-slate-400 px-3">
-            صفحة <span class="font-bold text-white">{{ pagination.current_page }}</span> من <span class="font-bold text-white">{{ pagination.last_page }}</span>
-          </span>
-
-          <!-- Next Button -->
-          <button
-            @click="fetchPassengers(pagination.current_page + 1)"
-            :disabled="!pagination.has_more"
-            class="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-45 disabled:hover:bg-slate-800 text-white border border-slate-700 rounded-lg transition-colors"
-            aria-label="الصفحة التالية"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Alert Settings Modal -->
     <transition name="t-modal">
-      <div v-if="isSettingsModalOpen" class="fixed inset-0 z-[150] flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" @click="isSettingsModalOpen = false"></div>
-
-        <!-- Modal Box -->
-        <div class="relative w-full max-w-lg bg-slate-900 border border-slate-700/60 rounded-3xl overflow-hidden shadow-2xl p-6 space-y-6">
-          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h2 class="text-2xl font-bold text-white">إعدادات الإشعارات وتنبيهات السفر</h2>
-            <button @click="isSettingsModalOpen = false" class="text-slate-400 hover:text-slate-200 transition-colors p-1" aria-label="إغلاق">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+      <div v-if="isSettingsModalOpen" class="fixed inset-0 z-[150] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="alert-settings-title">
+        <button type="button" class="absolute inset-0 cursor-default bg-black/75 backdrop-blur-sm" aria-label="إغلاق" @click="closeSettingsModal"></button>
+        <div class="modal-card relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-card-bg shadow-2xl">
+          <div class="relative border-b border-white/10 bg-gradient-to-l from-sky-950/50 to-card-bg p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-600 text-white shadow-lg shadow-sky-500/20">
+                  <BellRing class="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 id="alert-settings-title" class="text-xl font-black text-text-main">تنبيهات السفر</h2>
+                  <p class="mt-1 text-xs text-text-muted">حدّد متى تريد استلام تذكير المغادرة.</p>
+                </div>
+              </div>
+              <button type="button" class="rounded-xl p-2 text-text-muted transition hover:bg-white/10 hover:text-text-main" aria-label="إغلاق نافذة الإعدادات" @click="closeSettingsModal">
+                <X class="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
-          <div class="space-y-4">
-            <div class="p-4 bg-primary-950/30 border border-primary-900/40 rounded-2xl text-primary-200 text-sm leading-relaxed text-right">
-              <strong>تنبيهات السفر التلقائية:</strong> ستقوم لوحة التحكم بإرسال إشعارات داخل التطبيق (جرس التنبيهات في شريط العنوان) لمواعيد مغادرة المسافرين في التاريخ والساعة المحددة أدناه.
+          <div class="space-y-5 p-6">
+            <div class="flex gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/[0.07] p-4 text-sm leading-6 text-sky-100">
+              <Info class="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
+              <p>ستظهر التنبيهات داخل جرس الإشعارات في لوحة التحكم للمسافرين الذين اقترب موعد مغادرتهم.</p>
             </div>
 
-            <!-- Days Before -->
-            <div class="space-y-1.5">
-              <label class="block text-sm font-semibold text-slate-300">موعد إرسال التنبيه</label>
-              <select
-                v-model="alertSettings.travel_alert_days_before"
-                class="w-full px-4 py-2.5 bg-slate-850 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
-              >
-                <option :value="0">في نفس يوم السفر (Same Day)</option>
-                <option :value="1">قبل يوم من السفر (1 Day Before)</option>
-                <option :value="2">قبل يومين من السفر (2 Days Before)</option>
-                <option :value="3">قبل 3 أيام من السفر (3 Days Before)</option>
-                <option :value="7">قبل أسبوع من السفر (1 Week Before)</option>
+            <label class="block space-y-2">
+              <span class="text-sm font-bold text-text-main">موعد إرسال التنبيه</span>
+              <select v-model="alertSettings.travel_alert_days_before" class="flight-select">
+                <option :value="0">في نفس يوم السفر</option>
+                <option :value="1">قبل يوم من السفر</option>
+                <option :value="2">قبل يومين من السفر</option>
+                <option :value="3">قبل 3 أيام من السفر</option>
+                <option :value="7">قبل أسبوع من السفر</option>
               </select>
-            </div>
+            </label>
 
-            <!-- Time of Day -->
-            <div class="space-y-1.5">
-              <label class="block text-sm font-semibold text-slate-300">توقيت إرسال التنبيه في اليوم</label>
-              <input
-                v-model="alertSettings.travel_alert_time"
-                type="time"
-                class="w-full px-4 py-2.5 bg-slate-850 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors font-mono"
-              />
-              <span class="text-xs text-slate-500 block">مثال: 09:00 صباحاً لتلقي الإشعارات في بداية يوم العمل.</span>
-            </div>
+            <label class="block space-y-2">
+              <span class="text-sm font-bold text-text-main">وقت إرسال التنبيه</span>
+              <div class="relative">
+                <Clock3 class="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                <input v-model="alertSettings.travel_alert_time" type="time" class="flight-input pr-11 font-mono" />
+              </div>
+              <span class="block text-[11px] leading-5 text-text-muted">مثال: 09:00 لتلقي الإشعارات في بداية يوم العمل.</span>
+            </label>
           </div>
 
-          <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-            <button
-              @click="isSettingsModalOpen = false"
-              class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700/60"
-            >
-              إلغاء
-            </button>
-            <button
-              @click="saveAlertSettings"
-              :disabled="savingSettings"
-              class="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-primary-600/10 flex items-center gap-2"
-            >
-              <span v-if="savingSettings" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              حفظ الإعدادات
+          <div class="flex flex-col-reverse gap-3 border-t border-white/10 bg-white/[0.025] p-5 sm:flex-row sm:justify-end">
+            <button type="button" class="btn-airline-ghost" :disabled="savingSettings" @click="closeSettingsModal">إلغاء</button>
+            <button type="button" class="btn-airline min-w-36" :disabled="savingSettings" @click="saveAlertSettings">
+              <Loader2 v-if="savingSettings" class="h-4 w-4 animate-spin" />
+              <Save v-else class="h-4 w-4" />
+              {{ savingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات' }}
             </button>
           </div>
         </div>
@@ -372,44 +365,74 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import axios from 'axios';
+import {
+  ArrowLeft,
+  BellRing,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Copy,
+  Eye,
+  Info,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Users,
+  UserSearch,
+  WifiOff,
+  X,
+} from 'lucide-vue-next';
 
 const loading = ref(false);
 const savingSettings = ref(false);
 const isSettingsModalOpen = ref(false);
 const passengers = ref([]);
+const errorMessage = ref('');
 
 const filters = reactive({
   search: '',
-  trip_status: 'upcoming', // Recommended default to show upcoming travels first
+  trip_status: 'upcoming',
   departure_date_from: '',
-  departure_date_to: ''
+  departure_date_to: '',
 });
 
 const pagination = reactive({
   current_page: 1,
   last_page: 1,
   total: 0,
-  has_more: false
+  has_more: false,
 });
 
 const alertSettings = reactive({
   travel_alert_days_before: 1,
-  travel_alert_time: '09:00'
+  travel_alert_time: '09:00',
 });
+
+const activeFiltersCount = computed(() => [
+  filters.search.trim(),
+  filters.trip_status !== 'upcoming',
+  filters.departure_date_from,
+  filters.departure_date_to,
+].filter(Boolean).length);
 
 let searchTimeout = null;
 
 function debounceSearch() {
-  if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    fetchPassengers(1);
-  }, 405);
+  window.clearTimeout(searchTimeout);
+  searchTimeout = window.setTimeout(() => fetchPassengers(1), 405);
 }
 
 async function fetchPassengers(page = 1) {
   loading.value = true;
+  errorMessage.value = '';
+
   try {
     const response = await axios.get('/api/v1/flight/passengers', {
       params: {
@@ -417,21 +440,22 @@ async function fetchPassengers(page = 1) {
         search: filters.search,
         trip_status: filters.trip_status,
         departure_date_from: filters.departure_date_from,
-        departure_date_to: filters.departure_date_to
-      }
+        departure_date_to: filters.departure_date_to,
+      },
     });
 
     passengers.value = response.data.data.items || [];
     const pag = response.data.data.pagination;
+
     if (pag) {
       pagination.current_page = pag.current_page;
       pagination.last_page = pag.last_page;
       pagination.total = pag.total;
       pagination.has_more = pag.has_more;
     }
-  } catch (e) {
-    console.error('Failed to load passengers', e);
-    window.addToast?.('خطأ أثناء تحميل دليل المسافرين', 'error');
+  } catch (error) {
+    console.error('Failed to load passengers', error);
+    errorMessage.value = 'حدث خطأ أثناء الاتصال بالخادم. تحقق من الاتصال ثم أعد المحاولة.';
   } finally {
     loading.value = false;
   }
@@ -443,14 +467,12 @@ async function fetchAlertSettings() {
     if (response.data.success) {
       const data = response.data.data;
       alertSettings.travel_alert_days_before = data.travel_alert_days_before;
-      
-      // Trim seconds from time string (09:00:00 -> 09:00)
       if (data.travel_alert_time) {
         alertSettings.travel_alert_time = data.travel_alert_time.substring(0, 5);
       }
     }
-  } catch (e) {
-    console.error('Failed to load alert settings', e);
+  } catch (error) {
+    console.error('Failed to load alert settings', error);
   }
 }
 
@@ -459,20 +481,15 @@ async function saveAlertSettings() {
   try {
     const response = await axios.put('/api/v1/flight/passengers/alert-settings', {
       travel_alert_days_before: alertSettings.travel_alert_days_before,
-      travel_alert_time: alertSettings.travel_alert_time
+      travel_alert_time: alertSettings.travel_alert_time,
     });
 
     if (response.data.success) {
       window.addToast?.('تم حفظ إعدادات تنبيهات السفر بنجاح', 'success');
-      isSettingsModalOpen.value = false;
-      
-      // Trigger a window custom event to update notifications state on the layout instantly
-      window.dispatchEvent(new CustomEvent('show-toast', {
-        detail: { message: 'تم تحديث التنبيهات بنجاح', type: 'success' }
-      }));
+      closeSettingsModal();
     }
-  } catch (e) {
-    console.error('Failed to save alert settings', e);
+  } catch (error) {
+    console.error('Failed to save alert settings', error);
     window.addToast?.('فشل في حفظ إعدادات التنبيهات', 'error');
   } finally {
     savingSettings.value = false;
@@ -480,97 +497,157 @@ async function saveAlertSettings() {
 }
 
 function resetFilters() {
+  window.clearTimeout(searchTimeout);
   filters.search = '';
-  filters.trip_status = 'all';
+  filters.trip_status = 'upcoming';
   filters.departure_date_from = '';
   filters.departure_date_to = '';
   fetchPassengers(1);
 }
 
+function openSettingsModal() {
+  isSettingsModalOpen.value = true;
+}
+
+function closeSettingsModal() {
+  if (!savingSettings.value) {
+    isSettingsModalOpen.value = false;
+  }
+}
+
+function handleKeydown(event) {
+  if (event.key === 'Escape' && isSettingsModalOpen.value) {
+    closeSettingsModal();
+  }
+}
+
+function fullName(pax) {
+  return [pax.first_name, pax.last_name].filter(Boolean).join(' ') || 'مسافر بدون اسم';
+}
+
+function initials(pax) {
+  const first = pax.first_name?.trim()?.[0] || '';
+  const last = pax.last_name?.trim()?.[0] || '';
+  return `${first}${last}` || 'P';
+}
+
+function passengerKey(pax, index) {
+  return `${pax.passenger_id}-${pax.departure_date || 'date'}-${pax.leg_number || index}`;
+}
+
+function affiliationClass(pax) {
+  return pax.affiliation === 'عميل مجموعات'
+    ? 'border-warning/25 bg-warning/10 text-warning'
+    : 'border-white/10 bg-white/5 text-text-muted';
+}
+
 function formatDepartureDate(dateStr) {
-  if (!dateStr) return '';
+  if (!dateStr) return 'غير محدد';
   try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
-      weekday: 'long',
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString('ar-EG', {
+      weekday: 'short',
       year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+      month: 'short',
+      day: 'numeric',
     });
-  } catch (e) {
+  } catch {
     return dateStr;
   }
+}
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return 'غير محدد';
+  try {
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString('ar-EG', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatBookingDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatTime(time) {
+  return time ? String(time).substring(0, 5) : 'غير محدد';
 }
 
 function isUpcoming(dateStr) {
   if (!dateStr) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const depDate = new Date(dateStr);
-  return depDate >= today;
+  return new Date(`${dateStr}T00:00:00`) >= today;
 }
 
-function getTypeLabel(type) {
-  const labels = {
-    adult: 'بالغ',
-    child: 'طفل',
-    infant: 'رضيع'
-  };
-  return labels[type] || type;
-}
-
-function getTypeBadgeClass(type) {
-  const classes = {
-    adult: 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/30',
-    child: 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30',
-    infant: 'bg-amber-950/40 text-amber-400 border border-amber-900/30'
-  };
-  return classes[type] || 'bg-slate-800 text-slate-300';
-}
-
-function copyToClipboard(text, successMsg = 'تم نسخ الرمز بنجاح') {
-  navigator.clipboard.writeText(text).then(() => {
-    window.addToast?.(successMsg, 'success');
-  }).catch(err => {
-    console.error('Could not copy text', err);
-  });
-}
-
-function formatBookingDate(dateStr) {
-  if (!dateStr) return '—';
+async function copyToClipboard(text, successMessage = 'تم النسخ بنجاح') {
+  if (!text) return;
   try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  } catch (e) {
-    return dateStr;
+    await navigator.clipboard.writeText(text);
+    window.addToast?.(successMessage, 'success');
+  } catch (error) {
+    console.error('Could not copy text', error);
+    window.addToast?.('تعذر نسخ النص', 'error');
   }
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
   fetchPassengers();
   fetchAlertSettings();
+});
+
+onBeforeUnmount(() => {
+  window.clearTimeout(searchTimeout);
+  window.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
 <style scoped>
-.glass {
-  background: rgba(14, 21, 37, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+.pagination-button {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  transition: 180ms ease;
 }
 
-.bg-slate-850 {
-  background-color: #111a2e;
+.pagination-button:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
 }
 
-/* Modal animation */
+.pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
 .t-modal-enter-active,
 .t-modal-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 240ms ease;
+}
+
+.t-modal-enter-active .modal-card,
+.t-modal-leave-active .modal-card {
+  transition: transform 240ms ease, opacity 240ms ease;
 }
 
 .t-modal-enter-from,
@@ -578,8 +655,9 @@ onMounted(() => {
   opacity: 0;
 }
 
-.t-modal-enter-from .relative,
-.t-modal-leave-to .relative {
-  transform: scale(0.95);
+.t-modal-enter-from .modal-card,
+.t-modal-leave-to .modal-card {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
 }
 </style>
