@@ -19,7 +19,9 @@ use App\Filament\Admin\Resources\Suppliers\SupplierResource;
 use App\Filament\Admin\Resources\Transactions\TransactionResource;
 use App\Filament\Admin\Resources\TreasuryTransactions\TreasuryTransactionResource;
 use App\Filament\Admin\Resources\VisaBookings\VisaBookingResource;
-use App\Filament\Resources\EmployeeResource;
+// Removed orphan `use App\Filament\Resources\EmployeeResource;` — that class
+// lives outside the Admin namespace and is not auto-discovered by
+// app/Providers/Filament/AdminPanelProvider.
 
 return [
     'default' => 'admin',
@@ -27,7 +29,10 @@ return [
     'panels' => [
         'admin' => [
             'id' => 'admin',
-            'file' => 'App\\Filament\\AdminPanel',
+            // NOTE: This config is legacy Filament v2 syntax and is NOT read by
+            // the v5 PanelProvider (see app/Providers/Filament/AdminPanelProvider.php).
+            // The path below now points to the actual provider location.
+            'file' => 'App\\Providers\\Filament\\AdminPanelProvider',
             'login' => true,
             'brand' => 'سفرك علينا',
             'brandName' => 'سفرك علينا',
@@ -66,7 +71,7 @@ return [
             'auth' => [
                 'guard' => 'web',
                 'pages' => [
-                    EmployeeResource::class,
+                    // EmployeeResource removed — see orphan-cleanup note above.
                 ],
             ],
             'resources' => [

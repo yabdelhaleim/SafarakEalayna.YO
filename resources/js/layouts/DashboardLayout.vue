@@ -384,50 +384,8 @@
                     <span>ستظهر هنا تنبيهات سفر المسافرين وتجاوزات عتبات المجموعات</span>
                   </div>
 
-                  <!-- Part B: group-threshold notifications (rendered FIRST so
-                       financial warnings are the most visible). -->
-                  <template v-if="groupThresholdNotifications.length > 0">
-                    <div class="notif-section-label">
-                      <span class="inline-flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
-                        تنبيهات عتبات المجموعات
-                      </span>
-                    </div>
-                    <button
-                      v-for="notif in groupThresholdNotifications"
-                      :key="notif.id"
-                      type="button"
-                      class="notif-item notif-item--threshold"
-                      :class="[groupThresholdLevelClass(notif.data.level), { 'notif-item--unread': !notif.read_at }]"
-                      @click="openNotifDetail(notif)"
-                    >
-                      <div class="notif-icon">
-                        <svg v-if="notif.data.level === 'danger'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                        <svg v-else-if="notif.data.level === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                      </div>
-                      <div class="notif-content">
-                        <div class="notif-item-top">
-                          <span class="notif-passenger-name">{{ notif.data.group_name }}</span>
-                          <span class="notif-days-badge">{{ groupThresholdLevelLabel(notif.data.level) }}</span>
-                        </div>
-                        <p class="notif-message">{{ notif.data.message }}</p>
-                        <div class="notif-meta">
-                          <span>المتاح: {{ notif.data.available_amount }} {{ notif.data.currency }}</span>
-                          <span>العتبة: {{ notif.data.threshold_amount }} {{ notif.data.currency }}</span>
-                        </div>
-                      </div>
-                      <span class="notif-chevron" aria-hidden="true">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-5 5 5 5"/></svg>
-                      </span>
-                    </button>
-                  </template>
-
-                  <!-- Passenger travel alerts (existing behaviour) -->
+                  <!-- Passenger travel alerts (the only notification type shown in the bell) -->
                   <template v-if="passengerNotifications.length > 0">
-                    <div v-if="groupThresholdNotifications.length > 0" class="notif-section-label">
-                      <span>تنبيهات سفر المسافرين</span>
-                    </div>
                     <button
                       v-for="notif in passengerNotifications"
                       :key="notif.id"
@@ -461,9 +419,6 @@
                 </div>
 
                 <div class="notif-footer">
-                  <router-link to="/flights/groups" @click="isNotifDropdownOpen = false" class="view-all-link">
-                    إعدادات مجموعات الطيران
-                  </router-link>
                   <router-link to="/flights/passengers" @click="isNotifDropdownOpen = false" class="view-all-link">
                     دليل المسافرين
                   </router-link>
@@ -478,65 +433,8 @@
               <div v-if="selectedNotif" class="notif-detail-overlay" @click.self="closeNotifDetail">
                 <div class="notif-detail-modal" role="dialog" aria-labelledby="notif-detail-title">
 
-                  <!-- ✅ GROUP-THRESHOLD NOTIFICATION DETAIL -->
-                  <template v-if="isGroupThresholdNotif(selectedNotif)">
-                    <div class="notif-detail-header" :class="groupThresholdLevelClass(selectedNotif.data.level)">
-                      <div class="notif-detail-icon">
-                        <svg v-if="selectedNotif.data.level === 'danger'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                        <svg v-else-if="selectedNotif.data.level === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                      </div>
-                      <div>
-                        <p class="notif-detail-label">{{ groupThresholdLevelLabel(selectedNotif.data.level) }} — تجاوز عتبة</p>
-                        <h2 id="notif-detail-title">{{ selectedNotif.data.group_name }}</h2>
-                      </div>
-                      <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-                      </button>
-                    </div>
-
-                    <div class="notif-detail-body">
-                      <div class="notif-detail-alert" :class="groupThresholdLevelClass(selectedNotif.data.level)">
-                        <span class="notif-days-badge notif-days-badge--lg">{{ groupThresholdLevelLabel(selectedNotif.data.level) }}</span>
-                        <p>{{ selectedNotif.data.message }}</p>
-                      </div>
-
-                      <div class="notif-detail-grid">
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">المتاح حالياً</span>
-                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.available_amount }} {{ selectedNotif.data.currency }}</span>
-                        </div>
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">عتبة الإشعار</span>
-                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.threshold_amount }} {{ selectedNotif.data.currency }}</span>
-                        </div>
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">كود المجموعة</span>
-                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.group_code }}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="notif-detail-footer">
-                      <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
-                      <button
-                        v-if="!selectedNotif.read_at"
-                        class="notif-detail-btn notif-detail-btn--ghost"
-                        @click="markAsRead(selectedNotif.id); closeNotifDetail()"
-                      >
-                        تحديد كمقروء
-                      </button>
-                      <button
-                        class="notif-detail-btn notif-detail-btn--primary"
-                        @click="goToGroupSettings(selectedNotif)"
-                      >
-                        تعديل عتبات المجموعة
-                      </button>
-                    </div>
-                  </template>
-
-                  <!-- ✅ PASSENGER ALERT NOTIFICATION DETAIL (existing behaviour) -->
-                  <template v-else>
+                  <!-- ✅ PASSENGER ALERT NOTIFICATION DETAIL -->
+                  <template>
                     <div class="notif-detail-header">
                       <div class="notif-detail-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
@@ -860,31 +758,12 @@ async function fetchNotifications() {
 }
 
 /**
- * Part B: classify notifications into passenger vs group-threshold so the
- * bell can render appropriate styling and the detail modal can route
- * to the right page (group settings vs booking).
+ * The bell only ever displays passenger travel alerts (the backend
+ * filters out group-threshold and balance-tamper notifications in
+ * PassengerController::getNotifications). The list is therefore
+ * a direct alias of the `notifications` ref.
  */
-const notifType = (n) => n?.data?.notification_type || 'passenger_alert';
-const isGroupThresholdNotif = (n) => notifType(n) === 'flight_group_threshold';
-
-const passengerNotifications = computed(() =>
-  (notifications.value || []).filter(n => !isGroupThresholdNotif(n))
-);
-const groupThresholdNotifications = computed(() =>
-  (notifications.value || []).filter(n => isGroupThresholdNotif(n))
-);
-
-const groupThresholdLevelClass = (level) => ({
-  info: 'bg-info/10 text-info border border-info/20',
-  warning: 'bg-warning/10 text-warning border border-warning/20',
-  danger: 'bg-error/10 text-error border border-error/20',
-}[level] || 'bg-white/10 text-text-muted');
-
-const groupThresholdLevelLabel = (level) => ({
-  info: 'معلومة',
-  warning: 'تحذير',
-  danger: 'خطر',
-}[level] || level);
+const passengerNotifications = computed(() => notifications.value || []);
 
 function toggleNotifDropdown() {
   isNotifDropdownOpen.value = !isNotifDropdownOpen.value;
@@ -910,18 +789,6 @@ function goToBooking(notif) {
   }
   closeNotifDetail();
   router.push(`/flights/${bookingId}`);
-}
-
-/**
- * Part B: navigate to the FlightGroups page (notification settings).
- */
-function goToGroupSettings(notif) {
-  const groupId = notif?.data?.group_id;
-  if (!notif.read_at) {
-    markAsRead(notif.id);
-  }
-  closeNotifDetail();
-  router.push('/flights/groups');
 }
 
 async function markAsRead(id) {
@@ -969,7 +836,7 @@ watch(() => authStore.token, (val) => {
       notifPollInterval = null;
     }
   }
-});
+}, { immediate: true });
 
 onMounted(async () => {
   window.addEventListener('resize', onResize, { passive: true });
@@ -979,12 +846,11 @@ onMounted(async () => {
   window.addEventListener('show-toast', ({ detail }) =>
     addToast(detail.message, detail.type, detail.description)
   );
-  // Initialize auth - load user data if token exists
+  // Initialize auth - load user data if token exists.
+  // The watcher above (immediate: true) will start polling once the token is set.
   await authStore.initAuth();
   if (authStore.isAuthenticated) {
     printSettingsStore.fetch().catch(() => {});
-    fetchNotifications();
-    notifPollInterval = setInterval(fetchNotifications, 120000);
   }
 });
 onUnmounted(() => {

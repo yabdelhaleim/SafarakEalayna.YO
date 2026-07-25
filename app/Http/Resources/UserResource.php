@@ -19,7 +19,8 @@ class UserResource extends JsonResource
             'permissions' => UserPermissions::effectiveFor($this->resource),
             'employee' => $this->whenLoaded('employee', fn () => $this->employee ? [
                 'id' => $this->employee->id,
-                'salary' => $this->employee->salary,
+                // 'salary' intentionally omitted — financial data must not leak
+                // through the public auth endpoints (/api/v1/auth/{login,me,refresh}).
                 'status' => $this->employee->status,
             ] : null),
             'created_at' => $this->created_at?->toDateTimeString(),

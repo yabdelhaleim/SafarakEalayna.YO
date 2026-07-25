@@ -132,45 +132,98 @@
 
             <!-- ─── IN-MODAL FILTERS ───────────────────────────────────── -->
             <div class="flex flex-wrap items-center gap-2 border-b border-white/5 bg-white/[0.01] p-4">
-              <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+              <!-- Search input -->
+              <div class="flex items-center gap-2 flex-1 min-w-[220px] bg-white/[0.03] border border-white/10 rounded-lg px-3 py-1.5 focus-within:border-gold/50 transition-colors">
                 <Search class="w-4 h-4 text-text-muted shrink-0" />
                 <input
                   v-model="searchQuery"
                   type="search"
-                  placeholder="بحث في الوصف / الحساب / رقم القيد..."
-                  class="flex-1 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-1.5 text-sm font-bold text-text-main placeholder:text-text-muted focus:outline-none focus:border-gold/50 transition-colors"
+                  placeholder="بحث في الوصف / رقم القيد / الحسابات..."
+                  class="flex-1 bg-transparent text-sm font-bold text-text-main placeholder:text-text-muted/70 focus:outline-none"
                   @keydown.enter="refetch"
                 />
+                <button
+                  v-if="searchQuery"
+                  @click="searchQuery = ''"
+                  type="button"
+                  class="shrink-0 p-0.5 hover:bg-white/10 rounded transition-colors"
+                  aria-label="مسح البحث"
+                >
+                  <X class="w-3.5 h-3.5 text-text-muted" />
+                </button>
               </div>
 
-              <select
-                v-model="localCategory"
-                @change="refetch"
-                class="bg-white/[0.03] border border-white/10 rounded-lg px-3 py-1.5 text-sm font-bold text-text-main focus:outline-none focus:border-gold/50 transition-colors cursor-pointer"
-              >
-                <option value="">كل الأنواع</option>
-                <option value="revenue">إيرادات فقط</option>
-                <option value="cogs">تكاليف فقط</option>
-                <option value="refund">مرتجعات فقط</option>
-                <option value="expense">مصروفات فقط</option>
-              </select>
+              <!-- Custom category dropdown (replaces native <select> which renders gray in dark theme) -->
+              <div class="relative" ref="categoryDropdownRef">
+                <button
+                  @click="categoryDropdownOpen = !categoryDropdownOpen"
+                  type="button"
+                  class="flex items-center justify-between gap-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 rounded-lg pl-3 pr-2 py-1.5 text-sm font-bold text-text-main focus:outline-none focus:border-gold/50 transition-colors min-w-[170px]"
+                  :class="{ 'border-gold/50 bg-gold/5': categoryDropdownOpen }"
+                >
+                  <span class="flex items-center gap-2 min-w-0">
+                    <Filter class="w-3.5 h-3.5 text-gold shrink-0" />
+                    <span class="truncate">{{ selectedCategoryLabel }}</span>
+                  </span>
+                  <ChevronDown
+                    class="w-4 h-4 text-text-muted transition-transform shrink-0"
+                    :class="{ 'rotate-180 text-gold': categoryDropdownOpen }"
+                  />
+                </button>
 
-              <div class="flex items-center gap-1.5">
+                <transition
+                  enter-active-class="transition duration-150 ease-out"
+                  enter-from-class="opacity-0 -translate-y-1 scale-95"
+                  enter-to-class="opacity-100 translate-y-0 scale-100"
+                  leave-active-class="transition duration-100 ease-in"
+                  leave-from-class="opacity-100 translate-y-0 scale-100"
+                  leave-to-class="opacity-0 -translate-y-1 scale-95"
+                >
+                  <div
+                    v-if="categoryDropdownOpen"
+                    class="absolute top-full mt-1 left-0 z-[210] min-w-[200px] bg-[#1a1d2e] border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden"
+                  >
+                    <div class="p-1">
+                      <button
+                        v-for="opt in categoryOptions"
+                        :key="opt.value || 'all'"
+                        @click="selectCategory(opt.value)"
+                        type="button"
+                        class="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold rounded-lg text-text-main hover:bg-white/10 transition-colors text-right"
+                        :class="{ 'bg-gold/10 text-gold': localCategory === opt.value }"
+                      >
+                        <span class="flex items-center gap-2">
+                          <span
+                            class="w-2 h-2 rounded-full shrink-0"
+                            :class="opt.colorClass"
+                          ></span>
+                          <span>{{ opt.label }}</span>
+                        </span>
+                        <Check v-if="localCategory === opt.value" class="w-4 h-4 text-gold shrink-0" />
+                      </button>
+                    </div>
+                  </div>
+                </transition>
+              </div>
+
+              <!-- Date range -->
+              <div class="flex items-center gap-1.5 bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1 focus-within:border-gold/50 transition-colors">
                 <input
                   v-model="localFrom"
                   type="date"
                   @change="refetch"
-                  class="bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1.5 text-sm font-bold text-text-main focus:outline-none focus:border-gold/50 transition-colors"
+                  class="bg-transparent text-sm font-bold text-text-main focus:outline-none w-[130px]"
                 />
-                <span class="text-text-muted text-xs">→</span>
+                <ArrowRight class="w-3 h-3 text-text-muted" />
                 <input
                   v-model="localTo"
                   type="date"
                   @change="refetch"
-                  class="bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1.5 text-sm font-bold text-text-main focus:outline-none focus:border-gold/50 transition-colors"
+                  class="bg-transparent text-sm font-bold text-text-main focus:outline-none w-[130px]"
                 />
               </div>
 
+              <!-- Refresh button -->
               <button
                 @click="refetch"
                 :disabled="loading"
@@ -179,6 +232,18 @@
               >
                 <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
                 تحديث
+              </button>
+
+              <!-- Reset button (only when filters are applied) -->
+              <button
+                v-if="searchQuery || localCategory"
+                @click="resetFilters"
+                type="button"
+                class="bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-main border border-white/10 rounded-lg px-3 py-1.5 text-sm font-bold transition-colors flex items-center gap-1.5"
+                title="مسح كل الفلاتر"
+              >
+                <X class="w-3.5 h-3.5" />
+                مسح
               </button>
             </div>
 
@@ -220,19 +285,49 @@
                 v-else-if="filteredRows.length === 0"
                 class="p-12 text-center"
               >
-                <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white/5 mb-3">
-                  <Inbox class="w-7 h-7 text-text-muted" />
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 mb-4 ring-1 ring-white/10">
+                  <Inbox class="w-8 h-8 text-text-muted" />
                 </div>
-                <p class="text-text-muted font-bold">
+                <p class="text-text-main font-black text-lg mb-2">
                   لا توجد عمليات تطابق الفلاتر المحددة
                 </p>
+                <p class="text-text-muted text-sm mb-4 max-w-md mx-auto">
+                  <span v-if="rows.length > 0">
+                    تم استرجاع
+                    <span class="font-bold text-text-main">{{ rows.length.toLocaleString('en-US') }}</span>
+                    عملية من الخادم، لكن البحث/الفلاتر تخفيهم.
+                  </span>
+                  <span v-else>
+                    لا توجد عمليات من النوع المحدد في هذه الفترة. جرب توسيع نطاق التاريخ أو اختيار نوع آخر.
+                  </span>
+                </p>
+
+                <!-- Show active filters as badges -->
+                <div v-if="searchQuery || localCategory" class="flex items-center justify-center gap-2 mb-4 flex-wrap">
+                  <span v-if="localCategory" class="inline-flex items-center gap-1.5 bg-gold/10 text-gold border border-gold/30 rounded-full px-3 py-1 text-xs font-bold">
+                    <Filter class="w-3 h-3" />
+                    {{ selectedCategoryLabel }}
+                    <button @click="selectCategory('')" type="button" class="hover:bg-gold/20 rounded-full p-0.5">
+                      <X class="w-3 h-3" />
+                    </button>
+                  </span>
+                  <span v-if="searchQuery" class="inline-flex items-center gap-1.5 bg-white/10 text-text-main border border-white/20 rounded-full px-3 py-1 text-xs font-bold">
+                    <Search class="w-3 h-3" />
+                    "{{ searchQuery }}"
+                    <button @click="searchQuery = ''" type="button" class="hover:bg-white/20 rounded-full p-0.5">
+                      <X class="w-3 h-3" />
+                    </button>
+                  </span>
+                </div>
+
                 <button
                   v-if="searchQuery || localCategory"
                   @click="resetFilters"
                   type="button"
-                  class="mt-3 text-gold hover:text-gold/80 text-xs font-bold underline transition-colors"
+                  class="bg-gold/10 hover:bg-gold/20 text-gold border border-gold/30 rounded-lg px-4 py-2 text-sm font-black transition-colors inline-flex items-center gap-2"
                 >
-                  مسح الفلاتر
+                  <X class="w-4 h-4" />
+                  مسح كل الفلاتر
                 </button>
               </div>
 
@@ -369,6 +464,9 @@ import {
   TrendingDown,
   Coins,
   CircleDollarSign,
+  ChevronDown,
+  Check,
+  ArrowRight,
 } from 'lucide-vue-next';
 import TextLineSkeleton from '@/components/skeletons/TextLineSkeleton.vue';
 
@@ -397,6 +495,29 @@ const localFrom = ref(props.fromDate);
 const localTo = ref(props.toDate);
 const localCategory = ref(props.category || '');
 const searchQuery = ref('');
+
+// Custom dropdown state (replaces native <select> which renders gray in dark theme)
+const categoryDropdownOpen = ref(false);
+const categoryDropdownRef = ref(null);
+
+const categoryOptions = [
+  { value: '',        label: 'كل الأنواع',    colorClass: 'bg-text-muted' },
+  { value: 'revenue', label: 'إيرادات فقط',   colorClass: 'bg-success' },
+  { value: 'cogs',    label: 'تكاليف فقط',    colorClass: 'bg-amber-400' },
+  { value: 'refund',  label: 'مرتجعات فقط',   colorClass: 'bg-amber-500' },
+  { value: 'expense', label: 'مصروفات فقط',   colorClass: 'bg-error' },
+];
+
+const selectedCategoryLabel = computed(() => {
+  const opt = categoryOptions.find((o) => o.value === localCategory.value);
+  return opt?.label || 'كل الأنواع';
+});
+
+function selectCategory(value) {
+  localCategory.value = value;
+  categoryDropdownOpen.value = false;
+  refetch();
+}
 
 // Sync local filters when the modal is reopened with fresh props
 watch(
@@ -667,19 +788,31 @@ function relatedTypeShortLabel(fqcn) {
 // ─── Keyboard handling ─────────────────────────────────────────
 function onKeydown(e) {
   if (e.key === 'Escape' && props.show) {
-    close();
+    if (categoryDropdownOpen.value) {
+      categoryDropdownOpen.value = false;
+    } else {
+      close();
+    }
+  }
+}
+
+function closeDropdownsOnClickOutside(e) {
+  if (categoryDropdownRef.value && !categoryDropdownRef.value.contains(e.target)) {
+    categoryDropdownOpen.value = false;
   }
 }
 
 onMounted(() => {
   if (typeof document !== 'undefined') {
     document.addEventListener('keydown', onKeydown);
+    document.addEventListener('mousedown', closeDropdownsOnClickOutside);
   }
 });
 
 onBeforeUnmount(() => {
   if (typeof document !== 'undefined') {
     document.removeEventListener('keydown', onKeydown);
+    document.removeEventListener('mousedown', closeDropdownsOnClickOutside);
   }
 });
 

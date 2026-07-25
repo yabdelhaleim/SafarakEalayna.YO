@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightPassenger as Passenger;
+use App\Notifications\PassengerAlertNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -355,12 +356,20 @@ class PassengerController extends Controller
 
     /**
      * Get the authenticated user's notifications.
+     *
+     * Restricted to passenger travel alerts only — group-threshold
+     * and balance-tamper notifications are persisted in the
+     * `notifications` table for admin/audit purposes but are not
+     * surfaced in the SPA bell.
      */
     public function getNotifications(Request $request): JsonResponse
     {
         $user  = Auth::user();
         $type  = $request->input('type', 'unread');
         $query = $type === 'unread' ? $user->unreadNotifications() : $user->notifications();
+
+        // Bell-only: keep group/threshold + tamper notifications out of the SPA list.
+        $query->where('type', PassengerAlertNotification::class);
 
         $notifications = $query->paginate($request->input('per_page', 20));
 

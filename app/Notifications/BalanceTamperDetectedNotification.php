@@ -67,6 +67,9 @@ class BalanceTamperDetectedNotification extends Notification
     public function toArray($notifiable): array
     {
         return [
+            // Generic discriminator so the SPA can identify this type if it's ever
+            // surfaced (currently hidden from the bell — see PassengerController::getNotifications).
+            'notification_type' => 'balance_tamper_attempt',
             'severity'        => 'critical',
             'category'        => 'balance_tamper_attempt',
             'table'           => $this->table,
