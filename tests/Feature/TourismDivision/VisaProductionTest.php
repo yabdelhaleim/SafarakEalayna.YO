@@ -4,9 +4,10 @@ namespace Tests\Feature\TourismDivision;
 
 use App\Models\Account;
 use App\Models\Customer;
-use App\Models\Transaction;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\HajjUmra\VisaDuration;
+use App\Models\Transaction;
+use App\Models\VisaBooking;
 
 /**
  * PRODUCTION TEST SUITE — Visa (التأشيرات)
@@ -84,7 +85,7 @@ class VisaProductionTest extends TourismTestCase
         $bookingId = $resp->json('data.id');
 
         $txs = Transaction::query()
-            ->where('related_type', \App\Models\VisaBooking::class)
+            ->where('related_type', VisaBooking::class)
             ->where('related_id', $bookingId)
             ->get();
         $this->assertGreaterThanOrEqual(2, $txs->count());
@@ -157,7 +158,7 @@ class VisaProductionTest extends TourismTestCase
         ])->assertCreated();
         $bookingId = $resp->json('data.id');
 
-        $cancelResp = $this->deleteJson("/api/v1/visa/bookings/{$bookingId}", ['reason' => 'test']);
+        $cancelResp = $this->postJson("/api/v1/visa/bookings/{$bookingId}/cancel", ['reason' => 'test']);
         $cancelResp->assertOk()->assertJsonPath('data.status', 'cancelled');
 
         $this->assertCustomerBalance($customer, 0.0, 'after visa cancel');

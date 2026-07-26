@@ -185,7 +185,7 @@ class HajjUmraApiTest extends TestCase
             ->count();
         $this->assertGreaterThanOrEqual(2, $bookingTxCount);
 
-        $cancelResponse = $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
+        $cancelResponse = $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", [
             'reason' => 'طلب العميل',
         ]);
 
@@ -204,10 +204,10 @@ class HajjUmraApiTest extends TestCase
                     ->where('related_id', $bookingId);
             })
             ->get();
-        $netDebit  = $bookingEntries->sum('debit');
+        $netDebit = $bookingEntries->sum('debit');
         $netCredit = $bookingEntries->sum('credit');
         // بعد الإلغاء الكامل الصافي يجب أن يكون صفراً (كل قيد له عكسه)
-        $this->assertEqualsWithDelta(0.0, (float)($netDebit - $netCredit), 0.01,
+        $this->assertEqualsWithDelta(0.0, (float) ($netDebit - $netCredit), 0.01,
             'Net debit/credit after full cancellation should be zero (additive reversal)');
 
         $balancesResponse = $this->getJson('/api/v1/hajj-umra/customer-balances');
@@ -340,7 +340,7 @@ class HajjUmraApiTest extends TestCase
         $oldEntries = AccountEntry::query()
             ->where('transaction_id', $originalIncomeTxId)
             ->get();
-        $netOld = (float)($oldEntries->sum('debit') - $oldEntries->sum('credit'));
+        $netOld = (float) ($oldEntries->sum('debit') - $oldEntries->sum('credit'));
         $this->assertEqualsWithDelta(0.0, $netOld, 0.01,
             'Old income transaction entries should net to zero after reversal (additive)');
     }

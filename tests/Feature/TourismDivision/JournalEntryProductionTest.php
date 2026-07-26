@@ -4,8 +4,7 @@ namespace Tests\Feature\TourismDivision;
 
 use App\Models\Account;
 use App\Models\AccountEntry;
-use App\Models\Customer;
-use App\Models\Program;
+use App\Models\HajjUmraBooking;
 use App\Models\Transaction;
 
 /**
@@ -61,7 +60,7 @@ class JournalEntryProductionTest extends TourismTestCase
     public function test_account_entry_immutable_no_soft_deletes(): void
     {
         // Check that AccountEntry doesn't have SoftDeletes trait
-        $traits = class_uses_recursive(\App\Models\AccountEntry::class);
+        $traits = class_uses_recursive(AccountEntry::class);
         $this->assertNotContains('Illuminate\Database\Eloquent\SoftDeletes', $traits,
             'AccountEntry must NOT use SoftDeletes (append-only ledger invariant)');
     }
@@ -81,16 +80,16 @@ class JournalEntryProductionTest extends TourismTestCase
         $bookingId = $resp->json('data.id');
 
         $originalTxCount = Transaction::query()
-            ->where('related_type', \App\Models\HajjUmraBooking::class)
+            ->where('related_type', HajjUmraBooking::class)
             ->where('related_id', $bookingId)
             ->count();
 
-        $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'test'])
+        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'test'])
             ->assertOk()->assertJsonPath('data.status', 'cancelled');
 
         // ADDITIVE: original transactions are preserved (not deleted)
         $afterCancelTxCount = Transaction::query()
-            ->where('related_type', \App\Models\HajjUmraBooking::class)
+            ->where('related_type', HajjUmraBooking::class)
             ->where('related_id', $bookingId)
             ->count();
 
@@ -114,7 +113,7 @@ class JournalEntryProductionTest extends TourismTestCase
         ])->assertCreated();
         $bookingId = $resp->json('data.id');
 
-        $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'test'])
+        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'test'])
             ->assertOk();
 
         // After cancel: cashbox should be back to opening
@@ -171,10 +170,10 @@ class JournalEntryProductionTest extends TourismTestCase
         ])->assertCreated();
         $bookingId = $resp->json('data.id');
 
-        $originalIncomeId = \App\Models\HajjUmraBooking::find($bookingId)->income_transaction_id;
-        $originalExpenseId = \App\Models\HajjUmraBooking::find($bookingId)->expense_transaction_id;
+        $originalIncomeId = HajjUmraBooking::find($bookingId)->income_transaction_id;
+        $originalExpenseId = HajjUmraBooking::find($bookingId)->expense_transaction_id;
 
-        $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'test'])
+        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'test'])
             ->assertOk();
 
         // Original transactions should now have "عكس:" prefix in notes

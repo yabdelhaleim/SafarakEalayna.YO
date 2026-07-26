@@ -88,7 +88,7 @@
               <th class="px-6 py-4 font-semibold">العميل</th>
               <th class="px-6 py-4 font-semibold">الدولة</th>
               <th class="px-6 py-4 font-semibold">نوع التأشيرة</th>
-              <th v-if="isAdmin" class="px-6 py-4 font-semibold">السعر / الربح</th>
+              <th class="px-6 py-4 font-semibold">{{ isAdmin ? 'السعر / الربح' : 'السعر' }}</th>
               <th v-if="isAdmin" class="px-6 py-4 font-semibold">المدفوعات</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
@@ -124,10 +124,10 @@
                     {{ booking.visa_detail?.entry_type_label || booking.visa_detail?.entry_type || '—' }}
                   </div>
                 </td>
-                <td v-if="isAdmin" class="px-6 py-4">
+                <td class="px-6 py-4">
                   <div class="flex flex-col">
                     <span class="font-mono text-sm">{{ Number(booking.pricing?.selling_price || 0).toLocaleString() }} {{ booking.pricing?.currency || 'EGP' }}</span>
-                    <div :class="['flex items-center gap-1 text-[10px] font-bold', (booking.pricing?.profit ?? 0) >= 0 ? 'text-success' : 'text-error']">
+                    <div v-if="isAdmin" :class="['flex items-center gap-1 text-[10px] font-bold', (booking.pricing?.profit ?? 0) >= 0 ? 'text-success' : 'text-error']">
                       <TrendingUp v-if="(booking.pricing?.profit ?? 0) >= 0" class="w-3 h-3" />
                       <TrendingDown v-else class="w-3 h-3" />
                       {{ Number(booking.pricing?.profit || 0).toLocaleString() }}
@@ -391,11 +391,11 @@ const clearFilters = () => {
 };
 
 const confirmDelete = async (booking) => {
-  if (confirm(`هل أنت متأكد من أنك تريد حذف الطلب ${booking.id}؟`)) {
+  if (confirm(`هل أنت متأكد من أنك تريد حذف الطلب ${booking.id}؟ لا يمكن التراجع عن هذا الإجراء.`)) {
     try {
       await store.deleteBooking(booking.id, '');
       store.addToast(`تم حذف الطلب ${booking.id} بنجاح`);
-      await store.fetchBookings(buildApiFilters(1));
+      await store.fetchBookings(buildApiFilters(store.pagination?.currentPage ?? 1));
     } catch (error) {
       store.addToast('فشل حذف الطلب', 'error');
     }

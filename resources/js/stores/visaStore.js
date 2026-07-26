@@ -188,6 +188,21 @@ export const useVisaStore = defineStore('visa', {
       }
     },
 
+    async deleteBooking(id, reason = '') {
+      this.loading.delete = true;
+      this.errors = {};
+      try {
+        await axios.delete(`/api/v1/visa/bookings/${id}`, { data: { reason } });
+        this.bookings = this.bookings.filter((b) => b.id !== id);
+        return true;
+      } catch (e) {
+        this.errors = { delete: e.response?.data?.message || 'فشل حذف طلب التأشيرة' };
+        throw e;
+      } finally {
+        this.loading.delete = false;
+      }
+    },
+
     async addPayment(bookingId, paymentData) {
       this.errors = {};
       try {
@@ -274,11 +289,6 @@ export const useVisaStore = defineStore('visa', {
       } finally {
         this.loading.accounts = false;
       }
-    },
-
-    /** Backwards-compat shim */
-    async deleteBooking(id) {
-      return this.cancelBooking(id);
     },
 
     /** Visa Treasury & Agents Finance */

@@ -2,6 +2,13 @@
 
 namespace App\Services\Reports;
 
+use App\Models\Bus\BusBooking;
+use App\Models\Fawry\FawryTransaction;
+use App\Models\Flight\FlightBooking;
+use App\Models\HajjUmraBooking;
+use App\Models\Online\OnlineTransaction;
+use App\Models\VisaBooking;
+use App\Models\Wallet\WalletTransaction;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Database\Query\Builder;
@@ -24,7 +31,7 @@ class ProfitLossReportService
     ) {}
 
     /**
-     * @param  array{from_date?: string, to_date?: string, category?: string, module?: string}  $filters
+     * @param  array{from_date?: string, to_date?: string, category?: string, module?: string, section?: string}  $filters
      */
     public function report(array $filters): array
     {
@@ -79,6 +86,11 @@ class ProfitLossReportService
 
             $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
+                continue;
+            }
+
+            $section = $this->sectionForClassification($classification);
+            if (! $this->matchesSection($section, $filters['section'] ?? 'all')) {
                 continue;
             }
 
@@ -151,7 +163,7 @@ class ProfitLossReportService
     /**
      * Per-module income/expense breakdown for department dashboards.
      *
-     * @param  array{from_date?: string, to_date?: string, category?: string, module?: string}  $filters
+     * @param  array{from_date?: string, to_date?: string, category?: string, module?: string, section?: string}  $filters
      */
     public function moduleBreakdown(array $filters = []): array
     {
@@ -205,6 +217,11 @@ class ProfitLossReportService
 
             $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
+                continue;
+            }
+
+            $section = $this->sectionForClassification($classification);
+            if (! $this->matchesSection($section, $filters['section'] ?? 'all')) {
                 continue;
             }
 
@@ -571,6 +588,22 @@ class ProfitLossReportService
         return $amount;
     }
 
+    private function sectionForClassification(string $classification): string
+    {
+        return match ($classification) {
+            'revenue' => 'revenue',
+            'cogs', 'cogs_reversal' => 'cogs',
+            'refund', 'revenue_reversal' => 'refund',
+            'operating_expense' => 'expense',
+            default => '',
+        };
+    }
+
+    private function matchesSection(string $section, string $wanted): bool
+    {
+        return $wanted === 'all' || $section === $wanted;
+    }
+
     /**
      * @param  array{category?: string, module?: string}  $filters
      */
@@ -769,8 +802,8 @@ class ProfitLossReportService
             // and negative profit — the new profit drill-down modal in
             // AccountsIndex.vue renders these via the >= 0 conditional
             // class (red background, red text).
-            $d['income']  = round($d['income'], 2);
-            $d['cogs']    = round($d['cogs'], 2);
+            $d['income'] = round($d['income'], 2);
+            $d['cogs'] = round($d['cogs'], 2);
             $d['expense'] = round($d['expense'], 2);
             $d['profit'] = round($d['income'] - $d['cogs'] - $d['expense'], 2);
             $result[] = $d;
@@ -789,16 +822,16 @@ class ProfitLossReportService
      * transaction's entity_id via a single batch lookup (1 polymorphic hop
      * for direct lookups, 2-hop for `bus_inventories`).
      *
-     * @param  string       $relatedType   FQCN of the related model
-     *                                    (e.g., FlightBooking::class, BusBooking::class)
-     * @param  string       $entityColumn  The column to extract from the related model
-     *                                    (e.g., 'flight_carrier_id', 'flight_system_id',
-     *                                    'company_id' from bus_inventories)
-     * @param  array|null   $joinChain     Optional 2-hop configuration:
-     *                                    ['table' => 'bus_inventories',
-     *                                     'fk'    => 'inventory_id']
-     *                                    Use when the entity_id lives on a
-     *                                    join table rather than on the related model.
+     * @param  string  $relatedType  FQCN of the related model
+     *                               (e.g., FlightBooking::class, BusBooking::class)
+     * @param  string  $entityColumn  The column to extract from the related model
+     *                                (e.g., 'flight_carrier_id', 'flight_system_id',
+     *                                'company_id' from bus_inventories)
+     * @param  array|null  $joinChain  Optional 2-hop configuration:
+     *                                 ['table' => 'bus_inventories',
+     *                                 'fk'    => 'inventory_id']
+     *                                 Use when the entity_id lives on a
+     *                                 join table rather than on the related model.
      * @param  array{from_date?: string, to_date?: string}  $filters
      * @return list<array{entity_id: int, income: float, cogs: float, expense: float, profit: float}>
      */
@@ -929,8 +962,8 @@ class ProfitLossReportService
      * hop if $joinChain is null, 2 hops otherwise. Avoids the N+1 trap
      * that would happen if we loaded the related model per transaction.
      *
-     * @param  list<int>    $relatedIds
-     * @return array<int, int>  related_id => entity_id
+     * @param  list<int>  $relatedIds
+     * @return array<int, int> related_id => entity_id
      */
     private function batchLoadEntityIds(
         array $relatedIds,
@@ -971,18 +1004,18 @@ class ProfitLossReportService
      * for the modules that publish to the GL with a known related_type
      * (FlightBooking, BusBooking, HajjUmraBooking, VisaBooking, etc.).
      *
-     * @return string  table name
+     * @return string table name
      */
     private function getTableForModel(string $fqcn): string
     {
         return match ($fqcn) {
-            \App\Models\Flight\FlightBooking::class => 'flight_bookings',
-            \App\Models\Bus\BusBooking::class => 'bus_bookings',
-            \App\Models\HajjUmraBooking::class => 'hajj_umra_bookings',
-            \App\Models\VisaBooking::class => 'visa_bookings',
-            \App\Models\Fawry\FawryTransaction::class => 'fawry_transactions',
-            \App\Models\Wallet\WalletTransaction::class => 'wallet_transactions',
-            \App\Models\Online\OnlineTransaction::class => 'online_transactions',
+            FlightBooking::class => 'flight_bookings',
+            BusBooking::class => 'bus_bookings',
+            HajjUmraBooking::class => 'hajj_umra_bookings',
+            VisaBooking::class => 'visa_bookings',
+            FawryTransaction::class => 'fawry_transactions',
+            WalletTransaction::class => 'wallet_transactions',
+            OnlineTransaction::class => 'online_transactions',
             default => 'unknown',
         };
     }

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Flight;
 
+use App\Enums\FlightBookingStatus;
+use App\Enums\PassengerType;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Flight\FlightBooking;
@@ -23,28 +25,67 @@ class PassengerController extends Controller
         try {
             $today = now()->toDateString();
 
+            // CRITICAL: do NOT use SoftDeletes scope on the eager loading.
+            // FlightBooking uses SoftDeletes, and a plain `Join` doesn't apply the
+            // global scope, but the eager loading `with('booking...')` does.
+            // Without `withTrashed()`, soft-deleted bookings would load as null
+            // on the relation and the row would be skipped by the controller's
+            // `if (!$booking) continue;` check — producing "0 results" for the
+            // passenger that the notification still references.
             $query = Passenger::query()
                 ->select('passengers.*')
                 ->join('flight_bookings', 'passengers.flight_booking_id', '=', 'flight_bookings.id')
-                ->with(['booking.customer', 'booking.flightGroup', 'booking.employee', 'booking.createdBy', 'booking.segments.fromAirport', 'booking.segments.toAirport']);
+                ->with([
+                    'booking' => fn ($q) => $q->withTrashed(),
+                    'booking.customer',
+                    'booking.flightGroup',
+                    'booking.employee',
+                    'booking.createdBy',
+                    'booking.segments.fromAirport',
+                    'booking.segments.toAirport',
+                ]);
 
-            // Search by name, passport, national ID, or PNR
-            if ($search = $request->input('search')) {
+            $search = trim((string) $request->input('search', ''));
+
+            // Search by name (split or full), passport, national ID, or PNR.
+            // The CONCAT clauses let the user type the displayed full name
+            // (e.g. "ahmed magmoaaat") instead of being forced to type
+            // a single token like "ahmed" or "magmoaaat".
+            if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('passengers.first_name', 'like', "%{$search}%")
-                      ->orWhere('passengers.last_name', 'like', "%{$search}%")
-                      ->orWhere('passengers.passport_number', 'like', "%{$search}%")
-                      ->orWhere('passengers.national_id', 'like', "%{$search}%")
-                      ->orWhere('flight_bookings.pnr', 'like', "%{$search}%");
+                        ->orWhere('passengers.last_name', 'like', "%{$search}%")
+                        ->orWhere('passengers.first_name_en', 'like', "%{$search}%")
+                        ->orWhere('passengers.last_name_en', 'like', "%{$search}%")
+                        ->orWhere('passengers.passport_number', 'like', "%{$search}%")
+                        ->orWhere('passengers.national_id', 'like', "%{$search}%")
+                        ->orWhere('flight_bookings.pnr', 'like', "%{$search}%")
+                        ->orWhere('flight_bookings.booking_number', 'like', "%{$search}%")
+                        ->orWhereRaw("CONCAT(passengers.first_name, ' ', passengers.last_name) LIKE ?", ["%{$search}%"])
+                        ->orWhereRaw("CONCAT(passengers.last_name, ' ', passengers.first_name) LIKE ?", ["%{$search}%"]);
+
+                    // Tokenized match: every word in the search must appear in
+                    // either first_name or last_name (handles "ahmed magmoaaat"
+                    // when the user types both parts).
+                    foreach (preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) as $token) {
+                        $q->orWhere(function ($sub) use ($token) {
+                            $sub->where('passengers.first_name', 'like', "%{$token}%")
+                                ->orWhere('passengers.last_name', 'like', "%{$token}%");
+                        });
+                    }
                 });
             }
 
-            // Filter by trip status: upcoming, past, all
+            // Filter by trip status: upcoming, past, all.
+            // When the user is searching by text, ignore the date filter so an
+            // exact-PNR or name lookup always finds the row regardless of date.
             $tripStatus = $request->input('trip_status', 'all');
-            if ($tripStatus === 'upcoming') {
-                $query->whereDate('flight_bookings.departure_date', '>=', $today);
-            } elseif ($tripStatus === 'past') {
-                $query->whereDate('flight_bookings.departure_date', '<', $today);
+            if ($search === '' && ($tripStatus === 'upcoming' || $tripStatus === 'past')) {
+                $query->whereDate(
+                    'flight_bookings.departure_date',
+                    $tripStatus === 'upcoming' ? '>=' : '<',
+                    $today
+                );
             }
 
             // Filter by departure date range
@@ -57,17 +98,17 @@ class PassengerController extends Controller
 
             // Sorting: Upcoming first, then past
             $query->orderByRaw('CASE WHEN flight_bookings.departure_date >= ? THEN 0 ELSE 1 END ASC', [$today])
-                  ->orderBy('flight_bookings.departure_date', 'asc')
-                  ->orderBy('flight_bookings.departure_time', 'asc');
+                ->orderBy('flight_bookings.departure_date', 'asc')
+                ->orderBy('flight_bookings.departure_time', 'asc');
 
-            $perPage  = $request->input('per_page', 15);
+            $perPage = $request->input('per_page', 15);
             $paginator = $query->paginate($perPage);
 
             // بناء الـ response باستخدام الـ segments إن وجدت لتقسيم الرحلة لخطوات منفصلة
             $allItems = collect();
             foreach ($paginator->getCollection() as $passenger) {
                 $booking = $passenger->booking;
-                if (!$booking) {
+                if (! $booking) {
                     continue;
                 }
 
@@ -79,7 +120,7 @@ class PassengerController extends Controller
                 } else {
                     // Fallback to old outbound/return logic
                     $allItems->push($this->formatPassengerRow($passenger, $today, 'outbound'));
-                    if (strtolower($booking->trip_type ?? '') === 'round_trip' && !empty($booking->return_date)) {
+                    if (strtolower($booking->trip_type ?? '') === 'round_trip' && ! empty($booking->return_date)) {
                         $allItems->push($this->formatPassengerRow($passenger, $today, 'return'));
                     }
                 }
@@ -95,6 +136,7 @@ class PassengerController extends Controller
             );
         } catch (\Exception $e) {
             report($e);
+
             return ApiResponse::error($e->getMessage(), null, 500);
         }
     }
@@ -107,7 +149,7 @@ class PassengerController extends Controller
         $booking = $passenger->booking;
         $fromAirport = $segment->fromAirport ?? $segment->from_airport;
         $toAirport = $segment->toAirport ?? $segment->to_airport;
-        
+
         $departureDate = $segment->departure_date
             ? (is_string($segment->departure_date) ? $segment->departure_date : $segment->departure_date->format('Y-m-d'))
             : null;
@@ -119,7 +161,7 @@ class PassengerController extends Controller
         $traveled = $departureDate && $departureDate <= $today;
 
         $daysUntil = $departureDate ? Carbon::today()->diffInDays(Carbon::parse($departureDate), false) : null;
-        
+
         $affiliation = '—';
         if ($booking) {
             if ($booking->booking_source === 'group') {
@@ -132,46 +174,46 @@ class PassengerController extends Controller
         }
 
         return [
-            'passenger_id'    => $passenger->id,
-            'leg'             => 'segment', 
-            'leg_number'      => $legNumber,
-            'first_name'      => $passenger->first_name,
-            'last_name'       => $passenger->last_name,
-            'first_name_en'   => $passenger->first_name_en,
-            'last_name_en'    => $passenger->last_name_en,
+            'passenger_id' => $passenger->id,
+            'leg' => 'segment',
+            'leg_number' => $legNumber,
+            'first_name' => $passenger->first_name,
+            'last_name' => $passenger->last_name,
+            'first_name_en' => $passenger->first_name_en,
+            'last_name_en' => $passenger->last_name_en,
             'passport_number' => $passenger->passport_number,
-            'national_id'     => $passenger->national_id,
-            'type'            => $passenger->type instanceof \App\Enums\PassengerType
+            'national_id' => $passenger->national_id,
+            'type' => $passenger->type instanceof PassengerType
                 ? $passenger->type->value
                 : $passenger->type,
-            'traveled'        => $traveled,
-            'traveled_at'     => $passenger->traveled_at?->format('Y-m-d H:i:s'),
-            'departure_date'  => $departureDate,
-            'departure_time'  => $departureTime,
-            'days_until'      => $daysUntil, 
-            'date_label'      => $this->buildDateLabel($daysUntil),
-            'sort_date'       => $departureDate ?? '9999-12-31',
-            'affiliation'     => $affiliation,
-            'group_name'      => $booking?->flightGroup?->name ?? '—',
-            'booking_date'    => $booking?->created_at?->format('Y-m-d H:i:s'),
-            'employee_name'   => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
-            'booking_notes'   => $booking?->notes ?? '—',
-            'booking'         => $booking ? [
-                'id'             => $booking->id,
+            'traveled' => $traveled,
+            'traveled_at' => $passenger->traveled_at?->format('Y-m-d H:i:s'),
+            'departure_date' => $departureDate,
+            'departure_time' => $departureTime,
+            'days_until' => $daysUntil,
+            'date_label' => $this->buildDateLabel($daysUntil),
+            'sort_date' => $departureDate ?? '9999-12-31',
+            'affiliation' => $affiliation,
+            'group_name' => $booking?->flightGroup?->name ?? '—',
+            'booking_date' => $booking?->created_at?->format('Y-m-d H:i:s'),
+            'employee_name' => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
+            'booking_notes' => $booking?->notes ?? '—',
+            'booking' => $booking ? [
+                'id' => $booking->id,
                 'booking_number' => $booking->booking_number,
-                'pnr'            => $booking->pnr,
-                'status'         => $booking->status instanceof \App\Enums\FlightBookingStatus
+                'pnr' => $booking->pnr,
+                'status' => $booking->status instanceof FlightBookingStatus
                     ? $booking->status->value
                     : $booking->status,
-                'trip_type'      => $booking->trip_type,
-                'from_airport'   => $fromAirport,
-                'to_airport'     => $toAirport,
-                'airline_name'   => $segment->airline ?? $booking->airline_name,
-                'currency'       => $booking->currency,
-                'passenger_count'=> $booking->passenger_count ?? 1,
+                'trip_type' => $booking->trip_type,
+                'from_airport' => $fromAirport,
+                'to_airport' => $toAirport,
+                'airline_name' => $segment->airline ?? $booking->airline_name,
+                'currency' => $booking->currency,
+                'passenger_count' => $booking->passenger_count ?? 1,
             ] : null,
             'customer' => $booking?->customer ? [
-                'id'   => $booking->customer->id,
+                'id' => $booking->customer->id,
                 'name' => $booking->customer->full_name,
             ] : null,
         ];
@@ -185,23 +227,23 @@ class PassengerController extends Controller
         $booking = $passenger->booking;
 
         if ($legType === 'return') {
-            $fromAirport   = $booking->to_airport;
-            $toAirport     = $booking->from_airport;
+            $fromAirport = $booking->to_airport;
+            $toAirport = $booking->from_airport;
             $departureDate = $booking->return_date
                 ? (is_string($booking->return_date) ? $booking->return_date : $booking->return_date->format('Y-m-d'))
                 : null;
             $departureTime = $booking->return_time ?? null;
             $hasNotTraveled = $departureDate && $departureDate > $today;
-            $traveled      = false;
+            $traveled = false;
         } else {
-            $fromAirport   = $booking?->from_airport;
-            $toAirport     = $booking?->to_airport;
+            $fromAirport = $booking?->from_airport;
+            $toAirport = $booking?->to_airport;
             $departureDate = $booking?->departure_date
                 ? (is_string($booking->departure_date) ? $booking->departure_date : $booking->departure_date->format('Y-m-d'))
                 : null;
             $departureTime = $booking?->departure_time;
             $hasNotTraveled = $departureDate && $departureDate > $today;
-            $traveled      = !is_null($passenger->traveled_at);
+            $traveled = ! is_null($passenger->traveled_at);
         }
 
         $daysUntil = $departureDate ? Carbon::today()->diffInDays(Carbon::parse($departureDate), false) : null;
@@ -218,46 +260,46 @@ class PassengerController extends Controller
         }
 
         return [
-            'passenger_id'    => $passenger->id,
-            'leg'             => $legType, // 'outbound' | 'return'
-            'first_name'      => $passenger->first_name,
-            'last_name'       => $passenger->last_name,
-            'first_name_en'   => $passenger->first_name_en,
-            'last_name_en'    => $passenger->last_name_en,
+            'passenger_id' => $passenger->id,
+            'leg' => $legType, // 'outbound' | 'return'
+            'first_name' => $passenger->first_name,
+            'last_name' => $passenger->last_name,
+            'first_name_en' => $passenger->first_name_en,
+            'last_name_en' => $passenger->last_name_en,
             'passport_number' => $passenger->passport_number,
-            'national_id'     => $passenger->national_id,
-            'type'            => $passenger->type instanceof \App\Enums\PassengerType
+            'national_id' => $passenger->national_id,
+            'type' => $passenger->type instanceof PassengerType
                 ? $passenger->type->value
                 : $passenger->type,
-            'traveled'        => $traveled,
-            'traveled_at'     => $passenger->traveled_at?->format('Y-m-d H:i:s'),
+            'traveled' => $traveled,
+            'traveled_at' => $passenger->traveled_at?->format('Y-m-d H:i:s'),
             'return_not_traveled_yet' => ($legType === 'return' && $hasNotTraveled),
-            'departure_date'  => $departureDate,
-            'departure_time'  => $departureTime,
-            'days_until'      => $daysUntil, 
-            'date_label'      => $this->buildDateLabel($daysUntil),
-            'sort_date'       => $departureDate ?? '9999-12-31',
-            'affiliation'     => $affiliation,
-            'group_name'      => $booking?->flightGroup?->name ?? '—',
-            'booking_date'    => $booking?->created_at?->format('Y-m-d H:i:s'),
-            'employee_name'   => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
-            'booking_notes'   => $booking?->notes ?? '—',
-            'booking'         => $booking ? [
-                'id'             => $booking->id,
+            'departure_date' => $departureDate,
+            'departure_time' => $departureTime,
+            'days_until' => $daysUntil,
+            'date_label' => $this->buildDateLabel($daysUntil),
+            'sort_date' => $departureDate ?? '9999-12-31',
+            'affiliation' => $affiliation,
+            'group_name' => $booking?->flightGroup?->name ?? '—',
+            'booking_date' => $booking?->created_at?->format('Y-m-d H:i:s'),
+            'employee_name' => $booking?->employee?->name ?? $booking?->createdBy?->name ?? '—',
+            'booking_notes' => $booking?->notes ?? '—',
+            'booking' => $booking ? [
+                'id' => $booking->id,
                 'booking_number' => $booking->booking_number,
-                'pnr'            => $booking->pnr,
-                'status'         => $booking->status instanceof \App\Enums\FlightBookingStatus
+                'pnr' => $booking->pnr,
+                'status' => $booking->status instanceof FlightBookingStatus
                     ? $booking->status->value
                     : $booking->status,
-                'trip_type'      => $booking->trip_type,
-                'from_airport'   => $fromAirport,
-                'to_airport'     => $toAirport,
-                'airline_name'   => $booking->airline_name,
-                'currency'       => $booking->currency,
-                'passenger_count'=> $booking->passenger_count ?? 1,
+                'trip_type' => $booking->trip_type,
+                'from_airport' => $fromAirport,
+                'to_airport' => $toAirport,
+                'airline_name' => $booking->airline_name,
+                'currency' => $booking->currency,
+                'passenger_count' => $booking->passenger_count ?? 1,
             ] : null,
             'customer' => $booking?->customer ? [
-                'id'   => $booking->customer->id,
+                'id' => $booking->customer->id,
                 'name' => $booking->customer->full_name,
             ] : null,
         ];
@@ -285,6 +327,7 @@ class PassengerController extends Controller
         if ($abs === 1) {
             return 'أمس';
         }
+
         return "منذ {$abs} أيام";
     }
 
@@ -303,7 +346,7 @@ class PassengerController extends Controller
 
         return ApiResponse::success('تم تسجيل سفر الراكب بنجاح.', [
             'passenger_id' => $passenger->id,
-            'traveled_at'  => $passenger->traveled_at->format('Y-m-d H:i:s'),
+            'traveled_at' => $passenger->traveled_at->format('Y-m-d H:i:s'),
         ]);
     }
 
@@ -326,9 +369,10 @@ class PassengerController extends Controller
     public function getAlertSettings(): JsonResponse
     {
         $user = Auth::user();
+
         return ApiResponse::success('Alert settings retrieved.', [
             'travel_alert_days_before' => $user->travel_alert_days_before ?? 1,
-            'travel_alert_time'        => $user->travel_alert_time ?? '09:00:00',
+            'travel_alert_time' => $user->travel_alert_time ?? '09:00:00',
         ]);
     }
 
@@ -339,18 +383,18 @@ class PassengerController extends Controller
     {
         $request->validate([
             'travel_alert_days_before' => ['required', 'integer', 'min:0', 'max:30'],
-            'travel_alert_time'        => ['required', 'string', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'travel_alert_time' => ['required', 'string', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
         ]);
 
         $user = Auth::user();
         $user->update([
             'travel_alert_days_before' => $request->travel_alert_days_before,
-            'travel_alert_time'        => $request->travel_alert_time,
+            'travel_alert_time' => $request->travel_alert_time,
         ]);
 
         return ApiResponse::success('تم تحديث إعدادات التنبيهات بنجاح.', [
             'travel_alert_days_before' => $user->travel_alert_days_before,
-            'travel_alert_time'        => $user->travel_alert_time,
+            'travel_alert_time' => $user->travel_alert_time,
         ]);
     }
 
@@ -364,8 +408,8 @@ class PassengerController extends Controller
      */
     public function getNotifications(Request $request): JsonResponse
     {
-        $user  = Auth::user();
-        $type  = $request->input('type', 'unread');
+        $user = Auth::user();
+        $type = $request->input('type', 'unread');
         $query = $type === 'unread' ? $user->unreadNotifications() : $user->notifications();
 
         // Bell-only: keep group/threshold + tamper notifications out of the SPA list.
@@ -376,12 +420,13 @@ class PassengerController extends Controller
         // إضافة days_until محسوب ديناميكياً عند العرض
         $collection = $notifications->getCollection()->map(function ($n) {
             $data = $n->data;
-            if (!empty($data['departure_date'])) {
-                $daysUntil            = Carbon::today()->diffInDays(Carbon::parse($data['departure_date']), false);
-                $data['days_until']   = $daysUntil;
-                $data['date_label']   = $this->buildDateLabel($daysUntil);
+            if (! empty($data['departure_date'])) {
+                $daysUntil = Carbon::today()->diffInDays(Carbon::parse($data['departure_date']), false);
+                $data['days_until'] = $daysUntil;
+                $data['date_label'] = $this->buildDateLabel($daysUntil);
             }
             $n->data = $data;
+
             return $n;
         });
 
@@ -395,6 +440,7 @@ class PassengerController extends Controller
     {
         $notification = Auth::user()->notifications()->findOrFail($id);
         $notification->markAsRead();
+
         return ApiResponse::success('تم تحديد التنبيه كمقروء.');
     }
 
@@ -404,6 +450,7 @@ class PassengerController extends Controller
     public function markAllNotificationsRead(): JsonResponse
     {
         Auth::user()->unreadNotifications->markAsRead();
+
         return ApiResponse::success('تم تحديد جميع التنبيهات كمقروءة.');
     }
 }

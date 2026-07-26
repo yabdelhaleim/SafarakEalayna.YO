@@ -191,6 +191,21 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
       }
     },
 
+    async deleteBooking(id, reason = '') {
+      this.loading.delete = true;
+      this.errors = {};
+      try {
+        await axios.delete(`/api/v1/hajj-umra/bookings/${id}`, { data: { reason } });
+        this.bookings = this.bookings.filter((b) => b.id !== id);
+        return true;
+      } catch (e) {
+        this.errors = { delete: e.response?.data?.message || 'فشل حذف الحجز' };
+        throw e;
+      } finally {
+        this.loading.delete = false;
+      }
+    },
+
     async addPayment(bookingId, paymentData) {
       this.errors = {};
       try {
@@ -278,10 +293,6 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
     /** Backwards-compat shims for old views */
     async fetchPrograms() {
       return this.fetchSettings();
-    },
-
-    async deleteBooking(id) {
-      return this.cancelBooking(id);
     },
 
     /** Executing Companies Finance */

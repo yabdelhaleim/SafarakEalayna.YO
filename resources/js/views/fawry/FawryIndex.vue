@@ -194,7 +194,7 @@
             <tr class="border-b border-white/10 bg-white/5">
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">العميل</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">نوع العملية</th>
-              <th v-if="isAdmin" class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">المبلغ</th>
+              <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">المبلغ</th>
               <th v-if="isAdmin" class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">الربح</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">طريقة الدفع</th>
               <th class="px-6 py-4 text-right text-sm font-semibold text-text-muted uppercase tracking-wider">التاريخ</th>
@@ -221,7 +221,7 @@
                   {{ transaction.operation_type_label || store.getOperationTypeLabel(transaction.operation_type) }}
                 </span>
               </td>
-              <td v-if="isAdmin" class="px-6 py-4 font-mono font-semibold text-text-main">
+              <td class="px-6 py-4 font-mono font-semibold text-text-main">
                 {{ formatCurrency(transaction.selling_price) }}
               </td>
               <td v-if="isAdmin" class="px-6 py-4 font-mono font-semibold text-success">

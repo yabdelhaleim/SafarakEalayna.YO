@@ -6,12 +6,13 @@ use App\Enums\HajjUmraStatus;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\HajjUmra\HajjUmraExecutingCompany;
+use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\Program;
 use App\Models\Transaction;
-use App\Models\HajjUmra\HajjUmraExecutingCompany;
-use App\Models\HajjUmra\UmrahSupplier;
+use App\Services\HajjUmra\HajjUmraBookingService;
 
 /**
  * PRODUCTION TEST SUITE — HajjUmra (الحج والعمرة)
@@ -489,7 +490,7 @@ class HajjUmraProductionTest extends TourismTestCase
             ->whereHas('transaction', fn ($q) => $q->where('related_type', HajjUmraBooking::class)->where('related_id', $bookingId))
             ->count();
 
-        $cancelResp = $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'طلب العميل']);
+        $cancelResp = $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'طلب العميل']);
         $cancelResp->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('data.status', 'cancelled');
 
@@ -524,13 +525,13 @@ class HajjUmraProductionTest extends TourismTestCase
         ])->assertCreated();
         $bookingId = $resp->json('data.id');
 
-        $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'x'])
+        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'x'])
             ->assertOk()->assertJsonPath('data.status', 'cancelled');
 
         // Second cancel: call service directly (controller doesn't catch exception → 500)
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('ملغى مسبقاً');
-        app(\App\Services\HajjUmra\HajjUmraBookingService::class)
+        app(HajjUmraBookingService::class)
             ->cancel(HajjUmraBooking::find($bookingId), 'second attempt');
     }
 
@@ -548,7 +549,7 @@ class HajjUmraProductionTest extends TourismTestCase
         ])->assertCreated();
         $bookingId = $resp->json('data.id');
 
-        $this->deleteJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['reason' => 'x'])->assertOk();
+        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'x'])->assertOk();
 
         $payResp = $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/payments", [
             'amount' => 5000.00,

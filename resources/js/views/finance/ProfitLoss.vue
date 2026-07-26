@@ -42,8 +42,19 @@
       <!-- Date Range Filter -->
       <div class="flex flex-col sm:flex-row gap-2">
         <select 
+          v-model="filters.section"
+          @change="fetchReport"
+          class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+        >
+          <option value="all">كل الأنواع</option>
+          <option value="revenue">إيرادات فقط</option>
+          <option value="cogs">تكاليف فقط</option>
+          <option value="refund">مرتجعات فقط</option>
+          <option value="expense">مصروفات فقط</option>
+        </select>
+        <select 
           v-model="filters.category"
-          @change="filters.module = 'all'; fetchReport()"
+          @change="filters.module = 'all'; filters.section = 'all'; fetchReport()"
           class="bg-input-bg border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
         >
           <option value="all">كل الأقسام (شامل)</option>
@@ -387,7 +398,8 @@ const filters = ref({
   from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
   to: new Date().toISOString().split('T')[0], // Today
   category: 'all',
-  module: 'all'
+  module: 'all',
+  section: 'all'
 });
 
 // Mocked initial structure, awaiting backend data
@@ -408,7 +420,7 @@ const netProfit = computed(() => {
   if (typeof reportData.value.netProfit === 'number') {
     return reportData.value.netProfit;
   }
-  return reportData.value.totalRevenues - reportData.value.totalCogs - reportData.value.totalExpenses;
+  return reportData.value.totalRevenues - reportData.value.totalCogs - reportData.value.totalExpenses - reportData.value.totalRefunds;
 });
 
 const grossProfit = computed(() => {
@@ -503,6 +515,7 @@ const fetchReport = async () => {
       to_date: filters.value.to,
       category: filters.value.category,
       module: filters.value.module,
+      section: filters.value.section,
       _t: Date.now(),
     };
     const res = await axios.get('/api/v1/reports/profit-loss', {

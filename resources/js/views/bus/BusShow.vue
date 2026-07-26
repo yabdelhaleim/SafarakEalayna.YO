@@ -352,6 +352,15 @@
             <RotateCcw class="mb-0.5 ml-2 inline h-4 w-4" />
             إلغاء / استرداد
           </button>
+          <button
+            type="button"
+            class="flex-1 rounded-xl border border-error/40 bg-error/10 px-4 py-3 font-bold text-error transition hover:bg-error/20 sm:flex-none"
+            @click="confirmDelete"
+            title="حذف الحجز نهائياً مع عكس كل الآثار المحاسبية"
+          >
+            <Trash2 class="mb-0.5 ml-2 inline h-4 w-4" />
+            حذف الحجز
+          </button>
         </div>
       </div>
     </template>
@@ -505,7 +514,7 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
@@ -520,12 +529,14 @@ import {
   Banknote,
   Wallet,
   Landmark,
+  Trash2,
 } from 'lucide-vue-next';
 import BusRefundWizard from '@/components/bus/BusRefundWizard.vue';
 import PrintCompanyBranding from '@/components/print/PrintCompanyBranding.vue';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
 const route = useRoute();
+const router = useRouter();
 const store = useBusStore();
 const printSettingsStore = usePrintSettingsStore();
 
@@ -745,6 +756,20 @@ const onRefundCompleted = async () => {
   showRefundModal.value = false;
   store.addToast('تمت معالجة الاسترجاع بنجاح');
   await load();
+};
+
+const confirmDelete = async () => {
+  if (!booking.value) return;
+  if (confirm(`هل أنت متأكد من حذف الحجز ${booking.value.id}؟ لا يمكن التراجع عن هذا الإجراء وسيتم عكس كل القيود المالية.`)) {
+    try {
+      await store.deleteBooking(booking.value.id);
+      store.addToast(`تم حذف الحجز ${booking.value.id} بنجاح`);
+      router.push({ name: 'bus.list' });
+    } catch (error) {
+      const msg = store.errors?.delete || 'فشل حذف الحجز';
+      store.addToast(typeof msg === 'string' ? msg : 'فشل حذف الحجز', 'error');
+    }
+  }
 };
 
 onMounted(() => {

@@ -550,15 +550,23 @@ async function fetchAccounts() {
   const typeOf = (a) => String(a?.type?.value ?? a?.type ?? '').toLowerCase();
   const splitLiquidity = (all) => {
     walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
-    cashAccounts.value = all.filter((a) => ['cashbox', 'treasury', 'bank'].includes(typeOf(a)));
+    // 'treasury' removed from the filter list — AccountType::Treasury
+    // was retired in Phase 3.5b, so no row can have type='treasury'
+    // anymore. Only cashbox + bank remain as the non-wallet liquidity
+    // types in this fallback path.
+    cashAccounts.value = all.filter((a) => ['cashbox', 'bank'].includes(typeOf(a)));
   };
 
   try {
     const overview = await store.fetchTransferTreasury();
     const treasuryWallets = Array.isArray(overview?.wallets) ? overview.wallets : [];
+    // Note: `overview.treasury` is intentionally excluded — it was an
+    // alias for `overview.banks` (AccountType::Treasury was retired in
+    // Phase 3.5b). The controller now returns it empty, so including
+    // it here would either add nothing or, in older code, double-count
+    // the bank rows.
     const treasuryCash = [
       ...(Array.isArray(overview?.cashboxes) ? overview.cashboxes : []),
-      ...(Array.isArray(overview?.treasury) ? overview.treasury : []),
       ...(Array.isArray(overview?.banks) ? overview.banks : []),
     ];
     if (treasuryWallets.length > 0 || treasuryCash.length > 0) {

@@ -185,7 +185,7 @@
                     <th class="px-5 py-4 font-bold">رقم الحجز</th>
                     <th class="px-5 py-4 font-bold">العميل</th>
                     <th class="px-5 py-4 font-bold">المسار</th>
-                    <th v-if="isAdmin" class="px-5 py-4 font-bold">السعر</th>
+                    <th class="px-5 py-4 font-bold">السعر</th>
                     <th v-if="isAdmin" class="px-5 py-4 font-bold">الربح</th>
                     <th class="px-5 py-4 font-bold">الحالة</th>
                     <th class="px-5 py-4 font-bold">التاريخ</th>
@@ -210,7 +210,7 @@
                       </span>
                       <span v-else class="text-white/30 text-xs">—</span>
                     </td>
-                    <td v-if="isAdmin" class="px-5 py-3.5 font-mono font-bold text-white text-sm">
+                    <td class="px-5 py-3.5 font-mono font-bold text-white text-sm">
                       {{ fmt(booking.pricing?.sellingPrice || 0) }}
                     </td>
                     <td v-if="isAdmin" class="px-5 py-3.5">
@@ -226,7 +226,7 @@
                     <td class="px-5 py-3.5 text-xs text-white/40">{{ formatDt(booking.created_at) }}</td>
                   </tr>
                   <tr v-if="!data.recent_bookings?.length">
-                    <td :colspan="isAdmin ? 7 : 5" class="px-5 py-16 text-center">
+                    <td :colspan="isAdmin ? 7 : 6" class="px-5 py-16 text-center">
                       <div class="flex flex-col items-center gap-3">
                         <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
                           <Plane class="w-7 h-7 text-white/10 -rotate-45" />

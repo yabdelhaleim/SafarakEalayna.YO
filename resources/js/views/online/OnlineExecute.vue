@@ -180,13 +180,17 @@
             <select
               v-model="form.account_id"
               required
-              class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main"
+              :disabled="!selectedAccountType || filteredAccounts.length === 0"
+              class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option :value="null" class="bg-card-bg">— اختر الحساب —</option>
-              <option v-for="a in store.accounts" :key="a.id" :value="a.id" class="bg-card-bg">
+              <option :value="null" class="bg-card-bg">{{ accountPlaceholder }}</option>
+              <option v-for="a in filteredAccounts" :key="a.id" :value="a.id" class="bg-card-bg">
                 {{ a.name }} — رصيد ({{ formatMoney(a.balance) }})
               </option>
             </select>
+            <p v-if="accountHelpText" class="text-[11px] font-bold text-amber-400">
+              {{ accountHelpText }}
+            </p>
           </div>
 
           <div class="space-y-2">
@@ -195,10 +199,17 @@
               v-model="form.payment_method"
               required
               class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main"
+              @change="onPaymentMethodChange"
             >
               <option value="" class="bg-card-bg">— اختر طريقة الدفع —</option>
-              <option v-for="m in store.paymentMethods" :key="m.code" :value="m.code" class="bg-card-bg">
-                {{ m.name_ar || m.label }}
+              <option
+                v-for="m in store.paymentMethods"
+                :key="m.code || m.value"
+                :value="m.code || m.value"
+                :disabled="!m.account_type"
+                class="bg-card-bg"
+              >
+                {{ m.name_ar || m.label }}{{ m.account_type ? '' : ' — غير مرتبطة بحساب تحصيل' }}
               </option>
             </select>
           </div>
@@ -448,6 +459,68 @@ const initialForm = () => ({
 
 const form = ref(initialForm());
 
+const ACCOUNT_TYPE_COPY = {
+  cashbox: {
+    placeholder: '— اختر خزينة نقدية —',
+    empty: 'لا توجد خزائن نقدية متاحة لقسم المكتب.',
+  },
+  bank: {
+    placeholder: '— اختر حساباً بنكياً —',
+    empty: 'لا توجد حسابات بنكية متاحة لقسم المكتب.',
+  },
+  wallet: {
+    placeholder: '— اختر محفظة —',
+    empty: 'لا توجد محافظ متاحة لقسم المكتب.',
+  },
+};
+
+const normalizeAccountType = (type) => String(type?.value ?? type ?? '').trim().toLowerCase();
+
+const selectedPaymentMethod = computed(() => {
+  const selectedCode = String(form.value.payment_method || '');
+
+  return store.paymentMethods.find(
+    (method) => String(method.code ?? method.value ?? '') === selectedCode,
+  ) ?? null;
+});
+
+const selectedAccountType = computed(() =>
+  normalizeAccountType(selectedPaymentMethod.value?.account_type),
+);
+
+const filteredAccounts = computed(() => {
+  if (!selectedAccountType.value) return [];
+
+  return store.accounts.filter(
+    (account) =>
+      account.is_active !== false
+      && normalizeAccountType(account.type) === selectedAccountType.value,
+  );
+});
+
+const accountPlaceholder = computed(() => {
+  if (!form.value.payment_method) return '— اختر طريقة الدفع أولاً —';
+  if (!selectedAccountType.value) return '— طريقة الدفع غير مرتبطة بحساب —';
+  if (filteredAccounts.value.length === 0) return '— لا توجد حسابات متاحة —';
+
+  return ACCOUNT_TYPE_COPY[selectedAccountType.value]?.placeholder ?? '— اختر حساب التحصيل —';
+});
+
+const accountHelpText = computed(() => {
+  if (!form.value.payment_method) return 'اختر طريقة الدفع أولاً لعرض حسابات التحصيل المناسبة.';
+  if (!selectedAccountType.value) return 'طريقة الدفع المحددة غير مرتبطة بنوع حساب تحصيل مدعوم.';
+  if (filteredAccounts.value.length === 0) {
+    return ACCOUNT_TYPE_COPY[selectedAccountType.value]?.empty
+      ?? 'لا توجد حسابات متاحة لهذه الطريقة في قسم المكتب.';
+  }
+
+  return '';
+});
+
+function onPaymentMethodChange() {
+  form.value.account_id = null;
+}
+
 function resetForm() {
   form.value = initialForm();
 }
@@ -574,6 +647,18 @@ watch(
   }
 );
 
+watch(
+  filteredAccounts,
+  (accounts) => {
+    if (
+      form.value.account_id
+      && !accounts.some((account) => Number(account.id) === Number(form.value.account_id))
+    ) {
+      form.value.account_id = null;
+    }
+  },
+);
+
 const onCustomerSelected = () => {
   if (!form.value.customer_id) {
     return;
@@ -598,8 +683,16 @@ const submit = async () => {
     store.addToast('اختر طريقة الدفع.', 'error');
     return;
   }
+  if (!selectedAccountType.value) {
+    store.addToast('طريقة الدفع المحددة غير مرتبطة بحساب تحصيل مدعوم.', 'error');
+    return;
+  }
   if (!form.value.account_id) {
     store.addToast('اختر حساب التحصيل.', 'error');
+    return;
+  }
+  if (!filteredAccounts.value.some((account) => Number(account.id) === Number(form.value.account_id))) {
+    store.addToast('حساب التحصيل لا يطابق طريقة الدفع المحددة.', 'error');
     return;
   }
 
@@ -637,10 +730,6 @@ const submit = async () => {
 };
 
 function applyDefaultsFromApi() {
-  if (!form.value.payment_method && store.paymentMethods.length) {
-    const first = store.paymentMethods[0];
-    form.value.payment_method = first.code ?? first.value ?? '';
-  }
   if (!form.value.status && store.statuses.length) {
     const completed = store.statuses.find((s) => s.value === 'completed');
     form.value.status = completed?.value ?? store.statuses[0].value;
@@ -648,7 +737,7 @@ function applyDefaultsFromApi() {
 }
 
 watch(
-  () => [store.paymentMethods, store.statuses],
+  () => store.statuses,
   () => applyDefaultsFromApi(),
   { deep: true },
 );

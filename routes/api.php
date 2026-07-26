@@ -23,10 +23,10 @@ use App\Http\Controllers\Api\V1\Fawry\FawryTransactionController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTreasuryController;
 use App\Http\Controllers\Api\V1\Fawry\FawryWalkInPaymentController;
 use App\Http\Controllers\Api\V1\Finance\AccountController;
-use App\Http\Controllers\Api\V1\Finance\SupplierAccountController;
 use App\Http\Controllers\Api\V1\Finance\ApprovalController;
 use App\Http\Controllers\Api\V1\Finance\AuditController;
 use App\Http\Controllers\Api\V1\Finance\CurrencyController;
+use App\Http\Controllers\Api\V1\Finance\SupplierAccountController;
 use App\Http\Controllers\Api\V1\Finance\TransactionController;
 use App\Http\Controllers\Api\V1\Finance\TreasuryController;
 use App\Http\Controllers\Api\V1\Flight\AirlineAccountController;
@@ -35,11 +35,11 @@ use App\Http\Controllers\Api\V1\Flight\AviationController;
 use App\Http\Controllers\Api\V1\Flight\FlightCarrierController;
 use App\Http\Controllers\Api\V1\Flight\FlightController;
 use App\Http\Controllers\Api\V1\Flight\FlightDashboardController;
-use App\Http\Controllers\Api\V1\Flight\PassengerController;
 use App\Http\Controllers\Api\V1\Flight\FlightGroupController;
 use App\Http\Controllers\Api\V1\Flight\FlightSystemController;
 use App\Http\Controllers\Api\V1\Flight\FlightTreasuryController;
 use App\Http\Controllers\Api\V1\Flight\ModificationController;
+use App\Http\Controllers\Api\V1\Flight\PassengerController;
 use App\Http\Controllers\Api\V1\Flight\RefundController;
 use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraDashboardController;
 use App\Http\Controllers\Api\V1\HajjUmra\HajjUmraExecutingCompanyFinanceController;
@@ -470,6 +470,9 @@ Route::prefix('v1')->middleware([
         Route::match(['put', 'patch'], 'bookings/{hajjUmra}', [HajjUmraController::class, 'update']);
         Route::delete('bookings/{hajjUmra}', [HajjUmraController::class, 'destroy']);
         Route::post('bookings/{hajjUmra}/payments', [HajjUmraController::class, 'addPayment']);
+        // Light cancel: keep the booking row, flip status to 'cancelled', add
+        // additive reversal entries. Use this for "cancel without removing".
+        Route::post('bookings/{hajjUmra}/cancel', [HajjUmraController::class, 'cancel']);
         // FIX (GAP #HJ-3, fixed 2026-07-16):
         //   Refund endpoint for HajjUmra bookings. Performs additive reversal
         //   of all transactions and sets status='refunded'.
@@ -495,6 +498,9 @@ Route::prefix('v1')->middleware([
         Route::match(['put', 'patch'], 'bookings/{visa}', [VisaBookingController::class, 'update']);
         Route::delete('bookings/{visa}', [VisaBookingController::class, 'destroy']);
         Route::post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
+        // Light cancel: keep the booking row, flip status to 'Cancelled',
+        // add additive reversal entries. Use this for "cancel without removing".
+        Route::post('bookings/{visa}/cancel', [VisaBookingController::class, 'cancel']);
         Route::post('bookings/{visa}/refund', [VisaBookingController::class, 'refund']);
         Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications']);
 

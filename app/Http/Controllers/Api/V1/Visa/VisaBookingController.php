@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Visa;
 
-use App\Enums\VisaStatus;
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Visa\StoreVisaBookingRequest;
 use App\Http\Requests\Visa\StoreVisaPaymentRequest;
@@ -11,9 +11,11 @@ use App\Http\Requests\Visa\UpdateVisaBookingRequest;
 use App\Http\Resources\Visa\VisaBookingResource;
 use App\Models\VisaBooking;
 use App\Services\Visa\VisaBookingService;
+use App\Services\Visa\VisaModificationService;
+use App\Services\Visa\VisaRefundService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Helpers\CacheHelper;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Visa Booking controller — refactored 2026-07-20.
@@ -108,16 +110,55 @@ class VisaBookingController extends Controller
     /**
      * DELETE /api/v1/visa/bookings/{visa}
      *
-     * Light cancel (status=Cancelled, additive reversal on accounting) goes
-     * to VisaRefundService::cancel(); full soft-delete + reversal goes to
-     * VisaRefundService::deleteWithReversal().
+     * Soft delete the booking with full financial reversal.
+     * For an explicit cancellation (status only, no row removal), use
+     * POST /api/v1/visa/bookings/{visa}/cancel.
+     *
+     * Uses `int $id` + withTrashed() lookup (not route-model binding) so
+     * a second delete on an already-soft-deleted booking is detected and
+     * returned as 422, not 404.
+     *
+     * See VisaRefundService::deleteWithReversal for the canonical
+     * implementation (reversal + soft-delete under ModelDeletionGuard::run()).
      */
-    public function destroy(Request $request, VisaBooking $visa): JsonResponse
+    public function destroy(Request $request, int $visa): JsonResponse
     {
-        $booking = app(\App\Services\Visa\VisaRefundService::class)
-            ->cancel($visa, $request->input('reason'));
+        try {
+            $booking = VisaBooking::withTrashed()->find($visa);
+            if (! $booking) {
+                return ApiResponse::error('طلب التأشيرة غير موجود', null, 404);
+            }
+            if ($booking->trashed()) {
+                return ApiResponse::error('هذا الطلب محذوف بالفعل', null, 422);
+            }
 
-        return ApiResponse::success('تم إلغاء طلب التأشيرة', new VisaBookingResource($booking));
+            $userId = Auth::id() ?: 1;
+            app(VisaRefundService::class)
+                ->deleteWithReversal($booking->id, $userId);
+
+            return ApiResponse::success('تم حذف طلب التأشيرة وعكس كل القيود المالية بنجاح.');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * POST /api/v1/visa/bookings/{visa}/cancel
+     *
+     * Light cancel: flips status to 'Cancelled' and additively reverses all
+     * related accounting entries, but keeps the booking row visible. Use this
+     * for explicit cancellation; use DELETE for administrative soft-delete.
+     */
+    public function cancel(Request $request, VisaBooking $visa): JsonResponse
+    {
+        try {
+            $booking = app(VisaRefundService::class)
+                ->cancel($visa, $request->input('reason'));
+
+            return ApiResponse::success('تم إلغاء طلب التأشيرة', new VisaBookingResource($booking));
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
     }
 
     /**
@@ -146,7 +187,7 @@ class VisaBookingController extends Controller
      */
     public function refund(Request $request, VisaBooking $visa): JsonResponse
     {
-        $booking = app(\App\Services\Visa\VisaRefundService::class)
+        $booking = app(VisaRefundService::class)
             ->refund($visa, $request->input('reason'));
 
         return ApiResponse::success('تم استرداد قيمة التأشيرة', new VisaBookingResource($booking));
@@ -161,7 +202,7 @@ class VisaBookingController extends Controller
      */
     public function modifications(VisaBooking $visa): JsonResponse
     {
-        $modifications = app(\App\Services\Visa\VisaModificationService::class)
+        $modifications = app(VisaModificationService::class)
             ->history($visa);
 
         return ApiResponse::success('تم جلب سجل التعديلات', $modifications);

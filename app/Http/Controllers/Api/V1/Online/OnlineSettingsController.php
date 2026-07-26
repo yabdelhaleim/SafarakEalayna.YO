@@ -11,6 +11,8 @@ use App\Models\Employee;
 use App\Models\Online\OnlineServiceProvider;
 use App\Models\Online\OnlineServiceType;
 use App\Models\Setting\PaymentMethod;
+use App\Support\Finance\AccountModuleContract;
+use App\Support\Finance\PaymentMethodAccountType;
 use Illuminate\Http\JsonResponse;
 
 class OnlineSettingsController extends Controller
@@ -63,6 +65,7 @@ class OnlineSettingsController extends Controller
             'labelEn' => $m->name_en,
             'color' => $m->color,
             'order' => $m->order,
+            'account_type' => PaymentMethodAccountType::resolve($m->code)?->value,
         ]);
 
         return ApiResponse::success('تم جلب طرق الدفع النشطة.', $methods);
@@ -70,14 +73,12 @@ class OnlineSettingsController extends Controller
 
     public function accounts(): JsonResponse
     {
-        // Online module is part of the Office division. We accept:
-        //   - module_type='online'  (module-specific vaults)
-        //   - module_type='office'  (unified department-wide vault)
-        // This mirrors the OnlineLiquidityAccount rule and the Filament form
-        // (see OnlineTransactionResource::account_id select). User wants the
-        // single unified Office safe to be selectable from Online transactions.
+        // Online belongs to the Office division. The dropdown may use Online-
+        // specific vaults plus the unified Office vaults, but never subject,
+        // internal, inactive, or Tourism accounts.
         $accounts = Account::active()
-            ->whereIn('module_type', ['online', 'office'])
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+            ->whereIn('module_type', ['online', AccountModuleContract::OFFICE_MODULE_TYPE])
             ->orderBy('name')
             ->get(['id', 'name', 'type', 'balance', 'currency', 'wallet_provider', 'wallet_number', 'is_active', 'module_type'])
             ->map(fn (Account $a) => [

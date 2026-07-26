@@ -2,13 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\Flight\FlightPassenger as Passenger;
-use App\Models\Flight\FlightBooking;
-use App\Models\Customer;
-use App\Models\User;
-use App\Enums\FlightBookingStatus;
 use App\Enums\BookingChannelType;
+use App\Enums\FlightBookingStatus;
 use App\Enums\TripType;
+use App\Models\Customer;
+use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightPassenger as Passenger;
+use App\Models\User;
 use App\Notifications\PassengerAlertNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -20,6 +20,7 @@ class PassengerDirectoryTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Customer $customer;
 
     protected function setUp(): void
@@ -29,7 +30,7 @@ class PassengerDirectoryTest extends TestCase
         $this->user = User::factory()->create([
             'is_active' => true,
             'travel_alert_days_before' => 1,
-            'travel_alert_time' => '09:00:00'
+            'travel_alert_time' => '09:00:00',
         ]);
         $this->customer = Customer::factory()->create();
 
@@ -45,7 +46,7 @@ class PassengerDirectoryTest extends TestCase
 
         $updateResponse = $this->putJson('/api/v1/flight/passengers/alert-settings', [
             'travel_alert_days_before' => 2,
-            'travel_alert_time' => '10:00:00'
+            'travel_alert_time' => '10:00:00',
         ]);
         $updateResponse->assertOk()
             ->assertJsonPath('data.travel_alert_days_before', 2)
@@ -60,7 +61,7 @@ class PassengerDirectoryTest extends TestCase
     {
         // 1. Create a past booking (yesterday)
         $pastBooking = FlightBooking::create([
-            'booking_reference' => 'REF-PAST-' . rand(1000, 9999),
+            'booking_reference' => 'REF-PAST-'.rand(1000, 9999),
             'booking_channel_type' => BookingChannelType::SIGN->value,
             'booking_channel_provider' => 'SIGN',
             'customer_id' => $this->customer->id,
@@ -72,7 +73,7 @@ class PassengerDirectoryTest extends TestCase
             'trip_type' => TripType::ONE_WAY->value,
             'airline' => 'MS',
             'passenger_count' => 1,
-            'status' => FlightBookingStatus::CONFIRMED->value
+            'status' => FlightBookingStatus::CONFIRMED->value,
         ]);
 
         $pastPassenger = Passenger::create([
@@ -81,12 +82,12 @@ class PassengerDirectoryTest extends TestCase
             'last_name' => 'Passenger',
             'passport_number' => 'A11111111',
             'national_id' => '12345678901234',
-            'type' => 'adult'
+            'type' => 'adult',
         ]);
 
         // 2. Create an upcoming booking (tomorrow)
         $upcomingBooking = FlightBooking::create([
-            'booking_reference' => 'REF-UPCO-' . rand(1000, 9999),
+            'booking_reference' => 'REF-UPCO-'.rand(1000, 9999),
             'booking_channel_type' => BookingChannelType::SIGN->value,
             'booking_channel_provider' => 'SIGN',
             'customer_id' => $this->customer->id,
@@ -98,7 +99,7 @@ class PassengerDirectoryTest extends TestCase
             'trip_type' => TripType::ONE_WAY->value,
             'airline' => 'MS',
             'passenger_count' => 1,
-            'status' => FlightBookingStatus::CONFIRMED->value
+            'status' => FlightBookingStatus::CONFIRMED->value,
         ]);
 
         $upcomingPassenger = Passenger::create([
@@ -107,7 +108,7 @@ class PassengerDirectoryTest extends TestCase
             'last_name' => 'Passenger',
             'passport_number' => 'B22222222',
             'national_id' => '12345678905678',
-            'type' => 'adult'
+            'type' => 'adult',
         ]);
 
         // List passengers API
@@ -129,17 +130,153 @@ class PassengerDirectoryTest extends TestCase
             ->assertJsonPath('data.items.0.id', $pastPassenger->id);
     }
 
+    public function test_soft_deleted_bookings_still_appear_in_directory(): void
+    {
+        // Regression: the eager loading of `booking` on Passenger applies the
+        // FlightBooking SoftDeletes global scope. When that scope is in effect,
+        // soft-deleted bookings load as null and the controller's
+        // `if (!$booking) continue;` skips the row — even though the passenger
+        // exists and the JOIN matched. The fix uses `withTrashed()` on the
+        // eager loading so the page still shows the cancelled-booking passengers
+        // that an unread notification still references.
+        $booking = FlightBooking::create([
+            'booking_reference' => 'REF-SOFT-'.rand(1000, 9999),
+            'booking_channel_type' => BookingChannelType::SIGN->value,
+            'booking_channel_provider' => 'SIGN',
+            'customer_id' => $this->customer->id,
+            'agent_name' => 'Test Agent',
+            'origin' => 'CAI',
+            'destination' => 'AMM',
+            'departure_date' => now()->addDay()->toDateString(),
+            'departure_time' => '09:00',
+            'trip_type' => TripType::ONE_WAY->value,
+            'airline' => 'MS',
+            'passenger_count' => 1,
+            'status' => FlightBookingStatus::CONFIRMED->value,
+        ]);
+
+        $passenger = Passenger::create([
+            'flight_booking_id' => $booking->id,
+            'first_name' => 'ahmed',
+            'last_name' => 'magmoaaat',
+            'passport_number' => 'A12345678',
+            'national_id' => '12345678901234',
+            'type' => 'adult',
+        ]);
+
+        // Simulate the booking being cancelled (soft-deleted) AFTER the
+        // notification was generated.
+        $booking->delete();
+
+        $response = $this->getJson('/api/v1/flight/passengers');
+        $response->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.passenger_id', $passenger->id);
+    }
+
+    public function test_full_name_search_handles_spaces(): void
+    {
+        // Regression: the search box advertises that the user can type
+        // "الاسم..." (name). The backend's LIKE clauses only match a single
+        // column, so typing "ahmed magmoaaat" (first + last) returned 0 even
+        // though the passenger clearly exists. The fix adds CONCAT-based
+        // matching plus a tokenized match on each whitespace-separated word.
+        $booking = FlightBooking::create([
+            'booking_reference' => 'REF-SEARCH-'.rand(1000, 9999),
+            'booking_channel_type' => BookingChannelType::SIGN->value,
+            'booking_channel_provider' => 'SIGN',
+            'customer_id' => $this->customer->id,
+            'agent_name' => 'Test Agent',
+            'origin' => 'CAI',
+            'destination' => 'AMM',
+            'departure_date' => now()->addDay()->toDateString(),
+            'departure_time' => '09:00',
+            'trip_type' => TripType::ONE_WAY->value,
+            'airline' => 'MS',
+            'pnr' => 'aaaaaa',
+            'passenger_count' => 1,
+            'status' => FlightBookingStatus::CONFIRMED->value,
+        ]);
+
+        $passenger = Passenger::create([
+            'flight_booking_id' => $booking->id,
+            'first_name' => 'ahmed',
+            'last_name' => 'magmoaaat',
+            'passport_number' => 'A12345678',
+            'national_id' => '12345678901234',
+            'type' => 'adult',
+        ]);
+
+        // Search by full name with space — used to return 0.
+        $r1 = $this->getJson('/api/v1/flight/passengers?search=ahmed%20magmoaaat');
+        $r1->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.passenger_id', $passenger->id);
+
+        // Search by PNR — should still work.
+        $r2 = $this->getJson('/api/v1/flight/passengers?search=aaaaaa');
+        $r2->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.passenger_id', $passenger->id);
+
+        // Search by first name only — should still work.
+        $r3 = $this->getJson('/api/v1/flight/passengers?search=ahmed');
+        $r3->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.passenger_id', $passenger->id);
+    }
+
+    public function test_search_skips_trip_status_date_window(): void
+    {
+        // Regression: with trip_status=upcoming as default, a search by PNR
+        // for a flight whose departure_date is in the past returned 0. The
+        // search should bypass the date filter so a lookup always finds the
+        // row regardless of when the flight is.
+        $pastBooking = FlightBooking::create([
+            'booking_reference' => 'REF-PAST-SEARCH-'.rand(1000, 9999),
+            'booking_channel_type' => BookingChannelType::SIGN->value,
+            'booking_channel_provider' => 'SIGN',
+            'customer_id' => $this->customer->id,
+            'agent_name' => 'Test Agent',
+            'origin' => 'CAI',
+            'destination' => 'AMM',
+            'departure_date' => now()->subDay()->toDateString(),
+            'departure_time' => '09:00',
+            'trip_type' => TripType::ONE_WAY->value,
+            'airline' => 'MS',
+            'pnr' => 'pastpnr',
+            'passenger_count' => 1,
+            'status' => FlightBookingStatus::CONFIRMED->value,
+        ]);
+
+        $pastPassenger = Passenger::create([
+            'flight_booking_id' => $pastBooking->id,
+            'first_name' => 'Past',
+            'last_name' => 'Traveller',
+            'passport_number' => 'P00000001',
+            'national_id' => '11111111111111',
+            'type' => 'adult',
+        ]);
+
+        // Default trip_status=upcoming, but searching by PNR must find the
+        // past flight anyway.
+        $response = $this->getJson('/api/v1/flight/passengers?search=pastpnr');
+        $response->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.passenger_id', $pastPassenger->id);
+    }
+
     public function test_generate_passenger_alerts_command(): void
     {
         // Set current time mock or just compute alert time based on current time to guarantee execution
         $this->user->update([
             'travel_alert_days_before' => 1,
-            'travel_alert_time' => '00:00:00' // Always before or equal to current time to avoid midnight-wrap test flakes
+            'travel_alert_time' => '00:00:00', // Always before or equal to current time to avoid midnight-wrap test flakes
         ]);
 
         // Create booking for tomorrow (1 day before)
         $booking = FlightBooking::create([
-            'booking_reference' => 'REF-ALERT-' . rand(1000, 9999),
+            'booking_reference' => 'REF-ALERT-'.rand(1000, 9999),
             'booking_channel_type' => BookingChannelType::SIGN->value,
             'booking_channel_provider' => 'SIGN',
             'customer_id' => $this->customer->id,
@@ -151,7 +288,7 @@ class PassengerDirectoryTest extends TestCase
             'trip_type' => TripType::ONE_WAY->value,
             'airline' => 'MS',
             'passenger_count' => 1,
-            'status' => FlightBookingStatus::CONFIRMED->value
+            'status' => FlightBookingStatus::CONFIRMED->value,
         ]);
 
         $passenger = Passenger::create([
@@ -160,7 +297,7 @@ class PassengerDirectoryTest extends TestCase
             'last_name' => 'Passenger',
             'passport_number' => 'A99999999',
             'national_id' => '12345678909999',
-            'type' => 'adult'
+            'type' => 'adult',
         ]);
 
         $this->assertCount(0, $this->user->unreadNotifications);
@@ -206,7 +343,7 @@ class PassengerDirectoryTest extends TestCase
         $this->assertCount(1, $this->user->unreadNotifications);
 
         // Mark all as read
-        $markAllResponse = $this->postJson("/api/v1/flight/passengers/notifications/mark-all-read");
+        $markAllResponse = $this->postJson('/api/v1/flight/passengers/notifications/mark-all-read');
         $markAllResponse->assertOk();
 
         $this->user->refresh();

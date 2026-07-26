@@ -149,7 +149,7 @@
               <router-link to="/bus/create" class="nl-sub">إنشاء حجز</router-link>
               <router-link to="/bus/list" class="nl-sub">قائمة الحجوزات</router-link>
               <router-link to="/bus/customers" class="nl-sub">عملاء الباصات</router-link>
-              <router-link v-if="isAdminOrOwner" to="/bus/treasury" class="nl-sub">إدارة القسم (مالية الباصات)</router-link>
+              <router-link to="/bus/treasury" class="nl-sub">إدارة القسم (مالية الباصات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/companies" class="nl-sub">إدارة الشركات</router-link>
               <router-link v-if="isAdminOrOwner" to="/bus/inventory" class="nl-sub">إدارة الرحلات</router-link>
             </div>
@@ -167,7 +167,7 @@
               <router-link to="/fawry/list" class="nl-sub">قائمة المعاملات</router-link>
               <router-link to="/fawry/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
               <router-link to="/fawry/machines" class="nl-sub">إدارة الماكينات</router-link>
-              <router-link v-if="isAdminOrOwner" to="/fawry/treasury" class="nl-sub">إدارة القسم (مالية فوري)</router-link>
+              <router-link to="/fawry/treasury" class="nl-sub">إدارة القسم (مالية فوري)</router-link>
             </div>
           </div>
 
@@ -181,14 +181,14 @@
             <div v-show="isOnlineOpen" class="dropdown-content-styled">
               <router-link to="/online" class="nl-sub">قائمة المعاملات</router-link>
               <router-link to="/online/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
-              <router-link v-if="isAdminOrOwner" to="/online/treasury" class="nl-sub">إدارة القسم (مالية الخدمات)</router-link>
+              <router-link to="/online/treasury" class="nl-sub">إدارة القسم (مالية الخدمات)</router-link>
               <router-link v-if="isAdminOrOwner" to="/online/service-types" class="nl-sub">أنواع الخدمات</router-link>
               <router-link v-if="isAdminOrOwner" to="/online/providers" class="nl-sub">مزودي الخدمات</router-link>
             </div>
           </div>
 
           <!-- Wallet Module -->
-          <div class="nav-dropdown" v-if="(authStore.isAdmin || authStore.user?.role === 'owner') && hasPermission('manage_treasury')">
+          <div class="nav-dropdown" v-if="hasPermission('manage_treasury') || authStore.isAdmin || authStore.user?.role === 'owner'">
             <button @click="isWalletOpen = !isWalletOpen" class="nl" :class="{'nl-active': $route.path.startsWith('/wallet')}">
               <span class="nl-i text-purple-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg></span>
               <span class="nl-t" style="flex: 1; text-align: right;">المحافظ والتحويلات</span>
@@ -198,7 +198,7 @@
               <router-link to="/wallet/dashboard" class="nl-sub">لوحة التحكم</router-link>
               <router-link to="/wallet/list" class="nl-sub">قائمة العمليات</router-link>
               <router-link to="/wallet/customer-balances" class="nl-sub">مديونيات العملاء</router-link>
-              <router-link v-if="isAdminOrOwner" to="/wallet/treasury" class="nl-sub">إدارة القسم (مالية المحافظ)</router-link>
+              <router-link to="/wallet/treasury" class="nl-sub">إدارة القسم (مالية المحافظ)</router-link>
             </div>
           </div>
         </div>

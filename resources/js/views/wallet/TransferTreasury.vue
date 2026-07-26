@@ -108,26 +108,14 @@
             </div>
           </div>
 
-          <!-- Treasuries -->
-          <div v-if="ov.treasury?.length" class="space-y-4">
-            <h2 class="text-xl font-bold text-white flex items-center gap-2">
-              <Briefcase class="w-5 h-5 text-rose-400" />
-              الخزائن العامة
-            </h2>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <div v-for="acc in ov.treasury" :key="acc.id" class="rounded-2xl border border-rose-500/20 bg-gradient-to-br from-rose-500/10 to-transparent p-6 group transition hover:border-rose-500/40">
-                <div class="flex items-center justify-between mb-4">
-                  <span class="text-[10px] font-bold bg-rose-500/20 text-rose-400 px-3 py-1 rounded-full">خزينة عامة</span>
-                  <button @click="openAccountTx(acc)" class="text-[11px] font-bold text-rose-400 hover:text-rose-300">عرض العمليات</button>
-                </div>
-                <p class="text-lg font-bold text-white mb-4">{{ acc.name }}</p>
-                <p class="font-mono text-3xl font-black text-white tabular-nums">
-                  {{ Number(acc.balance).toLocaleString('ar-EG') }}
-                  <span class="text-xs font-normal text-white/40 mr-1">{{ acc.currency }}</span>
-                </p>
-              </div>
-            </div>
-          </div>
+          <!--
+            The "Treasuries" (الخزائن العامة) section was removed in
+            this revision. AccountType::Treasury was retired in Phase 3.5b
+            and the controller now returns an empty `treasury` array
+            (previously it was an alias for `banks` that duplicated rows).
+            Accounts that used to be "treasury" are now classified as
+            Bank or Cashbox and already render in the sections above.
+          -->
         </section>
       </template>
 
@@ -196,7 +184,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useWalletStore } from '@/stores/walletStore';
-import { ArrowRight, RefreshCw, Wallet as Vault, Smartphone, Landmark, Banknote, Briefcase, Clock } from 'lucide-vue-next';
+import { ArrowRight, RefreshCw, Wallet as Vault, Smartphone, Landmark, Banknote, Clock } from 'lucide-vue-next';
 
 const store = useWalletStore();
 const ov = ref(null);

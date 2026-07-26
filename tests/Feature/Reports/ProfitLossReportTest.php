@@ -3,14 +3,15 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\Account;
+use App\Models\Customer;
 use App\Models\Employee;
+use App\Models\Flight\FlightCarrier;
+use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightSystem;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Models\Customer;
-use App\Models\Flight\FlightGroup;
-use App\Models\Flight\FlightCarrier;
-use App\Services\Flight\FlightBookingService;
 use App\Services\Finance\LedgerClearingAccounts;
+use App\Services\Flight\FlightBookingService;
 use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -94,6 +95,25 @@ class ProfitLossReportTest extends TestCase
         $this->assertSame(2000.0, $report['totalCogs']);
         $this->assertSame(3000.0, $report['grossProfit']);
         $this->assertSame(3000.0, $report['netProfit']);
+    }
+
+    public function test_section_filter_limits_report_to_requested_classification(): void
+    {
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 5000, 'fawry', 'بيع');
+        $this->createTransfer($this->treasury->id, $this->expenseClearing->id, 2000, 'fawry', 'تكلفة');
+        $this->createTransfer($this->treasury->id, $this->expenseAccount->id, 900, 'general', 'إيجار', 'expense');
+
+        $revenue = app(ProfitLossReportService::class)->report(['section' => 'revenue']);
+        $cogs = app(ProfitLossReportService::class)->report(['section' => 'cogs']);
+        $expense = app(ProfitLossReportService::class)->report(['section' => 'expense']);
+
+        $this->assertSame(5000.0, $revenue['totalRevenues']);
+        $this->assertSame(0.0, $revenue['totalCogs']);
+        $this->assertSame(0.0, $revenue['totalExpenses']);
+        $this->assertSame(0.0, $cogs['totalRevenues']);
+        $this->assertSame(2000.0, $cogs['totalCogs']);
+        $this->assertSame(0.0, $expense['totalRevenues']);
+        $this->assertSame(900.0, $expense['totalExpenses']);
     }
 
     public function test_prepaid_recharge_is_neutral_until_cogs_consumption(): void
@@ -337,7 +357,7 @@ class ProfitLossReportTest extends TestCase
         ]);
 
         // 2. Create system and carrier
-        $system = \App\Models\Flight\FlightSystem::create([
+        $system = FlightSystem::create([
             'name' => 'Test System',
             'code' => 'SYS',
             'type' => 'gds',
@@ -391,7 +411,7 @@ class ProfitLossReportTest extends TestCase
                 [
                     'name' => 'Passenger 1',
                     'type' => 'adult',
-                ]
+                ],
             ],
         ];
 
@@ -429,4 +449,3 @@ class ProfitLossReportTest extends TestCase
         $this->assertEquals(0.0, $reportAfterCancel['netProfit']);
     }
 }
-

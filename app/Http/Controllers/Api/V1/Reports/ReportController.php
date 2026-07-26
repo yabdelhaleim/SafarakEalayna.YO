@@ -85,6 +85,11 @@ class ReportController extends Controller
             $filters = $this->validateDateFilters($request);
             $filters['category'] = $request->input('category'); // e.g. 'tourism', 'office', or null
             $filters['module'] = $request->input('module'); // e.g. 'flight', 'bus', or 'all'
+            $filters['section'] = $request->input('section', 'all');
+
+            if (! in_array($filters['section'], ['all', 'revenue', 'cogs', 'refund', 'expense'], true)) {
+                return ApiResponse::error('قيمة قسم التقرير غير صالحة.', null, 422);
+            }
 
             if (! empty($filters['from_date']) && ! empty($filters['to_date'])) {
                 $from = Carbon::parse($filters['from_date']);

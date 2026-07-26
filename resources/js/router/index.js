@@ -296,7 +296,7 @@ const routes = [
         path: 'treasury',
         name: 'bus.treasury',
         component: () => import('@/views/bus/BusTreasury.vue'),
-        meta: { title: 'خزينة ومالية الباص', permission: 'manage_finance' },
+        meta: { title: 'خزينة ومالية الباص', permission: 'manage_bus' },
       },
       {
         path: 'list',
@@ -368,7 +368,7 @@ const routes = [
         path: 'treasury',
         name: 'wallet.treasury',
         component: () => import('@/views/wallet/TransferTreasury.vue'),
-        meta: { title: 'خزينة المحافظ', permission: 'manage_finance' },
+        meta: { title: 'خزينة المحافظ', permission: 'manage_treasury' },
       },
       {
         path: 'create',
@@ -400,7 +400,7 @@ const routes = [
         path: 'treasury',
         name: 'online.treasury',
         component: () => import('@/views/online/OnlineTreasury.vue'),
-        meta: { title: 'خزنة ومالية الخدمات الإلكترونية', permission: 'manage_finance' },
+        meta: { title: 'خزنة ومالية الخدمات الإلكترونية', permission: 'manage_online' },
       },
       {
         path: 'execute',
@@ -479,7 +479,7 @@ const routes = [
         path: 'treasury',
         name: 'fawry.treasury',
         component: () => import('@/views/fawry/FawryTreasury.vue'),
-        meta: { title: 'خزينة وأرصدة فوري', permission: 'manage_finance' },
+        meta: { title: 'خزينة وأرصدة فوري', permission: 'manage_treasury' },
       },
       {
         path: 'create',

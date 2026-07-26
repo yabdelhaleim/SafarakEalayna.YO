@@ -131,8 +131,12 @@
             <span class="absolute -left-2 -top-2 h-5 w-5 rounded-full border-4 border-card-bg bg-gold"></span>
           </div>
           <h3 class="mt-5 text-xl font-black text-text-main">لا توجد نتائج مطابقة</h3>
-          <p class="mt-2 max-w-md text-sm leading-6 text-text-muted">جرّب تعديل عبارة البحث أو إزالة نطاق التاريخ والحالة الحالية.</p>
-          <button v-if="activeFiltersCount" type="button" class="mt-5 text-sm font-bold text-gold hover:underline" @click="resetFilters">عرض المسافرين القادمين</button>
+          <p class="mt-2 max-w-md text-sm leading-6 text-text-muted">
+            {{ emptyStateHint }}
+          </p>
+          <button v-if="activeFiltersCount" type="button" class="mt-5 text-sm font-bold text-gold hover:underline" @click="resetFilters">
+            إعادة التعيين إلى الوضع الافتراضي
+          </button>
         </div>
 
         <template v-else>
@@ -422,6 +426,19 @@ const activeFiltersCount = computed(() => [
   filters.departure_date_to,
 ].filter(Boolean).length);
 
+const emptyStateHint = computed(() => {
+  if (filters.search.trim()) {
+    return 'لا توجد نتائج لعبارة البحث الحالية. جرّب جزء من الاسم، أو رقم PNR، أو جواز السفر. لو الراكب له رحلة سابقة، بدّل "القادمون" إلى "كل الرحلات".';
+  }
+  if (filters.trip_status === 'past') {
+    return 'لا توجد رحلات سابقة في النطاق المختار. وسّع الإطار الزمني أو بدّل إلى "كل الرحلات".';
+  }
+  if (filters.trip_status === 'upcoming') {
+    return 'لا توجد رحلات قادمة في النطاق المختار. وسّع تاريخ المغادرة أو بدّل إلى "كل الرحلات".';
+  }
+  return 'لا توجد سجلات لهذا الفلتر. أزل نطاق التاريخ أو غيّر الحالة لرؤية كل المسافرين.';
+});
+
 let searchTimeout = null;
 
 function debounceSearch() {
@@ -444,8 +461,22 @@ async function fetchPassengers(page = 1) {
       },
     });
 
-    passengers.value = response.data.data.items || [];
-    const pag = response.data.data.pagination;
+    // Respect the API's success flag instead of blindly reading data.data.items.
+    // Otherwise validation errors (e.g. 422) and 500s return success:false with
+    // data:null, and the page silently showed "0 results" instead of the issue.
+    if (response.data?.success === false) {
+      errorMessage.value = response.data?.message || 'تعذر تحميل دليل المسافرين.';
+      passengers.value = [];
+      pagination.current_page = 1;
+      pagination.last_page = 1;
+      pagination.total = 0;
+      pagination.has_more = false;
+      return;
+    }
+
+    const payload = response.data?.data ?? {};
+    passengers.value = Array.isArray(payload.items) ? payload.items : [];
+    const pag = payload.pagination;
 
     if (pag) {
       pagination.current_page = pag.current_page;
@@ -455,7 +486,8 @@ async function fetchPassengers(page = 1) {
     }
   } catch (error) {
     console.error('Failed to load passengers', error);
-    errorMessage.value = 'حدث خطأ أثناء الاتصال بالخادم. تحقق من الاتصال ثم أعد المحاولة.';
+    const apiMessage = error?.response?.data?.message;
+    errorMessage.value = apiMessage || 'حدث خطأ أثناء الاتصال بالخادم. تحقق من الاتصال ثم أعد المحاولة.';
   } finally {
     loading.value = false;
   }

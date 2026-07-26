@@ -99,7 +99,7 @@
         </div>
       </div>
 
-      <div v-if="isAdmin" class="flight-panel !p-6 sm:!p-8">
+      <div class="flight-panel !p-6 sm:!p-8">
         <h2 class="flight-panel__title mb-4 flex items-center gap-2">
           <Banknote class="h-5 w-5 text-gold" />
           المبالغ والتسعير
@@ -123,7 +123,7 @@
               {{ formatCurrency(transaction.selling_price) }}
             </dd>
           </div>
-          <div class="rounded-xl border border-success/25 bg-success/10 p-4">
+          <div v-if="isAdmin" class="rounded-xl border border-success/25 bg-success/10 p-4">
             <dt class="text-xs font-semibold text-success/90">الربح</dt>
             <dd class="mt-1 font-mono text-lg font-black tabular-nums text-success">
               {{ profitPrefix }}{{ formatCurrency(Math.abs(transaction.profit || 0)) }}

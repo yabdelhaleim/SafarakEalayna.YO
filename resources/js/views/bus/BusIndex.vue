@@ -175,7 +175,7 @@
               <th class="px-6 py-4 font-semibold">الرحلة</th>
               <th class="px-6 py-4 font-semibold">تاريخ السفر</th>
               <th class="px-6 py-4 font-semibold">مقاعد</th>
-              <th v-if="isAdmin" class="px-6 py-4 font-semibold">السعر</th>
+              <th class="px-6 py-4 font-semibold">السعر</th>
               <th class="px-6 py-4 font-semibold">الحالة</th>
               <th v-if="isAdmin" class="px-6 py-4 font-semibold">الدفعة</th>
               <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
@@ -225,7 +225,7 @@
                     <span class="font-semibold">{{ booking.quantity }}</span>
                   </div>
                 </td>
-                <td v-if="isAdmin" class="px-6 py-4">
+                <td class="px-6 py-4">
                   <div class="flex flex-col">
                     <span class="font-mono font-bold text-sm">{{ booking.total_price?.toLocaleString() }}</span>
                     <span class="text-xs text-text-muted">جنيه</span>

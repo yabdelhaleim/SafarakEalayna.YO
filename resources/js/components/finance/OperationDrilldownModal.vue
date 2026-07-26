@@ -519,11 +519,13 @@ function selectCategory(value) {
   refetch();
 }
 
-// Sync local filters when the modal is reopened with fresh props
+// Sync local filters when the modal is opened with fresh props.
+// Do not overwrite a user's category selection while the modal remains open.
 watch(
   () => [props.show, props.fromDate, props.toDate, props.category],
-  ([isShow, from, to, cat]) => {
-    if (isShow) {
+  ([isShow, from, to, cat], previous = []) => {
+    const wasOpen = previous[0] === true;
+    if (isShow && !wasOpen) {
       localFrom.value = from;
       localTo.value = to;
       localCategory.value = cat || '';

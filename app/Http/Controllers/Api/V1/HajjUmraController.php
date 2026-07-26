@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HajjUmra\StoreHajjUmraBookingRequest;
 use App\Http\Requests\HajjUmra\StoreHajjUmraPaymentRequest;
@@ -12,10 +13,13 @@ use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\HajjUmra\HajjUmraBookingService;
+use App\Services\HajjUmra\HajjUmraRefundService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class HajjUmraController extends Controller
@@ -29,10 +33,11 @@ class HajjUmraController extends Controller
         ]);
         $filters['page'] = $request->get('page', 1);
 
-        $cacheKey = 'hajj_umra_bookings_list_' . md5(serialize($filters));
+        $cacheKey = 'hajj_umra_bookings_list_'.md5(serialize($filters));
 
-        $data = \App\Helpers\CacheHelper::tags(['hajj_umra_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+        $data = CacheHelper::tags(['hajj_umra_bookings'])->remember($cacheKey, 60, function () use ($filters) {
             $bookings = $this->service->paginate($filters);
+
             return [
                 'items' => HajjUmraBookingResource::collection($bookings)->resolve(),
                 'pagination' => [
@@ -78,11 +83,56 @@ class HajjUmraController extends Controller
         return ApiResponse::success('تم تحديث الحجز', new HajjUmraBookingResource($booking));
     }
 
-    public function destroy(Request $request, HajjUmraBooking $hajjUmra): JsonResponse
+    /**
+     * DELETE /api/v1/hajj-umra/bookings/{hajjUmra}
+     *
+     * Soft delete the booking with full financial reversal.
+     * For an explicit cancellation (status only, no row removal), use
+     * POST /api/v1/hajj-umra/bookings/{hajjUmra}/cancel.
+     *
+     * Uses `int $id` + withTrashed() lookup (not route-model binding) so
+     * a second delete on an already-soft-deleted booking is detected and
+     * returned as 422, not 404.
+     *
+     * See HajjUmraBookingService::deleteBookingWithReversal for the canonical
+     * implementation (reversal + soft-delete under ModelDeletionGuard::run()).
+     */
+    public function destroy(Request $request, int $hajjUmra): JsonResponse
     {
-        $booking = $this->service->cancel($hajjUmra, $request->input('reason'));
+        try {
+            $booking = HajjUmraBooking::withTrashed()->find($hajjUmra);
+            if (! $booking) {
+                return ApiResponse::error('الحجز غير موجود', null, 404);
+            }
+            if ($booking->trashed()) {
+                return ApiResponse::error('هذا الحجز محذوف بالفعل', null, 422);
+            }
 
-        return ApiResponse::success('تم إلغاء الحجز', new HajjUmraBookingResource($booking));
+            $userId = Auth::id() ?: 1;
+            $this->service->deleteBookingWithReversal($booking->id, $userId);
+
+            return ApiResponse::success('تم حذف الحجز وعكس كل الآثار المحاسبية بنجاح.');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * POST /api/v1/hajj-umra/bookings/{hajjUmra}/cancel
+     *
+     * Light cancel: flips status to 'cancelled' and additively reverses all
+     * related accounting entries, but keeps the booking row visible. Use this
+     * for explicit cancellation; use DELETE for administrative soft-delete.
+     */
+    public function cancel(Request $request, HajjUmraBooking $hajjUmra): JsonResponse
+    {
+        try {
+            $booking = $this->service->cancel($hajjUmra, $request->input('reason'));
+
+            return ApiResponse::success('تم إلغاء الحجز', new HajjUmraBookingResource($booking));
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
     }
 
     public function addPayment(StoreHajjUmraPaymentRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
@@ -112,7 +162,7 @@ class HajjUmraController extends Controller
         ]);
 
         try {
-            $refundService = app(\App\Services\HajjUmra\HajjUmraRefundService::class);
+            $refundService = app(HajjUmraRefundService::class);
             $booking = $refundService->refund($hajjUmra, $data['reason'] ?? null);
         } catch (\Throwable $e) {
             return ApiResponse::error('فشل استرداد الحجز: '.$e->getMessage(), null, 422);
@@ -206,7 +256,7 @@ class HajjUmraController extends Controller
             }
 
             $customer = Customer::findOrFail($clientId);
-            $resolver = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class);
+            $resolver = app(LedgerEntryDescriptionResolver::class);
 
             $items = [];
 

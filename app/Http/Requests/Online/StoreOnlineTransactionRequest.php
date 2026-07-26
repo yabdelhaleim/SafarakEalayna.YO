@@ -7,6 +7,8 @@ use App\Models\Account;
 use App\Models\Online\OnlineServiceProvider;
 use App\Models\Online\OnlineServiceType;
 use App\Models\Setting\PaymentMethod;
+use App\Rules\OnlineLiquidityAccount;
+use App\Support\Finance\PaymentMethodAccountType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -44,12 +46,18 @@ class StoreOnlineTransactionRequest extends FormRequest
             'selling_price' => ['required', 'numeric', 'min:0'],
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
 
-            'payment_method' => ['required', 'string', Rule::exists(PaymentMethod::class, 'code')],
+            'payment_method' => [
+                'required',
+                'string',
+                Rule::exists(PaymentMethod::class, 'code')
+                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+            ],
             'account_id' => [
                 'required',
                 'integer',
                 Rule::exists((new Account)->getTable(), 'id')
                     ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+                new OnlineLiquidityAccount,
             ],
             'reference_number' => ['nullable', 'string', 'max:255'],
 
@@ -70,6 +78,28 @@ class StoreOnlineTransactionRequest extends FormRequest
                 $validator->errors()->add(
                     'customer_name',
                     'يجب اختيار عميل مسجل أو إدخال اسم العميل.'
+                );
+            }
+
+            if ($validator->errors()->has('payment_method') || $validator->errors()->has('account_id')) {
+                return;
+            }
+
+            $expectedType = PaymentMethodAccountType::resolve($this->input('payment_method'));
+            if (! $expectedType) {
+                $validator->errors()->add(
+                    'payment_method',
+                    'طريقة الدفع المحددة غير مرتبطة بنوع حساب تحصيل مدعوم.'
+                );
+
+                return;
+            }
+
+            $account = Account::query()->find($this->input('account_id'));
+            if ($account && ! PaymentMethodAccountType::matches($this->input('payment_method'), $account->type)) {
+                $validator->errors()->add(
+                    'account_id',
+                    'طريقة الدفع المحددة تتطلب اختيار '.$expectedType->label().'.'
                 );
             }
         });
