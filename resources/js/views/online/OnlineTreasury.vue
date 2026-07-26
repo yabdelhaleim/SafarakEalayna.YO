@@ -132,7 +132,7 @@ function formatMoney(value, currency = 'EGP') {
 }
 
 function openStatement(acc) {
-  router.push(`/finance/accounts/${acc.id}/statement`);
+  router.push({ name: 'finance.accounts.statement.detail', params: { id: acc.id } });
 }
 
 onMounted(async () => {
