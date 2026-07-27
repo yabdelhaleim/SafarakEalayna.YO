@@ -566,11 +566,17 @@ class FinancialReportService
                             ->orWhere(function ($sub) {
                                 // A purely "office" customer with no transactions yet
                                 // (e.g. open balance from a manual journal entry) —
-                                // take only those who have NOT touched any tourism
-                                // module.
-                                $sub->whereDoesntHave('hajjUmraBookings')
-                                    ->whereDoesntHave('visaBookings')
-                                    ->whereDoesntHave('flightBookings');
+                                // take only those who have NOT touched any tourism or
+                                // office module, including soft-deleted transactions.
+                                // Otherwise a stale balance can keep a customer visible
+                                // after their only office operations were deleted.
+                                $sub->whereDoesntHave('hajjUmraBookings', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('visaBookings', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('flightBookings', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('busBookings', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('fawryTransactions', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('onlineTransactions', fn ($query) => $query->withTrashed())
+                                    ->whereDoesntHave('walletTransactions', fn ($query) => $query->withTrashed());
                             });
                     });
                 }

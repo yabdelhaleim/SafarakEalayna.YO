@@ -3,17 +3,19 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Bus\BusCompany;
 use App\Models\Customer;
-use App\Models\Supplier;
-use App\Models\User;
+use App\Models\ExchangeRate;
+use App\Models\Fawry\FawryTransaction;
 use App\Models\Flight\AirlineAccount;
 use App\Models\Flight\FlightBooking;
-use App\Models\Flight\FlightCarrier;
-use App\Models\Flight\FlightGroupTransaction;
-use App\Models\Flight\FlightSystemTransaction;
-use App\Models\Bus\BusCompany;
-use App\Models\HajjUmra\VisaAgent;
 use App\Models\Flight\FlightGroup;
+use App\Models\Flight\FlightGroupTransaction;
+use App\Models\Flight\FlightSystem;
+use App\Models\Flight\FlightSystemTransaction;
+use App\Models\HajjUmra\VisaAgent;
+use App\Models\Supplier;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -52,7 +54,7 @@ class FinancialReportTest extends TestCase
             'owner_type' => 'office',
             'module_type' => 'office',
         ]);
-        
+
         Customer::create([
             'account_id' => $account1->id,
             'full_name' => 'Ahmed Customer',
@@ -121,7 +123,7 @@ class FinancialReportTest extends TestCase
                     'total_payables',
                     'net_balance',
                     'items',
-                ]
+                ],
             ]);
 
         $data = $response->json('data');
@@ -197,7 +199,7 @@ class FinancialReportTest extends TestCase
             'owner_type' => 'tourism',
             'module_type' => 'tourism',
         ]);
-        
+
         VisaAgent::create([
             'account_id' => $account->id,
             'company_name' => 'Visa Agent Comp',
@@ -236,6 +238,70 @@ class FinancialReportTest extends TestCase
         $officeResponse->assertOk();
         $this->assertCount(1, $officeResponse->json('data.items'));
         $this->assertEquals('Bus Co', $officeResponse->json('data.items.0.name'));
+    }
+
+    public function test_office_debts_report_excludes_customers_with_only_soft_deleted_operations(): void
+    {
+        $deletedOperationAccount = Account::create([
+            'name' => 'Deleted Office Operation Customer Account',
+            'type' => 'customer',
+            'currency' => 'EGP',
+            'balance' => 2500.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+        ]);
+
+        $deletedOperationCustomer = Customer::create([
+            'account_id' => $deletedOperationAccount->id,
+            'full_name' => 'Customer With Deleted Office Operation',
+            'phone' => '01055555555',
+        ]);
+
+        $operation = FawryTransaction::create([
+            'client_id' => $deletedOperationCustomer->id,
+            'client_name' => $deletedOperationCustomer->full_name,
+            'operation_type' => 'payment',
+            'client_amount' => 2500.00,
+            'fawry_price' => 2400.00,
+            'selling_price' => 2500.00,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.00,
+        ]);
+        $operation->delete();
+
+        $manualAccount = Account::create([
+            'name' => 'Manual Office Customer Account',
+            'type' => 'customer',
+            'currency' => 'EGP',
+            'balance' => 1500.00,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+        ]);
+
+        $manualCustomer = Customer::create([
+            'account_id' => $manualAccount->id,
+            'full_name' => 'Manual Office Customer',
+            'phone' => '01066666666',
+        ]);
+
+        $response = $this->getJson('/api/v1/reports/debts?department=office');
+        $response->assertOk();
+
+        $items = collect($response->json('data.items'));
+
+        $this->assertFalse(
+            $items->contains(fn (array $item): bool => $item['entity_type'] === 'customer' && (int) $item['id'] === $deletedOperationCustomer->id
+            ),
+            'A customer whose only office operation is soft-deleted must not remain in office debts.'
+        );
+        $this->assertTrue(
+            $items->contains(fn (array $item): bool => $item['entity_type'] === 'customer' && (int) $item['id'] === $manualCustomer->id
+            ),
+            'Manual office balances without operations must remain visible.'
+        );
     }
 
     public function test_debts_report_can_filter_by_entity_type(): void
@@ -335,7 +401,7 @@ class FinancialReportTest extends TestCase
         $response = $this->getJson('/api/v1/reports/debts?department=tourism&module=flight');
         $response->assertOk();
         $data = $response->json('data.items');
-        
+
         $this->assertCount(1, $data);
         $this->assertEquals('Discount Flights Group', $data[0]['name']);
         $this->assertEquals('flight_group', $data[0]['entity_type']);
@@ -415,7 +481,7 @@ class FinancialReportTest extends TestCase
         ]);
 
         FlightSystemTransaction::create([
-            'flight_system_id' => \App\Models\Flight\FlightSystem::create([
+            'flight_system_id' => FlightSystem::create([
                 'name' => 'Other System',
                 'code' => 'oth',
                 'type' => 'gds',
@@ -453,7 +519,7 @@ class FinancialReportTest extends TestCase
 
         $groupRows = collect($items)
             ->where('group_key', $groupItem['group_key'])
-            ->sortBy(fn($row) => $row['type'] === 'debit' ? 0 : 1)
+            ->sortBy(fn ($row) => $row['type'] === 'debit' ? 0 : 1)
             ->values();
         $this->assertCount(2, $groupRows);
         $this->assertEquals('حجز', $groupRows[0]['status_ar']);
@@ -479,7 +545,7 @@ class FinancialReportTest extends TestCase
             'phone' => '01299999999',
         ]);
 
-        \App\Models\ExchangeRate::create([
+        ExchangeRate::create([
             'from_currency' => 'USD',
             'to_currency' => 'EGP',
             'rate' => 50.0,
@@ -525,7 +591,7 @@ class FinancialReportTest extends TestCase
             'type' => 'bus_company',
         ]);
 
-        \App\Models\ExchangeRate::create([
+        ExchangeRate::create([
             'from_currency' => 'USD',
             'to_currency' => 'EGP',
             'rate' => 50.0,
