@@ -4,26 +4,33 @@ namespace App\Services\Reports;
 
 use App\Enums\AccountType;
 use App\Enums\SupplierType;
+use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Bank;
 use App\Models\Bus\BusCompany;
 use App\Models\Customer;
+use App\Models\ExchangeRate;
+use App\Models\Fawry\FawryMachine;
 use App\Models\Flight\AirlineAccount;
+use App\Models\Flight\AirlineTransaction;
 use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightGroup;
 use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightSystem;
-use App\Models\Flight\FlightCarrier;
-use App\Models\Fawry\FawryMachine;
+use App\Models\Flight\FlightSystemTransaction;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use App\Models\HajjUmra\Hotel;
 use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Supplier;
 use App\Models\Transaction;
-use App\Services\Reports\ProfitLossReportService;
+use App\Services\Finance\CurrencyService;
+use App\Services\Finance\LedgerClearingAccounts;
+use App\Support\Finance\AccountModuleDivision;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class FinancialReportService
@@ -98,10 +105,10 @@ class FinancialReportService
         $totalCogs = 0.0;
         $totalExpenses = 0.0;
         $byModule = [];   // FIX (consistency): keep this as a sequential list
-                            // to match /profit-by-module exactly. Earlier
-                            // versions keyed by module name which broke
-                            // any consumer that iterated over it as a list
-                            // (e.g. for (m of byModule) { ... }).
+        // to match /profit-by-module exactly. Earlier
+        // versions keyed by module name which broke
+        // any consumer that iterated over it as a list
+        // (e.g. for (m of byModule) { ... }).
         // Note: moduleBreakdown returns 'by_module' (array of {module, income, cogs, expenses, profit})
         $rows = $breakdown['by_module'] ?? ($breakdown['breakdown'] ?? []);
         foreach ($rows as $row) {
@@ -114,7 +121,7 @@ class FinancialReportService
                 'income' => $income,
                 'cogs' => $cogs,
                 'expense' => $expenses,    // FIX: singular 'expense' to match
-                                            // /profit-by-module and Vue code (m.expense)
+                // /profit-by-module and Vue code (m.expense)
                 'profit' => $income - $cogs - $expenses,
             ];
             $totalIncome += $income;
@@ -150,8 +157,8 @@ class FinancialReportService
      */
     private function buildDailyProfitTimeline(string $fromDate, string $toDate, ProfitLossReportService $plService): array
     {
-        $start = \Carbon\Carbon::parse($fromDate)->startOfDay();
-        $end = \Carbon\Carbon::parse($toDate)->endOfDay();
+        $start = Carbon::parse($fromDate)->startOfDay();
+        $end = Carbon::parse($toDate)->endOfDay();
         $rows = [];
         $cursor = $start->copy();
         while ($cursor->lte($end)) {
@@ -160,7 +167,9 @@ class FinancialReportService
                 'from_date' => $day,
                 'to_date' => $day,
             ]);
-            $income = 0.0; $cogs = 0.0; $expenses = 0.0;
+            $income = 0.0;
+            $cogs = 0.0;
+            $expenses = 0.0;
             $rowsBd = $breakdown['by_module'] ?? ($breakdown['breakdown'] ?? []);
             foreach ($rowsBd as $row) {
                 $income += (float) ($row['income'] ?? 0);
@@ -178,6 +187,7 @@ class FinancialReportService
             ];
             $cursor->addDay();
         }
+
         return array_reverse($rows); // newest first
     }
 
@@ -301,15 +311,15 @@ class FinancialReportService
         // (e.g. flight bookings) are correctly classified as revenue.
         $report = resolve(ProfitLossReportService::class)->report([
             'from_date' => $fromDate,
-            'to_date'   => $toDate,
+            'to_date' => $toDate,
         ]);
 
-        $totalIncome  = (float) $report['totalRevenues'];
-        $totalCogs    = (float) $report['totalCogs'];
-        $totalOpex    = (float) $report['totalExpenses'];
+        $totalIncome = (float) $report['totalRevenues'];
+        $totalCogs = (float) $report['totalCogs'];
+        $totalOpex = (float) $report['totalExpenses'];
         $totalExpense = round($totalCogs + $totalOpex, 2);
         $totalRefunds = (float) $report['totalRefunds'];
-        $profit       = (float) $report['netProfit'];
+        $profit = (float) $report['netProfit'];
 
         // Keep a raw transfer total for callers that still need it (informational only)
         $totalTransfers = Transaction::whereBetween('created_at', [$fromDate, $toDate])
@@ -317,28 +327,28 @@ class FinancialReportService
             ->sum('amount');
 
         $tourismAccountsBalance = Account::tourism()->sum('balance');
-        $officeAccountsBalance  = Account::office()->sum('balance');
-        $totalAccountsBalance   = Account::sum('balance');
+        $officeAccountsBalance = Account::office()->sum('balance');
+        $totalAccountsBalance = Account::sum('balance');
 
         return [
-            'from_date'                => $fromDate,
-            'to_date'                  => $toDate,
-            'income'                   => $totalIncome,
-            'expense'                  => $totalExpense,
-            'transfers'                => (float) $totalTransfers,
-            'refunds'                  => $totalRefunds,
-            'profit'                   => $profit,
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'income' => $totalIncome,
+            'expense' => $totalExpense,
+            'transfers' => (float) $totalTransfers,
+            'refunds' => $totalRefunds,
+            'profit' => $profit,
             // Extended keys aligned with ReportFinanceService
-            'total_income'             => $totalIncome,
-            'total_cogs'               => $totalCogs,
+            'total_income' => $totalIncome,
+            'total_cogs' => $totalCogs,
             'total_operating_expenses' => $totalOpex,
-            'total_expense'            => $totalExpense,
-            'total_refunds'            => $totalRefunds,
-            'net_profit'               => $profit,
-            'profit_margin'            => $totalIncome > 0 ? round(($profit / $totalIncome) * 100, 2) : 0,
+            'total_expense' => $totalExpense,
+            'total_refunds' => $totalRefunds,
+            'net_profit' => $profit,
+            'profit_margin' => $totalIncome > 0 ? round(($profit / $totalIncome) * 100, 2) : 0,
             'tourism_accounts_balance' => $tourismAccountsBalance,
-            'office_accounts_balance'  => $officeAccountsBalance,
-            'total_accounts_balance'   => $totalAccountsBalance,
+            'office_accounts_balance' => $officeAccountsBalance,
+            'total_accounts_balance' => $totalAccountsBalance,
         ];
     }
 
@@ -611,19 +621,26 @@ class FinancialReportService
                 // If caller filtered by a module this customer uses,
                 // honour that filter directly.
                 if ($module === 'flight' && $c->flight_bookings_count > 0) {
-                    $custDept = 'tourism'; $custMod = 'flight';
+                    $custDept = 'tourism';
+                    $custMod = 'flight';
                 } elseif ($module === 'hajj_umra' && $c->hajj_umra_bookings_count > 0) {
-                    $custDept = 'tourism'; $custMod = 'hajj_umra';
+                    $custDept = 'tourism';
+                    $custMod = 'hajj_umra';
                 } elseif ($module === 'visa' && $c->visa_bookings_count > 0) {
-                    $custDept = 'tourism'; $custMod = 'visa';
+                    $custDept = 'tourism';
+                    $custMod = 'visa';
                 } elseif ($module === 'bus' && $hasBus) {
-                    $custDept = 'office'; $custMod = 'bus';
+                    $custDept = 'office';
+                    $custMod = 'bus';
                 } elseif ($module === 'fawry' && $hasFawry) {
-                    $custDept = 'office'; $custMod = 'fawry';
+                    $custDept = 'office';
+                    $custMod = 'fawry';
                 } elseif ($module === 'online' && $hasOnline) {
-                    $custDept = 'office'; $custMod = 'online';
+                    $custDept = 'office';
+                    $custMod = 'online';
                 } elseif ($module === 'wallet' && $hasWallet) {
-                    $custDept = 'office'; $custMod = 'wallet';
+                    $custDept = 'office';
+                    $custMod = 'wallet';
                 } elseif ($hasTourism) {
                     $custDept = 'tourism';
                     if ($c->flight_bookings_count > 0) {
@@ -634,13 +651,17 @@ class FinancialReportService
                         $custMod = 'visa';
                     }
                 } elseif ($hasBus) {
-                    $custDept = 'office'; $custMod = 'bus';
+                    $custDept = 'office';
+                    $custMod = 'bus';
                 } elseif ($hasFawry) {
-                    $custDept = 'office'; $custMod = 'fawry';
+                    $custDept = 'office';
+                    $custMod = 'fawry';
                 } elseif ($hasOnline) {
-                    $custDept = 'office'; $custMod = 'online';
+                    $custDept = 'office';
+                    $custMod = 'online';
                 } elseif ($hasWallet) {
-                    $custDept = 'office'; $custMod = 'wallet';
+                    $custDept = 'office';
+                    $custMod = 'wallet';
                 }
 
                 if ($department && $custDept !== $department) {
@@ -688,6 +709,7 @@ class FinancialReportService
             if ($walkInIncluded) {
                 $walkInQuery = DB::table('fawry_transactions')
                     ->whereNull('client_id')
+                    ->whereNull('deleted_at')
                     ->select('client_name')
                     ->selectRaw('COALESCE(SUM(selling_price), 0) as total_sales')
                     ->selectRaw('COALESCE(SUM(amount), 0) as total_paid')
@@ -703,9 +725,9 @@ class FinancialReportService
 
                 // Resolve the walk-in AR account lazily (creates it on first use)
                 $walkInArAccountId = null;
-                if (class_exists(\App\Services\Finance\LedgerClearingAccounts::class)) {
+                if (class_exists(LedgerClearingAccounts::class)) {
                     try {
-                        $walkInArAccountId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+                        $walkInArAccountId = app(LedgerClearingAccounts::class)
                             ->fawryWalkInArAccountId();
                     } catch (\Throwable $e) {
                         // Account creation deferred — fall back to null
@@ -796,11 +818,11 @@ class FinancialReportService
                     }
                     if ($department) {
                         $q->orWhereHas('account', function ($sub) use ($department) {
-if ($department === 'tourism') {
-                            $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
-                        } else {
-                            $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet_transfer']);
-                        }
+                            if ($department === 'tourism') {
+                                $sub->whereIn('module_type', ['tourism', 'flights', 'hajj_umra', 'visas']);
+                            } else {
+                                $sub->whereIn('module_type', ['office', 'bus', 'fawry', 'online', 'wallet_transfer']);
+                            }
                         });
                     } elseif ($module) {
                         $q->orWhereHas('account', function ($sub) use ($module) {
@@ -1062,8 +1084,6 @@ if ($department === 'tourism') {
                 }
             }
 
-
-
             // 8. QUERY HOTELS (tourism -> hajj_umra)
             if ((! $department || $department === 'tourism') && (! $module || $module === 'hajj_umra')) {
                 $hotelQuery = Hotel::query()->with('account');
@@ -1282,10 +1302,11 @@ if ($department === 'tourism') {
         }
 
         try {
-            $converted = app(\App\Services\Finance\CurrencyService::class)->convert($amount, $currency, 'EGP');
+            $converted = app(CurrencyService::class)->convert($amount, $currency, 'EGP');
+
             return (float) $converted['to_amount'];
         } catch (\Exception $e) {
-            $rate = \App\Models\ExchangeRate::where('from_currency', $currency)
+            $rate = ExchangeRate::where('from_currency', $currency)
                 ->where('to_currency', 'EGP')
                 ->where('is_active', true)
                 ->orderBy('effective_date', 'desc')
@@ -1295,7 +1316,7 @@ if ($department === 'tourism') {
                 return $amount * (float) $rate->rate;
             }
 
-            $inverseRate = \App\Models\ExchangeRate::where('from_currency', 'EGP')
+            $inverseRate = ExchangeRate::where('from_currency', 'EGP')
                 ->where('to_currency', $currency)
                 ->where('is_active', true)
                 ->orderBy('effective_date', 'desc')
@@ -1348,7 +1369,7 @@ if ($department === 'tourism') {
         $tourismReport = [];
         $officeReport = [];
 
-        $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $clearingAccounts = app(LedgerClearingAccounts::class);
         $maps = $clearingAccounts->moduleAccountMaps();
         $incomeClearing = $maps['income'];
         $expenseClearing = $maps['expense'];
@@ -1415,7 +1436,7 @@ if ($department === 'tourism') {
         $carriers = FlightCarrier::where('currency', $currency)->sum('balance');
 
         $vaults = Account::tourism()
-            ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
+            ->tap(fn ($q) => AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->where('currency', $currency)
             ->where('is_active', true)
             ->sum('balance');
@@ -1424,8 +1445,8 @@ if ($department === 'tourism') {
             $q->where('currency', $currency)->where('balance', '>', 0);
         })->where(function ($q) {
             $q->whereHas('flightBookings')
-              ->orWhereHas('hajjUmraBookings')
-              ->orWhereHas('visaBookings');
+                ->orWhereHas('hajjUmraBookings')
+                ->orWhereHas('visaBookings');
         })->with('ledgerAccount')->get()->sum(fn ($c) => (float) $c->ledgerAccount->balance);
 
         $payables = 0.0;
@@ -1446,12 +1467,12 @@ if ($department === 'tourism') {
         $total = ($systems + $carriers + $vaults + $receivables) - $payables;
 
         return [
-            'systems' => (float)$systems,
-            'carriers' => (float)$carriers,
-            'vaults' => (float)$vaults,
-            'receivables' => (float)$receivables,
-            'payables' => (float)$payables,
-            'total' => (float)$total,
+            'systems' => (float) $systems,
+            'carriers' => (float) $carriers,
+            'vaults' => (float) $vaults,
+            'receivables' => (float) $receivables,
+            'payables' => (float) $payables,
+            'total' => (float) $total,
         ];
     }
 
@@ -1459,29 +1480,29 @@ if ($department === 'tourism') {
     {
         $systems = 0.0;
         if (strtoupper($currency) === 'EGP') {
-            $systems = (float)FawryMachine::sum('balance');
+            $systems = (float) FawryMachine::sum('balance');
         }
 
         $carriers = 0.0;
 
         $vaults = Account::office()
-            ->tap(fn ($q) => \App\Support\Finance\AccountModuleDivision::applyLiquidityTreasuryScope($q))
+            ->tap(fn ($q) => AccountModuleDivision::applyLiquidityTreasuryScope($q))
             ->where('currency', $currency)
             ->where('is_active', true)
             ->sum('balance');
 
-        $receivables = Customer::whereHas('ledgerAccount', function($q) use ($currency) {
+        $receivables = Customer::whereHas('ledgerAccount', function ($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '>', 0);
-        })->where(function($q) {
+        })->where(function ($q) {
             $q->whereHas('busBookings')
-              ->orWhereHas('fawryTransactions')
-              ->orWhereHas('onlineTransactions')
-              ->orWhereHas('walletTransactions')
-              ->orWhere(function($sub) {
-                  $sub->whereDoesntHave('flightBookings')
-                      ->whereDoesntHave('hajjUmraBookings')
-                      ->whereDoesntHave('visaBookings');
-              });
+                ->orWhereHas('fawryTransactions')
+                ->orWhereHas('onlineTransactions')
+                ->orWhereHas('walletTransactions')
+                ->orWhere(function ($sub) {
+                    $sub->whereDoesntHave('flightBookings')
+                        ->whereDoesntHave('hajjUmraBookings')
+                        ->whereDoesntHave('visaBookings');
+                });
         })->with('ledgerAccount')->get()->sum(function ($c) {
             // Phase C.2 fix: when the customer is in the office department
             // (bus/fawry/online/wallet), the ledgerAccount.balance sums
@@ -1510,33 +1531,33 @@ if ($department === 'tourism') {
             $fawryDebt = \DB::table('account_entries')
                 ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
                 ->where('account_entries.account_id', $c->ledgerAccount->id)
-                ->where('transactions.module', \App\Enums\TransactionModule::Fawry->value)
+                ->where('transactions.module', TransactionModule::Fawry->value)
                 ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
                 ->value('debt') ?? 0.0;
 
             return (float) $fawryDebt;
         });
 
-        $busPayables = BusCompany::whereHas('account', function($q) use ($currency) {
+        $busPayables = BusCompany::whereHas('account', function ($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '<', 0);
-        })->with('account')->get()->sum(fn($b) => abs((float)$b->account->balance));
+        })->with('account')->get()->sum(fn ($b) => abs((float) $b->account->balance));
 
-        $supplierPayables = Supplier::whereHas('account', function($q) use ($currency) {
+        $supplierPayables = Supplier::whereHas('account', function ($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '<', 0);
         })->whereIn('type', [SupplierType::ServiceProvider->value, SupplierType::Other->value])
-          ->with('account')->get()->sum(fn($s) => abs((float)$s->account->balance));
+            ->with('account')->get()->sum(fn ($s) => abs((float) $s->account->balance));
 
         $payables = $busPayables + $supplierPayables;
 
         $total = ($systems + $carriers + $vaults + $receivables) - $payables;
 
         return [
-            'systems' => (float)$systems,
-            'carriers' => (float)$carriers,
-            'vaults' => (float)$vaults,
-            'receivables' => (float)$receivables,
-            'payables' => (float)$payables,
-            'total' => (float)$total,
+            'systems' => (float) $systems,
+            'carriers' => (float) $carriers,
+            'vaults' => (float) $vaults,
+            'receivables' => (float) $receivables,
+            'payables' => (float) $payables,
+            'total' => (float) $total,
         ];
     }
 
@@ -1557,6 +1578,7 @@ if ($department === 'tourism') {
                 't.type',
                 't.module',
                 't.amount',
+                't.notes',
                 't.from_account_id',
                 't.to_account_id',
                 'to_acc.type as to_account_type',
@@ -1592,8 +1614,8 @@ if ($department === 'tourism') {
             });
         });
 
-        $modules = $category === 'tourism' 
-            ? ['flight', 'hajj_umra', 'visa'] 
+        $modules = $category === 'tourism'
+            ? ['flight', 'hajj_umra', 'visa']
             : ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service'];
 
         $clearingIds = [];
@@ -1610,7 +1632,7 @@ if ($department === 'tourism') {
             $q->whereIn('t.module', $modules);
             if ($clearingIds !== []) {
                 $q->orWhereIn('t.from_account_id', $clearingIds)
-                  ->orWhereIn('t.to_account_id', $clearingIds);
+                    ->orWhereIn('t.to_account_id', $clearingIds);
             }
         });
 
@@ -1627,6 +1649,23 @@ if ($department === 'tourism') {
             $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
+            }
+
+            // Mirror the ProfitLossReportService reversal reclassification:
+            // TransactionService::reverseTransaction() leaves the journal legs
+            // pointing at the consumption side and only stamps the 'عكس:' /
+            // 'عكس ' notes prefix. When the reversal direction matches the
+            // original (notably FawryService refunds), the classifier above
+            // mis-labels the row as 'revenue' / 'cogs' and would inflate the
+            // bucket — flip to the matching reversal type so the subtraction
+            // path runs.
+            $txNotes = (string) ($tx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $amount = (float) $tx->amount;
@@ -1653,13 +1692,13 @@ if ($department === 'tourism') {
         $profit = round($totalRevenue - $totalCogs - $totalExpense, 2);
 
         return [
-            'revenue'  => $totalRevenue,
+            'revenue' => $totalRevenue,
             // المصروفات والتكاليف = المصاريف التشغيلية الفعلية فقط (expense transactions)
             // COGS (تكلفة الحجوزات من الأرصدة المسبقة) لا تُعرض هنا لأنها ليست مصاريف تشغيلية
             // لكنها لا تزال تُطرح من الإيرادات في حسابة الربح أدناه
-            'expense'  => $totalExpense,
-            'cogs'     => $totalCogs,
-            'profit'   => $profit,
+            'expense' => $totalExpense,
+            'cogs' => $totalCogs,
+            'profit' => $profit,
         ];
     }
 
@@ -1775,10 +1814,10 @@ if ($department === 'tourism') {
 
         // Apply filters & search to Airline Query
         if ($fromDate) {
-            $airlineQuery->where('airline_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+            $airlineQuery->where('airline_transactions.created_at', '>=', $fromDate.' 00:00:00');
         }
         if ($toDate) {
-            $airlineQuery->where('airline_transactions.created_at', '<=', $toDate . ' 23:59:59');
+            $airlineQuery->where('airline_transactions.created_at', '<=', $toDate.' 23:59:59');
         }
 
         if ($bookingSystem) {
@@ -1813,9 +1852,9 @@ if ($department === 'tourism') {
                 ->toArray();
 
             $airlineQuery->where(function ($q) use ($matchingBookingIds, $search) {
-                if (!empty($matchingBookingIds)) {
+                if (! empty($matchingBookingIds)) {
                     $q->whereIn('airline_transactions.flight_booking_id', $matchingBookingIds)
-                      ->orWhere('airline_transactions.description', 'like', "%{$search}%");
+                        ->orWhere('airline_transactions.description', 'like', "%{$search}%");
                 } else {
                     $q->where('airline_transactions.description', 'like', "%{$search}%");
                 }
@@ -1824,10 +1863,10 @@ if ($department === 'tourism') {
 
         // Apply filters & search to System Query
         if ($fromDate) {
-            $systemQuery->where('flight_system_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+            $systemQuery->where('flight_system_transactions.created_at', '>=', $fromDate.' 00:00:00');
         }
         if ($toDate) {
-            $systemQuery->where('flight_system_transactions.created_at', '<=', $toDate . ' 23:59:59');
+            $systemQuery->where('flight_system_transactions.created_at', '<=', $toDate.' 23:59:59');
         }
 
         if ($bookingSystem) {
@@ -1853,9 +1892,9 @@ if ($department === 'tourism') {
                 ->toArray();
 
             $systemQuery->where(function ($q) use ($matchingBookingIds, $search) {
-                if (!empty($matchingBookingIds)) {
+                if (! empty($matchingBookingIds)) {
                     $q->whereIn('flight_system_transactions.flight_booking_id', $matchingBookingIds)
-                      ->orWhere('flight_system_transactions.description', 'like', "%{$search}%");
+                        ->orWhere('flight_system_transactions.description', 'like', "%{$search}%");
                 } else {
                     $q->where('flight_system_transactions.description', 'like', "%{$search}%");
                 }
@@ -1881,10 +1920,10 @@ if ($department === 'tourism') {
             );
 
         if ($fromDate) {
-            $groupQuery->where('flight_group_transactions.created_at', '>=', $fromDate . ' 00:00:00');
+            $groupQuery->where('flight_group_transactions.created_at', '>=', $fromDate.' 00:00:00');
         }
         if ($toDate) {
-            $groupQuery->where('flight_group_transactions.created_at', '<=', $toDate . ' 23:59:59');
+            $groupQuery->where('flight_group_transactions.created_at', '<=', $toDate.' 23:59:59');
         }
 
         if ($bookingSystem) {
@@ -1941,18 +1980,18 @@ if ($department === 'tourism') {
         $systemTxIds = $items->where('source_type', 'system')->pluck('id')->toArray();
         $groupTxIds = $items->where('source_type', 'group')->pluck('id')->toArray();
 
-        $carrierTxs = \App\Models\Flight\AirlineTransaction::with([
+        $carrierTxs = AirlineTransaction::with([
             'flightCarrier',
             'flightBooking.customer',
             'flightBooking.employee',
-            'createdBy'
+            'createdBy',
         ])->whereIn('id', $carrierTxIds)->get()->keyBy('id');
 
-        $systemTxs = \App\Models\Flight\FlightSystemTransaction::with([
+        $systemTxs = FlightSystemTransaction::with([
             'system',
             'flightBooking.customer',
             'flightBooking.employee',
-            'createdBy'
+            'createdBy',
         ])->whereIn('id', $systemTxIds)->get()->keyBy('id');
 
         $groupTxs = FlightGroupTransaction::with([
@@ -1979,11 +2018,11 @@ if ($department === 'tourism') {
                 $group = $tx ? $tx->group : null;
                 $carrierName = $group && $group->carrier ? $group->carrier->name : null;
                 $systemName = $group
-                    ? trim($group->name . ($carrierName ? " — {$carrierName}" : ''))
+                    ? trim($group->name.($carrierName ? " — {$carrierName}" : ''))
                     : 'N/A';
             }
 
-            if (!$tx) {
+            if (! $tx) {
                 return null;
             }
 
@@ -2107,14 +2146,14 @@ if ($department === 'tourism') {
         int $transactionId
     ): string {
         if ($bookingNumber) {
-            return 'booking:' . $bookingNumber . '|' . $systemName;
+            return 'booking:'.$bookingNumber.'|'.$systemName;
         }
 
         if ($pnr) {
-            return 'pnr:' . $pnr . '|' . $systemName;
+            return 'pnr:'.$pnr.'|'.$systemName;
         }
 
-        return 'tx:' . $sourceType . ':' . $transactionId;
+        return 'tx:'.$sourceType.':'.$transactionId;
     }
 
     private function detailedFlightReportMovementPriority(array $item): int
@@ -2190,4 +2229,3 @@ if ($department === 'tourism') {
         return [(string) $tx->type, 'شحن'];
     }
 }
-
