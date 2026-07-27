@@ -78,13 +78,22 @@ class FawryDashboardController extends Controller
         // holds the GL mirror but per-client breakdown is not enforceable
         // there (one account → many client_names), so the report still has
         // to read the columns for the split.
+        //
+        // Filter `deleted_at IS NULL` because FawryTransactionService
+        // soft-deletes cancelled walk-in transactions; their residual
+        // `selling_price - amount` would otherwise inflate the dashboard's
+        // walk-in debt even though the GL mirror (account 37) is already
+        // zero — the ledger is the source of truth, the row columns are
+        // just a per-client split helper.
         $stats['walkin_debt'] = (float) DB::table('fawry_transactions')
             ->whereNull('client_id')
+            ->whereNull('deleted_at')
             ->selectRaw('COALESCE(SUM(selling_price - amount), 0) as debt')
             ->value('debt') ?? 0.0;
 
         $stats['walkin_clients_count'] = (int) DB::table('fawry_transactions')
             ->whereNull('client_id')
+            ->whereNull('deleted_at')
             ->whereRaw('selling_price > amount')
             ->distinct()
             ->count('client_name');
