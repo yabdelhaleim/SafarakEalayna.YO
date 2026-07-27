@@ -39,6 +39,7 @@ class OnlineTransactionController extends Controller
                 'per_page',
             ]);
             $filters['page'] = $request->get('page', 1);
+            $filters['with_trashed'] = $request->boolean('with_trashed');
 
             $cacheKey = 'online_transactions_list_' . md5(serialize($filters));
 
@@ -180,6 +181,12 @@ class OnlineTransactionController extends Controller
                     ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
                     ->whereIn('account_entries.account_id', $customerAccounts->values())
                     ->where('transactions.module', 'online')
+                    ->when($dateFrom, function ($q) use ($dateFrom) {
+                        $q->whereDate('account_entries.created_at', '>=', $dateFrom);
+                    })
+                    ->when($dateTo, function ($q) use ($dateTo) {
+                        $q->whereDate('account_entries.created_at', '<=', $dateTo);
+                    })
                     ->select('account_entries.account_id')
                     ->selectRaw('SUM(account_entries.credit) as total_credit')
                     ->selectRaw('SUM(account_entries.debit) as total_debit')
@@ -238,6 +245,8 @@ class OnlineTransactionController extends Controller
         try {
             $clientId = $request->query('client_id');
             $clientName = $request->query('client_name');
+            $dateFrom = $request->query('from_date');
+            $dateTo = $request->query('to_date');
 
             // Pagination — large statement ledgers (1000+ entries) used to
             // crush the API. We now support `page` + `per_page` (default 50,
@@ -271,6 +280,12 @@ class OnlineTransactionController extends Controller
                     ->whereHas('transaction', function ($q) {
                         $q->where('module', 'online');
                     })
+                    ->when($dateFrom, function ($q) use ($dateFrom) {
+                        $q->whereDate('account_entries.created_at', '>=', $dateFrom);
+                    })
+                    ->when($dateTo, function ($q) use ($dateTo) {
+                        $q->whereDate('account_entries.created_at', '<=', $dateTo);
+                    })
                     ->orderBy('created_at', 'asc')
                     ->orderBy('id', 'asc')
                     ->get();
@@ -296,13 +311,21 @@ class OnlineTransactionController extends Controller
                         : $tx->fromAccount;
                     $accountName = $otherAccount?->name ?? '—';
 
-                    $typeLabel = $credit > 0 ? 'عملية' : 'سداد دفعة';
+                    $isReversal = str_starts_with((string) ($entry->notes ?? ''), 'عكس')
+                        || str_starts_with((string) ($tx->notes ?? ''), 'عكس');
+
+                    if ($isReversal) {
+                        $typeLabel = $credit > 0 ? 'إلغاء سداد' : 'إلغاء عملية';
+                    } else {
+                        $typeLabel = $credit > 0 ? 'عملية' : 'سداد دفعة';
+                    }
 
                     $fullFormatted[] = [
                         'id' => $tx->id,
                         'date' => $entry->created_at->format('Y-m-d H:i'),
                         'machine' => $accountName,
                         'type' => $typeLabel,
+                        'is_reversal' => $isReversal,
                         'amount' => $credit > 0 ? $credit : $debit,
                         'employee' => $tx->createdBy?->name ?? '—',
                         'description' => $description,
@@ -334,6 +357,12 @@ class OnlineTransactionController extends Controller
                         ->where('customer_name', $clientName);
                 }
 
+                $txsQ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                });
+
                 $allTxs = $txsQ->orderBy('created_at', 'asc')
                     ->orderBy('id', 'asc')
                     ->get();
@@ -352,6 +381,7 @@ class OnlineTransactionController extends Controller
                         'date' => $tx->created_at->format('Y-m-d H:i'),
                         'machine' => $tx->account?->name ?? '—',
                         'type' => 'عملية',
+                        'is_reversal' => false,
                         'amount' => $totalAmount,
                         'employee' => $tx->employee?->name ?? '—',
                         'notes' => $tx->notes ?? '—',

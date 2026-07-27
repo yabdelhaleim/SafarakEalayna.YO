@@ -228,6 +228,22 @@
                   >
                     <Eye class="w-4 h-4" />
                   </button>
+                  <button
+                    v-if="canEdit(tx)"
+                    class="p-2 hover:bg-white/10 rounded-lg text-text-muted hover:text-amber-400 transition-all"
+                    title="تعديل"
+                    @click="editTransaction(tx)"
+                  >
+                    <Pencil class="w-4 h-4" />
+                  </button>
+                  <button
+                    v-if="canCancel(tx)"
+                    class="p-2 hover:bg-white/10 rounded-lg text-text-muted hover:text-red-400 transition-all"
+                    title="إلغاء العملية (Soft Delete)"
+                    @click="confirmCancel(tx)"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -239,11 +255,46 @@
         لا توجد معاملات بعد
       </div>
     </div>
+
+    <!-- Cancel confirmation modal -->
+    <Teleport to="body">
+      <div
+        v-if="cancelTarget"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        @click.self="cancelTarget = null"
+      >
+        <div class="bg-card-bg border border-white/10 rounded-2xl p-6 max-w-md w-full space-y-4">
+          <h3 class="text-lg font-black text-text-main">تأكيد إلغاء المعاملة</h3>
+          <p class="text-sm text-text-muted leading-relaxed">
+            سيتم إلغاء العملية رقم
+            <span class="text-gold font-mono">#{{ cancelTarget.id }}</span>
+            وعكس كل القيود المالية المرتبطة بها (مديونية، تحصيل، تكلفة). لا يمكن التراجع بعد التأكيد.
+          </p>
+          <div class="flex items-center gap-2 justify-end">
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl text-sm font-bold text-text-muted hover:text-text-main transition-colors"
+              @click="cancelTarget = null"
+            >
+              تراجع
+            </button>
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              :disabled="cancelling"
+              @click="doCancel"
+            >
+              {{ cancelling ? 'جاري الإلغاء...' : 'تأكيد الإلغاء' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import {
@@ -253,6 +304,7 @@ import {
   Network,
   Layers,
   Eye,
+  Pencil,
   Trash2,
   Banknote,
   ShoppingCart,
@@ -263,6 +315,12 @@ import SummaryCard from '@/components/online/OnlineSummaryCard.vue';
 
 const store = useOnlineStore();
 const router = useRouter();
+
+// Cancel flow state — driven by a small confirmation modal so the
+// destructive intent is explicit. The actual cancel is performed by
+// `OnlineTransactionService::delete()` on the backend.
+const cancelTarget = ref(null);
+const cancelling = ref(false);
 
 const onFiltersChanged = useDebounceFn(() => store.fetchTransactions({ page: 1 }), 300);
 
@@ -304,6 +362,37 @@ const statusBadgeClass = (status) => {
 const viewTransaction = (tx) => {
   store.currentTransaction = tx;
   router.push({ path: '/online', query: { id: tx.id } });
+};
+
+// Phase 10: edit + cancel affordances. We only show Edit for rows that
+// can still be edited (Completed, not soft-deleted). We only show Cancel
+// for rows that haven't been cancelled yet — re-cancelling an already
+// cancelled row is a no-op in the backend and confusing in the UI.
+const canEdit = (tx) => tx?.status === 'completed';
+const canCancel = (tx) => tx?.status === 'completed';
+
+const editTransaction = (tx) => {
+  router.push({ path: '/online/execute', query: { id: tx.id } });
+};
+
+const confirmCancel = (tx) => {
+  cancelTarget.value = tx;
+};
+
+const doCancel = async () => {
+  if (!cancelTarget.value) return;
+  cancelling.value = true;
+  try {
+    await store.deleteTransaction(cancelTarget.value.id);
+    cancelTarget.value = null;
+    await Promise.all([store.fetchTransactions(), store.fetchDailySummary()]);
+    store.addToast?.('تم إلغاء العملية وعكس القيود بنجاح', 'success');
+  } catch (error) {
+    const msg = error?.response?.data?.message || 'فشل إلغاء العملية، حاول مرة أخرى.';
+    store.addToast?.(msg, 'error');
+  } finally {
+    cancelling.value = false;
+  }
 };
 
 onMounted(async () => {

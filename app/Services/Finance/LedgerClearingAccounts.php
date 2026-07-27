@@ -194,6 +194,59 @@ class LedgerClearingAccounts
         }));
     }
 
+    /**
+     * Returns the unified AR (Accounts Receivable) account used to track
+     * مديونيات عملاء الخدمات الإلكترونية غير مسجلين (walk-in Online clients).
+     *
+     * Mirrors `fawryWalkInArAccountId()` — the account is created lazily on
+     * first call with:
+     *  - type = Customer (subject AR mirror — visible in receivables report)
+     *  - module_type = 'online' (specific module per AccountModuleContract
+     *    Subject rule; divisions 'office'/'tourism' are RESERVED for
+     *    liquidity vaults)
+     *  - is_module_vault = false
+     *  - owner_type = OWNER_TYPE_OWNER
+     */
+    public function onlineWalkInArAccountId(): int
+    {
+        $name = 'ذمم عملاء الخدمات الإلكترونية غير مسجلين';
+
+        $existing = Account::query()
+            ->where('name', $name)
+            ->where('is_active', true)
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Customer,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'online',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب AR تلقائي لمعاملات الخدمات الإلكترونية للعملاء غير المسجلين (walk-in). '
+                        .'تُحفظ المديونية مقسمة على مستوى اسم العميل في online_transactions.',
+                    'created_by' => Auth::id() ?? 1,
+                ]
+            );
+
+            Log::info('Online walk-in AR account automatically created', [
+                'name' => $account->name,
+                'id' => $account->id,
+                'module_type' => $account->module_type,
+            ]);
+
+            return (int) $account->id;
+        }));
+    }
+
     protected function normalizeModuleKey(string|TransactionModule|null $module): string
     {
         if ($module instanceof TransactionModule) {

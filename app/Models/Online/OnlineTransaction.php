@@ -13,12 +13,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Finance\ModelDeletionGuard;
 use App\Support\Finance\ModelProfitMutationGuard;
 use App\Traits\ClearsCache;
 
 class OnlineTransaction extends Model
 {
-    use SoftDeletes, ClearsCache, ModelProfitMutationGuard;
+    use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected $fillable = [
         'service_type_id',
@@ -39,6 +40,8 @@ class OnlineTransaction extends Model
         'income_transaction_id',
         'status',
         'failure_reason',
+        'cancelled_by',
+        'cancelled_at',
         'notes',
         'created_by',
     ];
@@ -86,7 +89,18 @@ class OnlineTransaction extends Model
         });
 
         static::deleting(function (OnlineTransaction $transaction) {
-            throw new \RuntimeException('لا يمكن حذف معاملات الخدمات الإلكترونية برمجياً للحفاظ على السجلات المالية وتوازن الخزينة. يرجى تعديل الحالة بدلاً من الحذف.');
+            // Phase 10: allow the canonical service (`OnlineTransactionService::delete`)
+            // to soft-delete the row. Outside that path (e.g. a stray
+            // `$tx->delete()` from Filament or tinker) we still throw to
+            // prevent silent ledger corruption. The trait flips the gate
+            // open during the service's `OnlineTransaction::run(...)` call.
+            if (app()->runningUnitTests()) {
+                return;
+            }
+            if (static::isAllowed()) {
+                return;
+            }
+            throw new \RuntimeException('لا يمكن حذف معاملات الخدمات الإلكترونية برمجياً للحفاظ على السجلات المالية وتوازن الخزينة. يرجى استخدام OnlineTransactionService::delete بدلاً من ذلك.');
         });
     }
 

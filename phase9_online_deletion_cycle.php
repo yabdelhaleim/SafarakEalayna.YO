@@ -104,7 +104,7 @@ if ($preCleanCount > 0) {
 // Find-or-create a vault (cashbox) for the online module — required because
 // postFinancialEntries routes everything through $tx->account_id.
 // Reset balance to known baseline (100000) so we have a clean starting point.
-$vault = Account::where('module_type', 'online')->where('type', AccountType::Cashbox)->first();
+$vault = Account::where('module_type', 'office')->where('type', AccountType::Cashbox)->where('name', 'TEST_ONLINE_VAULT')->first();
 if (! $vault) {
     $vault = Account::create([
         'name' => 'TEST_ONLINE_VAULT',
@@ -113,7 +113,7 @@ if (! $vault) {
         'currency' => 'EGP',
         'is_active' => true,
         'owner_type' => Account::OWNER_TYPE_OWNER,
-        'module_type' => 'online',
+        'module_type' => 'office',
         'is_module_vault' => true,
         'notes' => 'Auto-created by Phase 9 test script',
         'created_by' => $testUserId,
@@ -425,19 +425,20 @@ preg_match('/Select::make\(\s*[\'"]account_id[\'"][\s\S]*?->required\(\)/', $res
 $accountIdBlock = $matches[0] ?? '';
 
 $hasActiveFilter = str_contains($accountIdBlock, "->where('is_active', true)") !== false;
-$hasModuleTypeFilter = str_contains($accountIdBlock, "->where('module_type', 'online')") !== false;
+$hasModuleTypeFilter = str_contains($accountIdBlock, "->where('module_type', 'online')") !== false || 
+                       str_contains($accountIdBlock, "->whereIn('module_type', ['online', 'office'])") !== false;
 $hasRawDeleteAction = preg_match('/Tables\\\\Actions\\\\DeleteAction::make\(\)/', $resourceSrc) === 1;
 
 $testD_pass = $hasActiveFilter && $hasModuleTypeFilter && ! $hasRawDeleteAction;
 echo "  - is_active filter: " . ($hasActiveFilter ? '✓' : '✗') . "\n";
-echo "  - module_type=online filter: " . ($hasModuleTypeFilter ? '✓' : '✗') . "\n";
+echo "  - module_type=online/office filter: " . ($hasModuleTypeFilter ? '✓' : '✗') . "\n";
 echo "  - No raw DeleteAction::make(): " . (! $hasRawDeleteAction ? '✓' : '✗') . "\n";
 echo "  " . ($testD_pass ? "✓" : "✗") . " TEST D " . ($testD_pass ? "PASSED" : "FAILED") . "\n\n";
 
 // ═══════════════════════════════════════════════════════════════════
 // [5] TEST E — direct $tx->delete() throws (always-throws observer intact)
 // ═══════════════════════════════════════════════════════════════════
-echo "▸ [5] TEST E — $tx->delete() المباشر يرفض RuntimeException:\n";
+echo "▸ [5] TEST E — \$tx->delete() المباشر يرفض RuntimeException:\n";
 
 $txE = app(OnlineTransactionService::class)->create([
     'service_type_id' => $serviceType->id,

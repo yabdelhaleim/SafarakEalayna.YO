@@ -68,6 +68,7 @@ class ProfitLossReportService
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
         $this->applyCategorySqlFilter($query, $filters, $incomeClearing, $expenseClearing);
+        $this->applySoftDeleteExclusion($query);
 
         $revenuesByModule = [];
         $cogsByModule = [];
@@ -205,6 +206,7 @@ class ProfitLossReportService
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
         $this->applyCategorySqlFilter($query, $filters, $incomeClearing, $expenseClearing);
+        $this->applySoftDeleteExclusion($query);
 
         $incomeByModule = [];
         $cogsByModule = [];
@@ -312,6 +314,39 @@ class ProfitLossReportService
         if (! empty($filters['to_date'])) {
             $query->whereDate('t.created_at', '<=', $filters['to_date']);
         }
+    }
+
+    /**
+     * Exclude transactions whose related bus_booking has been soft-deleted.
+     *
+     * Why this exists: when a booking is soft-deleted (status → Cancelled /
+     * Refunded / etc.) the deletion pipeline is supposed to create additive
+     * reversal transactions so the GL nets to zero. In the field, however,
+     * real cancellation paths sometimes leave related transactions with a
+     * non-zero net (especially when the booking went through the
+     * status-already-cancelled fast-path of `deleteBookingWithReversal`
+     * which assumes the cancellation already reversed everything).
+     *
+     * To guarantee that the department dashboard reads "0 active income"
+     * for a deleted booking, this filter drops every transaction whose
+     * related_type is BusBooking AND whose related_id points to a row
+     * with `deleted_at != NULL`. Both the original posting AND any
+     * reversal posting for that booking are excluded — the audit trail
+     * is preserved in `transactions`, but it stops contributing to the
+     * active P&L.
+     *
+     * Mirrors fix: `app/Services/DashboardService.php::buildBusOperationsDashboard()`
+     * now also filters soft-deleted bookings from the operational counts.
+     */
+    private function applySoftDeleteExclusion(Builder $query): void
+    {
+        $query->whereNotExists(function ($sub) {
+            $sub->select(DB::raw(1))
+                ->from('bus_bookings')
+                ->whereColumn('bus_bookings.id', '=', 't.related_id')
+                ->where('t.related_type', '=', BusBooking::class)
+                ->whereNotNull('bus_bookings.deleted_at');
+        });
     }
 
     /**
@@ -763,6 +798,7 @@ class ProfitLossReportService
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
         $query->where('t.module', $moduleKey);
+        $this->applySoftDeleteExclusion($query);
 
         $daily = [];
 
@@ -871,6 +907,12 @@ class ProfitLossReportService
         $query->where('t.module', $moduleKey)
             ->where('t.related_type', $relatedType)
             ->whereNotNull('t.related_id');
+        // Skip transactions whose related booking has been soft-deleted —
+        // those should not contribute to per-entity profit on the
+        // active-operations dashboard.
+        if ($relatedType === BusBooking::class) {
+            $this->applySoftDeleteExclusion($query);
+        }
 
         // First pass: classify each transaction + group by related_id
         // (no entity_id yet — we batch-load that next).

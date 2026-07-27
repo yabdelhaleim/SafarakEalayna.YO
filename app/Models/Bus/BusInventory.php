@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\ModelDeletionGuard;
+use App\Traits\ClearsCache;
 use Database\Factories\Bus\BusInventoryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,7 +40,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusInventory extends Model
 {
-    use HasFactory, ModelDeletionGuard, SoftDeletes;
+    use HasFactory, ModelDeletionGuard, SoftDeletes, ClearsCache;
 
     protected static function newFactory(): BusInventoryFactory
     {

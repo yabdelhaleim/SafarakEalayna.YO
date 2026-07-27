@@ -170,6 +170,9 @@ class LedgerEntryDescriptionResolver
 
         $notes = mb_strtolower((string) ($transaction->notes ?? ''));
 
+        if (str_contains($notes, 'عكس') || str_starts_with($notes, 'عكس:')) {
+            return 'إلغاء حجز';
+        }
         if (str_contains($notes, 'استرداد')) {
             return 'استرداد للعميل';
         }

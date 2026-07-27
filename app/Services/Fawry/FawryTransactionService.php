@@ -520,7 +520,17 @@ public function createTransaction(array $data): FawryTransaction
         // soft-deleted, do nothing. Without this, a second call on the
         // same in-memory model would re-credit the machine and re-post the
         // walk-in AR reclamation, leaving the books out of balance.
-        if ($transaction->trashed()) {
+        //
+        // Important: we query the DB directly instead of trusting
+        // $transaction->trashed(), because the in-memory model passed in by
+        // the caller is often stale (the caller may have obtained it
+        // BEFORE the first delete ran, so its deleted_at is still null).
+        // Checking the DB guarantees we see the authoritative state.
+        $alreadyDeleted = DB::table('fawry_transactions')
+            ->where('id', $transaction->id)
+            ->whereNotNull('deleted_at')
+            ->exists();
+        if ($alreadyDeleted) {
             Log::info('Fawry transaction delete skipped — already soft-deleted', [
                 'fawry_transaction_id' => $transaction->id,
                 'user_id' => Auth::id(),

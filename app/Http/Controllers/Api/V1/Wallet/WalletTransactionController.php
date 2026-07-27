@@ -139,7 +139,13 @@ class WalletTransactionController extends Controller
             $records = $query->get();
 
             $clientIds = $records->pluck('customer_id')->filter()->unique();
+            // Restrict to wallet_transfer-tagged customer accounts only so
+            // a customer with a fawry/bus account does not have their
+            // foreign-module debts silently mixed in. (Bug fix 2026-07-27.)
             $customerAccounts = Customer::whereIn('id', $clientIds)
+                ->whereHas('ledgerAccount', function ($q) {
+                    $q->where('module_type', 'wallet_transfer');
+                })
                 ->pluck('account_id', 'id')
                 ->filter();
 

@@ -175,24 +175,7 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="space-y-2">
-            <label class="text-xs font-bold text-text-muted">حساب التحصيل (الخزينة) <span class="text-error">*</span></label>
-            <select
-              v-model="form.account_id"
-              required
-              :disabled="!selectedAccountType || filteredAccounts.length === 0"
-              class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option :value="null" class="bg-card-bg">{{ accountPlaceholder }}</option>
-              <option v-for="a in filteredAccounts" :key="a.id" :value="a.id" class="bg-card-bg">
-                {{ a.name }} — رصيد ({{ formatMoney(a.balance) }})
-              </option>
-            </select>
-            <p v-if="accountHelpText" class="text-[11px] font-bold text-amber-400">
-              {{ accountHelpText }}
-            </p>
-          </div>
-
+          <!-- ── طريقة الدفع (يجب اختيارها أولاً لتحديد الحسابات المتاحة) ── -->
           <div class="space-y-2">
             <label class="text-xs font-bold text-text-muted">طريقة الدفع <span class="text-error">*</span></label>
             <select
@@ -209,11 +192,44 @@
                 :disabled="!m.account_type"
                 class="bg-card-bg"
               >
-                {{ m.name_ar || m.label }}{{ m.account_type ? '' : ' — غير مرتبطة بحساب تحصيل' }}
+                {{ m.label || m.name_ar || m.code }}{{ !m.account_type ? ' — (غير مرتبطة بحساب)' : '' }}
               </option>
             </select>
+            <!-- badge for selected payment method type -->
+            <div v-if="selectedPaymentMethod" class="flex items-center gap-2 mt-1">
+              <span
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                :style="{ backgroundColor: (selectedPaymentMethod.color || '#6366f1') + '22', color: selectedPaymentMethod.color || '#6366f1' }"
+              >
+                <span class="w-1.5 h-1.5 rounded-full inline-block" :style="{ backgroundColor: selectedPaymentMethod.color || '#6366f1' }"></span>
+                {{ selectedPaymentMethod.label || selectedPaymentMethod.name_ar }}
+                <span v-if="selectedAccountType" class="opacity-70">
+                  · {{ selectedAccountType === 'cashbox' ? 'خزينة نقدية' : selectedAccountType === 'bank' ? 'حساب بنكي' : 'محفظة إلكترونية' }}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <!-- ── حساب التحصيل (يُفلتر بناءً على طريقة الدفع) ── -->
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-text-muted">حساب التحصيل <span class="text-error">*</span></label>
+            <select
+              v-model="form.account_id"
+              required
+              :disabled="!selectedAccountType || filteredAccounts.length === 0"
+              class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-violet-500/50 outline-none cursor-pointer text-text-main disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option :value="null" class="bg-card-bg">{{ accountPlaceholder }}</option>
+              <option v-for="a in filteredAccounts" :key="a.id" :value="a.id" class="bg-card-bg">
+                {{ a.name }} — رصيد ({{ formatMoney(a.balance) }})
+              </option>
+            </select>
+            <p v-if="accountHelpText" class="text-[11px] font-bold text-amber-400">
+              {{ accountHelpText }}
+            </p>
           </div>
         </div>
+
 
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="space-y-2">
@@ -254,7 +270,7 @@
                 <strong class="text-text-main font-mono">{{ formatMoney(form.selling_price) }}</strong>
               </p>
               <p>
-                المدفوع نقداً:
+                المدفوع:
                 <strong class="text-emerald-400 font-mono">{{ formatMoney(form.amount_paid || 0) }}</strong>
               </p>
               <p>
@@ -262,11 +278,12 @@
                 <strong class="text-red-400 font-mono">{{ formatMoney(form.selling_price - (form.amount_paid || 0)) }}</strong>
               </p>
               <p v-if="!form.customer_id" class="text-amber-400 text-[10px] font-bold mt-1">
-                ⚠️ تنبيه: لم يتم اختيار عميل مسجل. سيتم اعتبار المعاملة نقدية بالكامل ولن تُسجل مديونية.
+                ⚠️ لم يتم اختيار عميل مسجل — لن تُسجل مديونية.
               </p>
             </div>
           </div>
         </div>
+
 
         <div class="mt-6 space-y-2">
           <label class="text-xs font-bold text-text-muted">رقم مرجع / ملاحظات</label>

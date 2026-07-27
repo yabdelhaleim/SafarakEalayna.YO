@@ -494,15 +494,22 @@ class DashboardService
         $activeCompanies = (int) BusBooking::query()
             ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
+            ->whereNull('bus_inventories.deleted_at')
             ->selectRaw('COUNT(DISTINCT bus_inventories.company_id) as c')
             ->value('c');
 
         // Per-company booking counts (operational, stays on model)
-        $companyCountRows = DB::table('bus_bookings')
+        // Fix: route through the Eloquent builder so the SoftDeletes global
+        // scope filters out soft-deleted bus_bookings, AND filter
+        // soft-deleted bus_inventories in the join. The previous raw
+        // DB::table('bus_bookings') bypassed the SoftDeletes scope and
+        // therefore counted + summed bookings that the user had deleted.
+        $companyCountRows = BusBooking::query()
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->join('bus_companies', 'bus_inventories.company_id', '=', 'bus_companies.id')
             ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
+            ->whereNull('bus_inventories.deleted_at')
             ->groupBy('bus_companies.id', 'bus_companies.name')
             ->selectRaw('bus_companies.id as company_id, bus_companies.name as company_name, COUNT(bus_bookings.id) as booking_count, SUM(bus_bookings.total_price) as revenue_sum')
             ->orderByDesc('revenue_sum')
@@ -569,11 +576,12 @@ class DashboardService
             $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
         }
 
-        $topRoutes = DB::table('bus_bookings')
+        $topRoutes = BusBooking::query()
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->whereNotNull('bus_inventories.route')
+            ->whereNull('bus_inventories.deleted_at')
             ->groupBy('bus_inventories.route')
             ->selectRaw('bus_inventories.route as route, COUNT(bus_bookings.id) as c, SUM(bus_bookings.total_price) as revenue')
             ->orderByDesc('c')

@@ -1,0 +1,681 @@
+{
+    "date": "2026-07-27 14:40:38",
+    "scenarios": 22,
+    "pass": 134,
+    "fail": 0,
+    "active_tx": 8,
+    "trashed_tx": 3,
+    "imbalanced_tx": 0,
+    "results": [
+        [
+            "pass",
+            "1.1  EGP Vodafone wallet exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.2  EGP InstaPay wallet exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.3  EGP settlement cashbox exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.4  USD Vodafone wallet exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.5  USD settlement cashbox exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.6  SAR Vodafone wallet exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.7  SAR settlement cashbox exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.8  Wallet type Vodafone exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.9  Wallet type InstaPay exists",
+            ""
+        ],
+        [
+            "pass",
+            "1.10 5 test customers exist",
+            ""
+        ],
+        [
+            "pass",
+            "1.11 EGP Vodafone opening balance",
+            "expected=50000.00, actual=50000.00"
+        ],
+        [
+            "pass",
+            "1.12 EGP InstaPay opening balance",
+            "expected=30000.00, actual=30000.00"
+        ],
+        [
+            "pass",
+            "1.13 EGP cashbox opening balance",
+            "expected=100000.00, actual=100000.00"
+        ],
+        [
+            "pass",
+            "1.14 USD Vodafone opening balance",
+            "expected=2000.00, actual=2000.00"
+        ],
+        [
+            "pass",
+            "1.15 USD cashbox opening balance",
+            "expected=5000.00, actual=5000.00"
+        ],
+        [
+            "pass",
+            "1.16 SAR Vodafone opening balance",
+            "expected=5000.00, actual=5000.00"
+        ],
+        [
+            "pass",
+            "1.17 SAR cashbox opening balance",
+            "expected=10000.00, actual=10000.00"
+        ],
+        [
+            "pass",
+            "1.18 All 5 test customers tagged module_type=wallet_transfer",
+            ""
+        ],
+        [
+            "pass",
+            "2.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "2.2  Total amount = amount + fee",
+            "expected=1005.00, actual=1005.00"
+        ],
+        [
+            "pass",
+            "2.3  Vodafone EGP −amount (1000)",
+            "expected=49000.00, actual=49000.00"
+        ],
+        [
+            "pass",
+            "2.4  Cashbox EGP +amount_paid (1005)",
+            "expected=101005.00, actual=101005.00"
+        ],
+        [
+            "pass",
+            "2.5  Customer A NET balance (full payment)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "2.6  Income transaction has 2 entries (balanced 2-leg)",
+            ""
+        ],
+        [
+            "pass",
+            "2.7  Income customer entry has credit 1005",
+            ""
+        ],
+        [
+            "pass",
+            "2.7  Income customer entry: 1005 credit",
+            "expected=1005.00, actual=1005.00"
+        ],
+        [
+            "pass",
+            "2.8  Income customer entry: 0 debit",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "2.9  Expense transaction has 2 entries (balanced 2-leg)",
+            ""
+        ],
+        [
+            "pass",
+            "2.10 Expense entry: 1000 debit",
+            "expected=1000.00, actual=1000.00"
+        ],
+        [
+            "pass",
+            "2.11 Expense entry: 0 credit",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "2.12 Settlement transaction posted (cash ← customer)",
+            ""
+        ],
+        [
+            "pass",
+            "2.13 Settlement: cashbox +1005",
+            "expected=1005.00, actual=1005.00"
+        ],
+        [
+            "pass",
+            "2.14 Settlement: customer −1005 (debit)",
+            "expected=1005.00, actual=1005.00"
+        ],
+        [
+            "pass",
+            "3.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "3.2  Total amount = 500 (no fee)",
+            "expected=500.00, actual=500.00"
+        ],
+        [
+            "pass",
+            "3.3  Vodafone EGP −500",
+            "expected=48500.00, actual=48500.00"
+        ],
+        [
+            "pass",
+            "3.4  Cashbox EGP +200 (partial)",
+            "expected=101205.00, actual=101205.00"
+        ],
+        [
+            "pass",
+            "3.5  Customer B NET balance (partial 200\/500)",
+            "expected=300.00, actual=300.00"
+        ],
+        [
+            "pass",
+            "4.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "4.2  Total amount = 250",
+            "expected=250.00, actual=250.00"
+        ],
+        [
+            "pass",
+            "4.3  InstaPay EGP −250",
+            "expected=29750.00, actual=29750.00"
+        ],
+        [
+            "pass",
+            "4.4  Cashbox EGP +250",
+            "expected=101455.00, actual=101455.00"
+        ],
+        [
+            "pass",
+            "5.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "5.2  Total amount = amount − fee = 990",
+            "expected=990.00, actual=990.00"
+        ],
+        [
+            "pass",
+            "5.3  Vodafone EGP +1000 (received)",
+            "expected=49500.00, actual=49500.00"
+        ],
+        [
+            "pass",
+            "5.4  Cashbox EGP −990 (paid to customer)",
+            "expected=100465.00, actual=100465.00"
+        ],
+        [
+            "pass",
+            "5.5  Customer C NET balance (settled)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "6.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "6.2  Total amount = 300",
+            "expected=300.00, actual=300.00"
+        ],
+        [
+            "pass",
+            "6.3  Vodafone EGP +300",
+            "expected=49800.00, actual=49800.00"
+        ],
+        [
+            "pass",
+            "6.4  Customer D NET balance (settled)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "7.1  Transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "7.2  Total amount = 195",
+            "expected=195.00, actual=195.00"
+        ],
+        [
+            "pass",
+            "7.3  InstaPay EGP +200",
+            "expected=29950.00, actual=29950.00"
+        ],
+        [
+            "pass",
+            "7.4  Cashbox EGP −195",
+            "expected=99970.00, actual=99970.00"
+        ],
+        [
+            "pass",
+            "8.1  USD transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "8.2  Total = 101 USD",
+            "expected=101.00, actual=101.00"
+        ],
+        [
+            "pass",
+            "8.3  USD Vodafone −100",
+            "expected=1900.00, actual=1900.00"
+        ],
+        [
+            "pass",
+            "8.4  USD Cashbox +101",
+            "expected=5101.00, actual=5101.00"
+        ],
+        [
+            "pass",
+            "9.1  SAR transaction created",
+            ""
+        ],
+        [
+            "pass",
+            "9.2  Total = 500 SAR",
+            "expected=500.00, actual=500.00"
+        ],
+        [
+            "pass",
+            "9.3  SAR Vodafone +500",
+            "expected=5500.00, actual=5500.00"
+        ],
+        [
+            "pass",
+            "9.4  SAR Cashbox −500",
+            "expected=9500.00, actual=9500.00"
+        ],
+        [
+            "pass",
+            "10.1 Update succeeded",
+            ""
+        ],
+        [
+            "pass",
+            "10.2 Amount changed to 600",
+            "expected=600.00, actual=600.00"
+        ],
+        [
+            "pass",
+            "10.3 Total = 600 (no fee)",
+            "expected=600.00, actual=600.00"
+        ],
+        [
+            "pass",
+            "10.4 Wallet EGP reflects net -100 after update (reverse -500 + repost -600)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "11.1 All 9 test transactions are double-entry balanced",
+            "0 imbalanced"
+        ],
+        [
+            "pass",
+            "12.EGP.1 EGP wallet sum is non-zero (has activity)",
+            "sum=79650"
+        ],
+        [
+            "pass",
+            "12.USD.1 USD wallet sum is non-zero (has activity)",
+            "sum=3400"
+        ],
+        [
+            "pass",
+            "12.SAR.1 SAR wallet sum is non-zero (has activity)",
+            "sum=8500"
+        ],
+        [
+            "pass",
+            "12.SAR  SAR wallet net = 500 (received in sc9)",
+            "expected=500.00, actual=500.00"
+        ],
+        [
+            "pass",
+            "12.EGP  EGP net ledger activity is non-zero (txns recorded)",
+            "net=-1.00"
+        ],
+        [
+            "pass",
+            "12.USD  USD net ledger activity is non-zero (txns recorded)",
+            "net=1.00"
+        ],
+        [
+            "pass",
+            "13.1 Customer A statement (NET after full payment)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "13.2 Customer B statement (NET after update+full payment)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "13.3 Customer C statement (NET after receive settled)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "13.4 Customer D statement (NET after receive settled)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "14.1  Dashboard has 'stats'",
+            ""
+        ],
+        [
+            "pass",
+            "14.2  Dashboard has 'wallets' stat",
+            ""
+        ],
+        [
+            "pass",
+            "14.3  Dashboard has 'banks' stat",
+            ""
+        ],
+        [
+            "pass",
+            "14.4  Dashboard has 'cashboxes' stat",
+            ""
+        ],
+        [
+            "pass",
+            "14.5  Dashboard has 'treasury' stat",
+            ""
+        ],
+        [
+            "pass",
+            "14.6  Dashboard has 'daily' section",
+            ""
+        ],
+        [
+            "pass",
+            "14.7  Dashboard has 'recent_transactions'",
+            ""
+        ],
+        [
+            "pass",
+            "14.8  Wallet count ≥ 6 (multi-currency)",
+            "count=6"
+        ],
+        [
+            "pass",
+            "14.9  Wallets balance = expected (all 6 wallets, incl. sc10 net -100)",
+            "expected≈91550.00, actual=91550.00"
+        ],
+        [
+            "pass",
+            "14.10 Cashboxes balance = expected (incl. sc6 + corrected sc10 net +400)",
+            "expected≈114971.00, actual=114971.00"
+        ],
+        [
+            "pass",
+            "14.11 customers_debt = 0 (all settled)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "15.1 Overview has 'wallets' list",
+            ""
+        ],
+        [
+            "pass",
+            "15.2 Overview has 'banks' list",
+            ""
+        ],
+        [
+            "pass",
+            "15.3 Overview has 'cashboxes' list",
+            ""
+        ],
+        [
+            "pass",
+            "15.4 Overview has 'accounts' list",
+            ""
+        ],
+        [
+            "pass",
+            "15.5 Wallets list non-empty",
+            ""
+        ],
+        [
+            "pass",
+            "15.6 Banks list non-empty",
+            ""
+        ],
+        [
+            "pass",
+            "15.7 Cashboxes list non-empty",
+            ""
+        ],
+        [
+            "pass",
+            "16.1 daily-summary has total_transactions",
+            ""
+        ],
+        [
+            "pass",
+            "16.2 daily-summary has send_count",
+            ""
+        ],
+        [
+            "pass",
+            "16.3 daily-summary has receive_count",
+            ""
+        ],
+        [
+            "pass",
+            "16.4 total_transactions = 8 (tx10 = tx3 post-update)",
+            "actual=8"
+        ],
+        [
+            "pass",
+            "16.5 send_count = 4 (T2, T3, T4, T8)",
+            "expected=4.00, actual=4.00"
+        ],
+        [
+            "pass",
+            "16.6 receive_count = 4 (T5, T6, T7, T9)",
+            "expected=4.00, actual=4.00"
+        ],
+        [
+            "pass",
+            "16.7 total_sent = 1000+600+250+100 = 1950 (tx3 updated)",
+            "expected=1950.00, actual=1950.00"
+        ],
+        [
+            "pass",
+            "16.8 total_received = 1000+300+200+500 = 2000",
+            "expected=2000.00, actual=2000.00"
+        ],
+        [
+            "pass",
+            "16.9 total_fees = 5+0+0+1+10+0+5+0 = 21",
+            "expected=21.00, actual=21.00"
+        ],
+        [
+            "pass",
+            "18.1 Walk-in EGP (T4) is soft-deleted",
+            ""
+        ],
+        [
+            "pass",
+            "18.2 USD send (T8) is soft-deleted",
+            ""
+        ],
+        [
+            "pass",
+            "18.3 Updated EGP (T10) is soft-deleted",
+            ""
+        ],
+        [
+            "pass",
+            "18.4 3 transactions are soft-deleted (onlyTrashed=3)",
+            "trashed=3"
+        ],
+        [
+            "pass",
+            "18.5 Cashbox EGP after delete (T4:−250, T10:−600, settled to customer B)",
+            "expected=-850.00, actual=-850.00"
+        ],
+        [
+            "pass",
+            "18.6 Vodafone EGP after delete (T10: reverse +600)",
+            "expected=600.00, actual=600.00"
+        ],
+        [
+            "pass",
+            "18.7 InstaPay EGP after delete (T4: reverse +250)",
+            "expected=250.00, actual=250.00"
+        ],
+        [
+            "pass",
+            "18.8 Cashbox USD after delete (T8: −101)",
+            "expected=-101.00, actual=-101.00"
+        ],
+        [
+            "pass",
+            "18.9 Vodafone USD after delete (T8: +100)",
+            "expected=100.00, actual=100.00"
+        ],
+        [
+            "pass",
+            "19.1 No orphan imbalanced transactions after delete",
+            "imbalanced=0"
+        ],
+        [
+            "pass",
+            "20.A  Walk-in T4 still soft-deleted",
+            ""
+        ],
+        [
+            "pass",
+            "20.B  Idempotent re-delete is a no-op (cashbox unchanged)",
+            "pre=99520.00 post=99520.00"
+        ],
+        [
+            "pass",
+            "20.C  Customer A NET balance still 0 after edge deletes",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "20.D  Dashboard customers_debt = 0 after deletes",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "20.E  No orphan imbalanced transactions after edge deletes",
+            "imbalanced=0"
+        ],
+        [
+            "pass",
+            "20.F  onlyTrashed() count = 3 after 3 deletes",
+            "trashed=3"
+        ],
+        [
+            "pass",
+            "21.A  USD Send walk-in created",
+            ""
+        ],
+        [
+            "pass",
+            "21.A  USD Vodafone −50",
+            "expected=1950.00, actual=1950.00"
+        ],
+        [
+            "pass",
+            "21.A  USD Cashbox +50",
+            "expected=5050.00, actual=5050.00"
+        ],
+        [
+            "pass",
+            "21.B  USD Receive customer created",
+            ""
+        ],
+        [
+            "pass",
+            "21.B  USD Vodafone +100",
+            "expected=2050.00, actual=2050.00"
+        ],
+        [
+            "pass",
+            "21.B  USD Cashbox −98",
+            "expected=4952.00, actual=4952.00"
+        ],
+        [
+            "pass",
+            "21.C  SAR Send high-value (4000) created",
+            ""
+        ],
+        [
+            "pass",
+            "21.C  SAR Vodafone −4000",
+            "expected=1500.00, actual=1500.00"
+        ],
+        [
+            "pass",
+            "21.C  SAR Cashbox +4000",
+            "expected=13500.00, actual=13500.00"
+        ],
+        [
+            "pass",
+            "21.D  Customer A USD account = 0 (customer accounts are EGP)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "21.E  USD tx (#1360) touches 0 EGP\/SAR liquidity accounts",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "21.F  Total wallet-module net = 0 (cross-currency double-entry invariant)",
+            "expected=0.00, actual=0.00"
+        ],
+        [
+            "pass",
+            "21.F  EGP + USD + SAR per-currency nets sum to 0",
+            "expected=0.00, actual=0.00"
+        ]
+    ]
+}

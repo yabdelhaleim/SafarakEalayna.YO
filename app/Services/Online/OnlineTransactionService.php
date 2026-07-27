@@ -27,7 +27,15 @@ class OnlineTransactionService
 
     public function getAll(array $filters): LengthAwarePaginator
     {
-        $query = OnlineTransaction::query()->with([
+        // 🛡️ Phase 10: support `with_trashed` so the audit / trash views can
+        // see soft-deleted (cancelled) rows. Default behaviour is unchanged:
+        // hide cancelled rows from the default listing.
+        $query = OnlineTransaction::query();
+        if (! empty($filters['with_trashed'])) {
+            $query->withTrashed();
+        }
+
+        $query->with([
             'serviceType',
             'provider',
             'customer',
@@ -115,6 +123,15 @@ class OnlineTransactionService
 
                 [$customerName, $customerPhone] = $this->resolveCustomerNameAndPhone($data);
 
+                // 🛡️ Phase 10: cross-currency guard. The Online module is
+                // intentionally EGP-only (per the project owner) — we must
+                // reject any booking whose vault currency differs from the
+                // AR currency, otherwise `recordJournalTransfer` would
+                // silently FX-convert and corrupt the AR balance. We don't
+                // touch TransactionService for this — the rejection happens
+                // before we ever call it.
+                $this->assertCurrencyCompatible($data);
+
                 $purchase = (float) $data['purchase_price'];
                 $selling = (float) $data['selling_price'];
                 $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $selling;
@@ -195,6 +212,7 @@ class OnlineTransactionService
                 // but capturing them here is cleaner and avoids subtle bugs.
                 $originalAccountId = (int) $tx->account_id;
                 $originalCustomerId = (int) ($tx->customer_id ?? 0);
+                $originalStatus = $tx->status;
 
                 if (array_key_exists('customer_id', $data) || array_key_exists('customer_name', $data) || array_key_exists('customer_phone', $data)) {
                     [$customerName, $customerPhone] = $this->resolveCustomerNameAndPhone(array_merge(
@@ -218,6 +236,29 @@ class OnlineTransactionService
                 $customerChanged = array_key_exists('customer_id', $data)
                     && (int) $data['customer_id'] !== $originalCustomerId;
 
+                // 🛡️ Phase 10: cross-currency guard (mirror of `create()`).
+                // The Online module is EGP-only, so an account/customer swap
+                // must not silently route the booking through a foreign
+                // currency. Validate before any ledger repost fires.
+                if ($accountChanged || $customerChanged) {
+                    $this->assertCurrencyCompatible(array_merge(
+                        $tx->only(['account_id', 'customer_id']),
+                        $data,
+                    ));
+                }
+
+                // 🛡️ Phase 10: status transition detection. A status change
+                // (Completed ↔ Cancelled ↔ Pending ↔ Failed) is the heaviest
+                // possible edit — it changes which side of the GL the row
+                // lives on. We handle it explicitly so PATCH /transactions/{id}
+                // can cancel OR re-open a transaction without going through
+                // DELETE.
+                $statusChanged = array_key_exists('status', $data)
+                    && $data['status'] !== $originalStatus->value;
+                $newStatus = $statusChanged
+                    ? OnlineTransactionStatus::tryFrom($data['status']) ?? $tx->status
+                    : $tx->status;
+
                 if ($sellingChanged || $purchaseChanged) {
                     $purchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
                     $selling = (float) ($data['selling_price'] ?? $tx->selling_price);
@@ -231,18 +272,69 @@ class OnlineTransactionService
                     $tx->fill($data)->save();
                 });
 
-                // 🛡️ ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
-                // HajjUmraBookingService / VisaBookingService Phase 8):
-                // when prices or amount_paid change, the OLD ledger entries
-                // must be reversed (additive — never destructive) and NEW
-                // entries posted with the corrected amounts. Skipped for
-                // non-Completed transactions since postFinancialEntries
-                // never posted anything for them in the first place.
+                // 🛡️ ACCOUNTING INTEGRITY (Phase 9 + Phase 10):
+                //
+                // Two cases to consider:
+                //   A. The status is now Completed. We may need to:
+                //      - post fresh entries (Pending/Failed → Completed), OR
+                //      - repost on price/vault changes (Completed → Completed).
+                //   B. The status moved AWAY from Completed. We must reverse
+                //      every GL entry that was posted (Completed → anything).
+                //
+                // The previous gate was `if ($tx->status === Completed)` which
+                // only handled case A and missed case B entirely (PATCH'ing
+                // status=Completed→Cancelled would silently leave the GL in
+                // place). Restructured below so both cases are covered
+                // independently.
+
+                // ── A. Status transition Completed → something else:
+                //      reverse everything that was ever posted against this
+                //      row. This is the inverse of step 1 in `delete()` —
+                //      but without the soft-delete, so the user can later
+                //      PATCH status back to Completed to re-post.
+                if ($statusChanged && $originalStatus === OnlineTransactionStatus::Completed) {
+                    $linkedForReverse = Transaction::where('related_type', OnlineTransaction::class)
+                        ->where('related_id', $tx->id)
+                        ->orderByDesc('id')
+                        ->get();
+                    foreach ($linkedForReverse as $rt) {
+                        $this->transactionService->reverseTransaction($rt);
+                    }
+                }
+
+                // ── B. Status transition something → Completed:
+                //      if no live (non-reversal) GL entries are linked,
+                //      post fresh. (Pending/Failed posts nothing at create,
+                //      so flipping to Completed must do the post now.)
+                if ($statusChanged && $newStatus === OnlineTransactionStatus::Completed
+                    && $originalStatus !== OnlineTransactionStatus::Completed) {
+                    $hasLiveLinked = Transaction::where('related_type', OnlineTransaction::class)
+                        ->where('related_id', $tx->id)
+                        ->whereDoesntHave('entries', function ($q) {
+                            $q->where('notes', 'like', 'عكس%');
+                        })
+                        ->exists();
+                    if (! $hasLiveLinked) {
+                        $this->postFinancialEntries(
+                            $tx,
+                            $tx->serviceType,
+                            $tx->provider_id ? $tx->provider : null,
+                            (float) $tx->purchase_price,
+                            (float) $tx->selling_price,
+                            (string) ($tx->customer_name ?? ''),
+                        );
+                    }
+                }
+
+                // ── C. Field-change repost (only meaningful when the new
+                //      status is Completed — the old status might have
+                //      been Completed too, in which case step A above
+                //      already reversed; or it was something else, in
+                //      which case step B already posted fresh; in both
+                //      cases we now need to repost on field changes
+                //      because the OLD entries that the user just made
+                //      invalid through PATCH are still live).
                 if ($tx->status === OnlineTransactionStatus::Completed) {
-                    // If account or customer changed, the income (AR) and
-                    // expense (provider default account) destination may have
-                    // moved too. We MUST reverse the old entries and repost
-                    // to the new destinations.
                     if ($sellingChanged || $accountChanged || $customerChanged) {
                         $newSelling = (float) ($data['selling_price'] ?? $tx->selling_price);
                         $newIncome = $this->repostIncomeTransaction($tx, $newSelling);
@@ -283,6 +375,9 @@ class OnlineTransactionService
                     'amount_paid_changed' => $amountPaidChanged,
                     'account_changed' => $accountChanged,
                     'customer_changed' => $customerChanged,
+                    'status_changed' => $statusChanged,
+                    'original_status' => $originalStatus->value,
+                    'new_status' => $newStatus->value,
                     'updated_by' => Auth::id(),
                 ]);
 
@@ -340,27 +435,20 @@ class OnlineTransactionService
 
         $this->transactionService->reverseTransaction($oldTx);
 
-        if ($tx->customer_id) {
-            $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
-
-            return $this->transactionService->recordIncome([
-                'amount' => $newSelling,
-                'to_account_id' => $customerAccount->id,
-                'module' => TransactionModule::Online->value,
-                'related_type' => OnlineTransaction::class,
-                'related_id' => $tx->id,
-                'notes' => 'إعادة تسجيل مديونية العميل (تعديل سعر) — '.$tx->customer_name,
-                'created_by' => Auth::id() ?? 1,
-            ]);
-        }
+        // Mirror the AR-account resolution from `postFinancialEntries()`:
+        //   registered customer → their own AR (auto-created)
+        //   walk-in             → module-wide walk-in AR mirror
+        $arAccountId = $tx->customer_id
+            ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
+            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
 
         return $this->transactionService->recordIncome([
             'amount' => $newSelling,
-            'to_account_id' => $tx->account_id,
+            'to_account_id' => $arAccountId,
             'module' => TransactionModule::Online->value,
             'related_type' => OnlineTransaction::class,
             'related_id' => $tx->id,
-            'notes' => 'إعادة تسجيل معاملة أونلاين (تعديل سعر، بدون عميل مسجل) — '.$tx->customer_name,
+            'notes' => 'إعادة تسجيل مديونية (تعديل سعر) — '.$tx->customer_name,
             'created_by' => Auth::id() ?? 1,
         ]);
     }
@@ -373,8 +461,11 @@ class OnlineTransactionService
      * old transaction (additive — never destructive), then post a fresh
      * expense with the new amount.
      *
-     * Resolves the source account the same way `postFinancialEntries` does:
-     * provider's `default_purchase_account_id` if set, otherwise $tx->account_id.
+     * Resolves the source account the same way `postFinancialEntries` does
+     * (Fawry pattern):
+     *   - provider.default_purchase_account_id → use it
+     *   - else if amountPaid > 0 → vault (cash covers the cost)
+     *   - else → income clearing account (vault has nothing to debit)
      */
     protected function repostExpenseTransaction(OnlineTransaction $tx, float $newPurchase): ?Transaction
     {
@@ -393,7 +484,16 @@ class OnlineTransactionService
         }
 
         $provider = $tx->provider_id ? OnlineServiceProvider::find($tx->provider_id) : null;
-        $sourceAccountId = $provider?->default_purchase_account_id ?: $tx->account_id;
+        $amountPaid = (float) ($tx->amount_paid ?? $tx->selling_price);
+
+        if ($provider?->default_purchase_account_id) {
+            $sourceAccountId = $provider->default_purchase_account_id;
+        } elseif ($amountPaid > 0) {
+            $sourceAccountId = $tx->account_id;
+        } else {
+            $sourceAccountId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+                ->incomeContraIdForModule('online') ?? $tx->account_id;
+        }
 
         $this->transactionService->reverseTransaction($oldTx);
 
@@ -442,24 +542,29 @@ class OnlineTransactionService
         ?int $oldAccountId = null,
         ?int $oldCustomerId = null,
     ): void {
-        if (! $tx->customer_id) {
-            return; // Cash payment only exists for customer-based transactions
-        }
+        // Cash payment transfer exists for ANY transaction (registered customer
+        // OR walk-in) — both routes post a journal transfer from the AR mirror
+        // to the vault. The previous version short-circuited on
+        // `! $tx->customer_id`, which left walk-in cash payments un-reversed
+        // when walk-in / registered status flipped during an edit. Removed
+        // the early-return guard so all transactions get the same treatment.
 
-        $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
+        $arAccountId = $tx->customer_id
+            ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
+            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
 
         // Build the candidate set of (from_account, to_account) pairs the
         // cash-payment transfer could have been posted with. We must check
         // both the OLD pair (in case the user swapped vault or customer)
         // AND the NEW pair (in case customer/vault switched).
         $oldVaultId = $oldAccountId ?? $tx->account_id;
-        $oldCustomerAccountId = $oldCustomerId
-            ? ($this->ensureCustomerAccount($oldCustomerId)->id ?? $customerAccount->id)
-            : $customerAccount->id;
+        $oldArAccountId = $oldCustomerId
+            ? ($this->ensureCustomerAccount($oldCustomerId)->id ?? $arAccountId)
+            : $arAccountId;
 
         $candidatePairs = [
-            ['from' => $oldCustomerAccountId, 'to' => $oldVaultId],
-            ['from' => $customerAccount->id, 'to' => $tx->account_id],
+            ['from' => $oldArAccountId, 'to' => $oldVaultId],
+            ['from' => $arAccountId, 'to' => $tx->account_id],
         ];
 
         // Fetch any cash-payment transfers posted on this transaction that
@@ -483,10 +588,11 @@ class OnlineTransactionService
         }
 
         if ($newAmountPaid > 0.001) {
-            $this->transactionService->recordIncome([
+            $this->transactionService->recordJournalTransfer([
                 'amount' => $newAmountPaid,
+                'from_account_id' => $arAccountId,
                 'to_account_id' => $tx->account_id,
-                'contra_account_id' => $customerAccount->id,
+                'allow_from_negative' => true,
                 'module' => TransactionModule::Online->value,
                 'related_type' => OnlineTransaction::class,
                 'related_id' => $tx->id,
@@ -499,34 +605,91 @@ class OnlineTransactionService
     public function delete(OnlineTransaction $tx): bool
     {
         try {
+            // 🛡️ Idempotency guard (Phase 10 — mirrors FawryTransactionService):
+            // if the row is already soft-deleted, do nothing. Without this, a
+            // second call on the same row would re-reverse the (already
+            // reversed) GL entries and double-credit the vault.
+            $alreadyDeleted = DB::table('online_transactions')
+                ->where('id', $tx->id)
+                ->whereNotNull('deleted_at')
+                ->exists();
+            if ($alreadyDeleted) {
+                Log::info('Online transaction delete skipped — already soft-deleted', [
+                    'online_transaction_id' => $tx->id,
+                    'user_id' => Auth::id(),
+                ]);
+                return true;
+            }
+
+            // Re-read the row so the values reflect the latest pay-debt / update
+            // edits done by other flows (e.g. CustomerController::payDebt
+            // doesn't touch this row, but service.update or other writers do).
+            $tx = $tx->fresh();
+
             return DB::transaction(function () use ($tx) {
-                // لا يمكن حذف المعاملة فعلياً (يمنعها النموذج للحفاظ على السجلات).
-                // بدلاً من ذلك نُغير الحالة إلى "ملغاة" ونعكس القيود المالية.
+                $isWalkIn = empty($tx->customer_id);
+                $customerName = (string) $tx->customer_name;
+                $vaultId = (int) $tx->account_id;
 
-                if ($tx->status === OnlineTransactionStatus::Cancelled) {
-                    throw new \RuntimeException('المعاملة ملغاة بالفعل.');
+                // ── 1. Reverse ALL transactions linked to this online tx
+                //       (covers: main income, cash settlement, and expense).
+                //       `reverseTransaction` is idempotent — already-reversed
+                //       entries are no-ops, so step 1 is safe even if the
+                //       service is called twice on the same in-flight model.
+                $linkedTransactions = Transaction::where('related_type', OnlineTransaction::class)
+                    ->where('related_id', $tx->id)
+                    ->orderByDesc('id')
+                    ->get();
+
+                foreach ($linkedTransactions as $rt) {
+                    $this->transactionService->reverseTransaction($rt);
                 }
 
-                // عكس القيود المالية فقط إذا كانت المعاملة مكتملة (لها قيود)
-                if ($tx->status === OnlineTransactionStatus::Completed) {
-                    $relatedTransactions = Transaction::where('related_type', OnlineTransaction::class)
-                        ->where('related_id', $tx->id)
-                        ->get();
-
-                    foreach ($relatedTransactions as $rt) {
-                        $this->transactionService->reverseTransaction($rt);
-                    }
+                // ── 2. Walk-in AR reclamation (Fawry Phase 6 pattern):
+                //       For a walk-in client the per-name debt lives in the
+                //       shared "ذمم عملاء الخدمات الإلكترونية غير مسجلين" AR
+                //       mirror. After step 1 that mirror is back to its
+                //       pre-create balance. But if the customer paid some of
+                //       the debt through the generic CustomerController
+                //       (route: POST /api/v1/customers/{id}/pay-debt) those
+                //       pay-debt entries are NOT linked to this online_tx
+                //       (they have no related_id), so the AR mirror still
+                //       carries a residual credit. Re-allocate that residual
+                //       FIFO to OTHER walk-in transactions for the same name;
+                //       whatever's left goes back to the vault (credit memo
+                //       for the customer).
+                $residualForReallocation = 0.0;
+                if ($isWalkIn) {
+                    $residualForReallocation = $this->reclaimWalkInArExcess(
+                        $tx,
+                        $customerName,
+                        $vaultId,
+                    );
                 }
 
-                // تغيير الحالة إلى "ملغاة" مع تسجيل السبب
+                // ── 3. Flip status → Cancelled + stamp audit fields
+                $cancellationNote = '[تم الإلغاء بواسطة '.Auth::user()?->name.' في '.now()->format('Y-m-d H:i').']'
+                    .($residualForReallocation > 0.005
+                        ? ' — إعادة توجيه رصيد walk-in: '.number_format($residualForReallocation, 2).' ج.م'
+                        : '');
+
                 $tx->status = OnlineTransactionStatus::Cancelled;
-                $tx->failure_reason = ($tx->failure_reason ? $tx->failure_reason."\n" : '')
-                    .'[تم الإلغاء بواسطة '.Auth::user()?->name.' في '.now()->format('Y-m-d H:i').']';
+                $tx->failure_reason = ($tx->failure_reason ? $tx->failure_reason."\n" : '').$cancellationNote;
+                $tx->cancelled_by = Auth::id();
+                $tx->cancelled_at = now();
                 $tx->save();
+
+                // ── 4. Soft-delete the row (the model uses
+                //       ModelDeletionGuard so $tx->delete() is allowed inside
+                //       this static `run` callback).
+                OnlineTransaction::run(function () use ($tx) {
+                    $tx->delete();
+                });
 
                 Log::info('Online transaction cancelled and ledger reversed', [
                     'online_transaction_id' => $tx->id,
                     'cancelled_by' => Auth::id(),
+                    'walk_in_reallocated' => round($residualForReallocation, 2),
                 ]);
 
                 return true;
@@ -539,6 +702,168 @@ class OnlineTransactionService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Walk-in AR reclamation (Fawry Phase 6 / Bug B pattern).
+     *
+     * The walk-in AR mirror account (`ذمم عملاء الخدمات الإلكترونية غير مسجلين`)
+     * aggregates debt across all walk-in transactions for the same
+     * customer_name. When we cancel one of those transactions and the
+     * customer had already paid some of that debt through the generic
+     * `CustomerController::payDebt` (module=online), the pay-debt entries
+     * are NOT linked to this online_transaction via related_id, so the
+     * step-1 reversal of THIS transaction's linked entries does not see
+     * them. The AR mirror therefore keeps a residual credit (= the amount
+     * already paid by the customer, now stranded because the sale it
+     * paid against is gone).
+     *
+     * Strategy:
+     *   1) Read the residual credit on the walk-in AR mirror.
+     *   2) Re-allocate it FIFO against OTHER walk-in online transactions
+     *      for the same customer_name by increasing their `amount_paid`.
+     *      This keeps the per-transaction debt report honest (column-source
+     *      debt still matches the GL).
+     *   3) Whatever is left after FIFO gets returned to the vault via a
+     *      journal transfer (debit vault, credit walk-in AR) — a credit
+     *      memo for the client. This balances the AR and acknowledges
+     *      the residual.
+     *   4) Zero out the deleted transaction's `amount_paid` so the
+     *      per-transaction debt from column-source equals 0.
+     *
+     * Returns the total amount reallocated or returned to the vault
+     * (caller uses it to record the cancellation reason).
+     */
+    protected function reclaimWalkInArExcess(
+        OnlineTransaction $tx,
+        string $customerName,
+        int $vaultId,
+    ): float {
+        if ($customerName === '' || $vaultId <= 0) {
+            return 0.0;
+        }
+
+        $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $walkInArId = $clearing->onlineWalkInArAccountId();
+
+        // Phase 10 reclamation — scope to THIS customer_name. The walk-in
+        // AR mirror is shared across all walk-in clients, so we compute
+        // THIS client's total overpayment (column-source) and only return
+        // that, capped at the walk-in AR's negative balance.
+        //
+        // Components of this client's overpayment:
+        //   A) The cancelled tx's own column-source overpayment
+        //      = (cancelled.amount_paid - cancelled.selling) when > 0.
+        //      (amount_paid has not been zeroed yet at this point — step
+        //      3c below does that AFTER we read the value.)
+        //   B) Other non-cancelled walk-in txs for the same customer_name
+        //      with (amount_paid - selling) > 0.
+        $cancelledOverpayment = max(0.0, round(
+            (float) $tx->amount_paid - (float) $tx->selling_price,
+            2,
+        ));
+
+        $otherTxsOverpayment = (float) DB::table('online_transactions')
+            ->whereNull('customer_id')
+            ->where('customer_name', $customerName)
+            ->where('id', '!=', $tx->id)
+            ->whereNull('deleted_at')
+            ->where('status', OnlineTransactionStatus::Completed->value)
+            ->whereRaw('amount_paid > selling_price')
+            ->selectRaw('COALESCE(SUM(amount_paid - selling_price), 0) as overpaid')
+            ->value('overpaid');
+
+        $thisClientOverpayment = round($cancelledOverpayment + $otherTxsOverpayment, 2);
+        if ($thisClientOverpayment <= 0.005) {
+            return 0.0;
+        }
+
+        // Cap at the walk-in AR's actual negative balance. If multiple
+        // walk-in clients share the mirror and OTHER clients also have
+        // overpayments, we won't claim their money.
+        $walkInArAccount = Account::find($walkInArId);
+        $walkInArNegative = $walkInArAccount ? abs(min(0.0, (float) $walkInArAccount->balance)) : 0.0;
+        $overpayment = round(min($thisClientOverpayment, $walkInArNegative), 2);
+        if ($overpayment <= 0.005) {
+            return 0.0;
+        }
+
+        $createdBy = Auth::id() ?? 1;
+        $remaining = $overpayment;
+
+        // 3a) FIFO re-allocate to other walk-in transactions for the same
+        //      customer_name that still have unpaid debt. We do this in
+        //      column-source space (online_transactions.amount_paid) so
+        //      per-transaction debt stays consistent. After this loop
+        //      `remaining` is what couldn't be absorbed by other txs.
+        $fifoTxs = DB::table('online_transactions')
+            ->whereNull('customer_id')
+            ->where('customer_name', $customerName)
+            ->where('id', '!=', $tx->id)
+            ->whereNull('deleted_at')
+            ->where('status', OnlineTransactionStatus::Completed->value)
+            ->whereRaw('selling_price > amount_paid')
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($fifoTxs as $other) {
+            if ($remaining <= 0.005) {
+                break;
+            }
+            $otherDebt = (float) $other->selling_price - (float) $other->amount_paid;
+            if ($otherDebt <= 0) {
+                continue;
+            }
+            $allocate = min($remaining, $otherDebt);
+            DB::table('online_transactions')
+                ->where('id', $other->id)
+                ->update([
+                    'amount_paid' => DB::raw('amount_paid + '.(float) $allocate),
+                    'updated_at' => now(),
+                ]);
+            $remaining = round($remaining - $allocate, 2);
+        }
+
+        // `remaining` is what couldn't be absorbed by other txs — that's
+        // the residual credit we return to the vault.
+        $overpayment = $remaining;
+
+        // 3b) Whatever wasn't absorbed by other walk-in transactions gets
+        //      returned to the customer as a credit memo. Per project
+        //      convention (balance = SUM(credit) - SUM(debit)) this means:
+        //        - DEBIT the vault (= vault.balance decreases — we hand cash
+        //          back to the customer)
+        //        - CREDIT the walk-in AR mirror (= walkInAr.balance
+        //          increases, moving back toward 0 from the negative side)
+        //      So in `recordJournalTransfer` the from-account is the
+        //      vault, the to-account is the walk-in AR mirror. Without
+        //      `allow_from_negative=true` the vault must have enough cash.
+        if ($remaining > 0.005 && $vaultId > 0) {
+            $this->transactionService->recordJournalTransfer([
+                'amount' => $remaining,
+                'from_account_id' => $vaultId,
+                'to_account_id' => $walkInArId,
+                'module' => TransactionModule::Online->value,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => "إعادة مديونية walk-in محذوفة ({$customerName}) — عملية #{$tx->id}",
+                'created_by' => $createdBy,
+                'allow_from_negative' => true,
+            ]);
+        }
+
+        // 3c) Zero out the deleted transaction's amount_paid so the
+        //      per-transaction debt column matches reality.
+        DB::table('online_transactions')
+            ->where('id', $tx->id)
+            ->update([
+                'amount_paid' => 0,
+                'updated_at' => now(),
+            ]);
+
+        return round($overpayment, 2);
     }
 
     public function getDailySummary(string $date): array
@@ -577,52 +902,77 @@ class OnlineTransactionService
         $providerLabel = $provider?->name_ar ? " - {$provider->name_ar}" : '';
         $createdBy = Auth::id() ?? 1;
 
+        // Resolve the AR account that holds the receivable (debt).
+        // - Registered customer → their own AR (auto-created on first use).
+        // - Walk-in (no customer_id) → module-wide walk-in AR mirror (mirrors
+        //   Fawry's `fawryWalkInArAccountId()` pattern). This keeps the debt
+        //   visible in the GL / trial balance / office receivables report.
+        $arAccountId = $tx->customer_id
+            ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
+            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
+
+        // 1) SALE income — credit the AR mirror for the full selling price.
+        //    This is the canonical "money owed" entry. The cash-side
+        //    settlement (entry #2) only moves cash from the AR mirror to the
+        //    vault when the customer pays now.
+        $income = null;
         if ($selling > 0) {
-            if ($tx->customer_id) {
-                $customerAccount = $this->ensureCustomerAccount((int) $tx->customer_id);
-
-                // 1. مديونية العميل بالقيمة الإجمالية
-                $income = $this->transactionService->recordIncome([
-                    'amount' => $selling,
-                    'to_account_id' => $customerAccount->id,
-                    'module' => $module,
-                    'related_type' => OnlineTransaction::class,
-                    'related_id' => $tx->id,
-                    'notes' => "تحصيل خدمة أونلاين (مديونية) - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
-                    'created_by' => $createdBy,
-                ]);
-
-                // 2. سداد جزء من المبلغ نقدياً (المدفوع الآن)
-                $amountPaid = (float) ($tx->amount_paid ?? $selling);
-                if ($amountPaid > 0) {
-                    $this->transactionService->recordIncome([
-                        'amount' => $amountPaid,
-                        'to_account_id' => $tx->account_id,
-                        'contra_account_id' => $customerAccount->id,
-                        'module' => $module,
-                        'related_type' => OnlineTransaction::class,
-                        'related_id' => $tx->id,
-                        'notes' => "تحصيل خدمة أونلاين (سداد جزئي) - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
-                        'created_by' => $createdBy,
-                    ]);
-                }
-            } else {
-                // عميل نقدي فوري مباشر
-                $income = $this->transactionService->recordIncome([
-                    'amount' => $selling,
-                    'to_account_id' => $tx->account_id,
-                    'module' => $module,
-                    'related_type' => OnlineTransaction::class,
-                    'related_id' => $tx->id,
-                    'notes' => "تحصيل خدمة أونلاين - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
-                    'created_by' => $createdBy,
-                ]);
-            }
+            $income = $this->transactionService->recordIncome([
+                'amount' => $selling,
+                'to_account_id' => $arAccountId,
+                'module' => $module,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => ($tx->customer_id
+                    ? "تحصيل خدمة أونلاين (مديونية) - {$serviceType->name_ar}{$providerLabel}: {$customerName}"
+                    : "مديونية خدمة أونلاين (عميل غير مسجل - {$customerName}) - {$serviceType->name_ar}{$providerLabel}"),
+                'created_by' => $createdBy,
+            ]);
             $tx->income_transaction_id = $income->id;
         }
 
+        // 2) CASH settlement — only when amount_paid > 0. Move cash from the
+        //    AR mirror to the vault. If the customer paid full selling_price,
+        //    the AR balance net settles to 0; if partial, the remainder is
+        //    still owed (visible in the AR mirror).
+        $amountPaid = (float) ($tx->amount_paid ?? $selling);
+        if ($amountPaid > 0 && $tx->account_id) {
+            $this->transactionService->recordJournalTransfer([
+                'amount' => $amountPaid,
+                'from_account_id' => $arAccountId,
+                'to_account_id' => $tx->account_id,
+                'allow_from_negative' => true,
+                'module' => $module,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => ($tx->customer_id
+                    ? "سداد جزئي من عميل - {$serviceType->name_ar}{$providerLabel}: {$customerName}"
+                    : "سداد جزئي (عميل غير مسجل - {$customerName}) - {$serviceType->name_ar}{$providerLabel}"),
+                'created_by' => $createdBy,
+            ]);
+        }
+
+        // 3) EXPENSE — route the cost of the service following the Fawry
+        //    convention (proven pattern):
+        //      a) Provider has a default_purchase_account_id → use it
+        //         (the supplier's prepaid / credit account).
+        //      b) Provider has no purchase account BUT customer paid cash
+        //         → use the vault (the vault just received cash, so the
+        //         cost correctly comes out of that cash).
+        //      c) Provider has no purchase account AND unpaid (credit) → use
+        //         the income clearing account so the vault doesn't go
+        //         negative when nothing was collected.
         if ($purchase > 0) {
-            $sourceAccountId = $provider?->default_purchase_account_id ?: $tx->account_id;
+            $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+
+            if ($provider?->default_purchase_account_id) {
+                $sourceAccountId = $provider->default_purchase_account_id;
+            } elseif ($amountPaid > 0) {
+                $sourceAccountId = $tx->account_id;
+            } else {
+                $sourceAccountId = $clearing->incomeContraIdForModule('online') ?? $tx->account_id;
+            }
+
             $expense = $this->transactionService->recordExpense([
                 'amount' => $purchase,
                 'from_account_id' => $sourceAccountId,
@@ -702,6 +1052,50 @@ class OnlineTransactionService
         }
 
         return [$name ?? '', $phone];
+    }
+
+    /**
+     * 🛡️ Phase 10: cross-currency guard. The Online module is intentionally
+     * EGP-only (per the project owner — confirmed 2026-07-27). We reject
+     * any booking whose vault currency differs from the AR currency BEFORE
+     * we call TransactionService, so the global double-entry machinery is
+     * never asked to silently FX-convert a sale.
+     *
+     * Rules:
+     *  - The vault ($data['account_id']) MUST be in EGP.
+     *  - The customer AR mirror (when customer_id is set) MUST be in EGP.
+     *  - The walk-in AR mirror (`ذمم عملاء الخدمات الإلكترونية غير مسجلين`)
+     *    is always EGP (created in EGP by `onlineWalkInArAccountId()`).
+     *
+     * Throws InvalidArgumentException with an Arabic message that the Vue
+     * UI surfaces via the toast.
+     */
+    protected function assertCurrencyCompatible(array $data): void
+    {
+        $expected = 'EGP';
+
+        if (! empty($data['account_id'])) {
+            $vault = Account::find((int) $data['account_id']);
+            if ($vault && strtoupper((string) $vault->currency) !== $expected) {
+                throw new \InvalidArgumentException(
+                    'موديول الخدمات الإلكترونية يقبل فقط الحسابات بعملة الجنيه المصري (EGP). '
+                    ."الحساب المختار «{$vault->name}» بعملة ".strtoupper((string) $vault->currency).'.'
+                );
+            }
+        }
+
+        if (! empty($data['customer_id'])) {
+            $customer = Customer::find((int) $data['customer_id']);
+            if ($customer && $customer->account_id) {
+                $ar = Account::find($customer->account_id);
+                if ($ar && strtoupper((string) $ar->currency) !== $expected) {
+                    throw new \InvalidArgumentException(
+                        'حساب العميل بعملة '.strtoupper((string) $ar->currency)
+                        .' — موديول الخدمات الإلكترونية يقبل فقط حسابات العملاء بالجنيه المصري (EGP).'
+                    );
+                }
+            }
+        }
     }
 
     /**
