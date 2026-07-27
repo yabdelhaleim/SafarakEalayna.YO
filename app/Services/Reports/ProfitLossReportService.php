@@ -54,6 +54,7 @@ class ProfitLossReportService
                 't.type',
                 't.module',
                 't.amount',
+                't.notes',
                 't.from_account_id',
                 't.to_account_id',
                 'to_acc.type as to_account_type',
@@ -103,6 +104,26 @@ class ProfitLossReportService
             $amount = $this->resolveAmountEGP($tx);
             if ($amount <= 0) {
                 continue;
+            }
+
+            // TransactionService::reverseTransaction() leaves t.from_account_id /
+            // t.to_account_id pointed at the consumption side and only stamps the
+            // 'عكس:' / 'عكس ' notes prefix on the same transaction row. Some
+            // flows (notably FawryService refund path) post the reversal in the
+            // SAME direction as the original — in that case the classifier above
+            // mis-labels it as 'revenue' / 'cogs' (the non-reversal types) and
+            // the bucket would be inflated. Reclassify when the canonical
+            // reversal marker says "this is reversed but classifier picked the
+            // non-reversal type" — leave it alone when the classifier already
+            // picked the right reversal type.
+            $txNotes = (string) ($tx->notes ?? '');
+            $isReversed = str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ');
+            if ($isReversed) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $included++;
@@ -192,6 +213,7 @@ class ProfitLossReportService
                 't.type',
                 't.module',
                 't.amount',
+                't.notes',
                 't.from_account_id',
                 't.to_account_id',
                 'to_acc.type as to_account_type',
@@ -216,6 +238,20 @@ class ProfitLossReportService
 
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
+
+            // Skip transactions already reversed via
+            // TransactionService::reverseTransaction(): it posts mirror
+            // account entries (D/C swapped) that net the ledger back to
+            // zero, but t.from_account_id / t.to_account_id stay pointed
+            // at the consumption side. Without this guard the original
+            // cogs/revenue would be re-counted as if it were live. The
+            // 'عكس:' / 'عكس ' notes prefix is set by TransactionService at
+            // the end of reverseTransaction() — that is the canonical
+            // reversed marker.
+            $txNotes = (string) ($tx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+                continue;
+            }
 
             $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
