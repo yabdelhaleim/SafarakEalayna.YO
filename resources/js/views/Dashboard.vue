@@ -410,8 +410,9 @@
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(officeSummary.total_revenue) }}</div>
           <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>الباص: {{ formatCompactNumber(officeSummary.bus.revenue) }}</span>
+            <span>فوري: {{ formatCompactNumber(officeSummary.fawry.revenue) }}</span>
             <span>المحافظ: {{ formatCompactNumber(officeSummary.wallet.revenue) }}</span>
-            <span>خدمات: {{ formatCompactNumber(officeSummary.fawry.revenue + officeSummary.online.revenue) }}</span>
+            <span>خدمات إلكترونية: {{ formatCompactNumber(officeSummary.online.revenue) }}</span>
           </div>
         </div>
 
@@ -421,8 +422,9 @@
           <div class="text-3xl font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
           <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
+            <span>ربح فوري: {{ formatCompactNumber(officeSummary.fawry.profit) }}</span>
             <span>ربح المحافظ: {{ formatCompactNumber(officeSummary.wallet.profit) }}</span>
-            <span>ربح الخدمات: {{ formatCompactNumber(officeServiceProfit) }}</span>
+            <span>ربح الخدمات الإلكترونية: {{ formatCompactNumber(officeSummary.online.profit) }}</span>
           </div>
         </div>
 
@@ -432,7 +434,8 @@
           <div class="text-3xl font-black text-white font-mono">{{ officeSummary.total_count }} <span class="text-sm font-normal text-gray-400">حركة</span></div>
           <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>حجوزات باص: {{ officeSummary.bus.count }}</span>
-            <span>حركات فوري وأونلاين: {{ officeServiceCount }}</span>
+            <span>حركات فوري: {{ officeSummary.fawry.count }}</span>
+            <span>خدمات إلكترونية: {{ officeSummary.online.count }}</span>
           </div>
         </div>
       </div>
@@ -1383,14 +1386,6 @@ const normalizeFinancial = (raw = {}) => ({
   profit_margin: parseAmount(raw.profit_margin),
   transactions_count: parseAmount(raw.transactions_count),
 });
-
-const officeServiceProfit = computed(() =>
-  officeSummary.value.fawry.profit + officeSummary.value.online.profit + officeSummary.value.wallet.profit
-);
-
-const officeServiceCount = computed(() =>
-  officeSummary.value.fawry.count + officeSummary.value.online.count + officeSummary.value.wallet.count
-);
 
 // Methods
 const formatCurrency = (amount) => {
