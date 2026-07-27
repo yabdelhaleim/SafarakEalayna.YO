@@ -8,16 +8,21 @@ use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Customer;
 use App\Models\Employee;
+use App\Models\Fawry\FawryTransaction;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
+use App\Models\HajjUmraBooking;
 use App\Models\Invoice;
 use App\Models\Online\OnlineTransaction;
-use App\Services\Reports\ReportFinanceService;
+use App\Models\VisaBooking;
+use App\Models\Wallet\WalletTransaction;
 use App\Services\Reports\ProfitLossReportService;
+use App\Services\Reports\ReportFinanceService;
 use App\Support\Finance\AccountModuleDivision;
 use Carbon\Carbon;
 use Closure;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -165,7 +170,7 @@ class DashboardService
             // Skip if bus model has issues
         }
 
-        $hasServiceOrdersTable = \Illuminate\Support\Facades\Cache::remember('schema_has_table_service_orders', 3600, function () {
+        $hasServiceOrdersTable = Cache::remember('schema_has_table_service_orders', 3600, function () {
             return Schema::hasTable('service_orders');
         });
 
@@ -173,8 +178,8 @@ class DashboardService
             try {
                 $q = DB::table('service_orders')
                     ->leftJoin('customers', 'service_orders.customer_id', '=', 'customers.id');
-                
-                $hasDeletedAt = \Illuminate\Support\Facades\Cache::remember('schema_has_column_service_orders_deleted_at', 3600, function () {
+
+                $hasDeletedAt = Cache::remember('schema_has_column_service_orders_deleted_at', 3600, function () {
                     return Schema::hasColumn('service_orders', 'deleted_at');
                 });
 
@@ -264,7 +269,7 @@ class DashboardService
         $plService = resolve(ProfitLossReportService::class);
         $plBreakdown = $plService->moduleBreakdown([
             'from_date' => $from,
-            'to_date'   => $to,
+            'to_date' => $to,
         ]);
         $plByModule = collect($plBreakdown['by_module'])->keyBy('module');
 
@@ -275,45 +280,44 @@ class DashboardService
         ]);
 
         // Hajj Stats — booking counts from model, profit from ledger
-        $hajjStats = \App\Models\HajjUmraBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
-            ->first();
-        $hajjCount   = (int) $hajjStats->count;
-        $hajjRevenue = (float) ($plByModule->get('hajj_umra')['income'] ?? $hajjStats->revenue);
-        $hajjProfit  = (float) ($plByModule->get('hajj_umra')['profit'] ?? 0);
-
-        // Online Stats
-        $onlineStats = \App\Models\Online\OnlineTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
-            ->first();
-        $onlineCount   = (int) $onlineStats->count;
-        $onlineRevenue = (float) ($plByModule->get('online')['income'] ?? $onlineStats->revenue);
-        $onlineProfit  = (float) ($plByModule->get('online')['profit'] ?? 0);
-
-        // Fawry Stats
-        $fawryStats = \App\Models\Fawry\FawryTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue")
-            ->first();
-        $fawryCount   = (int) $fawryStats->count;
-        $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
-        $fawryProfit  = (float) ($plByModule->get('fawry')['profit'] ?? 0);
-
-        // Visa Stats
-        $visaStats = \App\Models\VisaBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+        $hajjStats = HajjUmraBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
             ->first();
-        $visaCount   = (int) $visaStats->count;
+        $hajjCount = (int) $hajjStats->count;
+        $hajjRevenue = (float) ($plByModule->get('hajj_umra')['income'] ?? $hajjStats->revenue);
+        $hajjProfit = (float) ($plByModule->get('hajj_umra')['profit'] ?? 0);
+
+        // Online Stats
+        $onlineStats = OnlineTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
+            ->first();
+        $onlineCount = (int) $onlineStats->count;
+        $onlineRevenue = (float) ($plByModule->get('online')['income'] ?? $onlineStats->revenue);
+        $onlineProfit = (float) ($plByModule->get('online')['profit'] ?? 0);
+
+        // Fawry Stats
+        $fawryStats = FawryTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
+            ->first();
+        $fawryCount = (int) $fawryStats->count;
+        $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
+        $fawryProfit = (float) ($plByModule->get('fawry')['profit'] ?? 0);
+
+        // Visa Stats
+        $visaStats = VisaBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
+            ->first();
+        $visaCount = (int) $visaStats->count;
         $visaRevenue = (float) ($plByModule->get('visa')['income'] ?? $visaStats->revenue);
-        $visaProfit  = (float) ($plByModule->get('visa')['profit'] ?? 0);
+        $visaProfit = (float) ($plByModule->get('visa')['profit'] ?? 0);
 
         // Flight profit from ledger (flight bookings are type=transfer, not type=income)
-        $flightLedgerProfit  = (float) ($plByModule->get('flight')['profit'] ?? 0);
+        $flightLedgerProfit = (float) ($plByModule->get('flight')['profit'] ?? 0);
         $flightLedgerRevenue = (float) ($plByModule->get('flight')['income'] ?? 0);
 
         // Bus profit from ledger
-        $busLedgerProfit  = (float) ($plByModule->get('bus')['profit'] ?? 0);
+        $busLedgerProfit = (float) ($plByModule->get('bus')['profit'] ?? 0);
         $busLedgerRevenue = (float) ($plByModule->get('bus')['income'] ?? 0);
-
 
         // Treasury: liquidity accounts only (exclude customer/supplier ledgers)
         $liquidityQuery = Account::query()->where('is_active', true);
@@ -343,63 +347,74 @@ class DashboardService
 
         $tourismSummary = [
             'flights' => [
-                'count'   => $airline['kpis']['total_bookings'] ?? 0,
+                'count' => $airline['kpis']['total_bookings'] ?? 0,
                 'revenue' => $flightLedgerRevenue ?: ($airline['kpis']['revenue'] ?? 0),
-                'profit'  => $flightLedgerProfit,
+                'profit' => $flightLedgerProfit,
             ],
             'hajj' => [
-                'count'   => $hajjCount,
+                'count' => $hajjCount,
                 'revenue' => $hajjRevenue,
-                'profit'  => $hajjProfit,
+                'profit' => $hajjProfit,
             ],
             'visa' => [
-                'count'   => $visaCount,
+                'count' => $visaCount,
                 'revenue' => $visaRevenue,
-                'profit'  => $visaProfit,
+                'profit' => $visaProfit,
             ],
-            'total_count'   => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount + $visaCount,
+            'total_count' => ($airline['kpis']['total_bookings'] ?? 0) + $hajjCount + $visaCount,
             'total_revenue' => round((float) ($tourismPl['totalRevenues'] ?? 0), 2),
-            'total_profit'  => round((float) ($tourismPl['netProfit'] ?? 0), 2),
+            'total_profit' => round((float) ($tourismPl['netProfit'] ?? 0), 2),
         ];
 
         // Wallet Stats
-        $walletStats = \App\Models\Wallet\WalletTransaction::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
-            ->selectRaw("COUNT(*) as count, COALESCE(SUM(amount), 0) as revenue")
+        $walletStats = WalletTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(amount), 0) as revenue')
             ->first();
-        $walletCount   = (int) $walletStats->count;
+        $walletCount = (int) $walletStats->count;
         $walletRevenue = (float) ($plByModule->get('wallet')['income'] ?? $walletStats->revenue);
-        $walletProfit  = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+        $walletProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
 
-        $officePl = $plService->report([
-            'from_date' => $from,
-            'to_date' => $to,
-            'category' => 'office',
-        ]);
+        // Office category buckets online services alongside bus/fawry/wallet.
+        // Excluding 'online' from the dashboard "صافي أرباح حسابات المكتب" total
+        // prevents cancelled/soft-deleted online GL postings from inflating the
+        // office P&L when the /online screen reports zero. Online is shown
+        // separately in its own card below.
+        $officeModules = ['bus', 'fawry', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+        $officeLedgerRevenue = 0.0;
+        $officeLedgerProfit = 0.0;
+        foreach ($officeModules as $mod) {
+            $row = $plByModule->get($mod);
+            if ($row === null) {
+                continue;
+            }
+            $officeLedgerRevenue += (float) ($row['income'] ?? 0);
+            $officeLedgerProfit += (float) ($row['profit'] ?? 0);
+        }
 
         $officeSummary = [
             'bus' => [
-                'count'   => $busOps['bus_kpis']['total_bookings'] ?? 0,
+                'count' => $busOps['bus_kpis']['total_bookings'] ?? 0,
                 'revenue' => $busLedgerRevenue ?: ($busOps['bus_kpis']['revenue'] ?? 0),
-                'profit'  => $busLedgerProfit,
+                'profit' => $busLedgerProfit,
             ],
             'fawry' => [
-                'count'   => $fawryCount,
+                'count' => $fawryCount,
                 'revenue' => $fawryRevenue,
-                'profit'  => $fawryProfit,
+                'profit' => $fawryProfit,
             ],
             'online' => [
-                'count'   => $onlineCount,
+                'count' => $onlineCount,
                 'revenue' => $onlineRevenue,
-                'profit'  => $onlineProfit,
+                'profit' => $onlineProfit,
             ],
             'wallet' => [
-                'count'   => $walletCount,
+                'count' => $walletCount,
                 'revenue' => $walletRevenue,
-                'profit'  => $walletProfit,
+                'profit' => $walletProfit,
             ],
-            'total_count'   => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount + $walletCount,
-            'total_revenue' => round((float) ($officePl['totalRevenues'] ?? 0), 2),
-            'total_profit'  => round((float) ($officePl['netProfit'] ?? 0), 2),
+            'total_count' => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount + $walletCount,
+            'total_revenue' => round($officeLedgerRevenue, 2),
+            'total_profit' => round($officeLedgerProfit, 2),
         ];
 
         $extra = [
@@ -434,15 +449,15 @@ class DashboardService
 
         $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
-        $bookingQuery = BusBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+        $bookingQuery = BusBooking::query()->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
 
         // Range counts + revenue (operational, stays on model)
         $rangeStats = (clone $bookingQuery)
-            ->selectRaw("
+            ->selectRaw('
                 COUNT(*) as total_bookings,
                 COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue,
                 COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) as cancelled
-            ", [
+            ', [
                 BusBookingStatus::Cancelled->value,
                 BusBookingStatus::Cancelled->value,
             ])
@@ -453,28 +468,28 @@ class DashboardService
         $cancelled = (int) $rangeStats->cancelled;
 
         $pendingPayments = (float) BusBooking::query()
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->selectRaw('COALESCE(SUM(total_price - paid_amount), 0) as aggregate')
             ->value('aggregate');
 
         // Today counts + revenue (operational, stays on model)
-        $todayStats = BusBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
-            ->selectRaw("
+        $todayStats = BusBooking::whereBetween('created_at', [$today.' 00:00:00', $today.' 23:59:59'])
+            ->selectRaw('
                 COUNT(*) as count,
                 COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue
-            ", [BusBookingStatus::Cancelled->value])
+            ', [BusBookingStatus::Cancelled->value])
             ->first();
 
         $todayBookings = (int) $todayStats->count;
         $todayRevenue = (float) $todayStats->revenue;
 
         // Yesterday counts + revenue (operational, stays on model)
-        $yesterdayStats = BusBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
-            ->selectRaw("
+        $yesterdayStats = BusBooking::whereBetween('created_at', [$yesterday.' 00:00:00', $yesterday.' 23:59:59'])
+            ->selectRaw('
                 COUNT(*) as count,
                 COALESCE(SUM(CASE WHEN status != ? THEN total_price ELSE 0 END), 0) as revenue
-            ", [BusBookingStatus::Cancelled->value])
+            ', [BusBookingStatus::Cancelled->value])
             ->first();
 
         $yesterdayBookings = (int) $yesterdayStats->count;
@@ -492,7 +507,7 @@ class DashboardService
         $yesterdayProfit = (float) array_sum(array_column($yesterdayGl, 'profit'));
 
         $activeCompanies = (int) BusBooking::query()
-            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('bus_bookings.created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->whereNull('bus_inventories.deleted_at')
             ->selectRaw('COUNT(DISTINCT bus_inventories.company_id) as c')
@@ -507,7 +522,7 @@ class DashboardService
         $companyCountRows = BusBooking::query()
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
             ->join('bus_companies', 'bus_inventories.company_id', '=', 'bus_companies.id')
-            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('bus_bookings.created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->whereNull('bus_inventories.deleted_at')
             ->groupBy('bus_companies.id', 'bus_companies.name')
@@ -519,7 +534,7 @@ class DashboardService
         // 🛡️ GL-based per-company profit (2-hop: bus_bookings → bus_inventories → bus_companies.company_id)
         $companyProfitByEntity = $plService->getProfitByEntity(
             'bus',
-            \App\Models\Bus\BusBooking::class,
+            BusBooking::class,
             'company_id',
             ['table' => 'bus_inventories', 'fk' => 'inventory_id'],
             ['from_date' => $from, 'to_date' => $to]
@@ -551,7 +566,7 @@ class DashboardService
         $days = min(14, $start->diffInDays($end) + 1);
 
         // Per-day counts + revenue (operational, stays on model)
-        $busStats = BusBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+        $busStats = BusBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue')
             ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('date')
@@ -578,7 +593,7 @@ class DashboardService
 
         $topRoutes = BusBooking::query()
             ->join('bus_inventories', 'bus_bookings.inventory_id', '=', 'bus_inventories.id')
-            ->whereBetween('bus_bookings.created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('bus_bookings.created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->where('bus_bookings.status', '!=', BusBookingStatus::Cancelled->value)
             ->whereNotNull('bus_inventories.route')
             ->whereNull('bus_inventories.deleted_at')
@@ -595,7 +610,7 @@ class DashboardService
             ->all();
 
         $busRecent = BusBooking::with(['customer', 'inventory'])
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->orderByDesc('created_at')
             ->limit(8)
             ->get()
@@ -650,7 +665,7 @@ class DashboardService
         $yesterday = Carbon::parse($today)->subDay()->toDateString();
         $pct = fn (float $cur, float $prev) => $prev > 0 ? round((($cur - $prev) / $prev) * 100, 1) : ($cur > 0 ? 100.0 : 0.0);
 
-        $bookingQuery = FlightBooking::query()->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+        $bookingQuery = FlightBooking::query()->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
         if ($carrierId) {
             $bookingQuery->where('flight_carrier_id', (int) $carrierId);
         }
@@ -675,28 +690,28 @@ class DashboardService
         $revenueRange = (float) $rangeStats->revenue;
         $cancelled = (int) $rangeStats->cancelled;
 
-        $todayBookings = FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
+        $todayBookings = FlightBooking::whereBetween('created_at', [$today.' 00:00:00', $today.' 23:59:59'])
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->count();
 
         $paidSub = '(SELECT COALESCE(SUM(amount),0) FROM flight_payments WHERE flight_payments.flight_booking_id = flight_bookings.id)';
         $outstanding = (float) DB::table('flight_bookings')
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->whereRaw("selling_price - {$paidSub} > 0.01")
             ->sum(DB::raw("selling_price - {$paidSub}"));
 
-        $todayBookingsYesterday = FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])->count();
+        $todayBookingsYesterday = FlightBooking::whereBetween('created_at', [$yesterday.' 00:00:00', $yesterday.' 23:59:59'])->count();
 
         // Today / yesterday revenue (operational, stays on model)
-        $todayStats = FlightBooking::whereBetween('created_at', [$today . ' 00:00:00', $today . ' 23:59:59'])
+        $todayStats = FlightBooking::whereBetween('created_at', [$today.' 00:00:00', $today.' 23:59:59'])
             ->selectRaw('COALESCE(SUM(selling_price), 0) as revenue')
             ->first();
         $todayRevenue = (float) $todayStats->revenue;
 
-        $yesterdayStats = FlightBooking::whereBetween('created_at', [$yesterday . ' 00:00:00', $yesterday . ' 23:59:59'])
+        $yesterdayStats = FlightBooking::whereBetween('created_at', [$yesterday.' 00:00:00', $yesterday.' 23:59:59'])
             ->selectRaw('COALESCE(SUM(selling_price), 0) as revenue')
             ->first();
         $yesterdayRevenue = (float) $yesterdayStats->revenue;
@@ -751,7 +766,7 @@ class DashboardService
 
         // Fetch booking counts per flight_system_id (operational, stays on model)
         $systemBookingStats = FlightBooking::query()
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->when($carrierId, fn ($b) => $b->where('flight_carrier_id', (int) $carrierId))
             ->groupBy('flight_system_id')
             ->selectRaw('flight_system_id, COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
@@ -780,7 +795,7 @@ class DashboardService
 
             return [
                 'id' => 'sys_'.$s->id,
-                'name' => $s->name . ' (نظام)',
+                'name' => $s->name.' (نظام)',
                 'bookings' => $bookings,
                 'balance' => (float) $s->balance,
                 'profit' => $profitSum,
@@ -790,7 +805,7 @@ class DashboardService
 
         // Per-carrier counts (operational, stays on model)
         $carrierBookingStats = FlightBooking::query()
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->when($systemType !== null && $systemType !== '', fn ($b) => is_numeric($systemType) ? $b->where('flight_system_id', (int) $systemType) : $b->where('system_type', $systemType))
             ->groupBy('flight_carrier_id')
             ->selectRaw('flight_carrier_id, COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
@@ -812,7 +827,7 @@ class DashboardService
 
             return [
                 'id' => 'car_'.$c->id,
-                'name' => $c->name . ' (شركة)',
+                'name' => $c->name.' (شركة)',
                 'bookings' => $bookings,
                 'balance' => (float) $c->balance,
                 'profit' => $profitSum,
@@ -836,7 +851,7 @@ class DashboardService
         $days = min(14, $start->diffInDays($end) + 1);
 
         // Per-day counts (operational, stays on model)
-        $flightStats = FlightBooking::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+        $flightStats = FlightBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue')
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
@@ -864,7 +879,7 @@ class DashboardService
 
         $topRoutes = FlightBooking::query()
             ->selectRaw('from_airport, to_airport, COUNT(*) as c, SUM(selling_price) as revenue')
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->whereNotNull('from_airport')
             ->whereNotNull('to_airport')
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
@@ -924,17 +939,17 @@ class DashboardService
      */
     protected function countServiceOrders(Closure $scope): int
     {
-        $hasTable = \Illuminate\Support\Facades\Cache::remember('schema_has_table_service_orders', 3600, function () {
+        $hasTable = Cache::remember('schema_has_table_service_orders', 3600, function () {
             return Schema::hasTable('service_orders');
         });
 
-        if (!$hasTable) {
+        if (! $hasTable) {
             return 0;
         }
 
         $query = DB::table('service_orders');
-        
-        $hasDeletedAt = \Illuminate\Support\Facades\Cache::remember('schema_has_column_service_orders_deleted_at', 3600, function () {
+
+        $hasDeletedAt = Cache::remember('schema_has_column_service_orders_deleted_at', 3600, function () {
             return Schema::hasColumn('service_orders', 'deleted_at');
         });
 
