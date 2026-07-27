@@ -6,11 +6,9 @@ use App\Enums\BusInventoryPaymentType;
 use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusInventory;
-use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
 use App\Services\Bus\BusBookingService;
-use App\Services\Bus\BusInventoryService;
 
 /**
  * Soft-delete side-effects tests for the Bus module.
@@ -153,8 +151,9 @@ class SoftDeleteSideEffectsTest extends BusTestCase
 
         // Cashbox went from 10000 → 10120 (120 EGP received).
         $this->assertEquals(10120.0, (float) $this->cashboxEgp->fresh()->balance);
-        // Customer AR holds 120 EGP debt.
-        $this->assertEquals(120.0, (float) $customer->ledgerAccount->fresh()->balance);
+        // Customer AR settled to 0 by the journal transfer (Phase 7:
+        // recordJournalTransfer debits the customer AR and credits the cashbox).
+        $this->assertEquals(0.0, (float) $customer->ledgerAccount->fresh()->balance);
 
         // Soft-delete the booking with full reversal (no prior cancel).
         $service->deleteBookingWithReversal($booking->id);

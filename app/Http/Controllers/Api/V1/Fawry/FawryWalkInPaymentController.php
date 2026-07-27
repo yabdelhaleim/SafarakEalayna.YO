@@ -87,8 +87,14 @@ class FawryWalkInPaymentController extends Controller
                 $remaining = $amount;
                 $allocatedTransactions = [];
 
+                // 🛡️ Bug fix: filter out soft-deleted transactions from the FIFO.
+                // Without this, a pay-debt would re-allocate to old soft-deleted
+                // rows (e.g., from a previous test run) and skip the currently
+                // active ones — leaving the new transaction's `amount` stale
+                // and the per-client debt report inconsistent.
                 $transactions = DB::table('fawry_transactions')
                     ->whereNull('client_id')
+                    ->whereNull('deleted_at')
                     ->where('client_name', $clientName)
                     ->whereRaw('selling_price > amount')
                     ->orderBy('created_at', 'asc')

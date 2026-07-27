@@ -4,9 +4,10 @@ namespace Tests\Feature\Bus;
 
 use App\Enums\BusBookingStatus;
 use App\Models\Account;
+use App\Models\AccountEntry;
 use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusRefundRequest;
-use App\Services\Finance\CurrencyService;
+use App\Models\Customer;
+use App\Models\Transaction;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 
 /**
@@ -205,16 +206,13 @@ class BookingCancellationTest extends BusTestCase
         // USD wallet received 6 USD.
         $this->assertEqualsWithDelta(6.0, (float) $this->walletUsd->fresh()->balance, 0.01);
 
-        $customer = \App\Models\Customer::where('phone', '01080000005')->firstOrFail();
+        $customer = Customer::where('phone', '01080000005')->firstOrFail();
         $this->assertEquals('USD', $customer->ledgerAccount->currency);
 
-        // Note: the customer's AR was created at booking time (recordSaleToCustomer),
-        // but `recordIncome` does not reduce it at pay time — the convention in
-        // this codebase is to keep the AR until invoice generation clears it.
-        // The USD ledger therefore holds a +6 USD AR + 6 USD cash, which the
-        // global invariant (balance == SUM(entries.debit-credit)) tolerates
-        // because each account's entries match its balance individually.
-        $this->assertEqualsWithDelta(6.0, (float) $customer->ledgerAccount->fresh()->balance, 0.01);
+        // Note: payBooking now clears the customer AR via a journal transfer
+        // (Phase 7: customer → paid account), so the USD ledger settles to 0
+        // before the cancellation refund is issued.
+        $this->assertEqualsWithDelta(0.0, (float) $customer->ledgerAccount->fresh()->balance, 0.01);
 
         // Cancel with no penalty — full 6 USD refund back to USD wallet.
         $this->postJson("/api/v1/bus/bookings/{$booking->id}/cancel", [
@@ -252,9 +250,9 @@ class BookingCancellationTest extends BusTestCase
         // outstanding refunds.
         LedgerBalanceMutationGuard::run(function () {
             $this->cashboxEgp->update(['balance' => 5000.0]);
-            \App\Models\AccountEntry::create([
+            AccountEntry::create([
                 'account_id' => $this->cashboxEgp->id,
-                'transaction_id' => \App\Models\Transaction::create([
+                'transaction_id' => Transaction::create([
                     'type' => 'transfer',
                     'amount' => 5000.0,
                     'module' => 'general',
@@ -262,8 +260,8 @@ class BookingCancellationTest extends BusTestCase
                     'to_account_id' => $this->cashboxEgp->id,
                     'created_by' => $this->user->id,
                 ])->id,
-                'debit' => 5000.0,
-                'credit' => 0,
+                'debit' => 0,
+                'credit' => 5000.0,
                 'balance_after' => 5000.0,
             ]);
         });

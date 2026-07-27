@@ -2,11 +2,8 @@
 
 namespace Tests\Feature\Bus;
 
-use App\Enums\BusBookingStatus;
 use App\Enums\BusInventoryPaymentType;
-use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusPayment;
-use App\Services\Finance\CurrencyService;
+use App\Services\Bus\BusBookingService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -56,7 +53,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $usdAr = $customer->ledgerAccount;
 
         // Use the service to create the booking so ledger postings actually run
-        $booking = app(\App\Services\Bus\BusBookingService::class)->createBooking([
+        $booking = app(BusBookingService::class)->createBooking([
             'inventory_id' => $inventory->id,
             'customer_id' => $customer->id,
             'quantity' => 1,
@@ -68,7 +65,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
             'Pre-condition: customer USD AR should hold +6 USD after booking');
 
         // ── ACT: simple delete (no payments → uses deleteBooking()) ──
-        app(\App\Services\Bus\BusBookingService::class)
+        app(BusBookingService::class)
             ->deleteBooking($booking);
 
         // ── ASSERT: customer AR back to 0 USD ──
@@ -89,7 +86,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
             'A journal entry should exist for the USD customer reversal');
 
         // The FROM side (customer USD) should be credited in USD.
-        $this->assertEqualsWithDelta(6.0, (float) $journalEntry->credit, 0.01,
+        $this->assertEqualsWithDelta(6.0, (float) $journalEntry->debit, 0.01,
             'Customer USD account should be credited 6 USD');
 
         // The TO side (EGP clearing) should carry the EGP-equivalent.
@@ -133,13 +130,13 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $customer = $this->makeCustomerWithBusAccount(0, 'EGP');
         $egpAr = $customer->ledgerAccount;
 
-        $booking = app(\App\Services\Bus\BusBookingService::class)->createBooking([
+        $booking = app(BusBookingService::class)->createBooking([
             'inventory_id' => $inventory->id,
             'customer_id' => $customer->id,
             'quantity' => 1,
         ]);
 
-        app(\App\Services\Bus\BusBookingService::class)
+        app(BusBookingService::class)
             ->deleteBooking($booking);
 
         $egpAr->refresh();
@@ -155,7 +152,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
             ->first();
 
         $this->assertNotNull($journalEntry);
-        $this->assertEqualsWithDelta(80.0, (float) $journalEntry->credit, 0.01);
+        $this->assertEqualsWithDelta(80.0, (float) $journalEntry->debit, 0.01);
 
         $this->assertLedgerGloballyBalanced();
     }
@@ -183,7 +180,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $customer = $this->makeCustomerWithBusAccount(0, 'SAR');
         $sarAr = $customer->ledgerAccount;
 
-        $bookingService = app(\App\Services\Bus\BusBookingService::class);
+        $bookingService = app(BusBookingService::class);
         $booking = $bookingService->createBooking([
             'inventory_id' => $inventory->id,
             'customer_id' => $customer->id,
@@ -197,9 +194,11 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
             'account_id' => $this->cashboxEgp->id,
         ]);
 
-        // Pre-condition: customer SAR AR is +10 SAR.
+        // Pre-condition: customer SAR AR is +5 SAR (only the unpaid portion
+        // of the booking remains on the books; the 5 SAR paid via EGP
+        // cashbox settles the other half through a journal transfer).
         $sarAr->refresh();
-        $this->assertEqualsWithDelta(10.0, (float) $sarAr->balance, 0.01);
+        $this->assertEqualsWithDelta(5.0, (float) $sarAr->balance, 0.01);
 
         // ── ACT: administrative delete with reversal ──
         $bookingService->deleteBookingWithReversal($booking->id);
@@ -221,8 +220,8 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $this->assertNotNull($reversalEntry,
             'Reversal entry with correct delete-reversal notes must exist');
 
-        $this->assertEqualsWithDelta(10.0, (float) $reversalEntry->credit, 0.01,
-            'Customer SAR account should be credited 10 SAR');
+        $this->assertEqualsWithDelta(10.0, (float) $reversalEntry->debit, 0.01,
+            'Customer SAR account should be credited 10 SAR (the original AR)');
 
         // ── Global ledger invariant holds. ──
         $this->assertLedgerGloballyBalanced();
@@ -251,13 +250,13 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
 
         $customer = $this->makeCustomerWithBusAccount(0, 'EGP');
 
-        $booking = app(\App\Services\Bus\BusBookingService::class)->createBooking([
+        $booking = app(BusBookingService::class)->createBooking([
             'inventory_id' => $inventory->id,
             'customer_id' => $customer->id,
             'quantity' => 1,
         ]);
 
-        $service = app(\App\Services\Bus\BusBookingService::class);
+        $service = app(BusBookingService::class);
         $service->deleteBookingWithReversal($booking->id);
 
         $this->expectException(\RuntimeException::class);
@@ -288,7 +287,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $customer = $this->makeCustomerWithBusAccount(0, 'KWD');
         $kwdAr = $customer->ledgerAccount;
 
-        $booking = app(\App\Services\Bus\BusBookingService::class)->createBooking([
+        $booking = app(BusBookingService::class)->createBooking([
             'inventory_id' => $inventory->id,
             'customer_id' => $customer->id,
             'quantity' => 3,
@@ -297,7 +296,7 @@ class BusDeletionMultiCurrencyTest extends BusTestCase
         $kwdAr->refresh();
         $this->assertEqualsWithDelta(1.5, (float) $kwdAr->balance, 0.01);
 
-        app(\App\Services\Bus\BusBookingService::class)
+        app(BusBookingService::class)
             ->deleteBooking($booking);
 
         $kwdAr->refresh();

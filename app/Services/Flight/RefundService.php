@@ -380,13 +380,15 @@ class RefundService
                     // Safe here because we're inside LedgerBalanceMutationGuard::run() + DB::transaction
                     // — any failure will roll back atomically. The legacy concern of
                     // "untracked direct account creation" is mitigated by the wrapping guards.
+                    // Bug #FIX: Liquidity accounts (cashbox) require module_type to be a DIVISION
+                    // ('office' or 'tourism') per AccountModuleContract — NOT a module like 'flights'.
                     $account = Account::create([
                         'name' => $treasury->name,
                         'type' => AccountType::Cashbox,
                         'currency' => $refundRequest->refund_currency,
                         'is_active' => true,
                         'owner_type' => 'office',
-                        'module_type' => 'flights',
+                        'module_type' => 'tourism',
                         'created_by' => $userId,
                     ]);
                 }
@@ -464,7 +466,7 @@ class RefundService
                         'refund_request_id' => $refundRequest->id,
                         'from_account_id' => $fromAccountId,
                         'to_account_id' => $account->id,
-                        'amount' => $transferAmount,
+                        'amount' => $glAmounts['amount'],
                         'gl_transaction_id' => $glTransaction->id,
                     ]);
 

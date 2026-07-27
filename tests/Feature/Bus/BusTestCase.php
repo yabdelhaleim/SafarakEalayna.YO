@@ -6,7 +6,6 @@ use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Models\Account;
 use App\Models\AccountEntry;
-use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusCompany;
 use App\Models\Bus\BusInventory;
 use App\Models\Customer;
@@ -19,7 +18,6 @@ use App\Services\Finance\LedgerClearingAccounts;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Database\Factories\Bus\BusCompanyFactory;
 use Database\Factories\Bus\BusInventoryFactory;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -202,8 +200,8 @@ abstract class BusTestCase extends TestCase
     /**
      * Create an opening-balance journal entry for a liquidity account.
      *
-     * Posts a "debit liquidity / credit owners-equity" pair so the per-account
-     * invariant (`balance == SUM(entries.debit) - SUM(entries.credit)`) holds
+     * Posts a "credit liquidity / offsetting debit" pair so the per-account
+     * invariant (`balance == SUM(credit) - SUM(debit)`) holds
      * from the moment the account exists. Required by `assertLedgerGloballyBalanced()`.
      */
     protected function seedOpeningBalanceFor(Account $liquidityAccount, float $amount): void
@@ -214,7 +212,7 @@ abstract class BusTestCase extends TestCase
 
         // Reuse the income-clearing account as the offsetting side of the entry
         // (it already exists from LedgerClearingAccounts::ensureClearingAccountExists).
-        $openingTransaction = \App\Models\Transaction::create([
+        $openingTransaction = Transaction::create([
             'type' => 'transfer',
             'amount' => $amount,
             'module' => TransactionModule::General->value,
@@ -224,12 +222,12 @@ abstract class BusTestCase extends TestCase
             'notes' => 'Opening balance — seeded by BusTestCase',
         ]);
 
-        \App\Models\AccountEntry::insert([
+        AccountEntry::insert([
             [
                 'account_id' => $liquidityAccount->id,
                 'transaction_id' => $openingTransaction->id,
-                'debit' => $amount,
-                'credit' => 0,
+                'debit' => 0,
+                'credit' => $amount,
                 'balance_after' => $amount,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -262,9 +260,9 @@ abstract class BusTestCase extends TestCase
 
         LedgerBalanceMutationGuard::run(function () use ($amount) {
             $this->cashboxEgp->update(['balance' => $amount]);
-            \App\Models\AccountEntry::create([
+            AccountEntry::create([
                 'account_id' => $this->cashboxEgp->id,
-                'transaction_id' => \App\Models\Transaction::create([
+                'transaction_id' => Transaction::create([
                     'type' => 'transfer',
                     'amount' => $amount,
                     'module' => 'general',
@@ -273,8 +271,8 @@ abstract class BusTestCase extends TestCase
                     'created_by' => $this->user->id,
                     'notes' => 'Opening balance — seeded by BusTestCase::seedCashboxBalance',
                 ])->id,
-                'debit' => $amount,
-                'credit' => 0,
+                'debit' => 0,
+                'credit' => $amount,
                 'balance_after' => $amount,
             ]);
         });
@@ -389,9 +387,9 @@ abstract class BusTestCase extends TestCase
     }
 
     /**
-     * Assert that for the given Account, the sum of (debit - credit) of all
-     * AccountEntry rows equals the current `balance`. (The convention set in
-     * TransactionService.php: from gets CREDIT, to gets DEBIT.)
+     * Assert that for the given Account, the sum of (credit - debit) of all
+     * AccountEntry rows equals the current `balance`. This is the project-wide
+     * accounting convention used by Account and TransactionService.
      */
     protected function assertLedgerBalancedForAccount(Account $account): void
     {
@@ -399,7 +397,7 @@ abstract class BusTestCase extends TestCase
             ->where('account_id', $account->id)
             ->get(['debit', 'credit']);
 
-        $expectedBalance = round($entries->sum(fn ($e) => (float) $e->debit - (float) $e->credit), 2);
+        $expectedBalance = round($entries->sum(fn ($e) => (float) $e->credit - (float) $e->debit), 2);
         $actualBalance = round((float) $account->fresh()->balance, 2);
 
         $this->assertEqualsWithDelta(
@@ -419,7 +417,7 @@ abstract class BusTestCase extends TestCase
 
     /**
      * Assert that the global system invariant holds:
-     *   for every Account,  balance == SUM(debit) - SUM(credit).
+     *   for every Account, balance == SUM(credit) - SUM(debit).
      *
      * Returns the count of accounts verified (useful for diagnostics).
      *
@@ -437,7 +435,7 @@ abstract class BusTestCase extends TestCase
         $verified = 0;
 
         foreach ($accounts as $account) {
-            $entriesSum = round($account->entries->sum(fn ($e) => (float) $e->debit - (float) $e->credit), 2);
+            $entriesSum = round($account->entries->sum(fn ($e) => (float) $e->credit - (float) $e->debit), 2);
             $actual = round((float) $account->balance, 2);
 
             // Skip opening-balance placeholders (entries==0, balance!=0 with no transactions yet)

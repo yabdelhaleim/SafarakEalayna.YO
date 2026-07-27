@@ -6,6 +6,7 @@ use App\Enums\VisaEntryType;
 use App\Enums\VisaStatus;
 use App\Enums\VisaType;
 use App\Models\Account;
+use App\Rules\VisaLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -90,12 +91,12 @@ class StoreVisaBookingRequest extends FormRequest
             'agent_name' => ['nullable', 'string', 'max:150'],
             'notes' => ['nullable', 'string', 'max:1000'],
 
-            'account_id' => ['required', 'integer', 'exists:accounts,id'],
+            'account_id' => ['required', 'integer', 'exists:accounts,id', new VisaLiquidityAccount],
             'employee_id' => ['nullable', 'integer', 'exists:users,id'],
 
             'initial_payment.amount' => ['nullable', 'numeric', 'min:0'],
             'initial_payment.payment_method' => ['nullable', 'string', 'max:50'],
-            'initial_payment.account_id' => ['nullable', 'integer', 'exists:accounts,id'],
+            'initial_payment.account_id' => ['nullable', 'integer', 'exists:accounts,id', new VisaLiquidityAccount],
             'initial_payment.payment_date' => ['nullable', 'date'],
             'initial_payment.reference' => ['nullable', 'string', 'max:100'],
             'initial_payment.paid_by' => ['nullable', 'string', 'max:150'],

@@ -43,6 +43,30 @@ class VisaRefundService
     public function cancel(VisaBooking $booking, ?string $reason = null): VisaBooking
     {
         return DB::transaction(function () use ($booking, $reason) {
+            // ─── Idempotency + lifecycle guards (BUG-FIX 2026-07-27) ───
+            // The previous flow did NOT guard against double-cancel which
+            // would silently re-reverse already-reversed transactions —
+            // producing phantom journal entries. Same pattern as the HajjUmra
+            // cancel() guard.
+            $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+            if ($status === VisaStatus::Cancelled->value) {
+                throw new \RuntimeException(
+                    'هذا الطلب ملغى مسبقاً (status=cancelled). لا يمكن إلغاء الطلب مرتين.'
+                );
+            }
+            if ($status === VisaStatus::Refunded->value) {
+                throw new \RuntimeException(
+                    'لا يمكن إلغاء طلب تأشيرة تم استرداده بالكامل (status=refunded). '
+                    .'الحالة نهائية.'
+                );
+            }
+            if ($booking->trashed()) {
+                throw new \RuntimeException(
+                    'لا يمكن إلغاء طلب تأشيرة محذوف (soft-deleted). '
+                    .'استخدم deleteWithReversal() للإدارة.'
+                );
+            }
+
             $note = trim((string) $booking->notes);
             if ($reason) {
                 $note = ($note === '' ? '' : $note."\n").'سبب الإلغاء: '.$reason;
@@ -78,6 +102,31 @@ class VisaRefundService
     public function refund(VisaBooking $booking, ?string $reason = null): VisaBooking
     {
         return DB::transaction(function () use ($booking, $reason) {
+            // ─── Idempotency + lifecycle guards (BUG-FIX 2026-07-27) ───
+            // 1) refund on already-refunded → 422 idempotency.
+            // 2) refund on cancelled (BUG #3) → 422, otherwise the second
+            //    reversal would double-reverse every transaction.
+            // Same invariant as the HajjUmra refund() guard.
+            $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+            if ($status === VisaStatus::Refunded->value) {
+                throw new \RuntimeException(
+                    'هذا الطلب تم استرداده بالكامل مسبقاً (status=refunded).'
+                );
+            }
+            if ($status === VisaStatus::Cancelled->value) {
+                throw new \RuntimeException(
+                    'لا يمكن استرداد طلب تأشيرة مُلغى (status=cancelled). '
+                    .'تم عكس القيود المحاسبية عند الإلغاء — لإنشاء قيد استرداد فعلي، '
+                    .'استخدم deleteWithReversal() ثم أعد تسجيل الطلب.'
+                );
+            }
+            if ($booking->trashed()) {
+                throw new \RuntimeException(
+                    'لا يمكن استرداد طلب تأشيرة محذوف (soft-deleted). '
+                    .'استخدم deleteWithReversal() للعكس الإداري الكامل.'
+                );
+            }
+
             $note = trim((string) $booking->notes);
             if ($reason) {
                 $note = ($note === '' ? '' : $note."\n").'سبب الاسترداد: '.$reason;

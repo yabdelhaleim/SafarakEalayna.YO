@@ -9,6 +9,7 @@ use App\Enums\FlightPaymentMethod;
 use App\Enums\FlightSystemType;
 use App\Enums\TransactionModule;
 use App\Models\Account;
+use App\Models\AccountEntry;
 use App\Models\Airport;
 use App\Models\Customer;
 use App\Models\Flight\FlightBooking;
@@ -1805,6 +1806,25 @@ class FlightBookingService
                     }
                     $convertedAmount = round($amount / $rate, 4);
                     // transferAmount remains $amount (in EGP).
+                } elseif ($isBookingForeign && ! $isPaymentEgp && $paymentCurrency === $bookingCurrency) {
+                    // FIX (2026-07-27): foreign booking + same-foreign-currency payment
+                    // (e.g. USD booking paid from USD cashbox). The payment amount is in
+                    // the foreign currency, but the ledger's contra account (customer AR)
+                    // is in EGP. Without this branch, the downstream recordJournalTransfer
+                    // misinterpreted $amount as EGP-equivalent and divided by exchange_rate
+                    // to compute the cashbox credit — silently crediting the cashbox by
+                    // the wrong amount (e.g. 7500 USD paid → cashbox credited 150 USD
+                    // at rate 50) and producing an unbalanced journal entry.
+                    //
+                    // Correct semantics:
+                    //   - $amount (raw foreign) goes into the cashbox unchanged.
+                    //   - The EGP equivalent (for customer AR debit) = $amount × exchange_rate.
+                    $rate = (float) ($booking->exchange_rate ?? 1.0);
+                    if ($rate <= 0) {
+                        $rate = 1.0;
+                    }
+                    $transferAmount = $amount * $rate; // EGP-equivalent for AR
+                    $convertedAmount = $amount;         // foreign amount for cashbox credit
                 }
 
                 // Validate total payments won't exceed selling_price
@@ -2036,6 +2056,7 @@ class FlightBookingService
                     $totalPenaltiesEgp = ($airlinePenalty + $officePenalty) * ($bookingCurrency === 'EGP' ? 1.0 : $bookingExchangeRate);
                     $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
 
+                    $reversalPosted = false;
                     if ($saleReversalAmount > 0.001) {
                         $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                         if ($orig && $orig->from_account_id && $orig->to_account_id) {
@@ -2053,9 +2074,22 @@ class FlightBookingService
                                 'notes' => 'عكس مبيعات حجز طيران ملغي (مخصوماً منه الغرامات) — حجز #'.$booking->booking_number,
                                 'created_by' => $userId,
                             ]);
+                            $reversalPosted = true;
                         }
                     }
-                    $booking->forceFill(['sale_gl_transaction_id' => null])->save();
+                    // FIX (2026-07-27): only clear sale_gl_transaction_id if we
+                    // actually posted a reversal entry. When the cancellation has
+                    // full penalty (refund=0, sale_reversal=0), the sale is
+                    // still "open" on the books — clearing sale_gl_transaction_id
+                    // would silently break the subsequent deleteBookingWithReversal()
+                    // which checks this field to decide whether to reverse the GL
+                    // sale. Result: the customer AR would gain 12000 EGP from the
+                    // payment reversal but never lose it via the sale reversal,
+                    // leaving a phantom receivable on the books (root cause of
+                    // the cancelled-then-deleted booking imbalance).
+                    if ($reversalPosted) {
+                        $booking->forceFill(['sale_gl_transaction_id' => null])->save();
+                    }
                 }
 
                 if ($refundAmount > 0 && empty($data['account_id'])) {
@@ -2184,6 +2218,66 @@ class FlightBookingService
     }
 
     /**
+     * Credit back an EXACT EGP amount to the carrier — used by
+     * deleteBookingWithReversal when the booking was previously cancelled.
+     *
+     * Why this exists: cancelBooking uses creditBackFlightCarrier which
+     * computes credit_amount = max(0, purchaseEgp - airlinePenalty). After a
+     * cancellation, the carrier already received credit_back = (purchaseEgp -
+     * airlinePenalty), leaving it in a "minus airlinePenalty" state. A full
+     * delete needs to credit back ONLY that remaining airlinePenalty to undo
+     * the cancellation cleanly — not the full purchaseEgp again.
+     *
+     * @param  float  $exactEgpAmount  The exact EGP amount to credit back
+     *                                  (typically = airlinePenalty from the
+     *                                  existing FlightRefund record).
+     */
+    protected function creditBackFlightCarrierExact(FlightBooking $booking, float $exactEgpAmount): void
+    {
+        if ($exactEgpAmount <= 0) {
+            return;
+        }
+
+        $carrier = FlightCarrier::lockForUpdate()->findOrFail($booking->flight_carrier_id);
+
+        $creditAmount = $this->purchaseAmountInBalanceCurrency(
+            (string) $carrier->currency,
+            'EGP',
+            $exactEgpAmount,
+            null,
+            $this->lockedRateFromBookingSnapshot($booking, (string) $carrier->currency)
+        );
+
+        if ($creditAmount <= 0) {
+            return;
+        }
+
+        $carrier->credit(
+            amount: $creditAmount,
+            description: 'حذف حجز — إرجاع الرصيد المتبقي للناقل — حجز #'.$booking->booking_number,
+            userId: Auth::id() ?: 1,
+            bookingId: $booking->id
+        );
+
+        Log::info('Flight carrier credited back (booking deleted, exact amount)', [
+            'flight_booking_id' => $booking->id,
+            'carrier_id' => $carrier->id,
+            'exact_egp_amount' => $exactEgpAmount,
+            'credit_amount' => $creditAmount,
+            'balance_after' => $carrier->fresh()->available_balance,
+        ]);
+
+        $this->prepaidLedgerService->refundCogs(
+            prepaidKey: 'flight_carrier',
+            module: TransactionModule::Flight,
+            amount: $exactEgpAmount,
+            notes: sprintf('حذف تكلفة حجز %s — ناقل %s', $booking->booking_number, $carrier->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
+        );
+    }
+
+    /**
      * إرجاع رصيد نظام الحجز بعد الإلغاء (مع خصم جزاء الخطوط إن وُجد).
      */
     protected function creditBackFlightSystem(FlightBooking $booking, float $airlinePenalty): void
@@ -2232,6 +2326,56 @@ class FlightBookingService
             module: TransactionModule::Flight,
             amount: $netEgp,
             notes: sprintf('إلغاء تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
+            relatedType: FlightBooking::class,
+            relatedId: $booking->id,
+        );
+    }
+
+    /**
+     * Credit back an EXACT EGP amount to the system — used by
+     * deleteBookingWithReversal when the booking was previously cancelled.
+     * (See creditBackFlightCarrierExact for the rationale.)
+     */
+    protected function creditBackFlightSystemExact(FlightBooking $booking, float $exactEgpAmount): void
+    {
+        if ($exactEgpAmount <= 0) {
+            return;
+        }
+
+        $system = FlightSystem::query()->lockForUpdate()->findOrFail($booking->flight_system_id);
+
+        $creditAmount = $this->purchaseAmountInBalanceCurrency(
+            (string) $system->currency,
+            'EGP',
+            $exactEgpAmount,
+            null,
+            $this->lockedRateFromBookingSnapshot($booking, (string) $system->currency)
+        );
+
+        if ($creditAmount <= 0) {
+            return;
+        }
+
+        $system->credit(
+            amount: $creditAmount,
+            description: 'حذف حجز — إرجاع الرصيد المتبقي للنظام — حجز #'.$booking->booking_number,
+            userId: Auth::id() ?: 1,
+            bookingId: $booking->id
+        );
+
+        Log::info('Flight system credited back (booking deleted, exact amount)', [
+            'flight_booking_id' => $booking->id,
+            'flight_system_id' => $system->id,
+            'exact_egp_amount' => $exactEgpAmount,
+            'credit_amount' => $creditAmount,
+            'balance_after' => $system->fresh()->available_balance,
+        ]);
+
+        $this->prepaidLedgerService->refundCogs(
+            prepaidKey: 'flight_system',
+            module: TransactionModule::Flight,
+            amount: $exactEgpAmount,
+            notes: sprintf('حذف تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
             relatedType: FlightBooking::class,
             relatedId: $booking->id,
         );
@@ -2361,20 +2505,44 @@ class FlightBookingService
             ]);
 
             // 2) Reverse each payment (creates a new reversal journal transfer per payment)
+            //
+            // FIX (2026-07-27): when the booking was already cancelled (has a
+            // FlightRefund), the cancel has already debited the cashbox for
+            // the refund_amount. Reversing the full payments here would
+            // double-debit the cashbox (cashbox loss = total_paid - refund_amount
+            // instead of the office_penalty kept). The correct approach is to
+            // reverse ONLY the unrefunded portion (= office penalty kept) —
+            // which is effectively the same as crediting the income clearing
+            // (reversing the office revenue).
+            //
+            // For the simpler "no prior refund" path, we reverse the full payments.
+            $existingRefundEarly = $booking->refund;
             foreach ($booking->payments as $payment) {
-                $this->reverseSinglePayment($payment, $userIdEffective);
+                if ($existingRefundEarly) {
+                    $this->reverseSinglePayment($payment, $userIdEffective, $existingRefundEarly);
+                } else {
+                    $this->reverseSinglePayment($payment, $userIdEffective);
+                }
             }
 
-            // 3) Reverse the GL sale journal entry on customer ledger (if it exists)
+            // 3) Reverse the GL sale journal entry on customer ledger.
             //    Original: clearing → customer (recordSaleToCustomer)
             //    Reverse:  customer → clearing (recordJournalTransfer)
+            //
+            // FIX (2026-07-27): when the booking was cancelled with a partial
+            // refund, the cancel's GL sale reversal left a residual
+            // (= office/airline penalties kept as revenue) on the income
+            // clearing account. The delete needs to clear that residual,
+            // because delete = "this booking never happened".
             if ($booking->sale_gl_transaction_id) {
+                // Original sale_gl_transaction still on file (no cancel yet, or
+                // cancel's reversal amount was 0).
                 $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                 if ($orig && $orig->from_account_id && $orig->to_account_id) {
                     $this->transactionService->recordJournalTransfer([
                         'amount' => (float) $booking->selling_price,
-                        'from_account_id' => (int) $orig->to_account_id,   // customer
-                        'to_account_id' => (int) $orig->from_account_id,   // income clearing
+                        'from_account_id' => (int) $orig->to_account_id,
+                        'to_account_id' => (int) $orig->from_account_id,
                         'allow_from_negative' => true,
                         'module' => TransactionModule::Flight->value,
                         'related_type' => FlightBooking::class,
@@ -2384,27 +2552,119 @@ class FlightBookingService
                     ]);
                 }
                 $booking->forceFill(['sale_gl_transaction_id' => null])->save();
+            } elseif ($existingRefundEarly && ((float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty) > 0.001) {
+                // Cancel had a partial GL sale reversal (= sale_reversal < sale).
+                // The RESIDUAL (= penalties kept) still sits on the income clearing
+                // account as revenue. We need to clear it.
+                $totalPenalty = (float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty;
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                $penaltyEgp = $bookingCurrency === 'EGP' ? $totalPenalty : $totalPenalty * $bookingExchangeRate;
+
+                // Resolve the income clearing account.
+                $clearingAccountId = $this->ensureFlightIncomeClearingAccount($userIdEffective);
+
+                // The "office/airline penalty kept" sits on the cashbox that was
+                // used for the refund (account_id on the FlightRefund record).
+                // To fully reverse on delete: debit that cashbox by the penalty
+                // (cash returns to customer) and credit the income clearing
+                // (revenue reversed). The customer AR stays where cancel left it
+                // (already 0 from sale_reversal + refund flow).
+                $refundCashboxId = (int) ($existingRefundEarly->account_id ?: 0);
+                if ($refundCashboxId <= 0) {
+                    // No refund cashbox on record — fall back to skipping this step.
+                    Log::warning('deleteBookingWithReversal: cannot clear residual clearing without a refund cashbox on file', [
+                        'booking_id' => $booking->id,
+                        'refund_id' => $existingRefundEarly->id,
+                    ]);
+                } else {
+                    $this->transactionService->recordJournalTransfer([
+                        'amount' => $penaltyEgp,
+                        'from_account_id' => $refundCashboxId,        // cashbox (was refunded from, still has +penalty)
+                        'to_account_id' => $clearingAccountId,        // income clearing (still has -penalty residual)
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                        'created_by' => $userIdEffective,
+                    ]);
+                }
             }
 
-            // 4) Reverse the purchase pool debit + prepaid GL COGS (reuse cancelBooking helpers,
-            //    passing penalty=0 since this is a full reversal — no cancellation fees).
+            // 4) Reverse the purchase pool debit + prepaid GL COGS.
+            //
+            // FIX (2026-07-27): the carrier debit lifecycle is:
+            //   - createBooking:  carrier.balance -= purchaseEgp
+            //   - cancelBooking:  carrier.balance += (purchaseEgp - airlinePenalty)
+            //                    so net after cancel: -(airlinePenalty)
+            //   - deleteBooking:  needs to reverse the REMAINING (airlinePenalty)
+            //
+            // The pre-fix code passed penalty=0 to creditBackFlightCarrier, which
+            // credits back the FULL purchaseEgp — DOUBLE-COUNTING (cancel already
+            // credited back purchaseEgp-airlinePenalty). Net effect: carrier
+            // ends up with +(airlinePenalty) extra balance (phantom revenue that
+            // cancels the office's penalty).
+            //
+            // Correct fix: pass `airlinePenalty` as the AMOUNT TO CREDIT BACK
+            // (renamed semantics). creditBackFlightCarrier's formula
+            // max(0, purchaseEgp - airlinePenalty) is then max(0, 0) = 0 in the
+            // no-refund case, but for our post-cancel scenario we need to
+            // credit back the REMAINING carrier obligation, which equals the
+            // (purchaseEgp - airlinePenalty) from the prior cancel — i.e. the
+            // AMOUNT that the office has NOT yet absorbed as penalty.
+            //
+            // Easiest correct approach: introduce a dedicated
+            // `creditBackCarrierRemaining()` method that credits the EXACT
+            // remaining amount (= airlinePenalty from the existing refund, or
+            // the full purchaseEgp if no prior cancel).
             $src = $booking->purchase_balance_source;
-            $zeroPenalty = 0.0;
+            $existingRefund = $booking->refund;  // null if never cancelled
 
             if ($src === 'carrier' && $booking->flight_carrier_id && (float) $booking->purchase_price > 0) {
-                $this->creditBackFlightCarrier($booking, $zeroPenalty);
+                if ($existingRefund) {
+                    $this->creditBackFlightCarrierExact(
+                        $booking,
+                        (float) $existingRefund->airline_penalty
+                    );
+                } else {
+                    $this->creditBackFlightCarrier($booking, 0.0);
+                }
             } elseif ($src === 'system' && $booking->flight_system_id && (float) $booking->purchase_price > 0) {
-                $this->creditBackFlightSystem($booking, $zeroPenalty);
+                if ($existingRefund) {
+                    $this->creditBackFlightSystemExact(
+                        $booking,
+                        (float) $existingRefund->airline_penalty
+                    );
+                } else {
+                    $this->creditBackFlightSystem($booking, 0.0);
+                }
             } elseif ($src === 'group' && $booking->flight_group_id && (float) $booking->purchase_price > 0) {
-                $this->reverseGroupPurchase($booking, $zeroPenalty, $userIdEffective);
+                if ($existingRefund) {
+                    $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                } else {
+                    $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                }
             } elseif ($src === null) {
                 // Legacy rows without an explicit source flag
                 if ($booking->flight_carrier_id && (float) $booking->purchase_price > 0) {
-                    $this->creditBackFlightCarrier($booking, $zeroPenalty);
+                    if ($existingRefund) {
+                        $this->creditBackFlightCarrierExact($booking, (float) $existingRefund->airline_penalty);
+                    } else {
+                        $this->creditBackFlightCarrier($booking, 0.0);
+                    }
                 } elseif ($booking->flight_system_id && (float) $booking->purchase_price > 0) {
-                    $this->creditBackFlightSystem($booking, $zeroPenalty);
+                    if ($existingRefund) {
+                        $this->creditBackFlightSystemExact($booking, (float) $existingRefund->airline_penalty);
+                    } else {
+                        $this->creditBackFlightSystem($booking, 0.0);
+                    }
                 } elseif ($booking->flight_group_id && (float) $booking->purchase_price > 0) {
-                    $this->reverseGroupPurchase($booking, $zeroPenalty, $userIdEffective);
+                    if ($existingRefund) {
+                        $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                    } else {
+                        $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                    }
                 }
             }
 
@@ -2451,21 +2711,33 @@ class FlightBookingService
 }
 
     /**
-     * Reverse a single FlightPayment by creating a *new* (reversal) journal transfer.
+     * Reverse a single FlightPayment by creating a NEW reversal transaction
+     * that mirrors the original transaction's AccountEntry legs (debit ↔ credit).
      *
-     * Original `addPayment` posts:  income_clearing (debit)  →  cash account (credit)
-     * This method posts the mirror: cash account (debit)   →  income_clearing (credit)
+     * Original `addPayment` posts:  customer (debit in EGP)  →  cash account (credit in cashbox ccy)
+     * This method posts a mirror: cash account (debit)  →  customer (credit)
+     * with EXACTLY the same per-leg amounts in each account's own currency.
      *
-     * Per project rule, the ORIGINAL Transaction and AccountEntry rows are NEVER touched —
-     * we create brand-new ones that net to zero against the original. The `transaction_id`
-     * on the FlightPayment row stays linked to the *original* (so the audit trail is clear);
-     * callers can find the reversal by `related_type=FlightPayment` + `related_id=`.
+     * FIX (2026-07-27): previous implementation called `recordJournalTransfer`
+     * with the original Transaction's `amount` as BOTH the debit AND the implicit
+     * credit (via conversion). This broke multi-currency payments: a USD booking
+     * paid in USD cashbox posts legs of 7500 EGP (customer debit) + 150 USD
+     * (cashbox credit). Replaying the original `amount=7500` as a new transfer
+     * would attempt a 7500 USD debit on the cashbox (silently doubling the
+     * cashbox impact) AND a 375000 EGP credit on the customer (via EGP→USD
+     * conversion) — which is the root cause of the production "−300 KWD" anomaly.
      *
-     * Idempotency: if `$payment->transaction_id` is missing or the original Transaction
-     * cannot be found, this method silently no-ops (no GL change) — assumed that the
-     * original payment was never actually posted.
+     * The correct fix is to read each ORIGINAL AccountEntry and create a mirror
+     * entry on a NEW transaction_id (related_type=FlightPayment) with swapped
+     * debit/credit fields. Each leg keeps its own currency unchanged.
+     *
+     * Per project rule, the ORIGINAL Transaction and AccountEntry rows are
+     * NEVER touched — we create brand-new mirror rows that net to zero.
+     *
+     * Idempotency: if `$payment->transaction_id` is missing or the original
+     * Transaction cannot be found, this method silently no-ops.
      */
-    protected function reverseSinglePayment(FlightPayment $payment, int $userId): void
+    protected function reverseSinglePayment(FlightPayment $payment, int $userId, ?\App\Models\Flight\FlightRefund $existingRefund = null): void
     {
         if (! $payment->transaction_id) {
             return; // Nothing posted originally → nothing to reverse
@@ -2476,11 +2748,46 @@ class FlightBookingService
             return;
         }
 
-        // Create the *reversal* journal transfer (mirror of the original)
+        // Read each leg of the original transaction.
+        $originalEntries = AccountEntry::query()
+            ->where('transaction_id', $originalTx->id)
+            ->get();
+
+        if ($originalEntries->isEmpty()) {
+            return;
+        }
+
+        $debitTotal = (float) $originalEntries->sum('debit');
+        $creditTotal = (float) $originalEntries->sum('credit');
+
+        // FIX (2026-07-27): when the booking was previously cancelled with a
+        // partial refund, the cashbox has already been debited for the
+        // refund_amount (via refundTreasuryAccount) and the customer AR has
+        // been adjusted by the sale_gl partial reversal. The DELETE then
+        // needs to clean up the remaining "office/airline penalty kept as
+        // revenue" — which lives on the income clearing account (sale_gl
+        // partial reversal left a residual) and on the cashbox (the kept cash).
+        //
+        // The correct accounting for delete-after-cancel-with-refund:
+        //   - Skip payment reversal (cashbox already debited by cancel's refund)
+        //   - Reverse the GL sale REMAINING amount (= penalties kept)
+        //   - Credit back the carrier's airline_penalty kept
+        // So we short-circuit the payment reversal when the booking was refunded.
+        if ($existingRefund && (float) $existingRefund->refund_amount > 0.001) {
+            Log::info('FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit)', [
+                'flight_payment_id' => $payment->id,
+                'existing_refund_id' => $existingRefund->id,
+                'existing_refund_amount' => (float) $existingRefund->refund_amount,
+            ]);
+            return;
+        }
+
+        // No prior refund OR a "no_refund" cancel: reverse the full payment.
         $this->transactionService->recordJournalTransfer([
-            'amount' => (float) $originalTx->amount,
-            'from_account_id' => (int) $originalTx->to_account_id,    // cash account
-            'to_account_id' => (int) $originalTx->from_account_id,   // income clearing
+            'amount' => $creditTotal,
+            'converted_amount' => $debitTotal > 0 ? $debitTotal : null,
+            'from_account_id' => (int) $originalTx->to_account_id,
+            'to_account_id' => (int) $originalTx->from_account_id,
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightPayment::class,
             'related_id' => $payment->id,
@@ -2492,7 +2799,8 @@ class FlightBookingService
         Log::info('FlightBookingService::reverseSinglePayment', [
             'flight_payment_id' => $payment->id,
             'original_transaction_id' => $originalTx->id,
-            'amount' => (float) $originalTx->amount,
+            'debit_total' => $debitTotal,
+            'credit_total' => $creditTotal,
             'user_id' => $userId,
         ]);
     }

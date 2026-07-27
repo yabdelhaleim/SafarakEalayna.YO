@@ -14,11 +14,13 @@ use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
 use App\Models\Employee;
+use App\Models\Transaction;
 use App\Services\Finance\CurrencyService;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -143,7 +145,7 @@ class BusBookingService
         // raw SUM(total_price) across all currencies, which silently mixed
         // USD/SAR/EUR amounts with EGP. Now foreign bookings are reported
         // in their EGP equivalent.
-        $currencyService = app(\App\Services\Finance\CurrencyService::class);
+        $currencyService = app(CurrencyService::class);
 
         $totalRevenue = (float) BusBooking::query()
             ->where('status', '!=', BusBookingStatus::Cancelled->value)
@@ -399,7 +401,7 @@ class BusBookingService
         $route = trim($data['route']);
         $sellingPrice = round((float) ($data['selling_price'] ?? 0), 2);
         $costPrice = round((float) ($data['cost_price'] ?? $sellingPrice), 2); // سعر الشراء — المديونية للشركة
-        $travelDate = \Carbon\Carbon::parse($data['travel_date'] ?? now())->toDateString();
+        $travelDate = Carbon::parse($data['travel_date'] ?? now())->toDateString();
 
         // Try to find an existing auto-inventory for same company + route + date + prices.
         // We compare against `DATE(travel_date)` so the comparison is engine-agnostic
@@ -451,13 +453,20 @@ class BusBookingService
      */
     public function payBooking(BusBooking $booking, array $data): BusBooking
     {
-        if ($booking->status === BusBookingStatus::Cancelled) {
-            throw new \Exception('Cannot pay for a cancelled booking.');
-        }
-
         try {
             return DB::transaction(function () use ($booking, $data) {
-                $booking->refresh();
+                $booking = BusBooking::query()
+                    ->lockForUpdate()
+                    ->findOrFail($booking->id);
+
+                if (in_array($booking->status, [
+                    BusBookingStatus::Cancelled,
+                    BusBookingStatus::Refunded,
+                    BusBookingStatus::PartiallyRefunded,
+                ], true)) {
+                    throw new \Exception('Cannot pay for a cancelled or refunded booking.');
+                }
+
                 $booking->loadSum('payments', 'amount');
                 $paidSoFar = (float) ($booking->payments_sum_amount ?? 0);
                 $remaining = max(0, (float) $booking->total_price - $paidSoFar);
@@ -485,6 +494,14 @@ class BusBookingService
                 if ($accountId === 0) {
                     $vault = Account::getModuleVault('bus');
                     $accountId = $vault ? $vault->id : null;
+                }
+
+                // A payment without a financial account would mark the booking as paid
+                // while leaving no GL transaction to reconcile or reverse later.
+                if (! $accountId) {
+                    throw new \RuntimeException(
+                        'لا يوجد حساب مالي صالح للدفع. اختر حساب خزينة/بنك أو اضبط خزينة الباص أولاً.'
+                    );
                 }
 
                 // Fix #10 — validate payment_method before persisting.
@@ -518,56 +535,28 @@ class BusBookingService
                     $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
                     $paidAccountCurrency = strtoupper((string) ($paidAccount?->currency ?? 'EGP'));
 
-                    // Phase 7 — FX-aware payment routing:
-                    // The income clearing is ALWAYS EGP (per the saving-hook
-                    // contract), so the FX trigger is "booking currency != EGP".
-                    // When triggered we convert the booking-currency amount into
-                    // an EGP-equivalent for the clearing-side debit (`amount`)
-                    // and keep the original foreign-currency amount as the
-                    // `converted_amount` for the wallet-side credit.
-                    //
-                    // Convention reminder — recordJournalTransfer:
-                    //   amount          → debit on from_account (clearing, EGP)
-                    //   converted_amount→ credit on to_account  (paid_account, foreign)
-                    $incomeArgs = [
-                        'amount' => (float) $data['amount'],
+                    $paymentArgs = [
+                        'amount' => round((float) $data['amount'], 2),
+                        'from_account_id' => $customerAccount->id,
                         'to_account_id' => $accountId,
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
-                        'notes' => $data['notes'] ?? null,
+                        'notes' => 'تحصيل دفعة حجز باص #'.$booking->id.(($data['notes'] ?? null) ? ' — '.$data['notes'] : ''),
+                        'allow_from_negative' => true,
                     ];
 
-                    if ($bookingCurrency !== 'EGP' && $bookingCurrency !== $paidAccountCurrency) {
-                        // Booking is foreign AND the pay account is a different currency
-                        // (typically EGP, but possibly another non-EGP currency).
-                        // We need the EGP-equivalent of the booking amount.
+                    if ($bookingCurrency !== $paidAccountCurrency) {
                         $converted = $this->convertAmount(
                             (float) $data['amount'],
                             $bookingCurrency,
-                            'EGP'
+                            $paidAccountCurrency
                         );
-                        $incomeArgs['amount'] = round((float) $converted['to_amount'], 2);          // EGP (clearing debit)
-                        $incomeArgs['converted_amount'] = round((float) $data['amount'], 2);         // foreign (wallet credit)
-                        $incomeArgs['exchange_rate'] = $converted['rate'];
-                    } elseif ($bookingCurrency !== 'EGP' && $bookingCurrency === $paidAccountCurrency) {
-                        // Booking is foreign AND we pay from a same-currency account (e.g. USD/USD).
-                        // The clearing (EGP) still receives the EGP-equivalent debit;
-                        // the paid_account (foreign, same as booking) receives the exact
-                        // booking amount as credit. We pass converted_amount so the
-                        // wallet side gets the booking-currency amount rather than a
-                        // synthetic 1:1 with the EGP clearing.
-                        $converted = $this->convertAmount(
-                            (float) $data['amount'],
-                            $bookingCurrency,
-                            'EGP'
-                        );
-                        $incomeArgs['amount'] = round((float) $converted['to_amount'], 2);          // EGP (clearing debit)
-                        $incomeArgs['converted_amount'] = round((float) $data['amount'], 2);         // foreign (wallet credit)
-                        $incomeArgs['exchange_rate'] = $converted['rate'];
+                        $paymentArgs['converted_amount'] = round((float) $converted['to_amount'], 2);
+                        $paymentArgs['exchange_rate'] = $converted['rate'];
                     }
 
-                    $transaction = $this->transactionService->recordIncome($incomeArgs);
+                    $transaction = $this->transactionService->recordJournalTransfer($paymentArgs);
                     $payment->update(['transaction_id' => $transaction->id, 'account_id' => $accountId]);
                     $transactionId = $transaction->id;
                 }
@@ -576,7 +565,16 @@ class BusBookingService
                 $booking->load('payments');
                 $totalPaid = $booking->payments->sum('amount');
 
-                $newPaymentStatus = match (true) {                    $totalPaid >= $booking->total_price => BusPaymentStatus::Paid,                    $totalPaid > 0 => BusPaymentStatus::Partial,                    default => BusPaymentStatus::Pending,                };                $newStatus = match ($newPaymentStatus) {                    BusPaymentStatus::Paid => BusBookingStatus::Paid,                    default => $booking->status,                };                $booking->update([                    'paid_amount' => $totalPaid,                    'payment_status' => $newPaymentStatus,                    'status' => $newStatus,                    'account_id' => $data['account_id'] ?? $booking->account_id,                ]);                Log::info('Bus booking payment recorded', [                    'booking_id' => $booking->id,                    'payment_id' => $payment->id,                    'amount' => $data['amount'],                    'total_paid' => $totalPaid,                    'payment_status' => $newPaymentStatus->value,                    'transaction_id' => $transactionId,                    'user_id' => Auth::id(),                ]);                return $booking->fresh([                    'inventory.company',                    'customer',                    'employee.user',                    'account',                    'payments',                    'transaction',                    'createdBy',                ]);
+                $newPaymentStatus = match (true) {
+                    $totalPaid >= $booking->total_price => BusPaymentStatus::Paid,                    $totalPaid > 0 => BusPaymentStatus::Partial,                    default => BusPaymentStatus::Pending,
+                };
+                $newStatus = match ($newPaymentStatus) {
+                    BusPaymentStatus::Paid => BusBookingStatus::Paid,                    default => $booking->status,
+                };
+                $booking->update(['paid_amount' => $totalPaid,                    'payment_status' => $newPaymentStatus,                    'status' => $newStatus,                    'account_id' => $data['account_id'] ?? $booking->account_id]);
+                Log::info('Bus booking payment recorded', ['booking_id' => $booking->id,                    'payment_id' => $payment->id,                    'amount' => $data['amount'],                    'total_paid' => $totalPaid,                    'payment_status' => $newPaymentStatus->value,                    'transaction_id' => $transactionId,                    'user_id' => Auth::id()]);
+
+                return $booking->fresh(['inventory.company',                    'customer',                    'employee.user',                    'account',                    'payments',                    'transaction',                    'createdBy']);
             });
         } catch (\Exception $e) {
             Log::error('BusBookingService::payBooking failed', [
@@ -611,9 +609,17 @@ class BusBookingService
                 $userId = Auth::id() ?: 1;
 
                 $booking = BusBooking::query()
-                    ->with(['inventory.company', 'customer', 'payments'])
+                    ->with(['inventoryWithTrashed.company', 'customer', 'payments'])
                     ->lockForUpdate()
                     ->findOrFail($booking->id);
+
+                if (in_array($booking->status, [
+                    BusBookingStatus::Cancelled,
+                    BusBookingStatus::Refunded,
+                    BusBookingStatus::PartiallyRefunded,
+                ], true)) {
+                    throw new \Exception('الحجز ملغي أو مسترد بالفعل.');
+                }
 
                 $companyPenalty = (float) ($data['company_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
@@ -677,7 +683,10 @@ class BusBookingService
                 // Previously only (a) was handled; the refund scenario left
                 // the customer's AR stranded at +price indefinitely.
                 $debtReversalAmount = max(0, $totalPrice - max($totalPaid, $totalPenalties));
-                $arReversalAmount = $debtReversalAmount + ($refundAmount > 0.001 ? $refundAmount : 0);
+                // Payments settle the customer AR. Only an unpaid remainder
+                // should be reversed during cancellation; reversing the refund
+                // amount again would create a customer credit balance.
+                $arReversalAmount = $debtReversalAmount;
                 $this->reverseCustomerSaleDebt($booking, $arReversalAmount);
 
                 $refundLedgerTx = null;
@@ -742,7 +751,13 @@ class BusBookingService
                     'created_by' => $userId,
                 ]);
 
-                $newStatus = match (true) {                    $refundAmount > 0.001 => BusBookingStatus::Refunded,                    $totalPenalties > 0.001 => BusBookingStatus::PartiallyRefunded,                    default => BusBookingStatus::Cancelled,                };                $booking->update([                    'status' => $newStatus,                    'payment_status' => $refundAmount > 0.001                        ? BusPaymentStatus::Pending                        : $booking->payment_status,                ]);                Log::info('Bus booking cancelled successfully', [                    'booking_id' => $booking->id,                    'refund_id' => $refund->id,                    'new_status' => $newStatus->value,                    'user_id' => $userId,                ]);                return $refund->load(['booking', 'account', 'transaction', 'createdBy']);
+                $newStatus = match (true) {
+                    $refundAmount > 0.001 => BusBookingStatus::Refunded,                    $totalPenalties > 0.001 => BusBookingStatus::PartiallyRefunded,                    default => BusBookingStatus::Cancelled,
+                };
+                $booking->update(['status' => $newStatus,                    'payment_status' => $refundAmount > 0.001 ? BusPaymentStatus::Pending : $booking->payment_status]);
+                Log::info('Bus booking cancelled successfully', ['booking_id' => $booking->id,                    'refund_id' => $refund->id,                    'new_status' => $newStatus->value,                    'user_id' => $userId]);
+
+                return $refund->load(['booking', 'account', 'transaction', 'createdBy']);
             });
         } catch (\InvalidArgumentException $e) {
             throw $e;
@@ -852,9 +867,9 @@ class BusBookingService
         }
 
         $notes = match ($operation) {
-            'delete-simple'    => 'حذف مديونية حجز باص #'.$booking->id,
-            'delete-reversal'  => 'عكس مديونية حجز باص #'.$booking->id.' (حذف إداري شامل)',
-            default             => 'إلغاء مديونية حجز باص #'.$booking->id,
+            'delete-simple' => 'حذف مديونية حجز باص #'.$booking->id,
+            'delete-reversal' => 'عكس مديونية حجز باص #'.$booking->id.' (حذف إداري شامل)',
+            default => 'إلغاء مديونية حجز باص #'.$booking->id,
         };
 
         $journalArgs = [
@@ -904,7 +919,7 @@ class BusBookingService
         ])->findOrFail($id);
     }
 
-/**
+    /**
      * Soft delete a booking (simple admin delete).
      *
      * Allowed for ANY status — the old `'Only pending'` constraint has been
@@ -1042,7 +1057,7 @@ class BusBookingService
                 //    soft-deleted booking surfaces a clean error, not "No query results").
                 $booking = BusBooking::query()
                     ->withTrashed()
-                    ->with(['inventory.company', 'customer', 'payments.transaction'])
+                    ->with(['inventoryWithTrashed.company', 'customer', 'payments.transaction'])
                     ->lockForUpdate()
                     ->findOrFail($bookingId);
 
@@ -1062,10 +1077,24 @@ class BusBookingService
                     'user_id' => $userIdEffective,
                 ]);
 
+                // Cancellation already reversed the sale, supplier cost and capacity.
+                // Deleting such a booking must only hide the operational rows; replaying
+                // those reversals would double-refund the customer/company and seats.
+                if (in_array($booking->status, [
+                    BusBookingStatus::Cancelled,
+                    BusBookingStatus::Refunded,
+                    BusBookingStatus::PartiallyRefunded,
+                ], true)) {
+                    $booking->payments()->delete();
+                    $booking->delete();
+
+                    return true;
+                }
+
                 // 3) Reverse every payment transaction (additive — never destructive).
                 foreach ($booking->payments as $payment) {
                     if ($payment->transaction_id) {
-                        $tx = \App\Models\Transaction::find($payment->transaction_id);
+                        $tx = Transaction::find($payment->transaction_id);
                         if ($tx) {
                             $this->transactionService->reverseTransaction($tx);
                         }
@@ -1168,17 +1197,17 @@ class BusBookingService
                 }
 
                 // Fix #3 — per-currency AR contract:
-// If the booking currency doesn't match the existing AR account currency,
-// open a NEW ledger account in the booking currency. The previous code
-// short-circuited with `customerCurrency !== 'EGP'`, which meant a USD
-// customer booking an EGP trip silently reused the USD account (the EGP
-// sale got posted to a USD ledger, mixing currencies on the same row).
-// Now the rule is "currency match is required regardless of which currency".
-if ($customerCurrency && strtoupper($account->currency) !== strtoupper($customerCurrency)) {
-    return $this->createCustomerCurrencyAccount($customer, $customerCurrency);
-}
+                // If the booking currency doesn't match the existing AR account currency,
+                // open a NEW ledger account in the booking currency. The previous code
+                // short-circuited with `customerCurrency !== 'EGP'`, which meant a USD
+                // customer booking an EGP trip silently reused the USD account (the EGP
+                // sale got posted to a USD ledger, mixing currencies on the same row).
+                // Now the rule is "currency match is required regardless of which currency".
+                if ($customerCurrency && strtoupper($account->currency) !== strtoupper($customerCurrency)) {
+                    return $this->createCustomerCurrencyAccount($customer, $customerCurrency);
+                }
 
-return $account;
+                return $account;
             }
         }
 

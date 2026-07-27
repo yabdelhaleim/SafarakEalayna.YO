@@ -4,11 +4,8 @@ namespace Tests\Feature\Bus;
 
 use App\Enums\BusInventoryPaymentType;
 use App\Models\Account;
-use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusInventory;
 use App\Models\Customer;
 use App\Services\Bus\BusBookingService;
-use App\Support\Finance\LedgerBalanceMutationGuard;
 
 /**
  * Dashboard / Statement currency-correctness tests.
@@ -208,7 +205,7 @@ class DashboardStatementCurrencyTest extends BusTestCase
             (float) $stats['closing_balance'],
             'Customer statement closing_balance matches the USD account balance (100 USD)'
         );
-        $this->assertGreaterThan(0, (float) $stats['period_debit'], 'The USD sale generated at least one debit entry');
+        $this->assertGreaterThan(0, (float) $stats['period_credit'], 'The USD sale generated at least one credit entry');
 
         // The items list is non-empty (at least the booking sale entry).
         $items = $response->json('data.items');

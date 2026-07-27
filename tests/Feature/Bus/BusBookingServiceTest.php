@@ -5,7 +5,6 @@ namespace Tests\Feature\Bus;
 use App\Enums\BusBookingStatus;
 use App\Enums\BusInventoryPaymentType;
 use App\Models\Account;
-use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusInventory;
 use App\Models\Bus\BusRefundRequest;
 use App\Services\Bus\BusBookingService;
@@ -191,7 +190,7 @@ class BusBookingServiceTest extends BusTestCase
         // The booking's payment_status flips to Paid but the AR ledger row
         // remains on the books until cancellation clears it (this is the
         // design Phase 7 wired in `cancelBooking`).
-        $this->assertEquals(240.0, (float) $customerAccount->fresh()->balance, 'Payment does NOT touch customer AR');
+        $this->assertEquals(0.0, (float) $customerAccount->fresh()->balance, 'Payment clears customer AR (journal transfer)');
         $this->assertEquals(10240.0, (float) $this->cashboxEgp->fresh()->balance, 'Cashbox +240 from payment');
 
         // Cancel with no penalty — full refund goes back to the customer.

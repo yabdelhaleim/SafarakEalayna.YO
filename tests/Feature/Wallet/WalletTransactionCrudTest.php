@@ -94,7 +94,7 @@ class WalletTransactionCrudTest extends TestCase
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/wallet/transactions', $payload);
-        dd($response->json());
+
         $response->assertStatus(201)
             ->assertJsonStructure([
                 'success', 'message',

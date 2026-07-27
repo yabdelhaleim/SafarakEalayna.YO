@@ -244,6 +244,37 @@ class VisaBookingService
 
     public function update(VisaBooking $booking, array $data): VisaBooking
     {
+        // ─────────────────────────────────────────────────────────────────
+        // BUG-FIX 2026-07-27: editing a cancelled or refunded Visa booking MUST
+        //   be blocked. The previous code only checked the lifecycle guard
+        //   in `addDebtPayment()` (line 354+) but the main update() path bypassed
+        //   it — so PATCH /api/v1/visa/bookings/{id} on a cancelled/refunded
+        //   booking would silently repost new income/expense transactions,
+        //   creating phantom journal entries on a supposedly-finished booking
+        //   and corrupting the financial timeline. Same invariant as the
+        //   HajjUmra fix.
+        // ─────────────────────────────────────────────────────────────────
+        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+        if ($status === VisaStatus::Cancelled->value) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز تأشيرة مُلغى (status=cancelled). '
+                .'استخدم VisaRefundService::deleteWithReversal() للعكس الإداري الكامل، '
+                .'أو أنشئ طلب تأشيرة جديداً بدل التعديل.'
+            );
+        }
+        if ($status === VisaStatus::Refunded->value) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز تأشيرة تم استرداده بالكامل (status=refunded). '
+                .'أنشئ طلب تأشيرة جديداً بدل التعديل.'
+            );
+        }
+        if ($booking->trashed()) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز تأشيرة محذوف (soft-deleted). '
+                .'استخدم VisaRefundService::deleteWithReversal() للعكس الإداري الكامل.'
+            );
+        }
+
         return DB::transaction(function () use ($booking, $data) {
             $fields = collect($data)->only([
                 'status', 'agent_name', 'notes', 'employee_id',
@@ -404,10 +435,55 @@ class VisaBookingService
 
     public function addPayment(VisaBooking $booking, array $data): VisaPayment
     {
+        // ─────────────────────────────────────────────────────────────────
+        // BUG-FIX 2026-07-27: lifecycle guard — match the pattern that
+        //   `addDebtPayment()` already enforces (line 354+) for cancelled
+        //   status. Add the missing refunded + soft-deleted checks, plus
+        //   an overpayment guard. Without these:
+        //     • a payment on a cancelled booking creates a NEW income tx
+        //       that the booking's old (additively-reversed) income can't
+        //       offset — corrupting the ledger;
+        //     • a payment on a trashed (soft-deleted) booking resurrects the
+        //       financial state after the admin reversal already cleared it;
+        //     • overpayments leave the customer balance negative and create
+        //       credit the customer never asked for.
+        // ─────────────────────────────────────────────────────────────────
+        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+        if ($status === VisaStatus::Cancelled->value) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز تأشيرة مُلغى (status=cancelled). '
+                .'يجب استخدام VisaRefundService::refund() لاسترداد المبالغ أو VisaRefundService::deleteWithReversal() للعكس الإداري.'
+            );
+        }
+        if ($status === VisaStatus::Refunded->value) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز تأشيرة تم استرداده بالكامل (status=refunded).'
+            );
+        }
+        if ($booking->trashed()) {
+            throw new \RuntimeException(
+                'لا يمكن إضافة دفعة على حجز تأشيرة محذوف (soft-deleted). '
+                .'يجب استخدام VisaRefundService::deleteWithReversal() للعكس الإداري.'
+            );
+        }
+
         return DB::transaction(function () use ($booking, $data) {
             $amount = (float) $data['amount'];
             $accountId = (int) ($data['account_id'] ?? $booking->account_id);
             $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+
+            // Overpayment guard (BUG-FIX): reject if amount > remaining.
+            // Mirror of the guard in addDebtPayment() (line 357+) — same
+            // invariant, same error.
+            $booking->refresh();
+            $totalDue = (float) $booking->selling_price + (float) ($booking->service_fee ?? 0);
+            $paidAlready = (float) $booking->paid_amount;
+            $remaining = max(0.0, $totalDue - $paidAlready);
+            if ($amount > ($remaining + 0.01)) {
+                throw new \RuntimeException(
+                    'مبلغ الدفعة ('.round($amount, 2).') يتجاوز المبلغ المتبقي على الحجز ('.round($remaining, 2).').'
+                );
+            }
 
             $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
 

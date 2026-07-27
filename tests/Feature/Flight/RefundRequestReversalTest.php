@@ -339,6 +339,9 @@ class RefundRequestReversalTest extends TestCase
     public function test_reversing_unprocessed_refund_request_soft_deletes_without_gl_change(): void
     {
         $booking = $this->createPaidBooking(18000, 15000);
+        // Required: a booking must be CONFIRMED before a refund request can be created
+        // (Bug #C4 fix from RefundService — PENDING bookings can't be refunded).
+        $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
 
         // Create refund request but DO NOT process it
         $refundRequest = $this->refundService->createRefundRequest([

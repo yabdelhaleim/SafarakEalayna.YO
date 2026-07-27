@@ -102,7 +102,11 @@ class VisaBookingController extends Controller
      */
     public function update(UpdateVisaBookingRequest $request, VisaBooking $visa): JsonResponse
     {
-        $booking = $this->service->update($visa, $request->validated());
+        try {
+            $booking = $this->service->update($visa, $request->validated());
+        } catch (\Throwable $e) {
+            return ApiResponse::error('فشل تحديث طلب التأشيرة: '.$e->getMessage(), null, 422);
+        }
 
         return ApiResponse::success('تم تحديث طلب التأشيرة', new VisaBookingResource($booking));
     }
@@ -187,8 +191,12 @@ class VisaBookingController extends Controller
      */
     public function refund(Request $request, VisaBooking $visa): JsonResponse
     {
-        $booking = app(VisaRefundService::class)
-            ->refund($visa, $request->input('reason'));
+        try {
+            $booking = app(VisaRefundService::class)
+                ->refund($visa, $request->input('reason'));
+        } catch (\Exception $e) {
+            return ApiResponse::error('فشل استرداد طلب التأشيرة: '.$e->getMessage(), null, 422);
+        }
 
         return ApiResponse::success('تم استرداد قيمة التأشيرة', new VisaBookingResource($booking));
     }

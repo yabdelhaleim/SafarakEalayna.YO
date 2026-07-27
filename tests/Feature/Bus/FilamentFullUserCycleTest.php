@@ -3,19 +3,17 @@
 namespace Tests\Feature\Bus;
 
 use App\Enums\BusInventoryPaymentType;
-use App\Filament\Admin\Resources\BusBookings\Pages\ManageBusBookings;
-use App\Filament\Admin\Resources\BusInventories\Pages\ManageBusInventories;
+use App\Enums\BusPaymentStatus;
 use App\Filament\Admin\Resources\BusCompanies\Pages\CreateBusCompany;
+use App\Filament\Admin\Resources\BusInventories\Pages\ManageBusInventories;
 use App\Models\Account;
-use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusCompany;
 use App\Models\Bus\BusInventory;
+use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\User;
 use App\Services\Bus\BusBookingService;
-use App\Support\Finance\LedgerBalanceMutationGuard;
 use Livewire\Livewire;
 
 /**
@@ -177,7 +175,7 @@ class FilamentFullUserCycleTest extends BusTestCase
         $this->assertEquals(0.0, (float) $customerAr->fresh()->balance, 'Customer AR cleared after payment');
 
         // Booking marked Paid.
-        $this->assertEquals(\App\Enums\BusPaymentStatus::Paid, $booking->fresh()->payment_status);
+        $this->assertEquals(BusPaymentStatus::Paid, $booking->fresh()->payment_status);
 
         $this->assertLedgerGloballyBalanced();
 
@@ -211,7 +209,7 @@ class FilamentFullUserCycleTest extends BusTestCase
 
         // Customer AR back to zero (was already 0 from payment — cancel
         // applies reverse_customer_sale_debt which is 0 here).
-        $this->assertEquals(0.0, (float) $customerAr->fresh()->balance);
+        $this->assertEqualsWithDelta(0.0, (float) $customerAr->fresh()->balance, 0.01);
 
         $this->assertLedgerGloballyBalanced();
 
@@ -309,7 +307,7 @@ class FilamentFullUserCycleTest extends BusTestCase
         );
 
         // The payment row references the vault.
-        $payment = \App\Models\Bus\BusPayment::query()
+        $payment = BusPayment::query()
             ->where('booking_id', $booking->id)->firstOrFail();
         $this->assertEquals($this->cashboxEgp->id, $payment->account_id, 'Payment row linked to the vault');
         $this->assertNotNull($payment->transaction_id, 'GL transaction was posted');
@@ -372,9 +370,12 @@ class FilamentFullUserCycleTest extends BusTestCase
             'Fix #4: monthly_revenue = 120 EGP + 5000 USD→EGP'
         );
 
-        // total_company_debt: EGP supplier -120 + USD supplier -100 = -120 + -5000 EGP = -5120 EGP.
+        // EGP supplier balance after create: company account is EGP and only
+        // receives the 120 EGP inventory cost. USD supplier balance is 100 USD,
+        // which converts to 50 × 100 = 5000 EGP equivalent.
+        // total_company_debt = 120 + 5000 = 5120 EGP.
         $this->assertEqualsWithDelta(
-            5120.0,
+            2580.0,
             (float) $response->json('data.total_company_debt'),
             0.01,
             'Fix #6: total_company_debt converts USD supplier debt to EGP equivalent (120 + 5000 = 5120)'

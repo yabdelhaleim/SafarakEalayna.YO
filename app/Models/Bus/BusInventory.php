@@ -39,7 +39,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class BusInventory extends Model
 {
-    use SoftDeletes, ModelDeletionGuard, HasFactory;
+    use HasFactory, ModelDeletionGuard, SoftDeletes;
 
     protected static function newFactory(): BusInventoryFactory
     {
@@ -63,6 +63,23 @@ class BusInventory extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (BusInventory $inventory): void {
+            if ((float) $inventory->total_cost <= 0
+                && (int) $inventory->total_tickets > 0
+                && (float) $inventory->cost_per_ticket > 0) {
+                $inventory->total_cost = round(
+                    (int) $inventory->total_tickets * (float) $inventory->cost_per_ticket,
+                    2
+                );
+            }
+
+            if ($inventory->payment_type === BusInventoryPaymentType::Deferred
+                && (float) $inventory->remaining_debt <= 0
+                && (float) $inventory->amount_paid <= 0) {
+                $inventory->remaining_debt = (float) $inventory->total_cost;
+            }
+        });
+
         static::deleting(function (BusInventory $inventory) {
             // Allowed only when:
             //   - we're inside BusInventory::run() (canonical safe path

@@ -7,31 +7,29 @@ use App\Filament\Admin\Concerns\BelongsToBusModuleNavigation;
 use App\Models\Bus\BusInventory;
 use App\Services\Bus\BusInventoryService;
 use BackedEnum;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\EditAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Model;
 use Filament\Forms\Components\DatePicker;
-use Filament\Schemas\Components\Grid;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\TimePicker;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\EditRecord;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class BusInventoryResource extends Resource
 {
@@ -44,7 +42,9 @@ class BusInventoryResource extends Resource
     protected static string|\UnitEnum|null $navigationGroup = 'الباصات';
 
     protected static ?string $navigationLabel = 'الرحلات وأسعار التذاكر';
+
     protected static ?string $pluralLabel = 'الرحلات وأسعار التذاكر';
+
     protected static ?string $modelLabel = 'رحلة باص';
 
     protected static ?int $navigationSort = 2;
@@ -160,7 +160,7 @@ class BusInventoryResource extends Resource
                                             ]),
                                     ])
                                     ->collapsed()
-                                    ->visible(fn ($livewire) => $livewire instanceof \Filament\Resources\Pages\EditRecord),
+                                    ->visible(fn ($livewire) => $livewire instanceof EditRecord),
                             ]),
                     ]),
             ]);
@@ -215,7 +215,8 @@ class BusInventoryResource extends Resource
                         'cash' => 'success',
                         'deferred' => 'warning',
                     ])
-                    ->formatStateUsing(fn ($state) => match($state) {                        'cash' => 'نقدي',                        'deferred' => 'آجل',                        default => $state,
+                    ->formatStateUsing(fn ($state) => match ($state) {
+                        'cash' => 'نقدي',                        'deferred' => 'آجل',                        default => $state,
                     }),
 
                 BadgeColumn::make('is_fully_paid', 'سداد التكلفة')
@@ -244,7 +245,9 @@ class BusInventoryResource extends Resource
                         '1' => 'فيه مقاعد متاحة',
                         '0' => 'مافيش مقاعد',
                     ])
-                    ->query(function ($query, $value) {
+                    ->query(function ($query, $data) {
+                        $value = is_array($data) ? ($data['value'] ?? null) : $data;
+
                         if ($value === '1') {
                             return $query->hasAvailableTickets();
                         }
@@ -261,7 +264,9 @@ class BusInventoryResource extends Resource
                         '1' => 'عندها مديونية',
                         '0' => 'مسدد بالكامل',
                     ])
-                    ->query(function ($query, $value) {
+                    ->query(function ($query, $data) {
+                        $value = is_array($data) ? ($data['value'] ?? null) : $data;
+
                         if ($value === '1') {
                             return $query->withDebt();
                         }
@@ -293,7 +298,7 @@ class BusInventoryResource extends Resource
                     ->label('سداد مديونية')
                     ->icon('heroicon-o-banknotes')
                     ->color('warning')
-                    ->visible(fn (BusInventory $record): bool => $record->payment_type === BusInventoryPaymentType::Deferred->value && (float) $record->remaining_debt > 0)
+                    ->visible(fn (BusInventory $record): bool => $record->payment_type === BusInventoryPaymentType::Deferred && (float) $record->remaining_debt > 0)
                     ->modalHeading(fn (BusInventory $record): string => 'سداد مديونية الشركة — '.$record->company?->name)
                     ->modalDescription(fn (BusInventory $record): string => 'المتبقي على الرحلة: '.number_format((float) $record->remaining_debt, 2).' ج.م')
                     ->form([

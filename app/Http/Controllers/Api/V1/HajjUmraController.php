@@ -78,7 +78,11 @@ class HajjUmraController extends Controller
 
     public function update(UpdateHajjUmraBookingRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
     {
-        $booking = $this->service->update($hajjUmra, $request->validated());
+        try {
+            $booking = $this->service->update($hajjUmra, $request->validated());
+        } catch (\Throwable $e) {
+            return ApiResponse::error('فشل تحديث الحجز: '.$e->getMessage(), null, 422);
+        }
 
         return ApiResponse::success('تم تحديث الحجز', new HajjUmraBookingResource($booking));
     }

@@ -16,22 +16,24 @@ class BusInventoryFactory extends Factory
 
     public function definition(): array
     {
+        $tickets = $this->faker->numberBetween(20, 50);
         $cost = $this->faker->numberBetween(70, 150);
         $selling = $cost + $this->faker->numberBetween(20, 60);
+        $totalCost = $tickets * $cost;
 
         return [
             'company_id' => BusCompany::factory(),
             'route' => $this->faker->randomElement(['القاهرة - الإسكندرية', 'القاهرة - أسوان', 'الإسكندرية - القاهرة', 'الجيزة - أسوان', 'القاهرة - شرم الشيخ']),
             'travel_date' => now()->addDays($this->faker->numberBetween(1, 30))->toDateString(),
             'departure_time' => $this->faker->randomElement(['06:00', '08:00', '10:00', '14:00', '20:00', '22:00']),
-            'total_tickets' => $this->faker->numberBetween(20, 50),
-            'available_tickets' => $this->faker->numberBetween(20, 50),
+            'total_tickets' => $tickets,
+            'available_tickets' => $tickets,
             'cost_per_ticket' => $cost,
             'selling_price' => $selling,
             'payment_type' => BusInventoryPaymentType::Deferred,
-            'total_cost' => 0,
+            'total_cost' => $totalCost,
             'amount_paid' => 0,
-            'remaining_debt' => 0,
+            'remaining_debt' => $totalCost,
             'account_id' => null,
             'transaction_id' => null,
             'is_auto_created' => false,
@@ -39,6 +41,24 @@ class BusInventoryFactory extends Factory
             'currency' => 'EGP',
             'created_by' => null,
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterMaking(function (BusInventory $inventory): void {
+            if ((float) $inventory->total_cost <= 0) {
+                $inventory->total_cost = round(
+                    (float) $inventory->total_tickets * (float) $inventory->cost_per_ticket,
+                    2
+                );
+            }
+
+            if ($inventory->payment_type === BusInventoryPaymentType::Deferred
+                && (float) $inventory->remaining_debt <= 0
+                && (float) $inventory->amount_paid <= 0) {
+                $inventory->remaining_debt = (float) $inventory->total_cost;
+            }
+        });
     }
 
     public function unlimited(): self

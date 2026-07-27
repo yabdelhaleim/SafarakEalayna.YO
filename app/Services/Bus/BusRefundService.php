@@ -7,14 +7,15 @@ use App\Enums\TransactionModule;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Treasury;
-use App\Services\Finance\TransactionService;
 use App\Services\Finance\LedgerClearingAccounts;
+use App\Services\Finance\TransactionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class BusRefundService
 {
     protected TransactionService $transactionService;
+
     protected LedgerClearingAccounts $ledgerClearingAccounts;
 
     public function __construct(
@@ -30,49 +31,64 @@ class BusRefundService
      */
     public function createRefundRequest(array $data, int $userId): BusRefundRequest
     {
-        $booking = BusBooking::with('inventory.company')->findOrFail($data['bus_booking_id']);
+        return DB::transaction(function () use ($data, $userId) {
+            $booking = BusBooking::query()
+                ->with(['inventoryWithTrashed.company'])
+                ->lockForUpdate()
+                ->findOrFail($data['bus_booking_id']);
 
-        if ($booking->status === BusBookingStatus::Refunded) {
-            throw new \RuntimeException('هذا الحجز تم استرداده بالكامل مسبقاً.');
-        }
+            if (in_array($booking->status, [
+                BusBookingStatus::Cancelled,
+                BusBookingStatus::Refunded,
+                BusBookingStatus::PartiallyRefunded,
+            ], true)) {
+                throw new \RuntimeException('هذا الحجز ملغي أو مسترد بالفعل.');
+            }
 
-        $originalCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
-        $originalAmount = (float) $booking->total_price;
+            $totalPaid = (float) $booking->payments()->sum('amount');
+            if ($totalPaid <= 0.001) {
+                throw new \RuntimeException('لا يمكن إنشاء استرداد لحجز غير مدفوع.');
+            }
 
-        $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
-        $refundAmount = $originalAmount - $cancellationFee;
+            $activeRefunded = (float) $booking->refundRequests()
+                ->whereIn('status', ['pending', 'processed'])
+                ->sum('refund_amount');
+            $originalCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+            $originalAmount = min((float) $booking->total_price, $totalPaid);
 
-        if ($refundAmount < 0) {
-            throw new \InvalidArgumentException('رسوم الإلغاء لا يمكن أن تتجاوز المبلغ الأصلي للحجز.');
-        }
+            $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
+            $refundAmount = $originalAmount - $cancellationFee;
 
-        $refundCurrency = $data['refund_currency'] ?? $originalCurrency;
-        // Fix #7: default the exchange rate to the booking's stored rate
-        // (not a hard-coded 1.0). Foreign-currency refunds would otherwise
-        // report `base_currency_refund == refund_amount` regardless of the
-        // actual EGP-equivalent, silently understating the refund value.
-        $refundExchangeRate = (float) ($data['refund_exchange_rate'] ?? ($booking->exchange_rate_to_egp ?: 1.0));
-        $baseCurrencyRefund = $refundAmount * $refundExchangeRate;
+            if ($refundAmount < 0) {
+                throw new \InvalidArgumentException('رسوم الإلغاء لا يمكن أن تتجاوز المبلغ الأصلي للحجز.');
+            }
+            if ($activeRefunded + $refundAmount > $totalPaid + 0.001) {
+                throw new \InvalidArgumentException('إجمالي الاستردادات يتجاوز المبلغ المدفوع للحجز.');
+            }
 
-        $destination = $data['destination'] ?? 'agency_treasury';
+            $refundCurrency = strtoupper((string) ($data['refund_currency'] ?? $originalCurrency));
+            $refundExchangeRate = (float) ($data['refund_exchange_rate'] ?? ($booking->exchange_rate_to_egp ?: 1.0));
+            $baseCurrencyRefund = $refundAmount * $refundExchangeRate;
+            $destination = $data['destination'] ?? 'agency_treasury';
 
-        return BusRefundRequest::create([
-            'bus_booking_id' => $booking->id,
-            'company_id' => $booking->inventory->company_id,
-            'refund_type' => $data['refund_type'] ?? 'cash_to_agency',
-            'original_currency' => $originalCurrency,
-            'original_amount' => $originalAmount,
-            'cancellation_fee' => $cancellationFee,
-            'refund_amount' => $refundAmount,
-            'refund_currency' => $refundCurrency,
-            'refund_exchange_rate' => $refundExchangeRate,
-            'base_currency_refund' => $baseCurrencyRefund,
-            'destination' => $destination,
-            'treasury_id' => $destination === 'agency_treasury' ? ($data['treasury_id'] ?? null) : null,
-            'status' => 'pending',
-            'notes' => $data['notes'] ?? null,
-            'created_by' => $userId,
-        ]);
+            return BusRefundRequest::create([
+                'bus_booking_id' => $booking->id,
+                'company_id' => $booking->inventory?->company_id,
+                'refund_type' => $data['refund_type'] ?? 'cash_to_agency',
+                'original_currency' => $originalCurrency,
+                'original_amount' => $originalAmount,
+                'cancellation_fee' => $cancellationFee,
+                'refund_amount' => $refundAmount,
+                'refund_currency' => $refundCurrency,
+                'refund_exchange_rate' => $refundExchangeRate,
+                'base_currency_refund' => $baseCurrencyRefund,
+                'destination' => $destination,
+                'treasury_id' => $destination === 'agency_treasury' ? ($data['treasury_id'] ?? null) : null,
+                'status' => 'pending',
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $userId,
+            ]);
+        });
     }
 
     /**
@@ -87,8 +103,11 @@ class BusRefundService
                 return $refundRequest;
             }
 
-            $booking = BusBooking::with('inventory.company')->lockForUpdate()->findOrFail($refundRequest->bus_booking_id);
-            $inventory = $booking->inventory;
+            $booking = BusBooking::with(['inventoryWithTrashed.company'])->lockForUpdate()->findOrFail($refundRequest->bus_booking_id);
+            $inventory = $booking->inventoryWithTrashed;
+            if (! $inventory) {
+                throw new \RuntimeException('مخزون الحجز غير موجود ولا يمكن عكس العملية بأمان.');
+            }
             $company = $inventory->company;
 
             // 1. زيادة عدد التذاكر المتاحة في المخزون
@@ -98,8 +117,14 @@ class BusRefundService
 
             // 2. معالجة الجانب المالي (المورد)
             if ($company && $company->account_id) {
-                $costPerTicket = $inventory->cost_per_ticket;
+                $costPerTicket = (float) $inventory->cost_per_ticket;
                 $totalCostToReverse = $costPerTicket * $booking->quantity;
+                if (strtoupper((string) ($booking->currency ?? 'EGP')) !== 'EGP') {
+                    $totalCostToReverse = round(
+                        $totalCostToReverse * (float) ($booking->exchange_rate_to_egp ?: 1.0),
+                        2
+                    );
+                }
                 $clearingAccountId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Bus);
 
                 if ($clearingAccountId && $totalCostToReverse > 0) {
@@ -110,7 +135,7 @@ class BusRefundService
                         'module' => TransactionModule::Bus->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
-                        'notes' => 'استرجاع تكلفة حجز باص #' . $booking->id . ' من المورد',
+                        'notes' => 'استرجاع تكلفة حجز باص #'.$booking->id.' من المورد',
                         'allow_from_negative' => true,
                     ]);
                 }
@@ -130,7 +155,7 @@ class BusRefundService
 
                 if (strtoupper($treasury->currency) !== strtoupper($refundRequest->refund_currency)) {
                     throw new \RuntimeException(
-                        "تضارب في العملة: لا يمكن إيداع استرجاع بعملة ({$refundRequest->refund_currency}) " .
+                        "تضارب في العملة: لا يمكن إيداع استرجاع بعملة ({$refundRequest->refund_currency}) ".
                         "في خزينة تعمل بعملة ({$treasury->currency})."
                     );
                 }

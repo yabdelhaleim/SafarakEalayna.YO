@@ -3,7 +3,6 @@
 namespace Tests\Feature\Bus;
 
 use App\Models\Bus\BusBooking;
-use Tests\TestCase;
 
 /**
  * Booking deletion (admin soft-delete) scenarios.
@@ -109,6 +108,37 @@ class BookingDeletionTest extends BusTestCase
 
         // The reversal entries leave the ledger balanced — assert that.
         $this->assertLedgerGloballyBalanced();
+    }
+
+    public function test_deleting_cancelled_booking_does_not_reverse_again(): void
+    {
+        ['booking' => $booking, 'inventory' => $inventory, 'company' => $company] = $this->createBookingWithInventory();
+
+        $this->postJson("/api/v1/bus/bookings/{$booking->id}/pay", [
+            'amount' => (float) $booking->total_price,
+            'payment_method' => 'cash',
+            'account_id' => $this->cashboxEgp->id,
+        ])->assertOk();
+
+        $this->postJson("/api/v1/bus/bookings/{$booking->id}/cancel", [
+            'company_penalty' => 0,
+            'office_penalty' => 0,
+            'account_id' => $this->cashboxEgp->id,
+        ])->assertOk();
+
+        $inventory->refresh();
+        $availableAfterCancel = (int) $inventory->available_tickets;
+        $companyBalanceAfterCancel = (float) $company->account->fresh()->balance;
+
+        $this->deleteJson("/api/v1/bus/bookings/{$booking->id}")
+            ->assertOk();
+
+        $this->assertSame($availableAfterCancel, (int) $inventory->fresh()->available_tickets);
+        $this->assertEqualsWithDelta(
+            $companyBalanceAfterCancel,
+            (float) $company->account->fresh()->balance,
+            0.01
+        );
     }
 
     public function test_with_reversal_throws_on_already_deleted(): void

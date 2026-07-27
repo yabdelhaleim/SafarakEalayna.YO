@@ -55,6 +55,21 @@ class HajjUmraRefundService
 
             // ── 1) Idempotency guard ──
             $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+            // BUG-FIX 2026-07-27: block refund on cancelled bookings too — otherwise
+            //   a cancelled-then-refund sequence would double-reverse every
+            //   transaction (cancel() runs reverseTransaction once, refund()
+            //   runs reverseTransaction again on the same rows, corrupting
+            //   balances and potentially pushing accounts negative or positive
+            //   by the full transaction amount). Cancelled bookings cannot
+            //   be refunded; create a new booking if a refund is actually
+            //   owed to the customer.
+            if ($status === HajjUmraStatus::Cancelled->value) {
+                throw new \RuntimeException(
+                    'لا يمكن استرداد حجز مُلغى (status=cancelled). '
+                    .'تم عكس القيود المحاسبية عند الإلغاء — لإنشاء قيد استرداد فعلي، '
+                    .'استخدم HajjUmraBookingService::deleteBookingWithReversal() ثم أعد تسجيل الحجز.'
+                );
+            }
             if ($status === HajjUmraStatus::Refunded->value) {
                 throw new \RuntimeException(
                     'هذا الحجز تم استرداده بالكامل مسبقاً (status=refunded).'

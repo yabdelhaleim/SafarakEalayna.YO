@@ -9,6 +9,7 @@ use App\Models\Bus\BusCompanyPayment;
 use App\Models\Bus\BusInventory;
 use App\Models\Transaction;
 use App\Services\Finance\TransactionService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -78,12 +79,8 @@ class BusInventoryService
     /**
      * Get available inventories for booking form.
      * Returns inventories with available tickets for a specific company and date.
-     *
-     * @param  int  $companyId
-     * @param  string  $travelDate
-     * @return \Illuminate\Database\Eloquent\Collection
      */
-    public function getAvailableInventories(int $companyId, string $travelDate): \Illuminate\Database\Eloquent\Collection
+    public function getAvailableInventories(int $companyId, string $travelDate): Collection
     {
         return BusInventory::with(['company', 'account'])
             ->where('company_id', $companyId)
@@ -203,6 +200,30 @@ class BusInventoryService
                     'selling_price' => $data['selling_price'] ?? $inventory->selling_price,
                     'notes' => $data['notes'] ?? $inventory->notes,
                 ]);
+
+                // Repair legacy rows created before the derived total-cost fields
+                // were populated, without allowing financial fields from the UI.
+                if ((float) $inventory->total_cost <= 0 && (float) $inventory->cost_per_ticket > 0) {
+                    $inventory->total_cost = round(
+                        (float) $inventory->total_tickets * (float) $inventory->cost_per_ticket,
+                        2
+                    );
+                    $inventory->remaining_debt = max(
+                        0,
+                        (float) $inventory->total_cost - (float) $inventory->amount_paid
+                    );
+                }
+                $inventory->total_cost = round(
+                    (float) $inventory->total_tickets * (float) $inventory->cost_per_ticket,
+                    2
+                );
+                if ($inventory->payment_type === BusInventoryPaymentType::Deferred) {
+                    $inventory->remaining_debt = max(
+                        0,
+                        (float) $inventory->total_cost - (float) $inventory->amount_paid
+                    );
+                }
+
                 $inventory->save();
 
                 Log::info('Bus inventory updated', [

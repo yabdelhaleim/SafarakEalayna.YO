@@ -232,12 +232,24 @@ public function createTransaction(array $data): FawryTransaction
         string $operationLabel,
         string $clientName,
     ): array {
-        // 1) Expense: تكلفة Fawry (من prepaid إذا ماكينة، أو من settlement account إذا بدون)
+        // 1) Expense: تكلفة Fawry
+        //    - مع ماكينة → من حساب الرصيد المسبق (prepaid)
+        //    - بدون ماكينة (walk-in):
+        //        * لو العميل دفع الآن → من حساب التحصيل (cashbox): صافي
+        //          الخزينة = المبلغ - التكلفة = الربح
+        //        * لو آجل (لم يدفع) → من حساب إقفال الإيرادات (income contra)
+        //          لأن الخزينة لم تستلم شيئاً، فلا يجوز خصم التكلفة منها.
+        //          هذا يحافظ على توازن الحسابات عند العملاء غير المسددين.
         $expenseTransactionId = null;
         if ($fawryPrice > 0) {
-            $expenseAccountId = $hasMachine
-                ? app(LedgerClearingAccounts::class)->prepaidAccountId('fawry')
-                : $accountId;
+            if ($hasMachine) {
+                $expenseAccountId = app(LedgerClearingAccounts::class)->prepaidAccountId('fawry');
+            } elseif ($amountPaid > 0) {
+                $expenseAccountId = $accountId; // من خزينة التحصيل (العميل دفع)
+            } else {
+                // walk-in آجل: التكلفة من حساب الإيرادات (وليس الخزينة)
+                $expenseAccountId = app(LedgerClearingAccounts::class)->incomeContraIdForModule('fawry');
+            }
 
             if ($expenseAccountId) {
                 $expenseTransaction = $this->transactionService->recordExpense([
@@ -335,7 +347,7 @@ public function createTransaction(array $data): FawryTransaction
         return [$incomeTransactionId, $expenseTransactionId];
     }
 
-public function updateTransaction(FawryTransaction $transaction, array $data): FawryTransaction
+    public function updateTransaction(FawryTransaction $transaction, array $data): FawryTransaction
     {
         try {
             return DB::transaction(function () use ($transaction, $data) {
@@ -344,7 +356,7 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
                 // Mirrors OnlineTransactionService Phase 9 / HajjUmra Phase 8
                 // pattern. The 4 fields below all have a GL impact; any
                 // change requires reversing the old entries (additive) and
-                // re-posting with the new values.
+                // re-posting with the corrected values.
                 $sellingChanged = array_key_exists('selling_price', $data)
                     && (float) $data['selling_price'] !== (float) $transaction->selling_price;
                 $fawryPriceChanged = array_key_exists('fawry_price', $data)
@@ -356,6 +368,13 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
 
                 $priceOrAccountChanged = $sellingChanged || $fawryPriceChanged || $accountChanged;
                 $anyLedgerAffectingChange = $priceOrAccountChanged || $amountChanged;
+
+                // Capture old fawry_price BEFORE we mutate the model, so the
+                // machine-balance re-adjustment below has both values to
+                // compute the diff. Without this, update-then-delete would
+                // leave the machine at the wrong balance (Bug A fix).
+                $oldFawryPrice = (float) $transaction->fawry_price;
+                $oldMachineId = $transaction->fawry_machine_id;
 
                 // Recompute profit if selling/fawry price changed.
                 if ($sellingChanged || $fawryPriceChanged) {
@@ -426,6 +445,43 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
                     }
                 }
 
+                // 🛡️ MACHINE-BALANCE RECONCILIATION (Bug A fix):
+                // The reverse + repost above restores the GL accounts
+                // (prepaid asset etc.) but does NOT touch the FawryMachine
+                // row, which tracks the vendor-side balance. If fawry_price
+                // changes, the machine was debited the old price on create
+                // and would be credited the new price on delete — leaving
+                // a net mismatch on the order of (new − old). Re-adjust the
+                // machine now so a subsequent delete returns it to the
+                // pre-create balance.
+                if ($fawryPriceChanged && $oldMachineId && $oldMachineId === $transaction->fawry_machine_id) {
+                    $newFawryPrice = (float) $transaction->fawry_price;
+                    $diff = round($newFawryPrice - $oldFawryPrice, 2);
+                    if (abs($diff) >= 0.01) {
+                        $machine = FawryMachine::lockForUpdate()->find($oldMachineId);
+                        if ($machine) {
+                            $createdBy = Auth::id() ?? (int) ($transaction->created_by_user_id ?? 1);
+                            if ($diff > 0) {
+                                // New cost is higher → additional debit
+                                $machine->debit(
+                                    $diff,
+                                    "تعديل تكلفة فوري #{$transaction->id}: {$oldFawryPrice} → {$newFawryPrice}",
+                                    $createdBy,
+                                    $transaction->id
+                                );
+                            } else {
+                                // New cost is lower → partial credit back
+                                $machine->credit(
+                                    -$diff,
+                                    "تعديل تكلفة فوري #{$transaction->id}: {$oldFawryPrice} → {$newFawryPrice}",
+                                    $createdBy,
+                                    $transaction->id
+                                );
+                            }
+                        }
+                    }
+                }
+
                 Log::info('Fawry transaction updated', [
                     'fawry_transaction_id' => $transaction->id,
                     'selling_changed' => $sellingChanged,
@@ -460,8 +516,53 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
 
     public function deleteTransaction(FawryTransaction $transaction): bool
     {
+        // 🛡️ Idempotency guard (Bug D fix): if the transaction is already
+        // soft-deleted, do nothing. Without this, a second call on the
+        // same in-memory model would re-credit the machine and re-post the
+        // walk-in AR reclamation, leaving the books out of balance.
+        if ($transaction->trashed()) {
+            Log::info('Fawry transaction delete skipped — already soft-deleted', [
+                'fawry_transaction_id' => $transaction->id,
+                'user_id' => Auth::id(),
+            ]);
+            return true;
+        }
+
         try {
             return DB::transaction(function () use ($transaction) {
+                // 🛡️ Bug B refresh: re-read the row from the DB so the
+                // `amount` column reflects any later pay-debt FIFO updates
+                // (which the walk-in pay-debt controller writes directly
+                // to the column without touching the in-memory model).
+                // Without this, $paidAmount would be the stale at-create
+                // value and $excessToReclaim would compute to 0, skipping
+                // the reclaim step that keeps the walk-in AR balanced.
+                $transaction = $transaction->fresh();
+                $paidAmount = (float) ($transaction->amount ?? 0.0);
+                $isWalkIn = empty($transaction->client_id);
+                $clientName = (string) $transaction->client_name;
+                $settlementAccountId = (int) $transaction->account_id;
+
+                // 🛡️ Bug B refinement: only the EXCESS of (current amount)
+                // over the original settlement needs reclaiming. The original
+                // settlement (amount set at creation) is already linked to
+                // this fawry_transaction via related_id, so it gets reversed
+                // in step 2. Without this guard we'd be double-counting the
+                // original payment and pushing the walk-in AR balance into
+                // a +200 phantom credit.
+                $originalSettlementAmount = 0.0;
+                if ($isWalkIn && $paidAmount > 0.005) {
+                    $originalSettlementAmount = (float) DB::table('account_entries as ae')
+                        ->join('transactions as t', 'ae.transaction_id', '=', 't.id')
+                        ->where('t.related_type', FawryTransaction::class)
+                        ->where('t.related_id', $transaction->id)
+                        ->where('ae.account_id', $settlementAccountId)
+                        ->where('ae.credit', '>', 0)
+                        ->whereRaw("(ae.notes IS NULL OR (ae.notes NOT LIKE ? AND ae.notes NOT LIKE ?))", ['عكس:%', 'عكس %'])
+                        ->sum('ae.credit');
+                }
+                $excessToReclaim = max(0.0, round($paidAmount - $originalSettlementAmount, 2));
+
                 // ── 1. Reverse the machine balance (restore fawry_price to machine)
                 if ($transaction->fawry_machine_id && $transaction->fawry_price > 0) {
                     $machine = FawryMachine::lockForUpdate()->find($transaction->fawry_machine_id);
@@ -487,11 +588,90 @@ public function updateTransaction(FawryTransaction $transaction, array $data): F
                     $this->transactionService->reverseTransaction($linkedTx);
                 }
 
+                // ── 3. Walk-in AR reclamation (Bug B fix) — excess only:
+                //       Walk-in pay-debt flows apply FIFO to fawry_transactions.amount
+                //       but post ONE aggregate journal entry (walkInAR → cashbox)
+                //       NOT linked to a specific fawry_transaction. So step 2
+                //       didn't see those entries. The original-settlement
+                //       amount IS reversed in step 2 (it carries related_id),
+                //       so we only need to reclaim what was paid beyond the
+                //       original settlement — i.e. the FIFO pay-debt portion.
+                if ($isWalkIn && $excessToReclaim > 0.005) {
+                    $clearing = app(LedgerClearingAccounts::class);
+                    $walkInArId = $clearing->fawryWalkInArAccountId();
+                    $createdBy = Auth::id() ?? (int) ($transaction->created_by_user_id ?? 1);
+
+                    // 3a) First, try to re-allocate the excess to OTHER
+                    //     unpaid walk-in transactions for the same client_name
+                    //     via FIFO — keeps the per-transaction debt report honest.
+                    $remaining = $excessToReclaim;
+                    $otherTxs = DB::table('fawry_transactions')
+                        ->whereNull('client_id')
+                        ->where('client_name', $clientName)
+                        ->where('id', '!=', $transaction->id)
+                        ->whereRaw('selling_price > amount')
+                        ->orderBy('created_at', 'asc')
+                        ->orderBy('id', 'asc')
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($otherTxs as $otherTx) {
+                        if ($remaining <= 0.005) {
+                            break;
+                        }
+                        $otherDebt = (float) $otherTx->selling_price - (float) $otherTx->amount;
+                        if ($otherDebt <= 0) {
+                            continue;
+                        }
+                        $allocate = min($remaining, $otherDebt);
+                        DB::table('fawry_transactions')
+                            ->where('id', $otherTx->id)
+                            ->update([
+                                'amount' => DB::raw('amount + '.(float) $allocate),
+                                'updated_at' => now(),
+                            ]);
+                        $remaining = round($remaining - $allocate, 2);
+                    }
+
+                    // 3b) Whatever wasn't absorbed by other walk-in transactions
+                    //     gets returned to the walk-in AR as a credit memo
+                    //     (debit cashbox, credit walkInAR). This balances the
+                    //     AR and acknowledges the client's residual credit.
+                    if ($remaining > 0.005) {
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $remaining,
+                            'from_account_id' => $settlementAccountId,
+                            'to_account_id' => $walkInArId,
+                            'module' => TransactionModule::Fawry->value,
+                            'related_type' => FawryTransaction::class,
+                            'related_id' => $transaction->id,
+                            'notes' => "إعادة مديونية walk-in محذوفة ({$clientName}) — عملية #{$transaction->id}",
+                            'created_by' => $createdBy,
+                            'allow_from_negative' => false,
+                        ]);
+                    }
+
+                    // 3c) Zero out the deleted transaction's amount column so
+                    //     the per-transaction debt is consistent. (We don't
+                    //     touch the OTHER walk-in transactions that received
+                    //     the re-allocated FIFO portion — their `amount` is
+                    //     already correct from step 3a.)
+                    DB::table('fawry_transactions')
+                        ->where('id', $transaction->id)
+                        ->update([
+                            'amount' => 0,
+                            'updated_at' => now(),
+                        ]);
+                }
+
                 $transaction->delete();
 
                 Log::info('Fawry transaction deleted', [
                     'fawry_transaction_id' => $transaction->id,
                     'deleted_by' => Auth::id(),
+                    'paid_amount' => $paidAmount,
+                    'original_settlement' => $originalSettlementAmount,
+                    'excess_reclaimed' => $excessToReclaim,
                 ]);
 
                 return true;

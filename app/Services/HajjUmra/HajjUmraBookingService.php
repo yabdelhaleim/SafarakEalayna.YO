@@ -351,6 +351,38 @@ class HajjUmraBookingService
 
     public function update(HajjUmraBooking $booking, array $data): HajjUmraBooking
     {
+        // ─────────────────────────────────────────────────────────────────
+        // BUG-FIX 2026-07-27: editing a cancelled or refunded booking MUST
+        //   be blocked. The previous code only checked the lifecycle guard
+        //   in `addPayment()` (line 593+), but the `update()` path bypassed
+        //   it — so PATCH /api/v1/hajj-umra/bookings/{id} on a cancelled
+        //   booking would silently repost new income/expense transactions,
+        //   creating phantom journal entries on a supposedly-cancelled
+        //   booking and corrupting the financial timeline.
+        //   This guard mirrors the payment guard so admin / API / Tinker
+        //   paths all get the same protection.
+        // ─────────────────────────────────────────────────────────────────
+        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+        if ($status === \App\Enums\HajjUmraStatus::Cancelled->value) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز مُلغى (status=cancelled). '
+                .'استخدم deleteBookingWithReversal() للعكس الإداري الكامل، '
+                .'أو أنشئ حجزاً جديداً بدل التعديل.'
+            );
+        }
+        if ($status === \App\Enums\HajjUmraStatus::Refunded->value) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز تم استرداده بالكامل (status=refunded). '
+                .'أنشئ حجزاً جديداً بدل التعديل.'
+            );
+        }
+        if ($booking->trashed()) {
+            throw new \RuntimeException(
+                'لا يمكن تعديل حجز محذوف (soft-deleted). '
+                .'استخدم deleteBookingWithReversal() للعكس الإداري الكامل.'
+            );
+        }
+
         return DB::transaction(function () use ($booking, $data) {
             $fields = collect($data)->only([
                 'companion_customer_id',

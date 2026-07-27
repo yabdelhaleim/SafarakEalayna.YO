@@ -3,8 +3,6 @@
 namespace Tests\Feature\Bus;
 
 use App\Enums\BusInventoryPaymentType;
-use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusInventory;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
 use App\Models\Treasury;
@@ -73,6 +71,13 @@ class BusRefundServiceFxHardeningTest extends BusTestCase
         ]);
         $this->assertEquals('USD', $booking->currency, 'Booking created in USD');
 
+        app(BusBookingService::class)->payBooking($booking, [
+            'amount' => 100,
+            'payment_method' => 'cash',
+            'account_id' => $this->cashboxEgp->id,
+        ]);
+        $booking->refresh();
+
         // ACTION: legacy refund-request flow.
         $refundRequest = app(BusRefundService::class)->createRefundRequest([
             'bus_booking_id' => $booking->id,
@@ -125,6 +130,13 @@ class BusRefundServiceFxHardeningTest extends BusTestCase
             'quantity' => 1,
         ]);
 
+        app(BusBookingService::class)->payBooking($booking, [
+            'amount' => 75,
+            'payment_method' => 'cash',
+            'account_id' => $this->cashboxEgp->id,
+        ]);
+        $booking->refresh();
+
         $refundRequest = app(BusRefundService::class)->createRefundRequest([
             'bus_booking_id' => $booking->id,
             'cancellation_fee' => 25.0,
@@ -170,6 +182,13 @@ class BusRefundServiceFxHardeningTest extends BusTestCase
             'customer_phone' => '01000002002',
             'quantity' => 1,
         ]);
+
+        app(BusBookingService::class)->payBooking($booking, [
+            'amount' => 120,
+            'payment_method' => 'cash',
+            'account_id' => $this->cashboxEgp->id,
+        ]);
+        $booking->refresh();
 
         // Create a USD treasury — but the booking (and refund) is EGP.
         $usdTreasury = LedgerBalanceMutationGuard::run(fn () => Treasury::create([
