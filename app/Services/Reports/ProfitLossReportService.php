@@ -106,19 +106,30 @@ class ProfitLossReportService
                 continue;
             }
 
-            // TransactionService::reverseTransaction() leaves t.from_account_id /
-            // t.to_account_id pointed at the consumption side and only stamps the
-            // 'عكس:' / 'عكس ' notes prefix on the same transaction row. Some
-            // flows (notably FawryService refund path) post the reversal in the
-            // SAME direction as the original — in that case the classifier above
-            // mis-labels it as 'revenue' / 'cogs' (the non-reversal types) and
-            // the bucket would be inflated. Reclassify when the canonical
-            // reversal marker says "this is reversed but classifier picked the
-            // non-reversal type" — leave it alone when the classifier already
-            // picked the right reversal type.
+            // Reverse-transaction handling has TWO flavors that the P&L engine must
+            // distinguish:
+            //
+            // 1. TransactionService::reverseTransaction() — used by FawryService
+            //    refunds — modifies the SAME original row and prefixes its notes
+            //    with 'عكس:' (with colon). The original + mirror entries already
+            //    net to zero on the ledger; the bucket would double-count if we
+            //    included this row. → SKIP entirely.
+            //
+            // 2. recordJournalTransfer() with notes 'عكس ...' (with space, no
+            //    colon) — used by FlightBookingService::cancelBooking (line 2074
+            //    of FlightBookingService) — creates a NEW companion row alongside
+            //    the unmodified original. The original counted as revenue/cogs
+            //    must be cancelled out by this new row. When the classifier picks
+            //    'revenue'/'cogs' (Fawry-style direction confusion), reclassify
+            //    to the matching reversal type so the subtraction path runs.
+            //
+            // Both forms are correct bookkeeping; the engine just needs to know
+            // which form it is looking at.
             $txNotes = (string) ($tx->notes ?? '');
-            $isReversed = str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ');
-            if ($isReversed) {
+            if (str_starts_with($txNotes, 'عكس:')) {
+                continue;
+            }
+            if (str_starts_with($txNotes, 'عكس ')) {
                 if ($classification === 'revenue') {
                     $classification = 'revenue_reversal';
                 } elseif ($classification === 'cogs') {

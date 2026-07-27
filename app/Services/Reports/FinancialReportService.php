@@ -1651,16 +1651,19 @@ class FinancialReportService
                 continue;
             }
 
-            // Mirror the ProfitLossReportService reversal reclassification:
-            // TransactionService::reverseTransaction() leaves the journal legs
-            // pointing at the consumption side and only stamps the 'عكس:' /
-            // 'عكس ' notes prefix. When the reversal direction matches the
-            // original (notably FawryService refunds), the classifier above
-            // mis-labels the row as 'revenue' / 'cogs' and would inflate the
-            // bucket — flip to the matching reversal type so the subtraction
-            // path runs.
+            // Mirror the ProfitLossReportService two-flavor reversal handling:
+            // 1. 'عكس:' (with colon) — TransactionService::reverseTransaction()
+            //    modified the original row; the original + mirror entries already
+            //    net to zero on the ledger → SKIP entirely.
+            // 2. 'عكس ' (with space) — companion row from a direct
+            //    recordJournalTransfer() call (e.g. FlightBookingService::cancel
+            //    Booking). Reclassify if the classifier mis-labelled it as the
+            //    non-reversal type so the subtraction path runs.
             $txNotes = (string) ($tx->notes ?? '');
-            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+            if (str_starts_with($txNotes, 'عكس:')) {
+                continue;
+            }
+            if (str_starts_with($txNotes, 'عكس ')) {
                 if ($classification === 'revenue') {
                     $classification = 'revenue_reversal';
                 } elseif ($classification === 'cogs') {
