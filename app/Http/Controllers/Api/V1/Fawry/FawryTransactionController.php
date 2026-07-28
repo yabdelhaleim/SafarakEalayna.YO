@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Fawry;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fawry\StoreFawryTransactionRequest;
 use App\Http\Requests\Fawry\UpdateFawryTransactionRequest;
@@ -12,6 +13,7 @@ use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Fawry\FawryTransaction;
 use App\Services\Fawry\FawryTransactionService;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,10 +39,11 @@ class FawryTransactionController extends Controller
             ]);
             $filters['page'] = $request->get('page', 1);
 
-            $cacheKey = 'fawry_transactions_list_' . md5(serialize($filters));
+            $cacheKey = 'fawry_transactions_list_'.md5(serialize($filters));
 
-            $data = \App\Helpers\CacheHelper::tags(['fawry_transactions'])->remember($cacheKey, 60, function () use ($filters) {
+            $data = CacheHelper::tags(['fawry_transactions'])->remember($cacheKey, 60, function () use ($filters) {
                 $paginator = $this->transactionService->getAllTransactions($filters);
+
                 return [
                     'items' => FawryTransactionResource::collection($paginator)->resolve(),
                     'pagination' => [
@@ -118,6 +121,13 @@ class FawryTransactionController extends Controller
     {
         try {
             $this->transactionService->deleteTransaction($fawryTransaction);
+
+            // Flush finance-listing and dashboard caches so the
+            // deleted operation (and any deficit correction it triggered)
+            // disappear from `finance/accounts`, `deficit_accounts`,
+            // and the unified dashboard without waiting for TTL.
+            CacheHelper::flushTags(['accounts', 'dashboard', 'fawry_transactions']);
+            CacheHelper::flushNamespace();
 
             return ApiResponse::success(
                 'Fawry transaction deleted successfully.',
@@ -318,7 +328,7 @@ class FawryTransactionController extends Controller
                     $running += ($credit - $debit);
 
                     // Resolve the description/statement text
-                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
+                    $description = app(LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     // Determine machine/account involved
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)

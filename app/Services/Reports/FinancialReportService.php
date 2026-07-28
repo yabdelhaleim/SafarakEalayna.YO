@@ -204,6 +204,17 @@ class FinancialReportService
      *   - module='visa'      → visaBookings only
      *   - module=array of any of the above → union
      *   - no filter          → all three
+     *
+     * FIX (2026-07-28, audit finding 1.1 follow-up): the original fix
+     * used `status='pending'` lowercase, but each module's status enum
+     * uses different casing and value sets:
+     *   - flightBookings → FlightBookingStatus enum: 'PENDING' (uppercase)
+     *   - hajjUmraBookings → HajjUmraStatus enum: 'pending' (lowercase)
+     *   - visaBookings → VisaStatus enum: 'submitted'/'under_review'/'approved'
+     *
+     * The status filter is now per-relation, matching the right pending
+     * state for each module's lifecycle. Centralising the per-relation
+     * status map here means callers can't accidentally pass the wrong value.
      */
     public function getCustomerDebtsReport(array $filters = []): array
     {
@@ -224,11 +235,19 @@ class FinancialReportService
         $moduleFilter = $filters['module'] ?? null;
         $relations = $this->resolveDebtBookingRelations($moduleFilter);
 
-        // Load each relation with the pending-status scope.
+        // Load each relation with the correct pending-status scope per
+        // module's lifecycle enum.
+        $pendingStatusByRelation = [
+            'flightBookings' => ['PENDING'],
+            'hajjUmraBookings' => ['pending'],
+            'visaBookings' => ['submitted', 'under_review', 'approved'],
+        ];
+
         $withCallbacks = [];
         foreach ($relations as $relation) {
-            $withCallbacks[$relation] = function ($q) {
-                $q->where('status', 'pending');
+            $statuses = $pendingStatusByRelation[$relation] ?? ['pending'];
+            $withCallbacks[$relation] = function ($q) use ($statuses) {
+                $q->whereIn('status', $statuses);
             };
         }
 

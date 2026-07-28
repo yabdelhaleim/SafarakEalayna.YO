@@ -263,14 +263,30 @@ class AviationService
 
     /**
      * OP-02: Query Booking
+     *
+     * BUG-FIX 2026-07-28 (audit Phase 2): the orWhere clauses were attached to
+     * the OUTER query, not grouped with `where('id', ...)`. The effective
+     * SQL was:
+     *   SELECT * FROM flight_bookings
+     *   WHERE id = ?
+     *      OR booking_reference = ?
+     *      OR EXISTS (SELECT 1 FROM customers WHERE phone = ?)
+     *
+     * Because Laravel scopes are NOT parenthesised by default, this can
+     * silently mix with any pre-existing outer filter (e.g. trashed() or
+     * active status). Wrapping the OR group in a closure forces Eloquent
+     * to emit `(id = ? OR booking_reference = ? OR ...)` as a single
+     * predicate — guaranteed correct semantics regardless of outer scopes.
      */
     public function getBooking($idOrRef)
     {
         return FlightBooking::with(['customer', 'passengers', 'pricing', 'payments'])
-            ->where('id', $idOrRef)
-            ->orWhere('booking_reference', $idOrRef)
-            ->orWhereHas('customer', function ($q) use ($idOrRef) {
-                $q->where('phone', $idOrRef);
+            ->where(function ($q) use ($idOrRef) {
+                $q->where('id', $idOrRef)
+                    ->orWhere('booking_reference', $idOrRef)
+                    ->orWhereHas('customer', function ($qq) use ($idOrRef) {
+                        $qq->where('phone', $idOrRef);
+                    });
             })
             ->first();
     }

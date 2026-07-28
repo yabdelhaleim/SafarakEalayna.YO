@@ -12,6 +12,8 @@ use App\Models\Online\OnlineServiceProvider;
 use App\Models\Online\OnlineServiceType;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Transaction;
+use App\Services\Finance\DeferredTransactionDeletionGuard;
+use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -23,7 +25,11 @@ class OnlineTransactionService
 {
     public function __construct(
         protected TransactionService $transactionService,
-    ) {}
+        ?DeferredTransactionDeletionGuard $deletionGuard = null,
+    ) {
+        $this->deletionGuard = $deletionGuard
+            ?? app(DeferredTransactionDeletionGuard::class);
+    }
 
     public function getAll(array $filters): LengthAwarePaginator
     {
@@ -440,7 +446,7 @@ class OnlineTransactionService
         //   walk-in             → module-wide walk-in AR mirror
         $arAccountId = $tx->customer_id
             ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
-            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
+            : app(LedgerClearingAccounts::class)->onlineWalkInArAccountId();
 
         return $this->transactionService->recordIncome([
             'amount' => $newSelling,
@@ -491,7 +497,7 @@ class OnlineTransactionService
         } elseif ($amountPaid > 0) {
             $sourceAccountId = $tx->account_id;
         } else {
-            $sourceAccountId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+            $sourceAccountId = app(LedgerClearingAccounts::class)
                 ->incomeContraIdForModule('online') ?? $tx->account_id;
         }
 
@@ -551,7 +557,7 @@ class OnlineTransactionService
 
         $arAccountId = $tx->customer_id
             ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
-            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
+            : app(LedgerClearingAccounts::class)->onlineWalkInArAccountId();
 
         // Build the candidate set of (from_account, to_account) pairs the
         // cash-payment transfer could have been posted with. We must check
@@ -618,6 +624,7 @@ class OnlineTransactionService
                     'online_transaction_id' => $tx->id,
                     'user_id' => Auth::id(),
                 ]);
+
                 return true;
             }
 
@@ -630,6 +637,31 @@ class OnlineTransactionService
                 $isWalkIn = empty($tx->customer_id);
                 $customerName = (string) $tx->customer_name;
                 $vaultId = (int) $tx->account_id;
+
+                // 🛡️ Production-safety guard (business rule):
+                // Refuse to delete if any debt payment was recorded after
+                // the operation was created. Runs BEFORE reversal / FIFO /
+                // soft-delete so a blocked attempt leaves books & balances
+                // untouched. Same shared service used by Fawry / Wallet.
+                $customerAccountId = null;
+                if (! $isWalkIn) {
+                    $customerAccountId = (int) (Customer::query()
+                        ->where('id', (int) $tx->customer_id)
+                        ->value('account_id') ?? 0) ?: null;
+                }
+                $originalSettlement = $this->deletionGuard->computeOriginalSettlement(
+                    OnlineTransaction::class,
+                    (int) $tx->id,
+                    $vaultId,
+                );
+                $this->deletionGuard->ensureNoLaterPayment(
+                    $tx->created_at,
+                    (float) ($tx->amount_paid ?? 0.0),
+                    $originalSettlement,
+                    $customerAccountId,
+                    OnlineTransaction::class,
+                    (int) $tx->id,
+                );
 
                 // ── 1. Reverse ALL transactions linked to this online tx
                 //       (covers: main income, cash settlement, and expense).
@@ -743,7 +775,7 @@ class OnlineTransactionService
             return 0.0;
         }
 
-        $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+        $clearing = app(LedgerClearingAccounts::class);
         $walkInArId = $clearing->onlineWalkInArAccountId();
 
         // Phase 10 reclamation — scope to THIS customer_name. The walk-in
@@ -909,7 +941,7 @@ class OnlineTransactionService
         //   visible in the GL / trial balance / office receivables report.
         $arAccountId = $tx->customer_id
             ? $this->ensureCustomerAccount((int) $tx->customer_id)->id
-            : app(\App\Services\Finance\LedgerClearingAccounts::class)->onlineWalkInArAccountId();
+            : app(LedgerClearingAccounts::class)->onlineWalkInArAccountId();
 
         // 1) SALE income — credit the AR mirror for the full selling price.
         //    This is the canonical "money owed" entry. The cash-side
@@ -963,7 +995,7 @@ class OnlineTransactionService
         //         the income clearing account so the vault doesn't go
         //         negative when nothing was collected.
         if ($purchase > 0) {
-            $clearing = app(\App\Services\Finance\LedgerClearingAccounts::class);
+            $clearing = app(LedgerClearingAccounts::class);
 
             if ($provider?->default_purchase_account_id) {
                 $sourceAccountId = $provider->default_purchase_account_id;
@@ -1150,6 +1182,7 @@ class OnlineTransactionService
                 $existing->module_type = 'online';
                 $existing->save();
             }
+
             return $data;
         }
 

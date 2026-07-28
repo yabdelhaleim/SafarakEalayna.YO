@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Wallet;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Wallet\StoreWalletTransactionRequest;
 use App\Http\Requests\Wallet\UpdateWalletTransactionRequest;
@@ -11,6 +12,7 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Wallet\WalletTransaction;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Wallet\WalletTransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -83,6 +85,13 @@ class WalletTransactionController extends Controller
     {
         try {
             $this->service->deleteTransaction($transaction);
+
+            // Flush finance-listing and dashboard caches so the
+            // deleted Wallet operation disappears from `finance/accounts`,
+            // `deficit_accounts`, and the unified dashboard without
+            // waiting for the 30s/300s TTLs to expire.
+            CacheHelper::flushTags(['accounts', 'dashboard', 'wallet_transactions']);
+            CacheHelper::flushNamespace();
 
             return ApiResponse::success('Wallet transaction deleted successfully.');
         } catch (\Exception $e) {
@@ -248,7 +257,7 @@ class WalletTransactionController extends Controller
 
                     $running += ($credit - $debit);
 
-                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
+                    $description = app(LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)
                         ? $tx->toAccount

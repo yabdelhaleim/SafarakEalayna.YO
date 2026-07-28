@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Transaction;
 use App\Models\Wallet\WalletTransaction;
 use App\Models\Wallet\WalletType;
+use App\Services\Finance\DeferredTransactionDeletionGuard;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -20,8 +21,12 @@ use Illuminate\Support\Facades\Log;
 class WalletTransactionService
 {
     public function __construct(
-        protected TransactionService $transactionService
-    ) {}
+        protected TransactionService $transactionService,
+        ?DeferredTransactionDeletionGuard $deletionGuard = null,
+    ) {
+        $this->deletionGuard = $deletionGuard
+            ?? app(DeferredTransactionDeletionGuard::class);
+    }
 
     public function getAllTransactions(array $filters): LengthAwarePaginator
     {
@@ -140,6 +145,7 @@ class WalletTransactionService
                     'customer_name' => $customerName,
                     'created_by' => $createdBy,
                 ]);
+
                 return $record->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
@@ -208,6 +214,7 @@ class WalletTransactionService
                     }
                     $this->repostSettlementTransaction($transaction);
                 }
+
                 return $transaction->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
@@ -505,7 +512,7 @@ class WalletTransactionService
         ]);
     }
 
-/**
+    /**
      * استقبال رصيد من العميل:
      *   أ) في حال اختيار عميل مسجل:
      *      1. نسجل زيادة الرصيد بمحفظتنا بقيمة amount (Income للمحفظة).
@@ -637,6 +644,32 @@ class WalletTransactionService
     {
         try {
             return DB::transaction(function () use ($transaction) {
+                // 🛡️ Production-safety guard (business rule):
+                // Refuse to delete if any debt payment was recorded after
+                // the wallet operation was created. Runs BEFORE reversal /
+                // soft-delete so a blocked attempt leaves books & balances
+                // untouched. Same shared service used by Fawry / Online.
+                $customerAccountId = null;
+                if (! empty($transaction->customer_id)) {
+                    $customerAccountId = (int) (Customer::query()
+                        ->where('id', (int) $transaction->customer_id)
+                        ->value('account_id') ?? 0) ?: null;
+                }
+                $settlementAccountId = (int) ($transaction->cash_account_id ?: $transaction->wallet_account_id);
+                $originalSettlement = $this->deletionGuard->computeOriginalSettlement(
+                    WalletTransaction::class,
+                    (int) $transaction->id,
+                    $settlementAccountId,
+                );
+                $this->deletionGuard->ensureNoLaterPayment(
+                    $transaction->created_at,
+                    (float) ($transaction->amount_paid ?? 0.0),
+                    $originalSettlement,
+                    $customerAccountId,
+                    WalletTransaction::class,
+                    (int) $transaction->id,
+                );
+
                 // عكس كل القيود المحاسبية التابعة لهذه العملية بما فيها السداد/الصرف التابع
                 $relatedTransactions = Transaction::where('related_type', WalletTransaction::class)
                     ->where('related_id', $transaction->id)

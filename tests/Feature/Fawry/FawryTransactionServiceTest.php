@@ -313,7 +313,10 @@ class FawryTransactionServiceTest extends TestCase
 
     public function test_delete_transaction_reverses_accounting_transactions()
     {
-        $transaction = FawryTransaction::factory()->create();
+        // amount=0 keeps the per-transaction paid-amount column aligned
+        // with the (zero) original settlement so the new deletion guard
+        // does not block the test.
+        $transaction = FawryTransaction::factory()->create(['amount' => 0]);
 
         $expenseTransaction = Transaction::factory()->create([
             'related_type' => FawryTransaction::class,

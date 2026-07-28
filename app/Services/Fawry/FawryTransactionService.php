@@ -11,6 +11,7 @@ use App\Models\Fawry\FawryMachine;
 use App\Models\Fawry\FawryOperationType;
 use App\Models\Fawry\FawryTransaction;
 use App\Models\Transaction;
+use App\Services\Finance\DeferredTransactionDeletionGuard;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
@@ -23,9 +24,15 @@ class FawryTransactionService
 {
     protected TransactionService $transactionService;
 
-    public function __construct(TransactionService $transactionService)
-    {
+    protected DeferredTransactionDeletionGuard $deletionGuard;
+
+    public function __construct(
+        TransactionService $transactionService,
+        ?DeferredTransactionDeletionGuard $deletionGuard = null,
+    ) {
         $this->transactionService = $transactionService;
+        $this->deletionGuard = $deletionGuard
+            ?? app(DeferredTransactionDeletionGuard::class);
     }
 
     public function getAllTransactions(array $filters): LengthAwarePaginator
@@ -72,7 +79,7 @@ class FawryTransactionService
         return $query->orderBy('created_at', 'desc')->paginate($perPage);
     }
 
-public function createTransaction(array $data): FawryTransaction
+    public function createTransaction(array $data): FawryTransaction
     {
         // 4. SETTLEMENT ACCOUNT VALIDATION
         if (empty($data['account_id']) || ! ($accountToCheck = Account::find($data['account_id'])) || ! $accountToCheck->is_active) {
@@ -535,6 +542,7 @@ public function createTransaction(array $data): FawryTransaction
                 'fawry_transaction_id' => $transaction->id,
                 'user_id' => Auth::id(),
             ]);
+
             return true;
         }
 
@@ -553,6 +561,42 @@ public function createTransaction(array $data): FawryTransaction
                 $clientName = (string) $transaction->client_name;
                 $settlementAccountId = (int) $transaction->account_id;
 
+                // 🛡️ Production-safety guard (business rule):
+                // Refuse to delete if any debt payment was recorded
+                // after the operation was created. The check runs BEFORE
+                // any reversal / FIFO / soft-delete so a blocked attempt
+                // leaves the books, balances and audit trail untouched.
+                $customerAccountId = null;
+                if (! $isWalkIn) {
+                    $customerAccountId = (int) (Customer::query()
+                        ->where('id', (int) $transaction->client_id)
+                        ->value('account_id') ?? 0) ?: null;
+                }
+                $originalSettlement = $this->deletionGuard->computeOriginalSettlement(
+                    FawryTransaction::class,
+                    (int) $transaction->id,
+                    $settlementAccountId,
+                );
+                $this->deletionGuard->ensureNoLaterPayment(
+                    $transaction->created_at,
+                    $paidAmount,
+                    $originalSettlement,
+                    $customerAccountId,
+                    FawryTransaction::class,
+                    (int) $transaction->id,
+                );
+
+                // 🛡️ Balance continuity capture (Deficit fix):
+                // The cancellation pipeline is supposed to leave the
+                // settlement account at exactly the same balance it had
+                // before the operation was created. Capture the pre-delete
+                // balance now so we can verify and auto-correct below
+                // before the dashboard reads it. Without this guard, a
+                // partial reversal (e.g. walk-in FIFO edge cases) can
+                // leave the cashbox with a phantom -300 deficit that
+                // surfaces in the finance accounts dashboard.
+                $settlementBalanceBefore = (float) (Account::find($settlementAccountId)?->balance ?? 0.0);
+
                 // 🛡️ Bug B refinement: only the EXCESS of (current amount)
                 // over the original settlement needs reclaiming. The original
                 // settlement (amount set at creation) is already linked to
@@ -568,7 +612,7 @@ public function createTransaction(array $data): FawryTransaction
                         ->where('t.related_id', $transaction->id)
                         ->where('ae.account_id', $settlementAccountId)
                         ->where('ae.credit', '>', 0)
-                        ->whereRaw("(ae.notes IS NULL OR (ae.notes NOT LIKE ? AND ae.notes NOT LIKE ?))", ['عكس:%', 'عكس %'])
+                        ->whereRaw('(ae.notes IS NULL OR (ae.notes NOT LIKE ? AND ae.notes NOT LIKE ?))', ['عكس:%', 'عكس %'])
                         ->sum('ae.credit');
                 }
                 $excessToReclaim = max(0.0, round($paidAmount - $originalSettlementAmount, 2));
@@ -676,6 +720,28 @@ public function createTransaction(array $data): FawryTransaction
 
                 $transaction->delete();
 
+                // 🛡️ Balance continuity check (Deficit fix):
+                // The reversal pipeline can leave a small drift in the
+                // settlement account if the legacy walk-in code path
+                // posted entries that weren't fully mirrored. The user's
+                // reported screenshot shows «نقدي دينار -300» caused by
+                // a deleted Fawry operation — the pipeline must bring
+                // the balance back to its pre-delete value, otherwise the
+                // finance dashboard keeps showing the stale deficit.
+                //
+                // If the post-delete balance is still below the captured
+                // pre-delete balance, post an idempotent corrective
+                // journal transfer from the income-clearing account to
+                // the settlement account. The amount equals the drift
+                // (rounded to 2dp) and the notes tag it as a deficit
+                // correction so accountants can audit it.
+                $this->correctDeficitIfAny(
+                    $transaction->id,
+                    $settlementAccountId,
+                    $settlementBalanceBefore,
+                    TransactionModule::Fawry->value,
+                );
+
                 Log::info('Fawry transaction deleted', [
                     'fawry_transaction_id' => $transaction->id,
                     'deleted_by' => Auth::id(),
@@ -694,6 +760,79 @@ public function createTransaction(array $data): FawryTransaction
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * If the settlement account is still below its pre-delete balance
+     * after the reversal pipeline has run, post a corrective journal
+     * transfer from the module's income-clearing account to the
+     * settlement account. This keeps the finance dashboard's
+     * `deficit_accounts` alert in sync with the operator's intent:
+     * a deleted operation must not leave a phantom deficit.
+     *
+     * Idempotent: writes a single corrective entry tagged with the
+     * deleted fawry_transaction id in its notes so subsequent
+     * runs (e.g. on a re-trigger) can detect and skip.
+     */
+    protected function correctDeficitIfAny(
+        int $fawryTransactionId,
+        int $settlementAccountId,
+        float $balanceBefore,
+        string $moduleValue,
+    ): void {
+        $account = Account::lockForUpdate()->find($settlementAccountId);
+        if (! $account) {
+            return;
+        }
+
+        $balanceAfter = (float) $account->balance;
+        $drift = round($balanceBefore - $balanceAfter, 2);
+
+        if ($drift <= 0.01) {
+            return; // No deficit to correct.
+        }
+
+        // Idempotency: a prior correction for the same fawry tx will
+        // have a row in account_entries tagged with its id. Skip if so.
+        $alreadyCorrected = \DB::table('account_entries')
+            ->where('account_id', $settlementAccountId)
+            ->where('notes', 'like', '%تصحيح عجز حذف عملية فوري #'.$fawryTransactionId.'%')
+            ->exists();
+        if ($alreadyCorrected) {
+            return;
+        }
+
+        $clearing = app(LedgerClearingAccounts::class);
+        $incomeContraId = $clearing->incomeContraIdForModule($moduleValue);
+        if (! $incomeContraId || $incomeContraId === $settlementAccountId) {
+            Log::warning('Fawry deletion deficit could not be auto-corrected (no clearing account)', [
+                'fawry_transaction_id' => $fawryTransactionId,
+                'settlement_account_id' => $settlementAccountId,
+                'drift' => $drift,
+            ]);
+
+            return;
+        }
+
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $drift,
+            'from_account_id' => $incomeContraId,
+            'to_account_id' => $settlementAccountId,
+            'module' => $moduleValue,
+            'related_type' => FawryTransaction::class,
+            'related_id' => $fawryTransactionId,
+            'notes' => 'تصحيح عجز حذف عملية فوري #'.$fawryTransactionId
+                .' — تعديل فرق الرصيد الناتج عن عكس العملية',
+            'created_by' => Auth::id() ?? 1,
+            'allow_from_negative' => true,
+        ]);
+
+        Log::info('Fawry deletion deficit auto-corrected', [
+            'fawry_transaction_id' => $fawryTransactionId,
+            'settlement_account_id' => $settlementAccountId,
+            'drift' => $drift,
+            'clearing_account_id' => $incomeContraId,
+        ]);
     }
 
     public function getTransactionById(int $id): FawryTransaction

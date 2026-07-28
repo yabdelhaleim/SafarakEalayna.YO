@@ -364,7 +364,7 @@ class ProfitLossReportService
     }
 
     /**
-     * Exclude transactions whose related bus_booking has been soft-deleted.
+     * Exclude transactions whose related booking has been soft-deleted.
      *
      * Why this exists: when a booking is soft-deleted (status → Cancelled /
      * Refunded / etc.) the deletion pipeline is supposed to create additive
@@ -376,24 +376,48 @@ class ProfitLossReportService
      *
      * To guarantee that the department dashboard reads "0 active income"
      * for a deleted booking, this filter drops every transaction whose
-     * related_type is BusBooking AND whose related_id points to a row
-     * with `deleted_at != NULL`. Both the original posting AND any
-     * reversal posting for that booking are excluded — the audit trail
-     * is preserved in `transactions`, but it stops contributing to the
-     * active P&L.
+     * `related_type` matches one of the soft-deletable models below AND
+     * whose `related_id` points to a row with `deleted_at != NULL`. Both
+     * the original posting AND any reversal posting for that booking are
+     * excluded — the audit trail is preserved in `transactions`, but it
+     * stops contributing to the active P&L.
      *
      * Mirrors fix: `app/Services/DashboardService.php::buildBusOperationsDashboard()`
      * now also filters soft-deleted bookings from the operational counts.
+     *
+     * Covers: BusBooking, FlightBooking, HajjUmraBooking, VisaBooking
+     * (all on the Bookings pattern) + FawryTransaction, OnlineTransaction,
+     * WalletTransaction (services whose deletion used to leave reverse
+     * rows that double-counted the GL).
+     *
+     * Implementation note: each `whereNotExists` is AND-joined to the
+     * outer query (no `orWhereNotExists`) so the row is only kept when
+     * NONE of the soft-deletable related tables have a matching deleted
+     * record. Chaining via `or` would be a logic bug: it would include
+     * any row whose bus_booking is alive even if its fawry_transactions
+     * counterpart is soft-deleted.
      */
     private function applySoftDeleteExclusion(Builder $query): void
     {
-        $query->whereNotExists(function ($sub) {
-            $sub->select(DB::raw(1))
-                ->from('bus_bookings')
-                ->whereColumn('bus_bookings.id', '=', 't.related_id')
-                ->where('t.related_type', '=', BusBooking::class)
-                ->whereNotNull('bus_bookings.deleted_at');
-        });
+        $exclusions = [
+            BusBooking::class => 'bus_bookings',
+            FlightBooking::class => 'flight_bookings',
+            HajjUmraBooking::class => 'hajj_umra_bookings',
+            VisaBooking::class => 'visa_bookings',
+            FawryTransaction::class => 'fawry_transactions',
+            OnlineTransaction::class => 'online_transactions',
+            WalletTransaction::class => 'wallet_transactions',
+        ];
+
+        foreach ($exclusions as $class => $table) {
+            $query->whereNotExists(function ($sub) use ($class, $table) {
+                $sub->select(DB::raw(1))
+                    ->from($table)
+                    ->whereColumn("$table.id", '=', 't.related_id')
+                    ->where('t.related_type', '=', $class)
+                    ->whereNotNull("$table.deleted_at");
+            });
+        }
     }
 
     /**
@@ -956,10 +980,10 @@ class ProfitLossReportService
             ->whereNotNull('t.related_id');
         // Skip transactions whose related booking has been soft-deleted —
         // those should not contribute to per-entity profit on the
-        // active-operations dashboard.
-        if ($relatedType === BusBooking::class) {
-            $this->applySoftDeleteExclusion($query);
-        }
+        // active-operations dashboard. The exclusion is now generic
+        // across all soft-deletable related models (Bus/Flight/Hajj/Visa
+        // bookings + Fawry/Online/Wallet transactions).
+        $this->applySoftDeleteExclusion($query);
 
         // First pass: classify each transaction + group by related_id
         // (no entity_id yet — we batch-load that next).

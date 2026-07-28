@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Online;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Online\StoreOnlineTransactionRequest;
 use App\Http\Requests\Online\UpdateOnlineTransactionRequest;
@@ -11,6 +12,7 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Online\OnlineTransaction;
+use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Online\OnlineTransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,10 +43,11 @@ class OnlineTransactionController extends Controller
             $filters['page'] = $request->get('page', 1);
             $filters['with_trashed'] = $request->boolean('with_trashed');
 
-            $cacheKey = 'online_transactions_list_' . md5(serialize($filters));
+            $cacheKey = 'online_transactions_list_'.md5(serialize($filters));
 
-            $data = \App\Helpers\CacheHelper::tags(['online_transactions'])->remember($cacheKey, 60, function () use ($filters) {
+            $data = CacheHelper::tags(['online_transactions'])->remember($cacheKey, 60, function () use ($filters) {
                 $paginator = $this->service->getAll($filters);
+
                 return [
                     'items' => OnlineTransactionResource::collection($paginator)->resolve(),
                     'pagination' => [
@@ -110,6 +113,13 @@ class OnlineTransactionController extends Controller
     {
         try {
             $this->service->delete($onlineTransaction);
+
+            // Flush finance-listing and dashboard caches so the
+            // deleted Online operation disappears from `finance/accounts`,
+            // `deficit_accounts`, and the unified dashboard without
+            // waiting for the 30s/300s TTLs to expire.
+            CacheHelper::flushTags(['accounts', 'dashboard', 'online_transactions']);
+            CacheHelper::flushNamespace();
 
             return ApiResponse::success('تم حذف المعاملة بنجاح.');
         } catch (\Throwable $e) {
@@ -272,7 +282,7 @@ class OnlineTransactionController extends Controller
                     'transaction.toAccount',
                     'transaction.related' => function ($morph) {
                         $morph->morphWith([
-                            \App\Models\Online\OnlineTransaction::class => ['serviceType', 'provider'],
+                            OnlineTransaction::class => ['serviceType', 'provider'],
                         ]);
                     },
                 ])
@@ -304,7 +314,7 @@ class OnlineTransactionController extends Controller
 
                     $running += ($credit - $debit);
 
-                    $description = app(\App\Services\Finance\LedgerEntryDescriptionResolver::class)->resolve($entry);
+                    $description = app(LedgerEntryDescriptionResolver::class)->resolve($entry);
 
                     $otherAccount = ($tx->from_account_id == $customerAccount->id)
                         ? $tx->toAccount
