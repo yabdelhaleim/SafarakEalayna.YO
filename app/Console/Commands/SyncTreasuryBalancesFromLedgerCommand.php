@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\DB;
     signature: 'accounts:sync-treasury-balances
         {--dry-run : Show changes without applying}
         {--force : Apply without confirmation}
-        {--account= : Sync a single account id only}',
+        {--account= : Sync a single account id only}
+        {--include-empty : Force sync on accounts that have zero ledger entries (use with care)}',
 )]
 class SyncTreasuryBalancesFromLedgerCommand extends Command
 {
@@ -59,6 +60,17 @@ class SyncTreasuryBalancesFromLedgerCommand extends Command
             $diff = round($stored - $ledger, 2);
 
             if (abs($diff) <= $tolerance) {
+                continue;
+            }
+
+            // SAFETY GUARD (2026-07-28): Skip accounts with zero ledger entries.
+            // A desync here means either a bug, a manual SQL update, or a deleted
+            // booking whose entries were voided without reversing the balance.
+            // The right fix is to investigate manually, not silently overwrite
+            // the stored value to 0. Operators can override with --include-empty.
+            $entriesCount = (int) AccountEntry::query()->where('account_id', $account->id)->count();
+            if ($entriesCount === 0 && ! $this->option('include-empty')) {
+                $this->warn("⚠️  Skipping #{$account->id} '{$account->name}': zero ledger entries but stored balance = {$stored}. Skipping to avoid masking desync. Re-run with --include-empty to force sync.");
                 continue;
             }
 
