@@ -193,39 +193,58 @@ class FinancialReportService
 
     /**
      * تقرير مديونيات العملاء
+     *
+     * FIX (2026-07-28, audit finding 1.1): the prior version only summed
+     * flightBookings regardless of the requested `module` filter, so
+     * hajj_umra and visa pending balances were silently dropped from
+     * the customer debt report. The new implementation unions the
+     * three booking relations based on the filter:
+     *   - module='flight'    → flightBookings only
+     *   - module='hajj_umra' → hajjUmraBookings only
+     *   - module='visa'      → visaBookings only
+     *   - module=array of any of the above → union
+     *   - no filter          → all three
      */
     public function getCustomerDebtsReport(array $filters = []): array
     {
         $query = Customer::query();
 
         if (! empty($filters['search'])) {
-            $query->where('full_name', 'like', '%'.$filters['search'].'%')
-                ->orWhere('phone', 'like', '%'.$filters['search'].'%');
+            $query->where(function ($q) use ($filters) {
+                $q->where('full_name', 'like', '%'.$filters['search'].'%')
+                    ->orWhere('phone', 'like', '%'.$filters['search'].'%');
+            });
         }
 
         if (! empty($filters['customer_type'])) {
             $query->where('type', $filters['customer_type']);
         }
 
-        $customers = $query->with(['flightBookings' => function ($q) use ($filters) {
-            $q->where('status', 'pending');
-            if (! empty($filters['module'])) {
-                // Since flight bookings are always 'flight' module,
-                // we check if the requested module matches.
-                if (is_array($filters['module'])) {
-                    if (! in_array('flight', $filters['module'])) {
-                        $q->whereRaw('1=0');
-                    }
-                } elseif ($filters['module'] !== 'flight') {
-                    $q->whereRaw('1=0');
-                }
-            }
-        }])->get();
+        // Resolve which booking relations to load based on the module filter.
+        $moduleFilter = $filters['module'] ?? null;
+        $relations = $this->resolveDebtBookingRelations($moduleFilter);
 
-        $debts = $customers->map(function ($customer) {
-            $pendingBookings = $customer->flightBookings;
-            $totalDebt = $pendingBookings->sum('selling_price') - $pendingBookings->sum(function ($booking) {
-                return $booking->payments->sum('amount');
+        // Load each relation with the pending-status scope.
+        $withCallbacks = [];
+        foreach ($relations as $relation) {
+            $withCallbacks[$relation] = function ($q) {
+                $q->where('status', 'pending');
+            };
+        }
+
+        $customers = $query->with($withCallbacks)->get();
+
+        $debts = $customers->map(function ($customer) use ($relations) {
+            $pendingBookings = collect();
+            foreach ($relations as $relation) {
+                $pendingBookings = $pendingBookings->merge($customer->{$relation});
+            }
+
+            $totalDebt = $pendingBookings->sum(function ($booking) {
+                $selling = (float) ($booking->selling_price ?? 0);
+                $paid = (float) $booking->payments->sum('amount');
+
+                return $selling - $paid;
             });
 
             return [
@@ -247,6 +266,39 @@ class FinancialReportService
             'customers_with_debts' => $debts->count(),
             'debts' => $debts,
         ];
+    }
+
+    /**
+     * Resolve which booking relations to load based on the module filter.
+     * Used by getCustomerDebtsReport. Exposed for testability.
+     *
+     * @return array<int, string>
+     */
+    protected function resolveDebtBookingRelations(mixed $moduleFilter): array
+    {
+        $moduleToRelation = [
+            'flight'    => 'flightBookings',
+            'hajj_umra' => 'hajjUmraBookings',
+            'visa'      => 'visaBookings',
+        ];
+
+        $allowedModules = collect();
+        if (is_array($moduleFilter)) {
+            $allowedModules = collect($moduleFilter);
+        } elseif (is_string($moduleFilter) && $moduleFilter !== '') {
+            $allowedModules = collect([$moduleFilter]);
+        } else {
+            $allowedModules = collect(array_keys($moduleToRelation));
+        }
+
+        $relations = $allowedModules
+            ->map(fn ($m) => $moduleToRelation[strtolower((string) $m)] ?? null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return $relations ?: array_values($moduleToRelation);
     }
 
     /**
