@@ -23,8 +23,8 @@ Invariant: `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`.
 | 2 | `app/Services/Finance/AccountService.php` | 3 findings | 🟡 Partial |
 | 3 | `app/Services/Finance/TreasuryService.php` | 2 findings | 🟡 Partial |
 | 4 | `app/Services/Finance/TransactionService.php` | 1 finding | 🔴 Critical |
-| 5 | `app/Services/Finance/CurrencyService.php` | TBD | — |
-| 6 | `app/Services/Finance/LedgerRepairService.php` | TBD | — |
+| 5 | `app/Services/Finance/CurrencyService.php` | 1 finding | 🟡 Partial |
+| 6 | `app/Services/Finance/LedgerRepairService.php` | 1 finding | 🟡 Partial |
 | 7 | `app/Services/Flight/FlightBookingService.php` | TBD | — |
 | 8 | `app/Services/Flight/FlightCarrierRechargeService.php` | TBD | — |
 | 9 | `app/Services/HajjUmra/HajjUmraBookingService.php` | TBD | — |
@@ -342,5 +342,138 @@ $currencies = Account::distinct()->pluck('currency')
 ```
 
 **Risk:** Low — only affects the `rates` output, not the actual calculations.
+
+---
+
+## File 5: `app/Services/Finance/CurrencyService.php`
+
+### 🟢 Finding 5.1: Negative amount validation in `convert()` (lines 21–25)
+
+**Severity:** 🟢 OK (good defensive check)
+
+**Code:**
+```php
+if ($amount < 0) {
+    throw new \InvalidArgumentException("Currency conversion amount must be non-negative. Got: {$amount}");
+}
+```
+
+**Status:** Prevents phantom reverse ledger entries from negative input. ✅
+
+---
+
+### 🟢 Finding 5.2: Rate validation in `setExchangeRate()` (lines 141–146)
+
+**Severity:** 🟢 OK (good defensive check)
+
+**Code:**
+```php
+$rate = (float) ($data['rate'] ?? 0);
+if ($rate <= 0) {
+    throw new \InvalidArgumentException("Exchange rate must be a positive number. Got: {$data['rate']}");
+}
+```
+
+**Status:** Prevents zero/negative rates from being saved. ✅
+
+---
+
+### 🟢 Finding 5.3: Multi-hop conversion via EGP fallback (lines 105–124)
+
+**Severity:** 🟢 OK (good fallback)
+
+**Code:**
+```php
+if ($fromCurrency !== 'EGP' && $toCurrency !== 'EGP') {
+    // Try converting from $fromCurrency to EGP, then EGP to $toCurrency
+}
+```
+
+**Status:** Handles currency pairs without direct rate. ✅
+
+---
+
+### 🟡 Finding 5.4: `convertToEgp()` in `FinancialReportService.php` duplicates `CurrencyService::convert()` logic
+
+**Severity:** 🟡 Warning (code duplication)
+
+**Code (`app/Services/Reports/FinancialReportService.php:1303–1337`):**
+```php
+private function convertToEgp(float $amount, string $currency): float
+{
+    $currency = strtoupper($currency);
+    if ($currency === 'EGP' || $amount == 0.0) {
+        return $amount;
+    }
+
+    try {
+        $converted = app(CurrencyService::class)->convert($amount, $currency, 'EGP');
+        return (float) $converted['to_amount'];
+    } catch (\Exception $e) {
+        $rate = ExchangeRate::where('from_currency', $currency)
+            ->where('to_currency', 'EGP')
+            ->where('is_active', true)
+            ->orderBy('effective_date', 'desc')
+            ->first();
+        // ... fallback
+    }
+}
+```
+
+**Problem:** This is a private method that wraps `CurrencyService::convert()` with a fallback to `ExchangeRate`. But `CurrencyService::convert()` already has fallback logic (currencies table, inverse rate, multi-hop). The duplication means:
+- Logic diverges when one is updated
+- The fallback in `convertToEgp` doesn't try currencies table
+- Errors are silently swallowed
+
+**Fix idea:** Remove `convertToEgp` and use `CurrencyService::convert()` directly. If it throws, treat as 0 (with a logged warning).
+
+**Risk:** Low — currently not broken, but refactoring risk.
+
+---
+
+## File 6: `app/Services/Finance/LedgerRepairService.php`
+
+### 🟡 Finding 6.1: `syncCustomerBalancesFromLedger()` may overwrite intentional balances (lines 70–119)
+
+**Severity:** 🟡 Warning (silent overwrite of intentional balances)
+
+**Code (excerpt):**
+```php
+public function syncCustomerBalancesFromLedger(int $actorUserId = 1): array
+{
+    $stats = ['synced' => 0, 'zeroed' => 0, 'skipped' => 0];
+    $customerAccounts = Account::query()
+        ->where(function ($q) {
+            $q->where('type', AccountType::Customer->value)
+                ->orWhere('name', 'like', '%حساب العميل%')
+                ->orWhere('name', 'like', '%ذممة عميل%');
+        })
+        ->get();
+    ...
+}
+```
+
+**Note:** This method is now called from the daily `ledger:reconcile` job (via `rebuildBrokenBalanceAfterChains` indirectly). It rewrites `Account.balance` based on the last `balance_after` from entries (without creating new entries). For customer accounts with 0 entries (intentional balances), this would zero them out.
+
+**Risk:** Combined with the new commit `bce9657` (the audit-tooling test), this could overwrite intentional opening balances.
+
+**Fix idea:** Check if the account has 0 entries before overwriting (similar to `SyncTreasuryBalancesFromLedgerCommand` fix).
+
+**Risk:** Low — currently customer accounts typically have entries.
+
+---
+
+### 🟢 Finding 6.2: `rebuildBrokenBalanceAfterChains()` correctly skips empty accounts (line 295)
+
+**Severity:** 🟢 OK (verified — already has the guard)
+
+**Code:**
+```php
+if ($entries->isEmpty()) {
+    continue;
+}
+```
+
+**Status:** Rebuild already skips accounts with no entries. ✅
 
 ---
