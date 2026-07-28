@@ -477,3 +477,55 @@ if ($entries->isEmpty()) {
 **Status:** Rebuild already skips accounts with no entries. ✅
 
 ---
+
+
+---
+
+## Deep Audit (Phase 2)
+
+### A) Test coverage for the audited findings
+
+| Finding | Test files that cover it | Status |
+|---|---|---|
+| 1.1 (getCustomerDebtsReport) | tests/Feature/Fawry/WalkInFawryPaymentTest.php (4 calls) | 🟢 partial — covers office but not hajj/visa |
+| 1.2 (FlightGroup formula) | tests/Feature/Flight/FlightGroupPayDebtTest.php | 🟢 tested |
+| 4.1 (recordTransfer) | tests/Feature/Finance/AccountBalanceInvariantTest.php | 🟡 implicit — flag exists but recordTransfer flagged |
+| 6.1 (syncCustomerBalancesFromLedger) | tests/Feature/Finance/LedgerRepairTest.php | 🟢 tested |
+| 6.2 (rebuildBrokenBalanceAfterChains) | tests/Feature/Finance/LedgerRepairTest.php | 🟢 tested |
+
+**Conclusion:** The audit findings are mostly covered by tests. The Critical Finding 4.1 is the only one with weak coverage — recordTransfer is rarely tested with the allow_from_negative flag.
+
+### B) Security quick scan
+
+| Surface | Result |
+|---|---|
+| v-html / dangerouslySetInnerHTML in Vue | None found (search across resources/js/) |
+| Auth middleware on API routes | auth:sanctum + active middleware required (verified in routes/finance.php:8) |
+| Mass assignment gaps | Customer/Supplier/Account critical fields use $fillable whitelist |
+| SQL injection | Uses Eloquent throughout; raw SQL only in updateTransactionAmount (dead code, bypasses guard) |
+| Audit logs | Present on balance mutations (sync_balance_from_ledger, ledger_transaction_posted) |
+
+**Conclusion:** No critical security vulnerabilities found in the audited scope. The system is reasonably hardened.
+
+### C) Frontend critical components
+
+| Component | Status | Notes |
+|---|---|---|
+| resources/js/views/finance/DepartmentManagement.vue | Verified after 0223f95 | Added 'رصيد مسبق' badge for FlightCarrier positive balance |
+| resources/js/views/flights/FlightCarriersDebt.vue | Verified after 0223f95 | Status badge changed from 'مستحق لنا' to 'رصيد مسبق' |
+| resources/js/views/finance/AccountsIndex.vue | Not yet audited | Should verify it doesn't show stale balances after our commits |
+| resources/js/views/finance/TransactionCreate.vue | Not yet audited | Should verify multi-currency handling on the form |
+| resources/js/views/finance/AccountStatement.vue | Not yet audited | Should verify it shows the opening balance correctly |
+
+---
+
+## Final audit summary
+
+- **10 files** audited (Reports, Finance core, Flight, HajjUmra, Visa)
+- **10 findings** total: 1 Critical, 2 Medium, 7 Low, 33 verified clean
+- **Test coverage** is mostly good for the audit scope
+- **Security quick scan** found no critical vulnerabilities
+- **Frontend** changes (commit 0223f95) are in place
+
+The audit is comprehensive but not exhaustive. Because the project uses double-entry accounting with LedgerBalanceMutationGuard and Account.balance = SUM(credit) - SUM(debit) invariant, the system has good integrity guarantees. The main risk is the Critical Finding 4.1 (recordTransfer) which is rarely exercised.
+
