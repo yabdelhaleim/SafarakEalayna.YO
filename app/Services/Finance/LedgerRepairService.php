@@ -65,11 +65,11 @@ class LedgerRepairService
     }
 
     /**
-     * @return array{synced:int,zeroed:int,skipped:int}
+     * @return array{synced:int,zeroed:int,skipped:int,skipped_empty:int}
      */
     public function syncCustomerBalancesFromLedger(int $actorUserId = 1): array
     {
-        $stats = ['synced' => 0, 'zeroed' => 0, 'skipped' => 0];
+        $stats = ['synced' => 0, 'zeroed' => 0, 'skipped' => 0, 'skipped_empty' => 0];
 
         $customerAccounts = Account::query()
             ->where(function ($q) {
@@ -82,6 +82,26 @@ class LedgerRepairService
         LedgerBalanceMutationGuard::run(function () use ($customerAccounts, $actorUserId, &$stats): void {
             DB::transaction(function () use ($customerAccounts, $actorUserId, &$stats): void {
                 foreach ($customerAccounts as $account) {
+                    // FIX (2026-07-28, audit finding 6.1): skip accounts with
+                    // zero ledger entries. resolveBalanceFromEntries() returns
+                    // 0 for empty accounts, which would silently overwrite
+                    // any intentional opening balance (e.g. credit extended
+                    // before any transaction was recorded). Mirrors the
+                    // safety guard added to SyncTreasuryBalancesFromLedgerCommand
+                    // (commit 127f013). Logged so operators can investigate.
+                    $entriesCount = (int) AccountEntry::query()->where('account_id', $account->id)->count();
+                    if ($entriesCount === 0) {
+                        Log::warning('syncCustomerBalancesFromLedger: skip account with zero entries', [
+                            'account_id' => $account->id,
+                            'account_name' => $account->name,
+                            'stored_balance' => (float) $account->balance,
+                            'reason' => 'no ledger entries — manual balance, not auto-overwrite',
+                        ]);
+                        $stats['skipped_empty']++;
+
+                        continue;
+                    }
+
                     $target = $this->resolveBalanceFromEntries($account);
 
                     if (abs((float) $account->balance - $target) <= 0.02) {
