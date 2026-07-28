@@ -284,6 +284,13 @@
                       >
                         غير مسجّل
                       </span>
+                      <span
+                        v-if="item.entity_type === 'flight_carrier' && item.balance > 0"
+                        class="rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] font-bold text-sky-400 border border-sky-500/20"
+                        title="دفعنا للناقل مقدماً ومتوقعين خدمة — ليس رصيد مادي لنا"
+                      >
+                        رصيد مسبق
+                      </span>
                     </div>
                     <div class="text-[10px] text-muted">{{ item.department_label }}</div>
                     <div v-if="item.entity_type === 'walkin_fawry' && item.tx_count" class="text-[10px] text-muted/70 mt-0.5">

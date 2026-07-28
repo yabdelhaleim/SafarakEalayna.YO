@@ -256,7 +256,7 @@
                   class="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold bg-success/10 text-success border border-success/20"
                 >
                   <ArrowUpRight class="w-3 h-3 ml-1" />
-                  مستحق لنا
+                  رصيد مسبق
                 </span>
                 <span
                   v-else-if="Number(row.balance) < 0"
