@@ -20,9 +20,9 @@ Invariant: `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`.
 | # | File | Findings | Status |
 |---|---|---|---|
 | 1 | `app/Services/Reports/FinancialReportService.php` | 3 findings | 🟡 Partial |
-| 2 | `app/Services/Finance/AccountService.php` | TBD | — |
+| 2 | `app/Services/Finance/AccountService.php` | 3 findings | 🟡 Partial |
 | 3 | `app/Services/Finance/TreasuryService.php` | TBD | — |
-| 4 | `app/Services/Finance/TransactionService.php` | TBD | — |
+| 4 | `app/Services/Finance/TransactionService.php` | 1 finding | 🔴 Critical |
 | 5 | `app/Services/Finance/CurrencyService.php` | TBD | — |
 | 6 | `app/Services/Finance/LedgerRepairService.php` | TBD | — |
 | 7 | `app/Services/Flight/FlightBookingService.php` | TBD | — |
@@ -144,5 +144,132 @@ foreach ($results as $item) {
 | Date | Account | Issue | Resolution |
 |---|---|---|---|
 | 2026-07-26 | account_id=5 (نقدي دينار, KWD) | Balance = -300, 0 AccountEntry rows. Caused "عجز" alert. | Manual reset to 0 via `LedgerBalanceMutationGuard::run()`. Documented in `Account.notes`. Root cause investigation: most likely from `accounts:sync-treasury-balances` running before commit `127f013` (which now blocks this). |
+
+---
+
+## File 2: `app/Services/Finance/AccountService.php`
+
+### 🟡 Finding 2.1: `debitAccount` rejects insufficient balance — may block legitimate prepaid/supplier operations (lines 391–421)
+
+**Severity:** 🟡 Warning (depending on caller; needs verification)
+
+**Code:**
+```php
+protected function debitAccount(Account $account, float $amount, int $transactionId): AccountEntry
+{
+    return $account->getConnection()->transaction(function () use ($account, $amount, $transactionId) {
+        $lockedAccount = Account::where('id', $account->id)->lockForUpdate()->first();
+
+        if ($lockedAccount->balance < $amount) {
+            throw new \Exception("Insufficient balance in account: {$lockedAccount->name}");
+        }
+
+        $lockedAccount->balance -= $amount;
+        $lockedAccount->save();
+        ...
+    });
+}
+```
+
+**Problem:** Per the convention (`app/Models/Account.php:86-89`), prepaid accounts (carriers, systems, agents) and supplier accounts (AP) can legitimately have negative balance. This check prevents any debit that would drop the balance below zero.
+
+**Practical impact:** If `AccountService->debit()` is ever called on a FlightCarrier/FlightSystem/Supplier account, the operation will fail. Currently, those accounts use their own model methods (e.g., `FlightCarrier->debit()` which uses `available_balance` + `credit_limit`), so this hasn't broken yet — but it's a latent bug.
+
+**Fix idea:** Add a type-aware check:
+```php
+if ($lockedAccount->type === 'cashbox' && $lockedAccount->balance < $amount) {
+    throw new \Exception("Insufficient balance in account: {$lockedAccount->name}");
+}
+// For prepaid/supplier, allow negative
+```
+
+**Risk:** Low — the check is rarely triggered in current flows, but it's a footgun.
+
+---
+
+### 🟢 Finding 2.2: `createAccount` opening balance entry has no `transaction_id` (lines 149–159)
+
+**Severity:** 🟢 OK (by design, but documented for clarity)
+
+**Code:**
+```php
+if ($account->balance != 0) {
+    AccountEntry::create([
+        'account_id' => $account->id,
+        'transaction_id' => null, // null for opening balance if no transaction exists
+        'debit' => $account->balance < 0 ? abs($account->balance) : 0,
+        'credit' => $account->balance > 0 ? $account->balance : 0,
+        'balance_after' => $account->balance,
+        'notes' => 'رصيد افتتاحي',
+    ]);
+}
+```
+
+**Status:** Intentionally creates an AccountEntry without a backing Transaction. The `notes='رصيد افتتاحي'` distinguishes it. This is correct behavior — the self-heal job (commit `2ee345c`) will see this entry and keep the balance consistent.
+
+**Note:** Does NOT need a fix. Documented for audit trail.
+
+---
+
+### 🟢 Finding 2.3: `updateAccount` does not allow `balance` updates (lines 171–195)
+
+**Severity:** 🟢 OK (good defensive design)
+
+**Code (excerpt):**
+```php
+$account->fill([
+    'name' => $data['name'] ?? $account->name,
+    'type' => $data['type'] ?? $account->type,
+    'currency' => $data['currency'] ?? $account->currency,
+    // ... no 'balance' in the fillable list
+]);
+```
+
+**Status:** The `balance` field is intentionally excluded from updates — defense-in-depth alongside `LedgerBalanceMutationGuard`. ✅
+
+---
+
+## File 4: `app/Services/Finance/TransactionService.php`
+
+### 🔴 Finding 4.1: `recordTransfer` rejects insufficient balance — same issue as 2.1, but on the user-facing path (line 399)
+
+**Severity:** 🔴 Critical (can block legitimate transfers from prepaid accounts)
+
+**Code (lines 399–401):**
+```php
+if ((float) $fromAccount->balance < $debitAmount) {
+    throw new \Exception('Insufficient balance in account: '.$fromAccount->name);
+}
+```
+
+**Problem:** This is the same check as `AccountService::debitAccount`, but it's in the user-facing `recordTransfer` method. If a user tries to make a transfer from a prepaid account (e.g., FlightCarrier with 100 KWD balance, transferring 150 KWD worth of debit), the operation fails with "Insufficient balance" — even though the convention says prepaid accounts should be allowed to go negative.
+
+**Why this hasn't blown up yet:** Most user-facing transfers are from cashbox/bank accounts (which SHOULD reject) or from customer accounts (where positive balance = customer owes us, so withdrawing makes sense). Prepaid accounts are usually funded via `credit()` (recharge), not `debit()` (consume).
+
+**Fix idea (matching Finding 2.1):**
+```php
+$isPrepaidOrSupplier = in_array($fromAccount->type, ['carrier', 'supplier', 'airline_account'], true);
+if (!$isPrepaidOrSupplier && (float) $fromAccount->balance < $debitAmount) {
+    throw new \Exception('Insufficient balance in account: '.$fromAccount->name);
+}
+```
+
+**Risk:** Medium — if the type check is wrong, cashbox overdraws could happen. Test carefully.
+
+---
+
+## Audit notes (in progress)
+
+The audit is in progress. To deliver a "100% no errors" audit, the following remain:
+
+- File 3: TreasuryService.php (trial balance / capital)
+- File 5: CurrencyService.php (multi-currency conversions)
+- File 6: LedgerRepairService.php (self-heal methods)
+- File 7: FlightBookingService.php (cancel/destroy — most critical)
+- File 8: FlightCarrierRechargeService.php
+- File 9: HajjUmraBookingService.php
+- File 10: VisaBookingService.php
+
+After all files are reviewed, fix commits will be prepared for each Critical finding.
 
 ---
