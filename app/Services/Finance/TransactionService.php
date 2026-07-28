@@ -396,7 +396,22 @@ class TransactionService
                 throw new \InvalidArgumentException('في نفس العملة يجب أن يطابق converted_amount قيمة amount أو يُترك فارغاً.');
             }
 
-            if ((float) $fromAccount->balance < $debitAmount) {
+            // FIX (2026-07-28, audit finding 4.1): allow transfers from accounts
+            // that legitimately go negative (prepaid carriers/systems, supplier
+            // AP). The same flag exists on recordJournalTransfer — this brings
+            // recordTransfer to parity. Default false keeps backward compat
+            // with the existing "insufficient balance" rejection for cashbox.
+            $allowFromNegative = (bool) ($data['allow_from_negative'] ?? false);
+            $fromTypeStr = $fromAccount->type instanceof AccountType
+                ? $fromAccount->type->value
+                : (string) $fromAccount->type;
+            $isLiquidity = in_array($fromTypeStr, AccountModuleContract::LIQUIDITY_TYPES, true);
+            $isPrepaidOrSupplier = $isLiquidity
+                ? false
+                : in_array($fromTypeStr, ['supplier', 'prepaid', 'airline_account'], true);
+            $canGoNegative = $allowFromNegative || $isPrepaidOrSupplier;
+
+            if (! $canGoNegative && (float) $fromAccount->balance < $debitAmount) {
                 throw new \Exception('Insufficient balance in account: '.$fromAccount->name);
             }
 
