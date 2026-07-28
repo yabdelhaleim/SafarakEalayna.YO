@@ -28,7 +28,7 @@ class HajjUmraDashboardController extends Controller
 
         $accounts = Account::query()
             ->where('is_active', true)
-            ->where('module_type', 'hajj_umra')
+            ->whereIn('module_type', ['tourism', 'hajj_umra'])
             ->get(['type', 'balance']);
 
         $cashboxes = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
