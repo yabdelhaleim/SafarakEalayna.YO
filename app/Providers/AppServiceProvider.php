@@ -74,6 +74,13 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
+        // SECURITY (Phase 5): stricter throttle on auth endpoints to prevent
+        // brute-force password / registration spam. 5 attempts per minute per IP
+        // is enough for legitimate use without giving an attacker room.
+        RateLimiter::for('auth', function (Request $request) {
+            return Limit::perMinute(5)->by($request->ip());
+        });
+
         Customer::observe(CustomerLedgerObserver::class);
         VisaAgent::observe(VisaAgentObserver::class);
         UmrahSupplier::observe(UmrahSupplierObserver::class);

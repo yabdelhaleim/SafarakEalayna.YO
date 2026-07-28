@@ -14,6 +14,7 @@ class CheckPermission
     private array $rolePermissions = [
         'admin' => [
             'flights.*', 'buses.*', 'services.*', 'online.*',
+            'hajj_umra.*', 'visa.*', 'wallet.*', 'fawry.*',
             'employees.*', 'finance.*', 'customers.*',
             'reports.*', 'users.*', 'settings.*'
         ],
@@ -22,6 +23,10 @@ class CheckPermission
             'buses.view', 'buses.create', 'buses.edit',
             'services.view', 'services.create', 'services.edit',
             'online.view', 'online.create', 'online.edit',
+            'hajj_umra.view', 'hajj_umra.create', 'hajj_umra.edit',
+            'visa.view', 'visa.create', 'visa.edit',
+            'wallet.view', 'wallet.create',
+            'fawry.view', 'fawry.create',
             'employees.view', 'employees.create', 'employees.edit', 'employees.bonuses',
             'finance.view', 'accounts.view', 'transactions.view',
             'customers.view', 'customers.create', 'customers.edit',
@@ -32,6 +37,10 @@ class CheckPermission
             'buses.view', 'buses.create',
             'services.view', 'services.create',
             'online.view', 'online.create',
+            'hajj_umra.view', 'hajj_umra.create',
+            'visa.view', 'visa.create',
+            'wallet.view', 'wallet.create',
+            'fawry.view', 'fawry.create',
             'customers.view', 'customers.create',
         ],
     ];
