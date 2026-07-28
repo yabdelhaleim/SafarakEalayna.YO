@@ -3,18 +3,19 @@
 namespace App\Console\Commands;
 
 use App\Services\Finance\LedgerReconciliationService;
+use App\Services\Finance\LedgerRepairService;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature(
-    signature: 'ledger:reconcile {--json : Emit JSON summary to stdout}',
+    signature: 'ledger:reconcile {--json : Emit JSON summary to stdout} {--no-rebuild : Skip the self-heal rebuild step}',
     aliases: ['finance:reconcile-ledger'],
 )]
 class LedgerReconcileCommand extends Command
 {
     protected $description = 'تسوية يومية: معاملات بلا أسطر، عدم اتزان لكل معاملة، إجمالي المدين/الدائن، ومقابلة أرصدة الحسابات مع القيود';
 
-    public function handle(LedgerReconciliationService $reconcile): int
+    public function handle(LedgerReconciliationService $reconcile, LedgerRepairService $repair): int
     {
         $run = $reconcile->runDaily();
         $extra = $reconcile->runPostingAndBalanceIntegrityScan();
@@ -37,7 +38,19 @@ class LedgerReconcileCommand extends Command
             'legacy_single_leg_transactions' => $extra['legacy_single_leg_transactions'] ?? 0,
         ];
 
+        // ── Self-heal: rebuild broken balance_after / Account.balance ──
+        // Skip via --no-rebuild for read-only runs. The rebuild only mutates
+        // accounts that have at least one AccountEntry row and the running
+        // total differs from the stored value (or any entry's balance_after
+        // is out of order). Accounts with zero entries are intentionally
+        // skipped — those need manual investigation, not silent reset.
+        $rebuildStats = ['accounts_fixed' => 0, 'entries_fixed' => 0];
+        if (! $this->option('no-rebuild')) {
+            $rebuildStats = $repair->rebuildBrokenBalanceAfterChains();
+        }
+
         if ($this->option('json')) {
+            $payload['rebuild'] = $rebuildStats;
             $payload['balance_drift_samples'] = $extra['balance_drift_samples'];
             $this->line(json_encode($payload));
 
@@ -73,6 +86,13 @@ class LedgerReconcileCommand extends Command
                 $extra['legacy_single_leg_transactions']
             ));
         }
+
+        $this->line(sprintf(
+            'Self-heal rebuild: accounts_fixed=%d entries_fixed=%d %s',
+            $rebuildStats['accounts_fixed'],
+            $rebuildStats['entries_fixed'],
+            $this->option('no-rebuild') ? '(skipped via --no-rebuild)' : ''
+        ));
 
         $treasuryDrift = $extra['treasury_liquidity_drift_count'] ?? $extra['accounts_with_balance_drift'];
 
