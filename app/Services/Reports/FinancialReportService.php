@@ -1186,7 +1186,7 @@ class FinancialReportService
 
                     if ($totalDebt > 0 || $totalPayment > 0) {
                         // Standard debts report convention: positive balance = receivable (they owe us), negative balance = payable (we owe them)
-                        $balance = $totalPayment - $totalDebt;
+                        $balance = $totalDebt - $totalPayment;
                     } else {
                         $balance = $g->account ? (float) $g->account->balance : 0.0;
                     }
