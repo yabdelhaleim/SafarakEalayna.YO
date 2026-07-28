@@ -21,7 +21,7 @@ Invariant: `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`.
 |---|---|---|---|
 | 1 | `app/Services/Reports/FinancialReportService.php` | 3 findings | 🟡 Partial |
 | 2 | `app/Services/Finance/AccountService.php` | 3 findings | 🟡 Partial |
-| 3 | `app/Services/Finance/TreasuryService.php` | TBD | — |
+| 3 | `app/Services/Finance/TreasuryService.php` | 2 findings | 🟡 Partial |
 | 4 | `app/Services/Finance/TransactionService.php` | 1 finding | 🔴 Critical |
 | 5 | `app/Services/Finance/CurrencyService.php` | TBD | — |
 | 6 | `app/Services/Finance/LedgerRepairService.php` | TBD | — |
@@ -262,7 +262,6 @@ if (!$isPrepaidOrSupplier && (float) $fromAccount->balance < $debitAmount) {
 
 The audit is in progress. To deliver a "100% no errors" audit, the following remain:
 
-- File 3: TreasuryService.php (trial balance / capital)
 - File 5: CurrencyService.php (multi-currency conversions)
 - File 6: LedgerRepairService.php (self-heal methods)
 - File 7: FlightBookingService.php (cancel/destroy — most critical)
@@ -271,5 +270,77 @@ The audit is in progress. To deliver a "100% no errors" audit, the following rem
 - File 10: VisaBookingService.php
 
 After all files are reviewed, fix commits will be prepared for each Critical finding.
+
+---
+
+## File 3: `app/Services/Finance\TreasuryService.php`
+
+### 🟢 Finding 3.1: Trial balance handles positive and negative prepaid balances correctly
+
+**Severity:** 🟢 OK (verified)
+
+**Code (lines 502–535, 659–692):**
+- `getTrialBalance()` sums **positive** FlightSystem/FlightCarrier/AirlineAccount balances into `totalBalances` (assets).
+- `sumNegativeTourismPrepaidBalances()` (private, called from `calculateReceivablesAndPayables`) sums **negative** balances (using `abs()`) and adds them to `dueFromUs` (what we owe).
+- The equation `currentCapital = (totalBalances + totalLiquidity + dueToUs) - dueFromUs` correctly handles both sides.
+
+**Status:** Math is consistent with the Account.php convention. ✅
+
+---
+
+### 🟡 Finding 3.2: `getAveragePurchaseRate` returns 1.0 for unknown currencies (line 343)
+
+**Severity:** 🟡 Warning (silent data corruption risk)
+
+**Code:**
+```php
+public function getAveragePurchaseRate(string $currency): float
+{
+    $currency = strtoupper(trim($currency));
+    if ($currency === 'EGP' || empty($currency)) {
+        return 1.0;
+    }
+
+    // Try to calculate average purchase rate from flight bookings...
+    // Fallback to latest exchange rate...
+    // Fallback to currencies table...
+    return 1.0;  // ← silent fallback for unknown currencies
+}
+```
+
+**Problem:** If a booking is in a currency (e.g., AED, JOD, OMR) that has no flight bookings, no exchange rate, and no currency table entry, the function returns 1.0. This means:
+- A 1000 AED booking would be treated as 1000 EGP for capital calculation
+- Massive under/over-estimation possible
+
+**Fix idea:** Log a warning + return null, OR fail loudly:
+```php
+\Log::warning('currency_rate_unknown', ['currency' => $currency]);
+return 1.0;  // explicitly state fallback
+```
+
+**Risk:** Low — the listed currencies are well-known, but new currencies could trip this.
+
+---
+
+### 🟡 Finding 3.3: Hardcoded currency list in `getTrialBalance` (line 495)
+
+**Severity:** 🟡 Warning (extensibility risk)
+
+**Code:**
+```php
+$currencies = ['USD', 'SAR', 'KWD', 'EUR'];
+```
+
+**Problem:** If a new currency is added (e.g., AED, QAR, OMR), the trial balance won't have a rate for it. The function would still work (using `getAveragePurchaseRate` fallback), but the explicit `rates` output won't include it.
+
+**Fix idea:** Query distinct currencies from the DB:
+```php
+$currencies = Account::distinct()->pluck('currency')
+    ->merge(FlightSystem::distinct()->pluck('currency'))
+    ->merge(FlightCarrier::distinct()->pluck('currency'))
+    ->unique()->filter()->values()->toArray();
+```
+
+**Risk:** Low — only affects the `rates` output, not the actual calculations.
 
 ---
