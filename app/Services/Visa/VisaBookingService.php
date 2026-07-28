@@ -532,41 +532,6 @@ class VisaBookingService
         );
     }
 
-    protected function updateTransactionAmount(Transaction $transaction, float $newAmount)
-    {
-        $oldAmount = (float) $transaction->amount;
-        if ($oldAmount === $newAmount) {
-            return;
-        }
-        $diff = $newAmount - $oldAmount;
-
-        $fromAccount = $transaction->fromAccount;
-        $toAccount = $transaction->toAccount;
-
-        if ($fromAccount) {
-            $fromAccount->getConnection()->statement('UPDATE accounts SET balance = balance - ? WHERE id = ?', [$diff, $fromAccount->id]);
-        }
-        if ($toAccount) {
-            $toAccount->getConnection()->statement('UPDATE accounts SET balance = balance + ? WHERE id = ?', [$diff, $toAccount->id]);
-        }
-
-        $transaction->update(['amount' => $newAmount]);
-
-        foreach ($transaction->entries as $entry) {
-            if ((float) $entry->debit > 0) {
-                $entry->update([
-                    'debit' => $newAmount,
-                    'balance_after' => $entry->account->fresh()->balance,
-                ]);
-            } elseif ((float) $entry->credit > 0) {
-                $entry->update([
-                    'credit' => $newAmount,
-                    'balance_after' => $entry->account->fresh()->balance,
-                ]);
-            }
-        }
-    }
-
     /**
      * Public so external callers (Filament custom Actions, controllers)
      * can resolve the customer's ledger Account the same way the booking-flow
