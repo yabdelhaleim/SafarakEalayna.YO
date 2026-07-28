@@ -25,10 +25,10 @@ Invariant: `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`.
 | 4 | `app/Services/Finance/TransactionService.php` | 1 finding | 🔴 Critical |
 | 5 | `app/Services/Finance/CurrencyService.php` | 1 finding | 🟡 Partial |
 | 6 | `app/Services/Finance/LedgerRepairService.php` | 1 finding | 🟡 Partial |
-| 7 | `app/Services/Flight/FlightBookingService.php` | TBD | — |
-| 8 | `app/Services/Flight/FlightCarrierRechargeService.php` | TBD | — |
-| 9 | `app/Services/HajjUmra/HajjUmraBookingService.php` | TBD | — |
-| 10 | `app/Services/Visa/VisaBookingService.php` | TBD | — |
+| 7 | `app/Services/Flight/FlightBookingService.php` | 3 findings | 🟡 Partial |
+| 8 | `app/Services/Flight/FlightCarrierRechargeService.php` | 1 finding | 🟢 OK |
+| 9 | `app/Services/HajjUmra/HajjUmraBookingService.php` | 1 finding | 🟢 OK |
+| 10 | `app/Services/Visa/VisaBookingService.php` | 1 finding | 🟡 Partial |
 
 ## Severity legend
 - 🔴 **Critical** — wrong numbers, must fix before declaring stable
