@@ -136,9 +136,30 @@ class DeferredTransactionDeletionGuard
 
     /**
      * Return true if any debit was posted on the customer account AFTER
-     * the operation's creation date and is NOT part of the operation's
-     * own original posting. This catches pay-debt flows, manual
-     * settlement entries, refunds-replayed-as-debits, etc.
+     * the operation's creation date AND against this operation's debt
+     * specifically. This catches pay-debt flows, manual settlement
+     * entries, refunds-replayed-as-debits, etc.
+     *
+     * IMPORTANT exclusions (production-safety):
+     *
+     *  (a) Reverse / mirror entries (notes LIKE 'عكس%') are EXCLUDED.
+     *      These are bookkeeping rows produced by the update / cancel
+     *      reverse-pipeline and are not customer payments. Without this
+     *      exclusion, any update to a different operation for the same
+     *      customer would spuriously block the cancellation of every
+     *      later transaction for that customer (the inverses show up as
+     *      "later debits" and trip the guard).
+     *
+     *  (b) Settlements whose parent transaction belongs to ANOTHER
+     *      operation (different related_id) are EXCLUDED. Their job is
+     *      to settle the other operation's debt; they have no relevance
+     *      to this one and would otherwise leak across customers with
+     *      many transactions. This is the second half of the same
+     *      cross-operation interference that the older guard suffered
+     *      from — both halves are required.
+     *
+     * See tests/scripts/fawry_module_DEEP_E2E for the regression
+     * scenario captured on 2026-07-29.
      */
     private function customerAccountHasLaterDebit(
         int $customerAccountId,
@@ -157,11 +178,46 @@ class DeferredTransactionDeletionGuard
             return false;
         }
 
-        return DB::table('account_entries')
-            ->where('account_id', $customerAccountId)
-            ->where('debit', '>', 0)
-            ->where('created_at', '>', $createdAt)
-            ->whereNotIn('transaction_id', $originalTxIds)
+        return DB::table('account_entries as ae')
+            ->join('transactions as t', 't.id', '=', 'ae.transaction_id')
+            ->where('ae.account_id', $customerAccountId)
+            ->where('ae.debit', '>', 0)
+            ->where('ae.created_at', '>', $createdAt)
+            ->whereNotIn('ae.transaction_id', $originalTxIds)
+            // (a) Exclude bookkeeping reverse / mirror entries
+            ->where(function ($q) {
+                $q->whereNull('ae.notes')
+                    ->orWhere(function ($inner) {
+                        $inner->where('ae.notes', 'not like', 'عكس%')
+                            ->where('ae.notes', 'not like', 'عكس %')
+                            ->where('ae.notes', 'not like', 'عكس:%');
+                    });
+            })
+            // (b) Only COUNT entries whose parent transaction is a real
+            // payment against THIS operation:
+            //    - Walk-in / FIFO pay-debt rows (parent.related_id IS NULL),
+            //      which represent aggregate debt payments on the customer
+            //      account and are always a "later payment" against the
+            //      operation's debt.
+            //    - Settlements whose (related_type, related_id) exactly
+            //      matches THIS operation. These entries are already in
+            //      $originalTxIds so they get double-excluded by the
+            //      whereNotIn clause — the guard therefore never fires on
+            //      them, but including the clause documents intent.
+            // Entries belonging to OTHER operations (parent.related_id
+            // points elsewhere) are EXCLUDED — those are NOT payments
+            // against this operation and would otherwise leak across
+            // customers with multiple transactions (regression captured
+            // on 2026-07-29 when an update to a prior tx blocked the
+            // cancellation of a later, otherwise-clean tx for the same
+            // customer).
+            ->where(function ($q) use ($relatedType, $relatedId) {
+                $q->whereNull('t.related_id')
+                    ->orWhere(function ($inner) use ($relatedType, $relatedId) {
+                        $inner->where('t.related_type', $relatedType)
+                            ->where('t.related_id', $relatedId);
+                    });
+            })
             ->exists();
     }
 }
