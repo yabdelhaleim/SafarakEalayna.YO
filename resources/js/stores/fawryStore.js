@@ -640,7 +640,7 @@ export const useFawryStore = defineStore('fawry', {
       }
     },
 
-    // Fetch Fawry Ledger Accounts (module_type = fawry)
+    // Fetch Office-division liquidity accounts eligible for Fawry recharge
     async fetchFawryAccounts() {
       this.loading.fawryAccounts = true;
       this.errors = {};
@@ -687,6 +687,10 @@ export const useFawryStore = defineStore('fawry', {
         delete: false,
         daily_summary: false,
         settings: false,
+        machines: false,
+        machineTransactions: false,
+        recharge: false,
+        fawryAccounts: false,
       };
       this.errors = {};
       this.lastApiEnvelope = null;

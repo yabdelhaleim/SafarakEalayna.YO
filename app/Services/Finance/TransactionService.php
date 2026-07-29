@@ -28,6 +28,15 @@ class TransactionService
 
     protected function persistTransaction(array $attrs): Transaction
     {
+        // Phase 7: stamp `currency` from the booking/caller when provided so
+        // per-currency clearing entries can be distinguished in reports.
+        // Default to EGP for legacy callers.
+        if (! isset($attrs['currency']) || $attrs['currency'] === null || $attrs['currency'] === '') {
+            $attrs['currency'] = 'EGP';
+        } else {
+            $attrs['currency'] = strtoupper((string) $attrs['currency']);
+        }
+
         $transaction = Transaction::create($attrs);
         $this->auditStamper->stamp($transaction);
 
@@ -53,7 +62,13 @@ class TransactionService
         $moduleValue = $data['module'] ?? TransactionModule::General->value;
 
         $explicitContra = isset($data['contra_account_id']) ? (int) $data['contra_account_id'] : null;
-        $resolvedContra = $explicitContra ?: $this->ledgerClearingAccounts->expenseContraIdForModule((string) $moduleValue);
+        // Phase 7: when a transaction currency is supplied AND the module has
+        // a per-currency clearing account configured, route the contra to the
+        // matching currency bucket. Otherwise fall back to the legacy single-
+        // currency resolver (default = EGP).
+        $txCurrency = isset($data['currency']) ? strtoupper((string) $data['currency']) : null;
+        $resolvedContra = $explicitContra
+            ?: $this->ledgerClearingAccounts->expenseContraIdForModuleAndCurrency((string) $moduleValue, $txCurrency);
 
         if ($resolvedContra !== null && $resolvedContra !== $fromId) {
             return $this->recordJournalTransfer([
@@ -68,6 +83,7 @@ class TransactionService
                 'related_id' => $data['related_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $data['created_by'] ?? Auth::id() ?? 1,
+                'currency' => $txCurrency,
             ]);
         }
 
@@ -160,13 +176,17 @@ class TransactionService
         $moduleValue = $data['module'] ?? TransactionModule::General->value;
 
         $explicitContra = isset($data['contra_account_id']) ? (int) $data['contra_account_id'] : null;
+        // Phase 7: prefer the per-currency income clearing account when a
+        // transaction currency is supplied. Falls back to the legacy resolver
+        // (which defaults to EGP) for legacy callers.
+        $txCurrency = isset($data['currency']) ? strtoupper((string) $data['currency']) : null;
 
         $resolvedContra = $explicitContra;
         if ($resolvedContra === null || $resolvedContra === 0) {
             if ((string) $moduleValue === TransactionModule::Flight->value) {
                 $resolvedContra = $this->ledgerClearingAccounts->incomeContraIdForFlightBooking();
             } else {
-                $resolvedContra = $this->ledgerClearingAccounts->incomeContraIdForModule((string) $moduleValue);
+                $resolvedContra = $this->ledgerClearingAccounts->incomeContraIdForModuleAndCurrency((string) $moduleValue, $txCurrency);
             }
         }
 
@@ -183,6 +203,7 @@ class TransactionService
                 'related_id' => $data['related_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $data['created_by'] ?? Auth::id() ?? 1,
+                'currency' => $txCurrency,
             ]);
         }
 
@@ -564,6 +585,7 @@ class TransactionService
             $transaction = $this->persistTransaction([
                 'type' => TransactionType::Transfer->value,
                 'amount' => $amount,
+                'currency' => $data['currency'] ?? null,
                 'module' => $data['module'],
                 'related_type' => $data['related_type'] ?? null,
                 'related_id' => $data['related_id'] ?? null,

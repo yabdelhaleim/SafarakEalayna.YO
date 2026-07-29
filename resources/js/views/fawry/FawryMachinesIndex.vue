@@ -153,19 +153,24 @@
               <input :value="`${rechargeMachineData?.name} (${formatMachineType(rechargeMachineData?.type)})`" type="text" disabled class="form-select-dark opacity-60 pointer-events-none" />
             </div>
             <div>
-              <label class="mb-2 block text-xs font-bold text-text-muted">خصم من حساب (بنوك / محافظ فوري فقط) <span class="text-error">*</span></label>
-              <select v-model="rechargeForm.from_account_id" required class="form-select-dark">
+              <label class="mb-2 block text-xs font-bold text-text-muted">خصم من حساب (خزينة / بنك / محفظة) <span class="text-error">*</span></label>
+              <select v-model="rechargeForm.from_account_id" required :disabled="store.loading.fawryAccounts" class="form-select-dark disabled:opacity-60">
                 <option value="">اختر حساب الخزينة/التحصيل</option>
-                <option v-for="acc in store.fawryAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} (الرصيد: {{ formatMoney(acc.balance) }})
-                </option>
+                <option v-if="store.loading.fawryAccounts" value="" disabled>جاري تحميل حسابات التمويل...</option>
+                <option v-else-if="store.errors.fawryAccounts" value="" disabled>{{ store.errors.fawryAccounts }}</option>
+                <option v-else-if="!store.fawryAccounts.length" value="" disabled>لا توجد حسابات خزينة/بنك/محفظة متاحة</option>
+                <template v-else>
+                  <option v-for="acc in store.fawryAccounts" :key="acc.id" :value="acc.id">
+                    {{ acc.name }} — {{ formatAccountType(acc.type) }} (الرصيد: {{ formatMoney(acc.balance, acc.currency) }})
+                  </option>
+                </template>
               </select>
             </div>
             <div>
               <label class="mb-2 block text-xs font-bold text-text-muted">مبلغ الشحن <span class="text-error">*</span></label>
               <div class="relative">
                 <input v-model.number="rechargeForm.amount" type="number" step="0.01" min="0.01" required class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-sm font-mono tabular-nums" placeholder="0.00" />
-                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-xs">ج.م</span>
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-xs">{{ selectedFundingAccount?.currency || 'EGP' }}</span>
               </div>
             </div>
             <div>
@@ -173,7 +178,7 @@
               <textarea v-model="rechargeForm.notes" rows="2" maxlength="500" class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all text-sm resize-none" placeholder="البيان أو رقم التحويل..."></textarea>
             </div>
             <div class="mt-6 flex gap-3">
-              <button type="submit" :disabled="store.loading.recharge" class="flex-1 py-3 px-4 bg-gold text-black rounded-xl text-sm font-bold disabled:opacity-45 hover:bg-gold/90 transition flex items-center justify-center gap-2">
+              <button type="submit" :disabled="store.loading.recharge || store.loading.fawryAccounts" class="flex-1 py-3 px-4 bg-gold text-black rounded-xl text-sm font-bold disabled:opacity-45 hover:bg-gold/90 transition flex items-center justify-center gap-2">
                 <Loader2 v-if="store.loading.recharge" class="w-4 h-4 animate-spin" />
                 <span>{{ store.loading.recharge ? 'جاري الشحن...' : 'تأكيد الشحن' }}</span>
               </button>
@@ -269,6 +274,9 @@ const historyMachineData = ref(null);
 
 const activeCount = computed(() => store.machines.filter(m => m.is_active).length);
 const totalBalance = computed(() => store.machines.reduce((sum, m) => sum + (parseFloat(m.balance) || 0), 0));
+const selectedFundingAccount = computed(() => store.fawryAccounts.find(
+  account => Number(account.id) === Number(rechargeForm.value.from_account_id),
+) || null);
 
 function buildFetchParams() {
   const p = {};
@@ -284,13 +292,22 @@ async function fetchList() {
 
 const debouncedFetch = debounce(fetchList, 320);
 
-function formatMoney(amount) {
+function formatMoney(amount, currency = 'EGP') {
   return new Intl.NumberFormat('ar-EG', {
     style: 'currency',
-    currency: 'EGP',
+    currency: currency || 'EGP',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(amount) || 0);
+}
+
+function formatAccountType(type) {
+  const types = {
+    cashbox: 'خزينة نقدية',
+    bank: 'بنك',
+    wallet: 'محفظة إلكترونية',
+  };
+  return types[type] || type;
 }
 
 function formatMachineType(type) {
@@ -320,6 +337,7 @@ function openRecharge(machine) {
   rechargeForm.value = { from_account_id: '', amount: '', notes: '' };
   if (store.errors.recharge) delete store.errors.recharge;
   rechargeOpen.value = true;
+  store.fetchFawryAccounts().catch(() => {});
 }
 
 async function submitRecharge() {
@@ -327,7 +345,7 @@ async function submitRecharge() {
   try {
     await store.rechargeMachine(rechargeMachineData.value.id, rechargeForm.value);
     rechargeOpen.value = false;
-    await fetchList();
+    await Promise.all([fetchList(), store.fetchFawryAccounts()]);
   } catch (e) {
     // handled by store error
   }

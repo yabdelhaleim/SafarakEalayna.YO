@@ -473,6 +473,11 @@ Route::prefix('v1')->middleware([
         Route::get('programs/{program}', [HajjUmraProgramController::class, 'show']);
         Route::match(['put', 'patch'], 'programs/{program}', [HajjUmraProgramController::class, 'update']);
 
+        // Destructive: deleting a program is admin-only and refused when bookings exist.
+        Route::middleware('admin')->group(function () {
+            Route::delete('programs/{program}', [HajjUmraProgramController::class, 'destroy']);
+        });
+
         // Reference data (مدارة من Filament)
         Route::get('settings/programs', [HajjUmraReferenceController::class, 'programs']);
         Route::get('settings/executing-companies', [HajjUmraReferenceController::class, 'executingCompanies']);

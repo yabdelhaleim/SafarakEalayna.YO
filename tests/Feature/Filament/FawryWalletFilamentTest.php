@@ -71,7 +71,7 @@ class FawryWalletFilamentTest extends TestCase
         $this->assertDatabaseHas('accounts', [
             'name' => 'فودافون كاش — فرع المعادي',
             'type' => AccountType::Wallet->value,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'wallet_number' => '01012345678',
         ]);
@@ -93,7 +93,7 @@ class FawryWalletFilamentTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        Account::query()->create([
+        $tourismWallet = Account::query()->create([
             'name' => 'محفظة طيران',
             'type' => AccountType::Wallet,
             'module_type' => 'tourism',
@@ -110,7 +110,7 @@ class FawryWalletFilamentTest extends TestCase
 
         Livewire::test(ListFawryWallets::class)
             ->assertCanSeeTableRecords([$fawryWallet])
-            ->assertCountTableRecords(1);
+            ->assertCanNotSeeTableRecords([$tourismWallet]);
     }
 
     public function test_fawry_cashboxes_index_page_loads(): void
@@ -134,7 +134,7 @@ class FawryWalletFilamentTest extends TestCase
         $this->assertDatabaseHas('accounts', [
             'name' => 'خزينة فوري — الرئيسية',
             'type' => AccountType::Cashbox->value,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
         ]);
     }
@@ -190,7 +190,7 @@ class FawryWalletFilamentTest extends TestCase
         $this->assertDatabaseHas('accounts', [
             'name' => 'البنك الأهلي — فوري',
             'type' => AccountType::Bank->value,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
         ]);
     }

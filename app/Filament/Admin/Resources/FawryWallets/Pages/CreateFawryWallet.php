@@ -12,7 +12,7 @@ class CreateFawryWallet extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['module_type'] = 'fawry';
+        $data['module_type'] = 'office';
         $data['module'] = 'fawry';
         $data['type'] = \App\Enums\AccountType::Wallet->value;
 

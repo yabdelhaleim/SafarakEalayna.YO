@@ -1,0 +1,10 @@
+{
+    "run_tag": "ULTRA-1785345898",
+    "started_at": "2026-07-29 17:24:17",
+    "finished_at": "2026-07-29 17:26:40",
+    "pass": 143,
+    "fail": 0,
+    "total": 143,
+    "created_txs": 80,
+    "failures": []
+}

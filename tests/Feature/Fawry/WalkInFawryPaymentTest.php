@@ -8,11 +8,11 @@ use App\Models\Fawry\FawryTransaction;
 use App\Models\User;
 use App\Services\Fawry\FawryTransactionService;
 use App\Services\Finance\LedgerClearingAccounts;
-use App\Services\Finance\TransactionService;
 use App\Services\Reports\FinancialReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -38,7 +38,7 @@ class WalkInFawryPaymentTest extends TestCase
         parent::setUp();
 
         $this->service = app(FawryTransactionService::class);
-        $this->user = User::factory()->create();
+        $this->user = User::factory()->create(['role' => 'admin']);
         $this->settlementAccount = Account::factory()->active()->create([
             'name' => 'Cashbox EGP',
             'type' => AccountType::Cashbox,
@@ -56,7 +56,7 @@ class WalkInFawryPaymentTest extends TestCase
      */
     public function actingAs($user, $driver = null)
     {
-        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        Sanctum::actingAs($user, ['*']);
 
         return $this;
     }

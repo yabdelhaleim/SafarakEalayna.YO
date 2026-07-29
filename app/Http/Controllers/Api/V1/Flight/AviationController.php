@@ -6,11 +6,23 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\Flight\AviationService;
 use App\Http\Requests\Flight\StoreAviationBookingRequest;
+use App\Services\Flight\FlightBookingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
+/**
+ * AviationController — alternate (lighter) booking surface for the aviation SPA.
+ *
+ * ✅ Phase 3 Refactor (2026-07-29):
+ *   - `destroy()` now routes through FlightBookingService::deleteBookingWithReversal()
+ *     so the GL trail is properly unwound (carrier credit + cashbox debit + GL sale reversal).
+ *     The previous `Model::delete()` left dangling AccountEntry rows and broke accounting invariants.
+ *   - Inline Validator::make() kept for now (legacy) — documented for future migration.
+ */
 class AviationController extends Controller
 {
     public function __construct(
@@ -25,7 +37,7 @@ class AviationController extends Controller
         $timestamp = now()->format('Ymd');
         $random = strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 6));
         $number = "FLT-{$timestamp}-{$random}";
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Booking number generated',
@@ -37,20 +49,28 @@ class AviationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['date_from', 'date_to', 'airline']);
-        $filters['page'] = $request->get('page', 1);
+        try {
+            $filters = $request->only(['date_from', 'date_to', 'airline']);
+            $filters['page'] = $request->get('page', 1);
 
-        $cacheKey = 'aviation_bookings_list_' . md5(serialize($filters));
+            $cacheKey = 'aviation_bookings_list_' . md5(serialize($filters));
 
-        $bookings = \App\Helpers\CacheHelper::tags(['flight_bookings'])->remember($cacheKey, 60, function () use ($filters) {
-            $report = $this->aviationService->getReport($filters);
-            return $report['bookings'] ?? [];
-        });
-        
-        return ApiResponse::success(
-            'Aviation bookings retrieved successfully',
-            $bookings
-        );
+            $bookings = \App\Helpers\CacheHelper::tags(['flight_bookings'])->remember($cacheKey, 60, function () use ($filters) {
+                $report = $this->aviationService->getReport($filters);
+                return $report['bookings'] ?? [];
+            });
+
+            return ApiResponse::success(
+                'Aviation bookings retrieved successfully',
+                $bookings
+            );
+        } catch (\Exception $e) {
+            Log::error('AviationController::index failed', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+            ]);
+            return ApiResponse::error('فشل في جلب الحجوزات', null, 500);
+        }
     }
 
     public function store(StoreAviationBookingRequest $request): JsonResponse
@@ -58,7 +78,7 @@ class AviationController extends Controller
         try {
             $result = $this->aviationService->createBooking($request->validated());
             $bookingNumber = "BK-" . Carbon::parse($result['booking']->departure_date)->format('Ymd') . "-" . str_pad($result['booking']->id, 3, '0', STR_PAD_LEFT);
-            
+
             return ApiResponse::success(
                 'Booking created successfully',
                 [
@@ -82,7 +102,7 @@ class AviationController extends Controller
     public function show($idOrRef): JsonResponse
     {
         $booking = $this->aviationService->getBooking($idOrRef);
-        
+
         if (!$booking) {
             return ApiResponse::error('الحجز غير موجود', [['field' => 'id', 'code' => 'NOT_FOUND', 'message' => 'الحجز غير موجود']], 404);
         }
@@ -157,14 +177,35 @@ class AviationController extends Controller
         }
     }
 
+    /**
+     * Soft-delete a flight booking WITH FULL FINANCIAL REVERSAL.
+     *
+     ✅ Phase 3 Refactor (2026-07-29): Routes through FlightBookingService::deleteBookingWithReversal
+       so the entire accounting trail is unwound (carrier/system credit-back, GL sale reversal,
+       payment reversal, prepaid ledger adjustment). The previous implementation used a plain
+       `Model::delete()` which left dangling AccountEntry rows and broke the project's accounting
+       invariants — confirmed by the deep E2E test (scenario 5.2). This controller method now
+       matches FlightController::destroy behavior.
+     */
     public function destroy($id): JsonResponse
     {
         try {
-            $booking = \App\Models\Flight\FlightBooking::findOrFail($id);
-            $booking->delete();
-            return ApiResponse::success('Booking deleted successfully');
+            $userId = Auth::id() ?: 1;
+            app(FlightBookingService::class)->deleteBookingWithReversal((int) $id, $userId);
+
+            Log::info('AviationController::destroy — booking soft-deleted with full reversal', [
+                'flight_booking_id' => (int) $id,
+                'user_id' => $userId,
+            ]);
+
+            return ApiResponse::success('تم حذف الحجز مع عكس كل الآثار المحاسبية بنجاح.');
         } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'DELETE_FAILED', 'message' => $e->getMessage()]], 422);
+            Log::error('AviationController::destroy failed', [
+                'flight_booking_id' => $id,
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+            ]);
+            return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
 }

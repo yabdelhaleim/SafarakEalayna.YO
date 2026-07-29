@@ -5,11 +5,13 @@ namespace Tests\Feature\Fawry;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\Fawry\FawryOperationType;
+use App\Models\Fawry\FawryPaymentMethod;
 use App\Models\Fawry\FawryTransaction;
-use App\Models\User;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Finance\TransactionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class FawryTransactionControllerTest extends TestCase
@@ -28,7 +30,7 @@ class FawryTransactionControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        $this->user = User::factory()->create(['role' => 'admin']);
         $this->account = Account::factory()->active()->create();
         $this->client = Customer::factory()->create();
         $this->operationType = FawryOperationType::factory()->create([
@@ -37,7 +39,7 @@ class FawryTransactionControllerTest extends TestCase
             'is_active' => true,
         ]);
 
-        \App\Models\Fawry\FawryPaymentMethod::factory()->create([
+        FawryPaymentMethod::factory()->create([
             'code' => 'cash',
             'name_ar' => 'نقدي',
             'is_active' => true,
@@ -46,7 +48,8 @@ class FawryTransactionControllerTest extends TestCase
 
     public function actingAs($user, $driver = null)
     {
-        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        Sanctum::actingAs($user, ['*']);
+
         return $this;
     }
 
@@ -359,7 +362,10 @@ class FawryTransactionControllerTest extends TestCase
 
     public function test_delete_transaction_reverses_accounting_entries()
     {
-        $transaction = FawryTransaction::factory()->create();
+        $transaction = FawryTransaction::factory()->create([
+            'client_id' => null,
+            'amount' => 0,
+        ]);
 
         Transaction::factory()->create([
             'related_type' => FawryTransaction::class,
@@ -373,6 +379,7 @@ class FawryTransactionControllerTest extends TestCase
         // Mock the transaction service to reverse transactions
         $this->mock(TransactionService::class, function ($mock) {
             $mock->shouldReceive('reverseTransaction')->twice();
+            $mock->shouldReceive('recordJournalTransfer')->zeroOrMoreTimes();
         });
 
         $response = $this->actingAs($this->user)

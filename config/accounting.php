@@ -115,6 +115,33 @@ return [
             'general' => env('ACCOUNTING_EXPENSE_CLEARING_GENERAL_NAME', 'إقفال تكلفة عامة (نظام)'),
         ],
         /*
+         * Per-currency clearing accounts — Phase 7 (multi-currency visa).
+         *
+         * When a module posts an income/expense in a currency other than the
+         * account base currency (e.g. a USD visa booking against an EGP clearing
+         * account), routing the entry to a clearing account denominated in the
+         * SAME currency preserves ledger integrity without an FX rate snapshot.
+         *
+         * Each per-currency key is the canonical Arabic name; the resolver
+         * creates the row lazily on first use. Falls back to the single
+         * `income`/`expense` key when (a) the module is not configured for
+         * per-currency or (b) the booking currency is not in the map.
+         */
+        'income_per_currency' => [
+            'visa' => [
+                'EGP' => env('ACCOUNTING_VISA_INCOME_CLEARING_EGP', 'إقفال إيرادات التأشيرات (EGP)'),
+                'USD' => env('ACCOUNTING_VISA_INCOME_CLEARING_USD', 'إقفال إيرادات التأشيرات (USD)'),
+                'SAR' => env('ACCOUNTING_VISA_INCOME_CLEARING_SAR', 'إقفال إيرادات التأشيرات (SAR)'),
+            ],
+        ],
+        'expense_per_currency' => [
+            'visa' => [
+                'EGP' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_EGP', 'إقفال تكاليف التأشيرات (EGP)'),
+                'USD' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_USD', 'إقفال تكاليف التأشيرات (USD)'),
+                'SAR' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_SAR', 'إقفال تكاليف التأشيرات (SAR)'),
+            ],
+        ],
+        /*
          * Prepaid asset accounts — شحن الأنظمة/الناقلين/فوري (لا يدخل P&L حتى الاستهلاك).
          */
         'prepaid' => [

@@ -39,7 +39,7 @@ class FawryMachineServiceTest extends TestCase
         $this->user = User::factory()->create();
         $this->account = Account::factory()->active()->create([
             'balance' => 5000.00,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
         ]);
         $this->machine = FawryMachine::create([
             'name' => 'ماكينة فوري المحل',

@@ -38,10 +38,7 @@ class FawryWalletResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('type', AccountType::Wallet)
-            ->where(function (Builder $query): void {
-                $query->whereIn('module_type', ['fawry', 'office'])
-                    ->orWhere('module', 'fawry');
-            })
+            ->whereIn('module_type', ['fawry', 'office'])
             ->withCount('fawryTransactions');
     }
 

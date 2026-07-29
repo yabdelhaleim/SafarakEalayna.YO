@@ -19,7 +19,7 @@ class EditFawryWallet extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $data['module_type'] = 'fawry';
+        $data['module_type'] = 'office';
         $data['module'] = 'fawry';
 
         return $data;

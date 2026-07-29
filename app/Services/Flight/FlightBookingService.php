@@ -241,6 +241,20 @@ class FlightBookingService
 
                 $profit = $sellingPriceEGP - $purchasePriceEGP;
 
+                // Bug #3 fix (2026-07-29): compute and persist the foreign-currency
+                // selling price for non-EGP bookings. The `selling_price` column is
+                // ALWAYS in EGP (per the 2026-07-23 fix), but cancel / delete flows
+                // need the foreign-currency value to:
+                //   (a) compute the refund amount in booking currency (since the
+                //       refund account is validated to be in booking currency), and
+                //   (b) compute the EGP-equivalent sale amount for the GL sale reversal
+                //       without multiplying the already-EGP `selling_price` by
+                //       `exchange_rate` again (the previous double-conversion bug
+                //       that caused -57,800 USD wallet balances in scenario C).
+                $sellingPriceForeign = $currency !== 'EGP'
+                    ? round($sellingPriceEGP / max($exchangeRate, 0.0001), 2)
+                    : null;
+
                 $purchaseBalanceSource = $this->resolvePurchaseBalanceSource($data);
                 $settlementSnapshot = $this->persistedSettlementSnapshot($data, $currency, $purchasePriceEGP, $purchaseBalanceSource);
                 $lockCarrier = $purchaseBalanceSource === 'carrier'
@@ -256,7 +270,7 @@ class FlightBookingService
                 // Step 3: Create booking record (wrapped in ::run() so the
                 // ModelProfitMutationGuard lets the canonical 'profit' write
                 // through — see FlightBooking::booted() saving observer).
-                $booking = FlightBooking::runProfitMutation(function () use ($data, $bookingNumber, $purchasePriceEGP, $sellingPrice, $sellingPriceEGP, $exchangeRate, $currency, $profit, $settlementSnapshot, $purchaseBalanceSource, $userId) {
+                $booking = FlightBooking::runProfitMutation(function () use ($data, $bookingNumber, $purchasePriceEGP, $sellingPrice, $sellingPriceEGP, $sellingPriceForeign, $exchangeRate, $currency, $profit, $settlementSnapshot, $purchaseBalanceSource, $userId) {
                     return FlightBooking::create([
                         'customer_id' => $data['customer_id'],
                         'employee_id' => $data['employee_id'] ?? null,
@@ -286,6 +300,11 @@ class FlightBookingService
                         'trip_details' => $data['trip_details'] ?? null,
                         'purchase_price' => $purchasePriceEGP,
                         'selling_price' => $sellingPriceEGP,
+                        // Bug #3 fix: persist the foreign-currency selling price for
+                        // non-EGP bookings. Required by cancel/delete flows to compute
+                        // refunds in booking currency without double-applying the exchange
+                        // rate to the already-EGP `selling_price` column.
+                        'selling_price_foreign' => $sellingPriceForeign,
                         'profit' => $profit,
                         'currency' => $currency,
                         'foreign_currency' => $currency !== 'EGP' ? $currency : ($data['foreign_currency'] ?? null),
@@ -299,8 +318,13 @@ class FlightBookingService
                         'flight_carrier_id' => $data['flight_carrier_id'] ?? null,
                         'flight_group_id' => $data['flight_group_id'] ?? null,
                         'purchase_balance_source' => $purchaseBalanceSource,
-                        // إذا أُدخل PNR عند الإنشاء = الحجز مؤكد تلقائياً
-                        'status' => !empty($data['pnr'])
+                        // Bug #2 fix (2026-07-29): a PNR alone is no longer enough to
+                        // auto-confirm a booking. The booking must also have an actual
+                        // payment associated with it — otherwise the booking is still
+                        // PENDING (the customer may pay later or the booking may be
+                        // set up before payment is collected). This matches the test
+                        // expectation in `FlightProductionFullE2ETest` scenario B.
+                        'status' => (!empty($data['pnr']) && !empty($data['payment']) && (float) ($data['payment']['amount'] ?? 0) > 0)
                             ? FlightBookingStatus::CONFIRMED
                             : FlightBookingStatus::PENDING,
                         'account_id' => $data['account_id'] ?? null,
@@ -1958,33 +1982,56 @@ class FlightBookingService
                 // all in EGP for EGP bookings and in booking-currency for foreign bookings
                 // — but the sum of payments is always in EGP (converted on insert).
                 $bookingCurrency = strtoupper((string) $booking->currency);
+                $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
                 $totalPaid = (float) ($booking->payments()->sum('amount') ?? 0);
                 $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
-                // The penalties are assumed to be in the same currency as the booking
-                // selling_price (they represent amounts to deduct from the sale).
-                // For EGP bookings, that's EGP. For foreign-currency bookings, that's foreign.
-                $saleCurrency = $bookingCurrency;
-                $saleAmountForComparison = $bookingCurrency === 'EGP'
-                    ? (float) $booking->selling_price
-                    : (float) ($booking->original_amount ?: $booking->selling_price);
+                // Bug #1 fix (2026-07-29): PENALTIES ARE IN EGP — per the production API
+                // contract confirmed by `FlightMultiCurrencyProductionTest` line 266
+                // ('airline_penalty' => 10.0, // EGP-equivalent penalty) and
+                // `FlightProductionFullE2ETest` line 618 ($penalty = 2000.0; // EGP penalty).
+                //
+                // The previous code multiplied penalties by `exchange_rate` for non-EGP
+                // bookings, which DOUBLE-converted a value that was already in EGP —
+                // producing wild refund mismatches (e.g. 10,000 EGP penalty interpreted
+                // as 10,000 USD on a USD booking → 500,000 EGP credit, draining the
+                // cashbox below zero).
+                //
+                // Also fix the SALE-AMOUNT source: `original_amount` is intentionally NULL
+                // when the customer paid in the same currency as the booking (per the
+                // 2026-07-21 saving observer). The previous fallback `original_amount ?:
+                // selling_price` therefore dropped back to `selling_price` (which is in
+                // EGP) and interpreted it as foreign currency — another silent
+                // double-conversion. We now use the dedicated `selling_price_foreign`
+                // column populated at createBooking time, with a safety fallback to
+                // `original_amount` (only meaningful for legacy cross-currency bookings)
+                // and finally 0.0 for defense-in-depth.
+                if ($bookingCurrency === 'EGP') {
+                    $saleAmountForComparison = (float) $booking->selling_price;
+                    $totalPenaltiesInBookingCurrency = $airlinePenalty + $officePenalty;
+                } else {
+                    $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
+                    $saleAmountForComparison = $foreignSaleAmount;
+                    // EGP penalties converted to foreign currency at the booking rate.
+                    $totalPenaltiesInBookingCurrency = ($airlinePenalty + $officePenalty) / max($bookingExchangeRate, 0.0001);
+                }
 
-                if ($saleAmountForComparison > 0.001 && $airlinePenalty + $officePenalty > $saleAmountForComparison + 0.001) {
+                if ($saleAmountForComparison > 0.001 && $totalPenaltiesInBookingCurrency > $saleAmountForComparison + 0.001) {
                     throw new \InvalidArgumentException(
                         'مجموع خصم الطيران وعمولة الإلغاء لا يمكن أن يتجاوز مبلغ البيع الأصلي للحجز ('.
-                        $saleAmountForComparison.' '.$saleCurrency.').'
+                        $saleAmountForComparison.' '.$bookingCurrency.').'
                     );
                 }
 
-                // Refund amount is in booking currency (foreign for non-EGP bookings,
-                // EGP for EGP bookings) — not in the ledger EGP total of payments.
-                // For foreign-currency bookings: refund foreign amount = original_amount - penalties
-                // For EGP bookings: refund EGP amount = total_paid_egp - penalties
+                // Refund amount is in BOOKING CURRENCY (matches the refund account's
+                // currency — see Step 3.5 validation below). For EGP bookings the
+                // refund caps at the EGP-denominated total of payments; for foreign
+                // bookings it caps at the foreign-currency sale amount.
                 if ($bookingCurrency === 'EGP') {
                     $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
                 } else {
-                    $refundAmount = $saleAmountForComparison - $airlinePenalty - $officePenalty;
+                    $refundAmount = $saleAmountForComparison - $totalPenaltiesInBookingCurrency;
                 }
                 if ($refundAmount < 0) {
                     $refundAmount = 0;
@@ -2041,19 +2088,29 @@ class FlightBookingService
 
                 // Step 3: Reverse GL sale
                 //
-                // Bug #B7 fix: For foreign-currency bookings, the sale was originally
-                // posted to GL in EGP (via base_currency_amount / recordSaleToCustomer).
-                // The reversal must therefore also be in EGP, not in the booking's
-                // foreign selling_price. We compute the EGP-equivalent of the booking
-                // sale using original_amount × booking_exchange_rate.
+                // Bug #B7 + #1 fix (2026-07-29): The sale was originally posted to GL in
+                // EGP (via base_currency_amount / recordSaleToCustomer). The reversal must
+                // therefore also be in EGP. We compute the EGP-equivalent of the booking
+                // sale using `selling_price_foreign × booking_exchange_rate` (NOT
+                // `original_amount ?: selling_price` — the previous fallback silently
+                // multiplied the already-EGP `selling_price` by `exchange_rate` again,
+                // producing reversals up to 50× too large for USD bookings).
+                //
+                // Penalties remain in EGP per the API contract — no further conversion.
                 if ($booking->sale_gl_transaction_id) {
-                    $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                    // Resolve booking rate here too — needed for the foreign branch below.
+                    if (! isset($bookingExchangeRate)) {
+                        $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                    }
                     if ($bookingCurrency === 'EGP') {
                         $saleAmountEgp = (float) $booking->selling_price;
+                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
                     } else {
-                        $saleAmountEgp = ((float) ($booking->original_amount ?: $booking->selling_price)) * $bookingExchangeRate;
+                        $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
+                        $saleAmountEgp = $foreignSaleAmount * $bookingExchangeRate;
+                        // Penalties are EGP per the API contract; no further conversion.
+                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
                     }
-                    $totalPenaltiesEgp = ($airlinePenalty + $officePenalty) * ($bookingCurrency === 'EGP' ? 1.0 : $bookingExchangeRate);
                     $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
 
                     $reversalPosted = false;
@@ -2559,7 +2616,11 @@ class FlightBookingService
                 $totalPenalty = (float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty;
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
-                $penaltyEgp = $bookingCurrency === 'EGP' ? $totalPenalty : $totalPenalty * $bookingExchangeRate;
+                // Bug #1 fix (2026-07-29): penalties are EGP per the API contract — the
+                // previous `* $bookingExchangeRate` here produced values up to 50× too
+                // large (e.g. 2,000 EGP penalty → 100,000 EGP residual for a USD booking,
+                // draining the foreign wallet into negative territory).
+                $penaltyEgp = $totalPenalty;
 
                 // Resolve the income clearing account.
                 $clearingAccountId = $this->ensureFlightIncomeClearingAccount($userIdEffective);
@@ -2578,17 +2639,46 @@ class FlightBookingService
                         'refund_id' => $existingRefundEarly->id,
                     ]);
                 } else {
-                    $this->transactionService->recordJournalTransfer([
-                        'amount' => $penaltyEgp,
-                        'from_account_id' => $refundCashboxId,        // cashbox (was refunded from, still has +penalty)
-                        'to_account_id' => $clearingAccountId,        // income clearing (still has -penalty residual)
-                        'allow_from_negative' => true,
-                        'module' => TransactionModule::Flight->value,
-                        'related_type' => FlightBooking::class,
-                        'related_id' => $booking->id,
-                        'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
-                        'created_by' => $userIdEffective,
-                    ]);
+                    // Bug #1 cross-currency fix: when the booking is in a foreign
+                    // currency and the refund cashbox is in that same foreign currency
+                    // (e.g. USD booking, USD wallet), the penalty kept-as-cash sits on
+                    // the foreign wallet in foreign currency. To clear it we need a
+                    // cross-currency journal: debit the wallet by penalty-in-foreign,
+                    // credit the EGP clearing by penalty-in-EGP, with the booking rate.
+                    $refundAccount = Account::find($refundCashboxId);
+                    $refundCurrency = $refundAccount ? strtoupper((string) $refundAccount->currency) : 'EGP';
+                    $isCrossCurrency = $bookingCurrency !== 'EGP' && $refundCurrency !== $bookingCurrency;
+
+                    if ($isCrossCurrency) {
+                        $penaltyInForeignCurrency = $penaltyEgp / max($bookingExchangeRate, 0.0001);
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $penaltyInForeignCurrency,
+                            'converted_amount' => $penaltyEgp,
+                            'exchange_rate' => $bookingExchangeRate,
+                            'from_account_id' => $refundCashboxId,        // foreign cashbox/wallet (still has +penalty in foreign)
+                            'to_account_id' => $clearingAccountId,        // EGP income clearing (still has -penalty residual)
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                            'created_by' => $userIdEffective,
+                        ]);
+                    } else {
+                        // Same-currency residual clearing (EGP booking, or foreign booking
+                        // whose refund cashbox happens to be in the same foreign currency).
+                        $this->transactionService->recordJournalTransfer([
+                            'amount' => $penaltyEgp,
+                            'from_account_id' => $refundCashboxId,        // cashbox (was refunded from, still has +penalty)
+                            'to_account_id' => $clearingAccountId,        // income clearing (still has -penalty residual)
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                            'created_by' => $userIdEffective,
+                        ]);
+                    }
                 }
             }
 

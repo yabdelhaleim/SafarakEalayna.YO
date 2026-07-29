@@ -64,6 +64,47 @@ class HajjUmraProgramController extends Controller
     }
 
     /**
+     * DELETE /api/v1/hajj-umra/programs/{program}
+     *
+     * Soft-delete a Hajj/Umra program. Refuses (422) when the program has
+     * one or more HajjUmraBooking rows attached — bookings are the
+     * financial source of truth and deleting a program out from under them
+     * would orphan `program_id` references and break reporting.
+     *
+     * Admin-only (enforced at the route layer).
+     *
+     * Idempotency: a second delete on an already-soft-deleted program
+     * returns 422 (clean Arabic error), not 404.
+     */
+    public function destroy(Request $request, int $program): JsonResponse
+    {
+        $program = Program::withTrashed()->find($program);
+        if (! $program) {
+            return ApiResponse::error('البرنامج غير موجود', null, 404);
+        }
+        if ($program->trashed()) {
+            return ApiResponse::error('هذا البرنامج محذوف بالفعل', null, 422);
+        }
+
+        $bookingsCount = \App\Models\HajjUmraBooking::query()
+            ->where('program_id', $program->id)
+            ->count();
+
+        if ($bookingsCount > 0) {
+            return ApiResponse::error(
+                'لا يمكن حذف البرنامج لوجود حجوزات مرتبطة به ('.$bookingsCount.' حجز). '
+                .'يجب حذف أو ترحيل الحجوزات أولاً.',
+                null,
+                422
+            );
+        }
+
+        $program->delete();
+
+        return ApiResponse::success('تم حذف البرنامج بنجاح.');
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function formatProgram(Program $program): array

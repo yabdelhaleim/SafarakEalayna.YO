@@ -58,6 +58,105 @@ class LedgerClearingAccounts
     }
 
     /**
+     * Per-currency expense contra resolver (Phase 7 / multi-currency visa).
+     *
+     * Resolution order:
+     *   1. If `accounting.clearing.expense_per_currency.{module}.{currency}` is
+     *      configured AND the account exists, return its id.
+     *   2. Otherwise, fall back to the single-currency
+     *      `expenseContraIdForModule($module)` (legacy behaviour).
+     *
+     * The account for the chosen currency is created lazily on first call —
+     * the legacy EGP clearing account is reused as-is and is NOT duplicated.
+     * For non-EGP currencies, a new account is provisioned automatically.
+     */
+    public function expenseContraIdForModuleAndCurrency(
+        string|TransactionModule|null $module,
+        ?string $currency
+    ): ?int {
+        $key = $this->normalizeModuleKey($module);
+        $currency = $this->normalizeCurrency($currency);
+
+        $perCurrency = config("accounting.clearing.expense_per_currency.{$key}.{$currency}");
+        if (is_string($perCurrency) && $perCurrency !== '') {
+            // Honour an explicit per-currency override. The account row may
+            // already exist (e.g. seeded by ops); reuse it without forcing a
+            // new lazy creation if a different legacy clearing exists for the
+            // same currency.
+            $existing = $this->accountIdByName($perCurrency);
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            // If the per-currency name matches the legacy single-currency
+            // clearing name, prefer the legacy lookup so we never duplicate
+            // the historical EGP account.
+            $legacyName = config("accounting.clearing.expense.{$key}");
+            if (is_string($legacyName) && $legacyName === $perCurrency) {
+                return $this->expenseContraIdForModule($module);
+            }
+
+            // Avoid duplicate provisioning: if the legacy clearing already
+            // exists AND its denomination matches the requested currency,
+            // reuse it. This protects ops data that pre-dates the
+            // per-currency layer (e.g. the historical "إقفال تكاليف التأشيرات"
+            // row is EGP-denominated and must remain the EGP bucket).
+            if (is_string($legacyName) && $legacyName !== '' && $currency === 'EGP') {
+                $legacyId = $this->accountIdByName($legacyName);
+                if ($legacyId !== null) {
+                    return $legacyId;
+                }
+            }
+
+            return $this->ensureClearingAccountExists($perCurrency, $key, 'expense', $currency);
+        }
+
+        return $this->expenseContraIdForModule($module);
+    }
+
+    /**
+     * Per-currency income contra resolver (Phase 7 / multi-currency visa).
+     *
+     * Mirror of {@see self::expenseContraIdForModuleAndCurrency()} for income.
+     */
+    public function incomeContraIdForModuleAndCurrency(
+        string|TransactionModule|null $module,
+        ?string $currency
+    ): ?int {
+        $key = $this->normalizeModuleKey($module);
+        $currency = $this->normalizeCurrency($currency);
+
+        $perCurrency = config("accounting.clearing.income_per_currency.{$key}.{$currency}");
+        if (is_string($perCurrency) && $perCurrency !== '') {
+            $existing = $this->accountIdByName($perCurrency);
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            $legacyName = config("accounting.clearing.income.{$key}");
+            if (is_string($legacyName) && $legacyName === $perCurrency) {
+                return $this->incomeContraIdForModule($module);
+            }
+
+            // Avoid duplicate provisioning: if the legacy clearing already
+            // exists AND its denomination matches the requested currency,
+            // reuse it. This protects ops data that pre-dates the
+            // per-currency layer (e.g. the historical "إقفال إيرادات التأشيرات"
+            // row is EGP-denominated and must remain the EGP bucket).
+            if (is_string($legacyName) && $legacyName !== '' && $currency === 'EGP') {
+                $legacyId = $this->accountIdByName($legacyName);
+                if ($legacyId !== null) {
+                    return $legacyId;
+                }
+            }
+
+            return $this->ensureClearingAccountExists($perCurrency, $key, 'income', $currency);
+        }
+
+        return $this->incomeContraIdForModule($module);
+    }
+
+    /**
      * @param  'flight_system'|'flight_carrier'|'fawry'  $key
      */
     public function prepaidAccountId(string $key): int
@@ -261,6 +360,17 @@ class LedgerClearingAccounts
         };
     }
 
+    /**
+     * Canonicalise a currency code: trim, uppercase, default to EGP.
+     * Used by the per-currency clearing resolver to match config keys.
+     */
+    protected function normalizeCurrency(?string $currency): string
+    {
+        $v = strtoupper(trim((string) ($currency ?? '')));
+
+        return $v !== '' ? $v : 'EGP';
+    }
+
     protected function accountIdByName(?string $name): ?int
     {
         if ($name === null || $name === '') {
@@ -273,25 +383,30 @@ class LedgerClearingAccounts
             ->value('id');
     }
 
-    protected function ensureClearingAccountExists(string $name, string $moduleKey, string $type): int
+    protected function ensureClearingAccountExists(string $name, string $moduleKey, string $type, ?string $currency = null): int
     {
         $id = $this->accountIdByName($name);
         if ($id !== null) {
             return $id;
         }
 
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $moduleKey, $type) {
+        // Phase 7: honour the per-currency denomination when provided. Defaults
+        // to EGP to preserve legacy behaviour for callers that haven't opted
+        // into the new per-currency config.
+        $denomination = $this->normalizeCurrency($currency);
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name, $moduleKey, $type, $denomination) {
             $account = Account::query()->firstOrCreate(
                 ['name' => $name],
                 [
                     'type' => AccountType::Owner,  // owner = حساب داخلي لا يظهر في الخزائن
                     'balance' => 0,
-                    'currency' => 'EGP',
+                    'currency' => $denomination,
                     'is_active' => true,
                     'owner_type' => Account::OWNER_TYPE_OWNER,
                     'module_type' => AccountModuleDivision::resolveModuleTypeKey(null, $moduleKey),
                     'is_module_vault' => false,
-                    'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type})",
+                    'notes' => "حساب إقفال تلقائي للموديول: {$moduleKey} ({$type}) — {$denomination}",
                     'created_by' => Auth::id() ?? 1,
                 ]
             );
@@ -301,6 +416,7 @@ class LedgerClearingAccounts
                 'id' => $account->id,
                 'module' => $moduleKey,
                 'type' => $type,
+                'currency' => $denomination,
             ]);
 
             return $account->id;

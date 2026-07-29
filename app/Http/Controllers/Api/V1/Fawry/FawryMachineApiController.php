@@ -7,10 +7,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Fawry\FawryMachine;
 use App\Services\Fawry\FawryMachineRechargeService;
+use App\Support\Finance\AccountModuleContract;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class FawryMachineApiController extends Controller
 {
@@ -120,19 +124,12 @@ class FawryMachineApiController extends Controller
 
         try {
             $machine = FawryMachine::findOrFail($id);
-            // Accept any active Fawry-module or office-division account whose
-            // name indicates a Fawry cashbox/wallet/bank. Cashboxes per
-            // AccountModuleContract cannot carry module_type='fawry', so a
-            // strict equality would block legitimate office cashboxes tagged
-            // for the fawry module.
-            $source = Account::where('is_active', true)
-                ->where(function ($q) {
-                    $q->whereIn('module_type', ['fawry', 'office'])
-                        ->where(function ($q2) {
-                            $q2->where('name', 'like', '%فوري%')
-                                ->orWhere('name', 'like', '%Fawry%');
-                        });
-                })
+            // Accept any active Fawry-module or office-division liquidity
+            // account (cashbox / wallet / bank). Per AccountModuleContract,
+            // liquidity accounts cannot carry module_type='fawry' — they must
+            // use the division marker 'office' — so a strict equality would
+            // block every legitimate Fawry cashbox/wallet/bank in production.
+            $source = $this->eligibleFundingAccounts()
                 ->findOrFail($validated['from_account_id']);
 
             $service = app(FawryMachineRechargeService::class);
@@ -159,7 +156,14 @@ class FawryMachineApiController extends Controller
                     'transaction' => $result['machine_transaction'],
                 ]
             );
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first()
+                ?? 'بيانات شحن ماكينة فوري غير صحيحة.';
+
+            return ApiResponse::error($message, $e->errors(), 422);
+        } catch (ModelNotFoundException) {
+            return ApiResponse::error('الماكينة أو حساب التمويل المحدد غير موجود أو غير مؤهل للشحن.', null, 404);
+        } catch (\Throwable $e) {
             Log::error('FawryMachineApiController::recharge failed', [
                 'error' => $e->getMessage(),
                 'machine_id' => $id,
@@ -172,13 +176,21 @@ class FawryMachineApiController extends Controller
     }
 
     /**
-     * Get module-specific accounts for fawry module.
+     * Get liquidity accounts that can be used to charge a Fawry machine.
+     *
+     * Fawry is a member of the Office division. Per {@see AccountModuleContract},
+     * any liquidity account (cashbox / wallet / bank) targeting the Fawry
+     * module must carry `module_type='office'` (the division marker) — using
+     * `module_type='fawry'` would be rejected by {@see Account::booted()}.
+     * The dropdown must include every active liquidity account in either
+     * the Fawry module or the Office division, regardless of name, so the
+     * user can pick any treasury (cashbox / wallet / bank) as the source.
      */
     public function fawryAccounts(): JsonResponse
     {
         try {
-            $accounts = Account::where('module_type', 'fawry')
-                ->where('is_active', true)
+            $accounts = $this->eligibleFundingAccounts()
+                ->orderBy('type')
                 ->orderBy('name')
                 ->get();
 
@@ -204,5 +216,16 @@ class FawryMachineApiController extends Controller
 
             return ApiResponse::error('فشل في جلب حسابات موديول فوري');
         }
+    }
+
+    private function eligibleFundingAccounts(): Builder
+    {
+        return Account::query()
+            ->where('is_active', true)
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+            ->whereIn('module_type', [
+                'fawry',
+                AccountModuleContract::OFFICE_MODULE_TYPE,
+            ]);
     }
 }

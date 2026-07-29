@@ -52,6 +52,7 @@ class VisaModificationService
         return $this->transactions->recordExpense([
             'amount' => $newAmount,
             'from_account_id' => $expenseAccountId,
+            'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
             'module' => TransactionModule::Visa->value,
             'related_type' => VisaBooking::class,
             'related_id' => $booking->id,
@@ -75,6 +76,7 @@ class VisaModificationService
         return $this->transactions->recordIncome([
             'amount' => $newAmount,
             'to_account_id' => $customerAccountId,
+            'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
             'module' => TransactionModule::Visa->value,
             'related_type' => VisaBooking::class,
             'related_id' => $booking->id,

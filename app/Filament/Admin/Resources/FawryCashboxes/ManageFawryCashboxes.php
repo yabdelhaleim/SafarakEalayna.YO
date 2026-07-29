@@ -14,7 +14,8 @@ class ManageFawryCashboxes extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['module_type'] = 'fawry';
+                    $data['module_type'] = 'office';
+                    $data['module'] = 'fawry';
                     return $data;
                 }),
         ];

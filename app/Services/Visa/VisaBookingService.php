@@ -205,6 +205,7 @@ class VisaBookingService
             $expense = $this->transactions->recordExpense([
                 'amount' => $purchase,
                 'from_account_id' => $expenseAccountId,
+                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -215,6 +216,7 @@ class VisaBookingService
             $income = $this->transactions->recordIncome([
                 'amount' => $selling + $serviceFee,
                 'to_account_id' => $customerAccount->id,
+                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -400,6 +402,7 @@ class VisaBookingService
                 'amount' => $amount,
                 'to_account_id' => $cashboxAccountId,    // the cashbox the customer paid into
                 'contra_account_id' => $customerAccount->id,
+                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
@@ -491,6 +494,7 @@ class VisaBookingService
                 'amount' => $amount,
                 'to_account_id' => $accountId,
                 'contra_account_id' => $customerAccount->id,
+                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
                 'module' => TransactionModule::Visa->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,

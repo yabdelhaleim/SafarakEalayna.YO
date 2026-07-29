@@ -7,6 +7,7 @@ enum FlightPaymentMethod: string
     case Cash = 'cash';
     case BankTransfer = 'bank_transfer';
     case CashWallet = 'cash_wallet';
+    case Wallet = 'wallet';
     case PostalTransfer = 'postal_transfer';
     case OfficeSafe = 'office_safe';
     case OfficeDrawer = 'office_drawer';
@@ -20,6 +21,7 @@ enum FlightPaymentMethod: string
             self::Cash => 'نقدي مصري',
             self::BankTransfer => 'بنك',
             self::CashWallet => 'محفظة كاش',
+            self::Wallet => 'محفظة إلكترونية',
             self::PostalTransfer => 'بريد',
             self::OfficeSafe => 'خزينة المكتب',
             self::OfficeDrawer => 'درج المكتب',
@@ -35,6 +37,7 @@ enum FlightPaymentMethod: string
             self::Cash->value => 'نقدي مصري',
             self::BankTransfer->value => 'بنك',
             self::CashWallet->value => 'محفظة كاش',
+            self::Wallet->value => 'محفظة إلكترونية',
             self::PostalTransfer->value => 'بريد',
             self::OfficeSafe->value => 'خزينة المكتب',
             self::OfficeDrawer->value => 'درج المكتب',
