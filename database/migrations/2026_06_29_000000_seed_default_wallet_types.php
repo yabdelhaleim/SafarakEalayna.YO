@@ -7,51 +7,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $walletTypes = [
-            [
-                'name' => 'فودافون كاش',
-                'code' => 'vodafone_cash',
-                'is_active' => true,
-                'sort_order' => 1,
-            ],
-            [
-                'name' => 'إنستاباي',
-                'code' => 'instapay',
-                'is_active' => true,
-                'sort_order' => 2,
-            ],
-            [
-                'name' => 'أورنج كاش',
-                'code' => 'orange_cash',
-                'is_active' => true,
-                'sort_order' => 3,
-            ],
-            [
-                'name' => 'اتصالات كاش',
-                'code' => 'etisalat_cash',
-                'is_active' => true,
-                'sort_order' => 4,
-            ],
-            [
-                'name' => 'WE Pay',
-                'code' => 'we_pay',
-                'is_active' => true,
-                'sort_order' => 5,
-            ],
-        ];
-
-        foreach ($walletTypes as $wt) {
-            DB::table('wallet_types')->updateOrInsert(
-                ['code' => $wt['code']],
-                [
-                    'name' => $wt['name'],
-                    'is_active' => $wt['is_active'],
-                    'sort_order' => $wt['sort_order'],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]
-            );
-        }
+        // 2026-07-29: Disabled by user request — `migrate:fresh` should
+        // produce an EMPTY database. The previous baseline rows were a
+        // data-seed disguised as a migration. Historical DATA is preserved
+        // in git history (pre-change blob); historical SCHEMA (the
+        // `wallet_types` table itself) was created by an earlier migration
+        // and is unaffected by this no-op.
+        //
+        // To re-seed manually, see the original array in
+        // `git log -p database/migrations/2026_06_29_000000_seed_default_wallet_types.php`.
     }
 
     public function down(): void

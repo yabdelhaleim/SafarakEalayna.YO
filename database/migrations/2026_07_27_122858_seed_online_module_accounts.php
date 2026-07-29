@@ -16,52 +16,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $now = now()->toDateTimeString();
-
-        $accounts = [
-            // ── Cash / Cashbox ────────────────────────────────────────────
-            [
-                'name'         => 'خزينة الخدمات الإلكترونية',
-                'type'         => 'cashbox',
-                'module_type'  => 'office',
-                'is_active'    => 1,
-                'balance'      => 0,
-                'currency'     => 'EGP',
-            ],
-            // ── Bank ─────────────────────────────────────────────────────
-            [
-                'name'         => 'حساب بنكي - الخدمات الإلكترونية',
-                'type'         => 'bank',
-                'module_type'  => 'office',
-                'is_active'    => 1,
-                'balance'      => 0,
-                'currency'     => 'EGP',
-            ],
-            // ── Wallet ────────────────────────────────────────────────────
-            [
-                'name'         => 'محفظة إلكترونية - الخدمات الإلكترونية',
-                'type'         => 'wallet',
-                'module_type'  => 'office',
-                'is_active'    => 1,
-                'balance'      => 0,
-                'currency'     => 'EGP',
-            ],
-        ];
-
-        foreach ($accounts as $account) {
-            // Only create if no account with this exact name exists
-            $exists = DB::table('accounts')
-                ->where('name', $account['name'])
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if (! $exists) {
-                DB::table('accounts')->insert(array_merge(
-                    $account,
-                    ['created_at' => $now, 'updated_at' => $now]
-                ));
-            }
-        }
+        // 2026-07-29: Disabled by user request — `migrate:fresh` should
+        // produce an EMPTY database. The previous baseline rows were a
+        // data-seed disguised as a migration and they kept re-appearing
+        // on every fresh migration (the "خزينة الخدمات الإلكترونية"
+        // cashbox with 0.00 balance seen in the Filament TransferAccounts
+        // UI was this exact row).
+        //
+        // Historical DATA is preserved in git history (pre-change blob);
+        // historical SCHEMA (the `accounts` table itself) was created by
+        // an earlier migration and is unaffected by this no-op.
+        //
+        // To re-seed manually, see the original array in
+        // `git log -p database/migrations/2026_07_27_122858_seed_online_module_accounts.php`.
     }
 
     public function down(): void
