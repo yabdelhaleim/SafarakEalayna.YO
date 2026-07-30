@@ -43,6 +43,7 @@ class CustomerDebtPaymentTest extends TestCase
             'balance' => 1000.00,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -54,6 +55,7 @@ class CustomerDebtPaymentTest extends TestCase
             'balance' => 5000.00, // Debited balance (outstanding debt)
             'is_active' => true,
             'owner_type' => 'owner',
+            'module_type' => 'flights',
             'created_by' => $this->user->id,
         ]);
 
@@ -163,6 +165,7 @@ class CustomerDebtPaymentTest extends TestCase
             'balance' => 100.00,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 

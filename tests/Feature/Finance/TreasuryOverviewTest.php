@@ -69,13 +69,16 @@ class TreasuryOverviewTest extends TestCase
         $response->assertOk();
         $modules = $response->json('data.modules');
 
-        $this->assertArrayHasKey('visas', $modules);
-        $this->assertArrayHasKey('bus', $modules);
+        // Phase 5/6 contract: liquidity accounts MUST use division module_types
+        // ('office' or 'tourism'). The grouping key in `modules` therefore
+        // reflects the division, not the specific sub-module.
+        $this->assertArrayHasKey('tourism', $modules);
+        $this->assertArrayHasKey('office', $modules);
         $this->assertArrayNotHasKey('general', $modules);
 
-        $visaIds = collect($modules['visas']['accounts'])->pluck('id')->all();
-        $this->assertContains($visaWallet->id, $visaIds);
-        $this->assertSame('tourism', $modules['visas']['category']);
+        $tourismAccounts = collect($modules['tourism']['accounts'])->pluck('id')->all();
+        $this->assertContains($visaWallet->id, $tourismAccounts);
+        $this->assertSame('tourism', $modules['tourism']['category']);
 
         $this->assertSame(360.0, (float) $response->json('data.stats.by_category.tourism.total_wallets'));
         $this->assertSame(200.0, (float) $response->json('data.stats.by_category.office.total_cashbox'));
@@ -123,7 +126,12 @@ class TreasuryOverviewTest extends TestCase
         $unified = collect($response->json('data.unified_by_category.tourism'));
         $misr = $unified->first(fn (array $g) => $g['type'] === 'bank' && $g['total_balance'] == 1800.0);
         $this->assertNotNull($misr);
-        $this->assertCount(3, $misr['modules']);
+        // Phase 5/6 contract: liquidity accounts MUST use division module_types
+        // ('tourism' here). All three "بنك مصر" accounts therefore collapse to
+        // a single unified group with one module entry.
+        $this->assertCount(1, $misr['modules']);
+        $this->assertSame('tourism', $misr['modules'][0]['key']);
+        $this->assertCount(3, $misr['modules'][0]['accounts']);
         $this->assertSame(0, count($response->json('data.unified_by_category.office')));
     }
 

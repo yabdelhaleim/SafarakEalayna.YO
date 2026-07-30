@@ -40,14 +40,14 @@ class FilamentLiquidityVueApiTest extends TestCase
         $bank = $this->createLiquidityAccount([
             'name' => 'البنك الأهلي — فوري',
             'type' => AccountType::Bank,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
         ]);
 
         $wallet = $this->createLiquidityAccount([
             'name' => 'فودافون كاش — فوري',
             'type' => AccountType::Wallet,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'wallet_provider' => WalletProvider::VodafoneCash,
             'wallet_number' => '01012345678',
@@ -67,14 +67,14 @@ class FilamentLiquidityVueApiTest extends TestCase
         $bank = $this->createLiquidityAccount([
             'name' => 'بنك فوري',
             'type' => AccountType::Bank,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
         ]);
 
         $wallet = $this->createLiquidityAccount([
             'name' => 'محفظة فوري',
             'type' => AccountType::Wallet,
-            'module_type' => 'fawry',
+            'module_type' => 'office',
             'module' => 'fawry',
             'wallet_provider' => WalletProvider::VodafoneCash,
             'wallet_number' => '01099998888',
@@ -96,7 +96,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $cashbox = $this->createLiquidityAccount([
             'name' => 'خزينة باصات',
             'type' => AccountType::Cashbox,
-            'module_type' => 'bus',
+            'module_type' => 'office',
             'module' => 'bus',
         ]);
 
@@ -112,7 +112,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $wallet = $this->createLiquidityAccount([
             'name' => 'محفظة طيران',
             'type' => AccountType::Wallet,
-            'module_type' => 'flights',
+            'module_type' => 'tourism',
             'module' => 'flight',
             'wallet_provider' => WalletProvider::VodafoneCash,
             'wallet_number' => '01055554444',
@@ -130,7 +130,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $wallet = $this->createLiquidityAccount([
             'name' => 'محفظة تحويل',
             'type' => AccountType::Wallet,
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
             'module' => 'wallet_transfer',
             'wallet_provider' => WalletProvider::Instapay,
             'wallet_number' => '01077776666',
@@ -152,7 +152,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $wallet = $this->createLiquidityAccount([
             'name' => 'فودافون — تحويلات',
             'type' => AccountType::Wallet,
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
             'module' => 'wallet_transfer',
             'wallet_provider' => WalletProvider::VodafoneCash,
             'wallet_number' => '01011112222',
@@ -161,7 +161,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $cashbox = $this->createLiquidityAccount([
             'name' => 'خزينة تحويلات',
             'type' => AccountType::Cashbox,
-            'module_type' => 'wallet_transfer',
+            'module_type' => 'office',
             'module' => 'wallet_transfer',
         ]);
 
@@ -179,7 +179,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $bank = $this->createLiquidityAccount([
             'name' => 'بنك أونلاين',
             'type' => AccountType::Bank,
-            'module_type' => 'online',
+            'module_type' => 'office',
             'module' => 'online',
         ]);
 
@@ -195,7 +195,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $bank = $this->createLiquidityAccount([
             'name' => 'Hajj Bank',
             'type' => AccountType::Bank,
-            'module_type' => 'hajj_umra',
+            'module_type' => 'tourism',
             'module' => 'hajj_umra',
         ]);
 
@@ -211,7 +211,7 @@ class FilamentLiquidityVueApiTest extends TestCase
         $wallet = $this->createLiquidityAccount([
             'name' => 'Visa Wallet',
             'type' => AccountType::Wallet,
-            'module_type' => 'visas',
+            'module_type' => 'tourism',
             'module' => 'visas',
             'wallet_number' => '01088887777',
         ]);
@@ -287,7 +287,7 @@ class FilamentLiquidityVueApiTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'general',
+            'module_type' => 'office',
             'module' => 'general',
             'created_by' => $this->admin->id,
         ], $overrides));

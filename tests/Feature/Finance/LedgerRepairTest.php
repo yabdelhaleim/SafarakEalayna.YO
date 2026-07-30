@@ -54,6 +54,7 @@ class LedgerRepairTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'tourism',
         ]);
 
         $tx = Transaction::query()->create([
@@ -97,7 +98,17 @@ class LedgerRepairTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'owner',
-            'module_type' => 'tourism',
+            'module_type' => 'flights',
+        ]);
+
+        // Add a single ledger entry that resolves to 0.0 — simulates the
+        // "phantom balance" case (stored balance differs from ledger truth).
+        AccountEntry::query()->create([
+            'account_id' => $customer->id,
+            'transaction_id' => null,
+            'debit' => 0,
+            'credit' => 0,
+            'balance_after' => 0,
         ]);
 
         $repair = app(LedgerRepairService::class);

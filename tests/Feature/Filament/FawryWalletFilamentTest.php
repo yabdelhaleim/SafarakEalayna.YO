@@ -153,10 +153,10 @@ class FawryWalletFilamentTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        Account::query()->create([
+        $busCashbox = Account::query()->create([
             'name' => 'خزينة باصات',
             'type' => AccountType::Cashbox,
-            'module_type' => 'office',
+            'module_type' => 'tourism',
             'currency' => 'EGP',
             'balance' => 0,
             'is_active' => true,
@@ -166,7 +166,7 @@ class FawryWalletFilamentTest extends TestCase
 
         Livewire::test(ListFawryCashboxes::class)
             ->assertCanSeeTableRecords([$cashbox])
-            ->assertCountTableRecords(1);
+            ->assertCanNotSeeTableRecords([$busCashbox]);
     }
 
     public function test_fawry_banks_index_page_loads(): void
@@ -209,7 +209,7 @@ class FawryWalletFilamentTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        Account::query()->create([
+        $tourismBank = Account::query()->create([
             'name' => 'بنك طيران',
             'type' => AccountType::Bank,
             'module_type' => 'tourism',
@@ -222,7 +222,7 @@ class FawryWalletFilamentTest extends TestCase
 
         Livewire::test(ListFawryBanks::class)
             ->assertCanSeeTableRecords([$bank])
-            ->assertCountTableRecords(1);
+            ->assertCanNotSeeTableRecords([$tourismBank]);
     }
 
     public function test_fawry_treasuries_index_page_loads(): void

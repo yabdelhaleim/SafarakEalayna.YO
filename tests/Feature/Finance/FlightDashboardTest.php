@@ -55,6 +55,7 @@ class FlightDashboardTest extends TestCase
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'tourism',
+            'module' => 'flights',
             'created_by' => $this->user->id,
         ]);
 
@@ -67,6 +68,7 @@ class FlightDashboardTest extends TestCase
             'is_active' => true,
             'owner_type' => 'office',
             'module_type' => 'tourism',
+            'module' => 'flights',
             'created_by' => $this->user->id,
         ]);
 

@@ -19,7 +19,7 @@ use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryService;
 use App\Services\Setting\PrintSettingService;
 use App\Services\Wallet\WalletTransactionService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -28,7 +28,7 @@ use Tests\TestCase;
 
 class OfficeTrialBalanceIntegrityTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     protected User $user;
 

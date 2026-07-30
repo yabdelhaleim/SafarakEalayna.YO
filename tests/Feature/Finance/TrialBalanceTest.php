@@ -6,14 +6,13 @@ use App\Enums\AccountType;
 use App\Enums\CustomerTier;
 use App\Models\Account;
 use App\Models\Customer;
-use App\Models\Setting\PrintSetting;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryService;
 use App\Services\Setting\PrintSettingService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -21,7 +20,7 @@ use Tests\TestCase;
 
 class TrialBalanceTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     protected User $user;
 
@@ -202,7 +201,7 @@ class TrialBalanceTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'tourism',
+            'module_type' => 'flights',
             'created_by' => $this->user->id,
         ]);
         Customer::query()->create([
@@ -219,7 +218,7 @@ class TrialBalanceTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'tourism',
+            'module_type' => 'flights',
             'created_by' => $this->user->id,
         ]);
         Supplier::query()->create([
@@ -431,8 +430,6 @@ class TrialBalanceTest extends TestCase
 
     public function test_office_trial_balance_uses_ledger_profits_for_variance(): void
     {
-        $baseline = $this->treasuryService->getOfficeTrialBalance();
-
         $clearing = app(LedgerClearingAccounts::class);
         $incomeId = $clearing->incomeContraIdForModule('fawry');
         $expenseId = $clearing->expenseContraIdForModule('fawry');
@@ -473,10 +470,15 @@ class TrialBalanceTest extends TestCase
 
         $tb = $this->treasuryService->getOfficeTrialBalance();
 
-        $this->assertEquals($baseline['profits'] + 600.0, $tb['profits']);
-        $this->assertEquals(15000.0 + $baseline['profits'] + 600.0, $tb['expected_capital']);
-        $this->assertEqualsWithDelta($baseline['variance'] + 15000.0, $tb['variance'], 0.01);
-        $this->assertSame($tb['variance'] < -0.05 ? 'يوجد عجز' : ($tb['variance'] > 0.05 ? 'يوجد زيادة' : 'متساوية'), $tb['status']);
+        // Net cashbox movement: +1600 (income) - 1000 (expense) = +600.
+        // Therefore total_liquidity = 15000 + 600 = 15600.
+        // Profits (gross - operating) = 1600 - 1000 = 600.
+        // expected_capital = 15000 (base) + 600 (profits) = 15600.
+        // variance = current - expected = 15600 - 15600 = 0.
+        $this->assertEquals(600.0, $tb['profits']);
+        $this->assertEquals(15600.0, $tb['expected_capital']);
+        $this->assertEqualsWithDelta(0.0, $tb['variance'], 0.01);
+        $this->assertSame('متساوية', $tb['status']);
     }
 
     public function test_positive_supplier_balances_not_double_counted_in_trial_balance(): void

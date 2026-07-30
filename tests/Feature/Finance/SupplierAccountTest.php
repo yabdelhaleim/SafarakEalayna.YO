@@ -43,6 +43,7 @@ class SupplierAccountTest extends TestCase
             'balance' => 20000.00,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -54,6 +55,7 @@ class SupplierAccountTest extends TestCase
             'balance' => -5000.00, // Supplier owing balance (payable)
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'bus',
             'created_by' => $this->user->id,
         ]);
 

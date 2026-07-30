@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryService;
 use App\Services\Setting\PrintSettingService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -17,7 +17,7 @@ use Tests\TestCase;
 
 class TourismTrialBalanceIntegrityTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     protected User $user;
 
@@ -93,11 +93,39 @@ class TourismTrialBalanceIntegrityTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        Customer::query()->create([
+        $customer = Customer::query()->create([
             'account_id' => $account->id,
             'full_name' => 'عميل سياحة',
             'phone' => '01011112222',
             'created_by' => $this->user->id,
+        ]);
+
+        // Phase 5/6: The customer's department is derived from related bookings.
+        // Attach a flight booking so the customer surfaces as tourism in the
+        // unified debts report.
+        DB::table('flight_bookings')->insert([
+            'booking_reference' => 'FLT-RECV-1',
+            'booking_channel_type' => 'GDS',
+            'booking_channel_provider' => 'Amadeus',
+            'customer_id' => $customer->id,
+            'agent_name' => 'موظف تجريبي',
+            'origin' => 'CAI',
+            'destination' => 'JED',
+            'departure_date' => now()->toDateString(),
+            'departure_time' => '08:00',
+            'trip_type' => 'one_way',
+            'airline' => 'MS',
+            'passenger_count' => 1,
+            'purchase_price' => 1000.0,
+            'selling_price' => 1500.0,
+            'profit' => 500.0,
+            'foreign_currency' => 'EGP',
+            'currency' => 'EGP',
+            'purchase_price_foreign' => 1000.0,
+            'purchase_price_egp' => 1000.0,
+            'status' => 'CONFIRMED',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $trialBalance = $this->treasury->getTrialBalance();
@@ -112,6 +140,20 @@ class TourismTrialBalanceIntegrityTest extends TestCase
             'phone' => '01033334444',
             'created_by' => $this->user->id,
         ])->id;
+
+        // Phase 6 requires hajj_umra_bookings.account_id NOT NULL. Provide a
+        // dummy customer ledger account so the FK is satisfied.
+        $customerAccountId = Account::query()->create([
+            'name' => 'ذممة عميل أرباح',
+            'type' => AccountType::Customer,
+            'balance' => 0.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'hajj_umra',
+            'created_by' => $this->user->id,
+        ])->id;
+        DB::table('customers')->where('id', $customerId)->update(['account_id' => $customerAccountId]);
 
         DB::table('flight_bookings')->insert([
             'booking_reference' => 'FLT-P-1',
@@ -140,6 +182,7 @@ class TourismTrialBalanceIntegrityTest extends TestCase
 
         DB::table('hajj_umra_bookings')->insert([
             'customer_id' => $customerId,
+            'account_id' => $customerAccountId,
             'program_id' => DB::table('programs')->insertGetId([
                 'program_name' => 'برنامج اختبار',
                 'program_type' => 'UMRA',

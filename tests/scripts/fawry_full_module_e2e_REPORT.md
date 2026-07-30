@@ -168,3 +168,38 @@ php tests/scripts/fawry_full_module_e2e.php
 ```
 
 Expected: **48 pass, 0 fail.**
+
+---
+
+## 🆕 Phase 7 Followup — 2026-07-30
+
+### PHPUnit unit/feature suite status
+
+After the E2E run, the broader Fawry + Finance test suites were validated:
+
+| Suite | Result |
+|---|---|
+| `tests/Feature/Fawry/**` | **79 / 79 pass** (354 assertions) |
+| `tests/Feature/Finance/**` | **165 / 165 pass** (515 assertions) |
+| `app/Services/Finance/TreasuryService.php` | Pint clean |
+| `tests/Feature/Finance/TrialBalanceTest.php` | Pint clean |
+| `tests/Feature/Finance/TourismTrialBalanceIntegrityTest.php` | Pint clean |
+| `tests/scripts/fawry_full_module_e2e.php` | Pint clean |
+
+### Followup fixes (zero-impact to Fawry, defensive in the receivables pipeline)
+
+1. **`TreasuryService::calculateReceivablesAndPayables`** — Added a fallback pass that surfaces customer / supplier / flight_group ledger accounts that have an opening balance but no related bookings yet. Without this fallback, the Phase 5 unified debts report (which derives department from booking existence) silently dropped pure-opening-balance customers and the trial balance `due_to_us` collapsed to 0. The fallback:
+   - Reads `accounts` filtered by division (`office` / `tourism`) and entity type (`customer` / `supplier` / `flight_group`).
+   - Then iterates `customers.account_id → accounts` regardless of `accounts.type`, covering the legacy "ذممة عميل" Bank/Cashbox fixture pattern.
+   - Shares a single `seenIds` set across both passes to prevent double-counting when a customer surfaces through both paths.
+2. **`TrialBalanceTest::test_office_trial_balance_uses_ledger_profits_for_variance`** — Restored correct assertions (`profits = 600`, `expected_capital = 15600`, `variance = 0`, `status = متساوية`). The test had been modified previously to assert a mathematically impossible `baseline.variance + 15000` instead of the actual ledger-derived variance.
+3. **`TourismTrialBalanceIntegrityTest`** — Provided a flight booking for the customer receivable fixture (Phase 5/6 derives department from bookings, not from `accounts.module_type`) and added the required `account_id` for `hajj_umra_bookings` rows (Phase 6 followup made the column NOT NULL with FK to `accounts.id`).
+
+### Verification
+
+```bash
+php artisan test tests/Feature/Fawry tests/Feature/Finance --compact
+# Tests: 244 passed (869 assertions)
+```
+
+All Fawry functionality remains unaffected — the fixes are isolated to the receivables aggregation pipeline and to test fixtures whose shape was outgrown by Phase 5/6 unification.

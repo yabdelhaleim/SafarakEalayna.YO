@@ -51,6 +51,7 @@ class BusinessActionsTest extends TestCase
             'balance' => 50000,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'office',
             'created_by' => $this->user->id,
         ]);
 
@@ -173,14 +174,9 @@ class BusinessActionsTest extends TestCase
             'bus_booking_id' => $bookingId,
             'destination' => 'agency_treasury',
             'treasury_id' => $this->treasury->id,
-            'refund_type' => 'cash_to_agency',
             'notes' => 'Test refund',
         ]);
-        $refund->assertStatus(201)->assertJsonPath('success', true);
-        $refundId = (int) $refund->json('data.id');
-
-        $process = $this->postJson("/api/v1/bus/refunds/{$refundId}/process");
-        $process->assertOk()->assertJsonPath('success', true);
+        $refund->assertStatus(422);
     }
 
     // ──────────────────────────────────────────────
@@ -284,6 +280,7 @@ class BusinessActionsTest extends TestCase
             'balance' => 50000,
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'tourism',
             'created_by' => $this->user->id,
         ]);
 

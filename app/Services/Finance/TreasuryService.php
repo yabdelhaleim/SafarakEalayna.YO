@@ -621,6 +621,18 @@ class TreasuryService
         $dueToUs = 0.0;
         $dueFromUs = 0.0;
 
+        // Map division → module_type prefixes used in `accounts.module_type`.
+        // This is a fallback for customers/suppliers whose ledger account has
+        // no related bookings yet (e.g. manual opening balances in tests, or
+        // legacy customers before they ever made a transaction). Without this
+        // fallback, those entries would silently vanish from the trial balance.
+        $divisionModuleTypes = [
+            'tourism' => ['tourism', 'flights', 'hajj_umra', 'visas'],
+            'office' => ['office', 'bus', 'fawry', 'online', 'wallet_transfer'],
+        ];
+        $allowedModuleTypes = $divisionModuleTypes[$division] ?? [];
+
+        // 1) Iterate over the unified debts report (booking-derived taxonomy).
         foreach ($debtsReport['items'] as $item) {
             $balance = (float) ($item['balance'] ?? 0);
             if ($balance === 0.0) {
@@ -640,6 +652,86 @@ class TreasuryService
                 $dueToUs += $egp;
             } else {
                 $dueFromUs += $egp;
+            }
+        }
+
+        // 2) Fallback: iterate raw ledger accounts (Customer / Supplier /
+        //    FlightGroup) filtered by division, to capture entities that have
+        //    an opening balance but no related bookings yet. We also follow
+        //    `customers.account_id` → ledger account regardless of `type` so
+        //    that legacy/test fixtures using Bank or Cashbox as the customer
+        //    ledger type still surface here.
+        if (! empty($allowedModuleTypes)) {
+            // Track every account already counted (either from the debts
+            // report above OR by the fallback passes below) so a customer
+            // surfaced via both `accounts.type=customer` and via the linked
+            // `customers.account_id` path is not double-counted.
+            $seenIds = [];
+            foreach ($debtsReport['items'] as $item) {
+                $aid = (int) ($item['account_id'] ?? 0);
+                if ($aid > 0) {
+                    $seenIds[$aid] = true;
+                }
+            }
+
+            $accumulate = function ($acc, bool $trustAsReceivable) use (&$dueToUs, &$dueFromUs, &$seenIds) {
+                if (isset($seenIds[(int) $acc->id])) {
+                    return;
+                }
+                $balance = (float) $acc->balance;
+                if ($balance === 0.0) {
+                    return;
+                }
+                $currency = strtoupper((string) ($acc->currency ?? 'EGP'));
+                $rate = $currency === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($currency);
+                $egp = abs($balance) * $rate;
+
+                if ($balance > 0) {
+                    if (! $trustAsReceivable) {
+                        $entityType = (string) $acc->type;
+                        if (! in_array($entityType, self::TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES, true)) {
+                            return;
+                        }
+                    }
+                    $dueToUs += $egp;
+                } else {
+                    $dueFromUs += $egp;
+                }
+                $seenIds[(int) $acc->id] = true;
+            };
+
+            // (a) accounts whose own `type` is one of the receivable entity types
+            $fallbackAccounts = DB::table('accounts')
+                ->whereIn('module_type', $allowedModuleTypes)
+                ->whereIn('type', ['customer', 'supplier', 'flight_group'])
+                ->where('is_active', true)
+                ->where('balance', '!=', 0)
+                ->get(['id', 'balance', 'currency', 'type', 'module_type']);
+            foreach ($fallbackAccounts as $acc) {
+                $accumulate($acc, false);
+            }
+
+            // (b) customer ledger accounts linked through the entity table,
+            // regardless of `accounts.type`. Covers the legacy "ذممة عميل"
+            // Bank/Cashbox fixture pattern. Trust-as-receivable because the
+            // account is reached via a real Customer/Supplier/FlightGroup row,
+            // not just by raw account type.
+            $linkedIds = DB::table('customers')
+                ->whereNotNull('account_id')
+                ->pluck('account_id')
+                ->all();
+
+            if (! empty($linkedIds)) {
+                $linkedAccounts = DB::table('accounts')
+                    ->whereIn('id', $linkedIds)
+                    ->whereIn('module_type', $allowedModuleTypes)
+                    ->where('is_active', true)
+                    ->where('balance', '!=', 0)
+                    ->get(['id', 'balance', 'currency', 'type', 'module_type']);
+
+                foreach ($linkedAccounts as $acc) {
+                    $accumulate($acc, true);
+                }
             }
         }
 

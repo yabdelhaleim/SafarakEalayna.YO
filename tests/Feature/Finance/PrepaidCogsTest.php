@@ -93,6 +93,13 @@ class PrepaidCogsTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
+        // Phase 3 hardening: `balance` was intentionally removed from
+        // FlightCarrier::$fillable (to block Filament mass-assignment), so
+        // the in-memory model after create() has no `balance` attribute.
+        // Refresh from DB to pick up the column default (0) so credit()
+        // can record a non-null balance_before on AirlineTransaction.
+        $this->carrier->refresh();
+
         // Force creation of clearing accounts via the service
         $this->clearingAccounts = app(LedgerClearingAccounts::class);
         $this->prepaidService = app(PrepaidLedgerService::class);

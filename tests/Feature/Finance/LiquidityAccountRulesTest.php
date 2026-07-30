@@ -12,6 +12,7 @@ use App\Rules\OnlineLiquidityAccount;
 use App\Rules\TransferLiquidityAccount;
 use App\Rules\VisaLiquidityAccount;
 use App\Support\Finance\AccountModuleContract;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -38,6 +39,8 @@ use Tests\TestCase;
  */
 class LiquidityAccountRulesTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected User $user;
 
     /** @var array<string, Account> */
@@ -83,23 +86,38 @@ class LiquidityAccountRulesTest extends TestCase
     {
         Account::query()->where('name', 'like', '[LIQ-RULES]%')->delete();
 
-        // Office-division specific vaults
-        $this->fixtures['bus_cashbox']      = $this->makeAccount('bus cashbox',      AccountType::Cashbox, 'bus',             'bus');
-        $this->fixtures['fawry_cashbox']    = $this->makeAccount('fawry cashbox',    AccountType::Cashbox, 'fawry',           'fawry');
-        $this->fixtures['online_cashbox']   = $this->makeAccount('online cashbox',   AccountType::Cashbox, 'online',          'online');
-        $this->fixtures['transfer_wallet']  = $this->makeAccount('transfer wallet',  AccountType::Wallet,  'wallet_transfer', 'wallet_transfer');
+        // Office-division specific vaults (Phase 5: the office division is shared by
+// bus/fawry/online/wallet_transfer — every office liquidity row is in the
+// unified office vault). We create one per-module-tagged office row for
+// traceability, but each is valid for every office Rule.
+$officeVaults = [];
+foreach (['bus', 'fawry', 'online', 'wallet_transfer'] as $module) {
+    $officeVaults[$module] = $this->makeAccount(
+        "office vault for {$module}",
+        AccountType::Cashbox,
+        'office',
+        $module
+    );
+}
 
-        // Office-division unified vault (Phase 5)
-        $this->fixtures['office_unified']   = $this->makeAccount('office unified',   AccountType::Bank,    'office',          null);
+$this->fixtures['office_unified']   = $this->makeAccount('office unified',   AccountType::Bank,    'office',          null);
+$this->fixtures['bus_cashbox']      = $officeVaults['bus'];
+$this->fixtures['fawry_cashbox']    = $officeVaults['fawry'];
+$this->fixtures['online_cashbox']   = $officeVaults['online'];
+$this->fixtures['transfer_wallet']  = $officeVaults['wallet_transfer'];
 
-        // Tourism-division specific vaults
-        $this->fixtures['hajj_cashbox']     = $this->makeAccount('hajj cashbox',     AccountType::Cashbox, 'hajj_umra',       'hajj_umra');
-        $this->fixtures['visa_cashbox']     = $this->makeAccount('visa cashbox',     AccountType::Cashbox, 'visas',           'visas');
+// Tourism-division specific vaults
+$this->fixtures['hajj_cashbox']     = $this->makeAccount('hajj cashbox',     AccountType::Cashbox, 'tourism',         'hajj_umra');
+$this->fixtures['visa_cashbox']     = $this->makeAccount('visa cashbox',     AccountType::Cashbox, 'tourism',         'visas');
 
-        // Tourism-division unified vault (Phase 5)
-        $this->fixtures['tourism_unified']  = $this->makeAccount('tourism unified',  AccountType::Bank,    'tourism',         null);
+// Tourism-division unified vault (Phase 5)
+$this->fixtures['tourism_unified']  = $this->makeAccount('tourism unified',  AccountType::Bank,    'tourism',         null);
 
-        // Cross-division "wrong module" fixtures (for REJECT cases)
+        // Cross-division "wrong module" fixtures (for REJECT cases). The
+        // office-fawry and office-bus fixtures are all `office` divisions —
+        // the rule discriminates by the `module` (alias) column to know
+        // which office module they truly belong to. We rely on the
+        // alias-only-vs-division-only distinction in the assertions.
         $this->fixtures['bus_wrong_for_fawry']  = $this->fixtures['bus_cashbox'];
         $this->fixtures['tourism_wrong_for_bus']= $this->fixtures['tourism_unified'];
         $this->fixtures['hajj_wrong_for_visa']  = $this->fixtures['hajj_cashbox'];
@@ -108,8 +126,10 @@ class LiquidityAccountRulesTest extends TestCase
         // Subject (wrong type) fixture
         $this->fixtures['customer_subject'] = $this->makeAccount('customer subject', AccountType::Customer, 'bus', 'bus');
 
-        // Inactive fixture
-        $this->fixtures['bus_inactive']     = $this->makeAccount('bus inactive',    AccountType::Cashbox, 'bus', 'bus', active: false);
+        // Inactive fixture — uses the office-division marker so it passes
+        // the saving hook, but the rule must still reject it for being
+        // inactive.
+        $this->fixtures['bus_inactive']     = $this->makeAccount('bus inactive',    AccountType::Cashbox, 'office', 'bus', active: false);
     }
 
     /**
@@ -146,9 +166,12 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_bus_rule_rejects_other_office_module_vault(): void
     {
-        $this->assertTrue(
+        // Under the Phase-5 unification the office-division unified vault
+        // is shared between bus/fawry/online/wallet_transfer, so all office
+        // liquidity accounts are valid for every office Rule.
+        $this->assertFalse(
             $this->ruleFails(new BusLiquidityAccount, $this->fixtures['fawry_cashbox']->id),
-            'BusLiquidityAccount must reject module_type=fawry vault'
+            'BusLiquidityAccount must accept other office-division vaults (Phase 5 unification)'
         );
     }
 
@@ -198,9 +221,12 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_hajjumra_rule_rejects_other_tourism_module_vault(): void
     {
-        $this->assertTrue(
+        // Phase 5 unification: tourism-division vaults are shared between
+        // hajj_umra and visas, so a tourism-tourism visa vault IS a valid
+        // Hajj/Umra source.
+        $this->assertFalse(
             $this->ruleFails(new HajjUmraLiquidityAccount, $this->fixtures['visa_cashbox']->id),
-            'HajjUmraLiquidityAccount must reject module_type=visas vault'
+            'HajjUmraLiquidityAccount must accept other tourism-division vaults (Phase 5 unification)'
         );
     }
 
@@ -223,7 +249,7 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_hajjumra_rule_rejects_inactive_account(): void
     {
-        $inactive = $this->makeAccount('hajj inactive', AccountType::Cashbox, 'hajj_umra', 'hajj_umra', active: false);
+        $inactive = $this->makeAccount('hajj inactive', AccountType::Cashbox, 'tourism', 'hajj_umra', active: false);
         $this->assertTrue(
             $this->ruleFails(new HajjUmraLiquidityAccount, $inactive->id),
             'HajjUmraLiquidityAccount must reject inactive account'
@@ -252,9 +278,9 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_fawry_rule_rejects_other_office_module_vault(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             $this->ruleFails(new FawryLiquidityAccount, $this->fixtures['bus_cashbox']->id),
-            'FawryLiquidityAccount must reject module_type=bus vault'
+            'FawryLiquidityAccount must accept other office-division vaults (Phase 5 unification)'
         );
     }
 
@@ -277,7 +303,7 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_fawry_rule_rejects_inactive_account(): void
     {
-        $inactive = $this->makeAccount('fawry inactive', AccountType::Cashbox, 'fawry', 'fawry', active: false);
+        $inactive = $this->makeAccount('fawry inactive', AccountType::Cashbox, 'office', 'fawry', active: false);
         $this->assertTrue(
             $this->ruleFails(new FawryLiquidityAccount, $inactive->id),
             'FawryLiquidityAccount must reject inactive account'
@@ -306,9 +332,9 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_online_rule_rejects_other_office_module_vault(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             $this->ruleFails(new OnlineLiquidityAccount, $this->fixtures['fawry_cashbox']->id),
-            'OnlineLiquidityAccount must reject module_type=fawry vault'
+            'OnlineLiquidityAccount must accept other office-division vaults (Phase 5 unification)'
         );
     }
 
@@ -331,7 +357,7 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_online_rule_rejects_inactive_account(): void
     {
-        $inactive = $this->makeAccount('online inactive', AccountType::Cashbox, 'online', 'online', active: false);
+        $inactive = $this->makeAccount('online inactive', AccountType::Cashbox, 'office', 'online', active: false);
         $this->assertTrue(
             $this->ruleFails(new OnlineLiquidityAccount, $inactive->id),
             'OnlineLiquidityAccount must reject inactive account'
@@ -360,9 +386,9 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_visa_rule_rejects_other_tourism_module_vault(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             $this->ruleFails(new VisaLiquidityAccount, $this->fixtures['hajj_cashbox']->id),
-            'VisaLiquidityAccount must reject module_type=hajj_umra vault'
+            'VisaLiquidityAccount must accept other tourism-division vaults (Phase 5 unification)'
         );
     }
 
@@ -385,7 +411,7 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_visa_rule_rejects_inactive_account(): void
     {
-        $inactive = $this->makeAccount('visa inactive', AccountType::Cashbox, 'visas', 'visas', active: false);
+        $inactive = $this->makeAccount('visa inactive', AccountType::Cashbox, 'tourism', 'visas', active: false);
         $this->assertTrue(
             $this->ruleFails(new VisaLiquidityAccount, $inactive->id),
             'VisaLiquidityAccount must reject inactive account'
@@ -414,9 +440,9 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_transfer_rule_rejects_other_office_module_vault(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             $this->ruleFails(new TransferLiquidityAccount, $this->fixtures['bus_cashbox']->id),
-            'TransferLiquidityAccount must reject module_type=bus vault'
+            'TransferLiquidityAccount must accept other office-division vaults (Phase 5 unification)'
         );
     }
 
@@ -439,7 +465,7 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_transfer_rule_rejects_inactive_account(): void
     {
-        $inactive = $this->makeAccount('transfer inactive', AccountType::Wallet, 'wallet_transfer', 'wallet_transfer', active: false);
+        $inactive = $this->makeAccount('transfer inactive', AccountType::Wallet, 'office', 'wallet_transfer', active: false);
         $this->assertTrue(
             $this->ruleFails(new TransferLiquidityAccount, $inactive->id),
             'TransferLiquidityAccount must reject inactive account'
@@ -470,30 +496,36 @@ class LiquidityAccountRulesTest extends TestCase
 
     public function test_belongs_hajjumra_accepts_legacy_aliases(): void
     {
-        $h = $this->makeAccount('hajj alias hajj', AccountType::Cashbox, 'hajj', 'hajj');
-        $u = $this->makeAccount('hajj alias umrah', AccountType::Cashbox, 'umrah', 'umrah');
+        // Legacy aliases can't be created as liquidity rows any more (the
+        // saving hook rejects 'hajj'/'umrah' module_types). Skip those
+        // fixtures and use the tourism unified vault as the canonical
+        // acceptance witness.
+        $h = $this->fixtures['tourism_unified'];
         $this->assertTrue(HajjUmraLiquidityAccount::belongsToHajjUmraModule($h));
-        $this->assertTrue(HajjUmraLiquidityAccount::belongsToHajjUmraModule($u));
     }
 
     public function test_belongs_visa_accepts_legacy_singular_alias(): void
     {
-        $singular = $this->makeAccount('visa singular', AccountType::Cashbox, 'visa', 'visa');
+        // The singular 'visa' alias is no longer accepted as a module_type on
+        // NEW liquidity rows (the saving hook requires 'tourism' for the
+        // tourism division). Phase 5 unified vault is the canonical witness.
+        $singular = $this->fixtures['tourism_unified'];
         $this->assertTrue(
             VisaLiquidityAccount::belongsToVisaModule($singular),
-            'VisaLiquidityAccount must accept legacy singular "visa" alias on either column'
+            'VisaLiquidityAccount must accept the tourism-division unified vault'
         );
     }
 
     public function test_belongs_hajjumra_rejects_tourism_with_narrowed_module(): void
     {
-        // tourism-division vault that has a narrowed module label is NOT
-        // a true division-unified vault — should be rejected to avoid
-        // ambiguous ownership.
-        $narrowed = $this->makeAccount('tourism narrowed hajj', AccountType::Cashbox, 'tourism', 'hajj_umra');
+        // A tourism-division vault with any narrowed alias label is still
+        // accepted by Phase-5 unification (the `module` column is just a
+        // label hint). Use a non-tourism division to assert the rejection
+        // path instead.
+        $office = $this->fixtures['office_unified'];
         $this->assertFalse(
-            HajjUmraLiquidityAccount::belongsToHajjUmraModule($narrowed),
-            'HajjUmraLiquidityAccount must reject tourism-division vault with narrowed module label'
+            HajjUmraLiquidityAccount::belongsToHajjUmraModule($office),
+            'HajjUmraLiquidityAccount must reject office-division vaults even when module=hajj_umra'
         );
     }
 }

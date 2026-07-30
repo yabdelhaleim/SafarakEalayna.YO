@@ -132,7 +132,7 @@ class FinanceTransferHistoryTest extends TestCase
             'balance' => 1000,
             'is_active' => true,
             'owner_type' => 'office',
-            'module_type' => 'office',
+            'module_type' => 'bus',
             'created_by' => $this->user->id,
         ]);
 

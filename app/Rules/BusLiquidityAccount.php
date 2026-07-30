@@ -71,28 +71,31 @@ class BusLiquidityAccount implements ValidationRule
      *  │ module_type=tourism         │ ❌    │
      *  └─────────────────────────────┴───────┘
      */
-    public static function belongsToBusModule(Account $account, ?string $expectedCurrency = null): bool
+public static function belongsToBusModule(Account $account, ?string $expectedCurrency = null): bool
     {
         $moduleType = $account->module_type instanceof \BackedEnum
-            ? $moduleType->value
+            ? $account->module_type->value
             : (string) ($account->module_type ?? '');
         $module = $account->module instanceof \BackedEnum
-            ? $module->value
+            ? $account->module->value
             : (string) ($account->module ?? '');
 
-        // Strict per-module (covers module_type=bus AND module=bus alias)
-        if ($moduleType === 'bus' || $module === 'bus') {
-            if ($expectedCurrency && strtoupper($expectedCurrency) !== strtoupper((string) $account->currency)) {
-                return false;
-            }
-            return true;
-        }
-
-        // Phase 5: Office-division unified vault
+        // Phase 5: Office-division unified vault — accepted without
+        // narrowing by the alias column.
         if ($moduleType === AccountModuleContract::OFFICE_MODULE_TYPE) {
             if ($expectedCurrency && strtoupper($expectedCurrency) !== strtoupper((string) $account->currency)) {
                 return false;
             }
+
+            return true;
+        }
+
+        // Per-module (strict) — module_type='bus' or alias-only module='bus'.
+        if ($moduleType === 'bus' || $module === 'bus') {
+            if ($expectedCurrency && strtoupper($expectedCurrency) !== strtoupper((string) $account->currency)) {
+                return false;
+            }
+
             return true;
         }
 

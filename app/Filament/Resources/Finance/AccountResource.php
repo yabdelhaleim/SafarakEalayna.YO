@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\Finance;
 
 use App\Enums\AccountType;
-use App\Filament\Clusters\FinanceCluster;
+use App\Filament\Clusters\Finance\FinanceCluster;
 use App\Filament\Resources\Finance\AccountResource\Pages;
 use App\Models\Account;
 use Filament\Forms;

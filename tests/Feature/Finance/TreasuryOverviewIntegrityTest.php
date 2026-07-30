@@ -114,14 +114,28 @@ class TreasuryOverviewIntegrityTest extends TestCase
 
     private function seedAccounts(): void
     {
+        // Some callers don't create a user themselves, but the overview
+        // service auto-creates prepaid/clearing accounts that reference
+        // users.created_by via FK. Ensure a user exists so auto-created
+        // accounts can be inserted without violating the FK constraint.
+        if (! User::query()->exists()) {
+            User::query()->create([
+                'name' => 'Treasury Integrity Seeder',
+                'email' => 'treasury-integrity-seeder@example.com',
+                'password' => Hash::make('password'),
+                'role' => 'admin',
+                'is_active' => true,
+            ]);
+        }
+
         $rows = [
-            ['name' => 'بنك مصر — طيران', 'type' => AccountType::Bank, 'balance' => 1000, 'module_type' => 'flights'],
-            ['name' => 'بنك مصر — حج', 'type' => AccountType::Bank, 'balance' => 500, 'module_type' => 'hajj_umra'],
-            ['name' => 'بنك مصر — تأشيرات', 'type' => AccountType::Bank, 'balance' => 300, 'module_type' => 'visas'],
-            ['name' => 'نقدي طيران', 'type' => AccountType::Cashbox, 'balance' => 500, 'module_type' => 'flights'],
-            ['name' => 'فودافون كاش باص', 'type' => AccountType::Wallet, 'balance' => 150, 'module_type' => 'bus', 'wallet_provider' => 'vodafone_cash'],
-            ['name' => 'خزينة باص', 'type' => AccountType::Cashbox, 'balance' => 200, 'module_type' => 'bus'],
-            ['name' => 'بريد فوري', 'type' => AccountType::Bank, 'balance' => 0, 'module_type' => 'fawry'],
+            ['name' => 'بنك مصر — طيران', 'type' => AccountType::Bank, 'balance' => 1000, 'module_type' => 'tourism'],
+            ['name' => 'بنك مصر — حج', 'type' => AccountType::Bank, 'balance' => 500, 'module_type' => 'tourism'],
+            ['name' => 'بنك مصر — تأشيرات', 'type' => AccountType::Bank, 'balance' => 300, 'module_type' => 'tourism'],
+            ['name' => 'نقدي طيران', 'type' => AccountType::Cashbox, 'balance' => 500, 'module_type' => 'tourism'],
+            ['name' => 'فودافون كاش باص', 'type' => AccountType::Wallet, 'balance' => 150, 'module_type' => 'office', 'wallet_provider' => 'vodafone_cash'],
+            ['name' => 'خزينة باص', 'type' => AccountType::Cashbox, 'balance' => 200, 'module_type' => 'office'],
+            ['name' => 'بريد فوري', 'type' => AccountType::Bank, 'balance' => 0, 'module_type' => 'office'],
         ];
 
         foreach ($rows as $row) {

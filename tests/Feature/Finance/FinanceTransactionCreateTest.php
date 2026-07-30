@@ -96,6 +96,7 @@ class FinanceTransactionCreateTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'office',
+            'module_type' => 'office',
         ]);
         config(['accounting.clearing.expense.bus' => $expenseClearing->name]);
 
@@ -151,6 +152,7 @@ class FinanceTransactionCreateTest extends TestCase
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'owner',
+            'module_type' => 'flights',
         ]);
 
         $response = $this->postJson('/api/v1/finance/transactions', [
