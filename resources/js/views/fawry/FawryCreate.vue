@@ -340,12 +340,15 @@
               :key="chip.id"
               type="button"
               @click="settlementCategoryUi = chip.id"
+              :disabled="!categoryAvailability[chip.id]"
               :class="[
                 'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
                 settlementCategoryUi === chip.id
                   ? 'bg-white/10 border-gold text-gold'
-                  : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                  : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20',
+                !categoryAvailability[chip.id] && 'opacity-40 cursor-not-allowed hover:border-white/10'
               ]"
+              :title="!categoryAvailability[chip.id] ? 'لا توجد حسابات في هذا التصنيف — يتم العرض من الخزائن النقدية' : ''"
             >
               <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
               {{ chip.label }}
@@ -367,6 +370,9 @@
           </select>
           <p v-if="filteredAccounts.length === 0" class="text-xs text-warning mt-1">
             لا توجد حسابات متاحة في هذا التصنيف.
+          </p>
+          <p v-else-if="settlementCategoryUi !== 'cash' && !categoryAvailability[settlementCategoryUi]" class="text-xs text-text-muted mt-1">
+            لا توجد حسابات في تصنيف «{{ settlementCategoryChips.find(c => c.id === settlementCategoryUi)?.label }}» — يتم عرض الخزائن النقدية بدلاً منها.
           </p>
           <p v-if="selectedPaymentMethod?.defaultAccountId && form.account_id == selectedPaymentMethod.defaultAccountId" class="text-xs text-text-muted mt-1">
             مُقترَح تلقائياً من إعدادات طريقة الدفع؛ يمكنك تغييره.
@@ -544,18 +550,61 @@ const settlementCategoryChips = [
   { id: 'bank', label: 'بنك', icon: Landmark, iconClass: 'text-info' },
 ];
 
+/**
+ * Per-category availability of settlement accounts. Drives the chip-disable
+ * styling and the auto-fallback logic below so users who haven't configured
+ * banks/wallets are routed to the cash filter instead of an empty dropdown.
+ */
+const categoryAvailability = computed(() => ({
+  cash: settlementAccounts.value.some(
+    (a) => a.type === 'cashbox' || a.type === 'treasury'
+  ),
+  wallet: settlementAccounts.value.some((a) => a.type === 'wallet'),
+  bank: settlementAccounts.value.some((a) => a.type === 'bank'),
+}));
+
 const filteredAccounts = computed(() => {
+  let result;
   if (settlementCategoryUi.value === 'cash') {
-    return settlementAccounts.value.filter(a => a.type === 'cashbox' || a.type === 'treasury');
+    result = settlementAccounts.value.filter(
+      (a) => a.type === 'cashbox' || a.type === 'treasury'
+    );
+  } else if (settlementCategoryUi.value === 'wallet') {
+    result = settlementAccounts.value.filter((a) => a.type === 'wallet');
+  } else if (settlementCategoryUi.value === 'bank') {
+    result = settlementAccounts.value.filter((a) => a.type === 'bank');
+  } else {
+    result = settlementAccounts.value;
   }
-  if (settlementCategoryUi.value === 'wallet') {
-    return settlementAccounts.value.filter(a => a.type === 'wallet');
+  // Fallback: when the selected category has no accounts (e.g. banks/wallets
+  // not configured for this office), surface cash/treasury so the dropdown
+  // is never empty. Cash/safes is the most universally available settlement
+  // type and is what the user expects when no banks/wallets exist.
+  if (result.length === 0 && settlementCategoryUi.value !== 'cash') {
+    return settlementAccounts.value.filter(
+      (a) => a.type === 'cashbox' || a.type === 'treasury'
+    );
   }
-  if (settlementCategoryUi.value === 'bank') {
-    return settlementAccounts.value.filter(a => a.type === 'bank');
-  }
-  return settlementAccounts.value;
+  return result;
 });
+
+/**
+ * If the currently selected category ends up empty (no accounts of that type
+ * were loaded), bounce the chip back to 'cash' so the UI stays consistent
+ * with what `filteredAccounts` is actually rendering. This guards against
+ * stale chip state when accounts are reloaded or when the system has no
+ * banks/wallets configured at all.
+ */
+watch(
+  [settlementAccounts, () => settlementCategoryUi.value],
+  () => {
+    if (settlementAccounts.value.length === 0) return;
+    if (!categoryAvailability.value[settlementCategoryUi.value]) {
+      settlementCategoryUi.value = 'cash';
+    }
+  },
+  { immediate: true }
+);
 
 // Computed
 const calculatedProfit = computed(() => {
@@ -704,7 +753,14 @@ function autoSelectOfficeVault() {
   if (!settlementAccounts.value.length) return;
 
   const vault = settlementAccounts.value.find((a) => a.is_module_vault);
-  const target = vault || settlementAccounts.value[0];
+  // Prefer cash/treasury over wallet/bank as the default settlement type.
+  // Cash/safes is the most universally available category, so if no
+  // module-specific vault is configured we land on it instead of an empty
+  // wallet/bank dropdown when those categories happen to be absent.
+  const cashAccount = settlementAccounts.value.find(
+    (a) => a.type === 'cashbox' || a.type === 'treasury'
+  );
+  const target = vault || cashAccount || settlementAccounts.value[0];
 
   form.value.account_id = target.id;
 
