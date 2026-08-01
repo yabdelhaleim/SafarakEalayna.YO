@@ -626,9 +626,17 @@ class TreasuryService
         // no related bookings yet (e.g. manual opening balances in tests, or
         // legacy customers before they ever made a transaction). Without this
         // fallback, those entries would silently vanish from the trial balance.
+        //
+        // NOTE: 'general' is included for both divisions. Some customers have
+        // a ledger account with `module_type='general'` (e.g. opening balances
+        // seeded before they ever touched a specific office module, or legacy
+        // customer accounts created under the generic division). Without this,
+        // their Fawry/Online/Bus debts — visible in `customerBalances` and in
+        // `/reports/debts` — would silently disappear from the office trial
+        // balance, leaving a negative variance (e.g. −1,670 EGP) in production.
         $divisionModuleTypes = [
-            'tourism' => ['tourism', 'flights', 'hajj_umra', 'visas'],
-            'office' => ['office', 'bus', 'fawry', 'online', 'wallet_transfer'],
+            'tourism' => ['tourism', 'flights', 'hajj_umra', 'visas', 'general'],
+            'office' => ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general'],
         ];
         $allowedModuleTypes = $divisionModuleTypes[$division] ?? [];
 
@@ -655,7 +663,33 @@ class TreasuryService
             }
         }
 
-        // 2) Fallback: iterate raw ledger accounts (Customer / Supplier /
+        // 2) Walk-in Fawry receivables (no Customer record; client_id IS NULL).
+        //
+        // These are Fawry transactions where the operator skipped the customer
+        // dropdown at creation time. The debt is sourced from `fawry_transactions`
+        // columns (selling_price − amount) grouped by client_name — the same
+        // source of truth used by FawryTransactionController::customerBalances.
+        //
+        // `/reports/debts` surfaces them via the `walkin_fawry` entity type,
+        // but they are EXCLUDED from $dueToUs in step (1) above because their
+        // entity_type is not in TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES. They
+        // still represent real money owed to us, so they must enter the
+        // equation to balance the books (otherwise the variance shows a
+        // deficit equal to the walk-in total).
+        //
+        // For the office division only: walk-in Fawry clients are an office
+        // concept (they live under the office division by construction).
+        if ($division === 'office') {
+            $walkInTotal = (float) DB::table('fawry_transactions')
+                ->whereNull('client_id')
+                ->whereNull('deleted_at')
+                ->sum(DB::raw('selling_price - amount'));
+            if ($walkInTotal > 0.005) {
+                $dueToUs += $walkInTotal;
+            }
+        }
+
+        // 3) Fallback: iterate raw ledger accounts (Customer / Supplier /
         //    FlightGroup) filtered by division, to capture entities that have
         //    an opening balance but no related bookings yet. We also follow
         //    `customers.account_id` → ledger account regardless of `type` so

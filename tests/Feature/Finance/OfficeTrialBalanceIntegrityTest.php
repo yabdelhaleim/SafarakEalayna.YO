@@ -387,4 +387,172 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
                 ],
             ]);
     }
+
+    /**
+     * Regression: registered Fawry customer debt must appear in office trial
+     * balance `due_to_us`. The customer ledger account uses `module_type='fawry'`
+     * (the actual module they used), and the Fawry transaction is linked to
+     * them via `client_id` with `amount=0` so the full selling_price is debt.
+     *
+     * Without the walk-in Fawry column-fallback in
+     * `calculateReceivablesAndPayables('office')`, the office trial balance
+     * shows a negative variance equal to the unreconciled Fawry receivable
+     * (production-reported −1,670 EGP).
+     */
+    public function test_registered_fawry_customer_appears_in_office_trial_balance_due_to_us(): void
+    {
+        $customerAccount = Account::query()->create([
+            'name' => 'ذممة عميل — فوري مسجّل · 01066667777',
+            'type' => AccountType::Customer,
+            'balance' => 1500.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry', // ← actual module the customer used
+            'created_by' => $this->user->id,
+        ]);
+
+        $customer = Customer::query()->create([
+            'account_id' => $customerAccount->id,
+            'full_name' => 'عميل فوري مسجّل',
+            'phone' => '01066667777',
+            'created_by' => $this->user->id,
+        ]);
+
+        // Create a real Fawry transaction linked to the registered customer.
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => $customer->id,
+            'client_name' => $customer->full_name,
+            'operation_type' => 'payment',
+            'client_amount' => 1500.0,
+            'fawry_price' => 1450.0,
+            'selling_price' => 1500.0,
+            'profit' => 50.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0, // unpaid → full debt = 1500
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        $this->assertEqualsWithDelta(1500.0, $result['due_to_us'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $result['due_from_us'], 0.01);
+    }
+
+    /**
+     * Regression: walk-in Fawry client debt must appear in office trial
+     * balance `due_to_us`. The debt is sourced from `fawry_transactions`
+     * columns (selling_price − amount) for `client_id IS NULL` rows.
+     *
+     * Without this, the office trial balance shows a negative variance equal
+     * to the walk-in total (production-reported −1,670 EGP from walk-ins).
+     */
+    public function test_walkin_fawry_debt_appears_in_office_trial_balance_due_to_us(): void
+    {
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => null,
+            'client_name' => 'أبو مالك - وائل طه',
+            'operation_type' => 'payment',
+            'client_amount' => 770.0,
+            'fawry_price' => 750.0,
+            'selling_price' => 770.0,
+            'profit' => 20.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => null,
+            'client_name' => 'خالد عابدين',
+            'operation_type' => 'payment',
+            'client_amount' => 900.0,
+            'fawry_price' => 880.0,
+            'selling_price' => 900.0,
+            'profit' => 20.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        $this->assertEqualsWithDelta(1670.0, $result['due_to_us'], 0.01);
+    }
+
+    /**
+     * Regression: office trial balance `due_to_us` must equal the unified
+     * debts report `total_receivables` for the same office department.
+     * The two consumers (DepartmentManagement and TreasuryOverview) must
+     * surface the same number.
+     */
+    public function test_office_trial_balance_due_to_us_matches_reports_debts_total_receivables(): void
+    {
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => null,
+            'client_name' => 'عميل ماشي 1',
+            'operation_type' => 'payment',
+            'client_amount' => 500.0,
+            'fawry_price' => 480.0,
+            'selling_price' => 500.0,
+            'profit' => 20.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $customerAccount = Account::query()->create([
+            'name' => 'ذممة عميل — مسجّل',
+            'type' => AccountType::Customer,
+            'balance' => 800.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry',
+            'created_by' => $this->user->id,
+        ]);
+
+        $customer = Customer::query()->create([
+            'account_id' => $customerAccount->id,
+            'full_name' => 'عميل مسجّل',
+            'phone' => '01099998888',
+            'created_by' => $this->user->id,
+        ]);
+
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => $customer->id,
+            'client_name' => $customer->full_name,
+            'operation_type' => 'payment',
+            'client_amount' => 800.0,
+            'fawry_price' => 770.0,
+            'selling_price' => 800.0,
+            'profit' => 30.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Both consumers must agree on the same number.
+        $debtsReport = app(\App\Services\Reports\FinancialReportService::class)
+            ->getDebtsReport(['department' => 'office']);
+
+        $trialBalance = $this->treasury->getOfficeTrialBalance();
+
+        $this->assertEqualsWithDelta(
+            (float) $debtsReport['total_receivables'],
+            (float) $trialBalance['due_to_us'],
+            0.01,
+            'DepartmentManagement ($total_receivables) and TreasuryOverview ($due_to_us) must agree for office division.'
+        );
+    }
 }
