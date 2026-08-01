@@ -387,8 +387,7 @@ Route::prefix('v1')->middleware([
 
             // تعديل وحذف معاملات فوري — للأدمن فقط (حذف/تعديل بيانات مالية مدمرة)
             Route::middleware('admin')->group(function () {
-                Route::put('transactions/{fawryTransaction}', [FawryTransactionController::class, 'update'])->name('update');
-                Route::patch('transactions/{fawryTransaction}', [FawryTransactionController::class, 'update'])->name('update');
+                Route::match(['put', 'patch'], 'transactions/{fawryTransaction}', [FawryTransactionController::class, 'update'])->name('update');
                 Route::delete('transactions/{fawryTransaction}', [FawryTransactionController::class, 'destroy'])->name('destroy');
             });
         });
