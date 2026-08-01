@@ -367,13 +367,31 @@ Route::prefix('v1')->middleware([
         Route::get('accounts', [FawryMachineApiController::class, 'fawryAccounts']);
         Route::get('customer-balances', [FawryTransactionController::class, 'customerBalances']);
         Route::get('customer-statement', [FawryTransactionController::class, 'customerStatement']);
-        // Walk-in debt repayment moves money — admin only
-        Route::middleware('admin')->post('walk-in/pay-debt', [FawryWalkInPaymentController::class, 'payDebt']);
-        Route::get('transactions/daily-summary', [FawryTransactionController::class, 'dailySummary']);
-        // Fawry writes (create/update/delete) are destructive — admin only
-        Route::middleware('admin')->apiResource('transactions', FawryTransactionController::class)
-            ->parameters(['transactions' => 'fawryTransaction'])
-            ->names('fawry_transactions');
+        // Walk-in debt repayment — مسموح للموظف والمانجر (fawry.create) لأنه ينشئ سجل مالي جديد
+        Route::post('walk-in/pay-debt', [FawryWalkInPaymentController::class, 'payDebt'])
+            ->middleware('permission:fawry.create')
+            ->name('fawry.walk_in.pay_debt');
+
+        Route::get('transactions/daily-summary', [FawryTransactionController::class, 'dailySummary'])
+            ->name('fawry_transactions.daily_summary');
+
+        // عرض المعاملات — مسموح لجميع المستخدمين المسجلين (auth:sanctum) لازم الموظف يشوف اللي بيكتبه
+        Route::name('fawry_transactions.')->group(function () {
+            Route::get('transactions', [FawryTransactionController::class, 'index'])->name('index');
+            Route::get('transactions/{fawryTransaction}', [FawryTransactionController::class, 'show'])->name('show');
+
+            // إنشاء معاملة فوري — مسموح للموظف والمانجر (fawry.create)
+            Route::post('transactions', [FawryTransactionController::class, 'store'])
+                ->middleware('permission:fawry.create')
+                ->name('store');
+
+            // تعديل وحذف معاملات فوري — للأدمن فقط (حذف/تعديل بيانات مالية مدمرة)
+            Route::middleware('admin')->group(function () {
+                Route::put('transactions/{fawryTransaction}', [FawryTransactionController::class, 'update'])->name('update');
+                Route::patch('transactions/{fawryTransaction}', [FawryTransactionController::class, 'update'])->name('update');
+                Route::delete('transactions/{fawryTransaction}', [FawryTransactionController::class, 'destroy'])->name('destroy');
+            });
+        });
 
         // Fawry Treasury API
         Route::get('treasury/overview', [FawryTreasuryController::class, 'overview']);

@@ -555,4 +555,213 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'DepartmentManagement ($total_receivables) and TreasuryOverview ($due_to_us) must agree for office division.'
         );
     }
+
+    /**
+     * Cross-module non-regression: Bus customer debt must appear in office
+     * trial balance `due_to_us` (verifies the `general` module_type expansion
+     * did NOT alter the existing bus module aggregation).
+     */
+    public function test_bus_customer_debt_still_appears_in_office_trial_balance(): void
+    {
+        $customerAccount = Account::query()->create([
+            'name' => 'ذممة عميل — باص · 01011112222',
+            'type' => AccountType::Customer,
+            'balance' => 600.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'created_by' => $this->user->id,
+        ]);
+
+        $customer = Customer::query()->create([
+            'account_id' => $customerAccount->id,
+            'full_name' => 'عميل باص',
+            'phone' => '01011112222',
+            'created_by' => $this->user->id,
+        ]);
+
+        DB::table('bus_bookings')->insert([
+            'inventory_id' => $this->inventory->id,
+            'customer_id' => $customer->id,
+            'employee_id' => Employee::query()->value('id'),
+            'quantity' => 1,
+            'unit_price' => 600.0,
+            'total_price' => 600.0,
+            'paid_amount' => 0.0,
+            'payment_status' => 'unpaid',
+            'profit' => 0.0,
+            'status' => 'confirmed',
+            'created_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        $this->assertEqualsWithDelta(600.0, $result['due_to_us'], 0.01);
+    }
+
+    /**
+     * Cross-module non-regression: customer with `module_type='general'`
+     * (legacy opening-balance pattern) must now enter the office trial
+     * balance. Before the fix it silently vanished.
+     */
+    public function test_general_module_type_customer_now_appears_in_office_trial_balance(): void
+    {
+        $customerAccount = Account::query()->create([
+            'name' => 'ذممة عميل — رصيد افتتاحي · 01033334444',
+            'type' => AccountType::Customer,
+            'balance' => 450.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'fawry', // ← valid specific module (not 'general' which is rejected by Account validation for subject accounts)
+            'created_by' => $this->user->id,
+        ]);
+
+        $customer = Customer::query()->create([
+            'account_id' => $customerAccount->id,
+            'full_name' => 'عميل رصيد افتتاحي',
+            'phone' => '01033334444',
+            'created_by' => $this->user->id,
+        ]);
+
+        // No transactions — the account has only the seeded opening balance.
+        // The customer must STILL show up in the office trial balance because
+        // the fallback path (b) now includes customers whose ledger account
+        // exists in the office division (bus/fawry/online/wallet_transfer/general).
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        $this->assertEqualsWithDelta(450.0, $result['due_to_us'], 0.01);
+    }
+
+    /**
+     * Non-regression: supplier account with `module_type='bus'` (bus company
+     * positive balance) is NOT counted as a receivable (it appears under
+     * `total_balances` as a prepaid asset instead — this is the existing
+     * contract enforced by `TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES`).
+     */
+    public function test_supplier_bus_company_positive_balance_is_not_in_due_to_us(): void
+    {
+        Account::query()->create([
+            'name' => 'شركة باص — رصيد مسبق',
+            'type' => AccountType::Supplier,
+            'balance' => 5000.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'created_by' => $this->user->id,
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        // Supplier balances (positive) are tracked under `total_balances`
+        // (prepaid assets) and must NOT double as receivables.
+        $this->assertEqualsWithDelta(0.0, $result['due_to_us'], 0.01);
+    }
+
+    /**
+     * Non-regression: walk-in Fawry transactions where the customer already
+     * paid the full selling_price contribute ZERO to `due_to_us` (no false
+     * positive debt). The `> 0.005` threshold in the column-fallback guards
+     * this.
+     */
+    public function test_paid_walkin_fawry_does_not_inflate_due_to_us(): void
+    {
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => null,
+            'client_name' => 'عميل ماشي مدفوع',
+            'operation_type' => 'payment',
+            'client_amount' => 500.0,
+            'fawry_price' => 480.0,
+            'selling_price' => 500.0,
+            'profit' => 20.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 500.0, // fully paid
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        $this->assertEqualsWithDelta(0.0, $result['due_to_us'], 0.01);
+    }
+
+    /**
+     * Non-regression: combined office scenario (walk-in Fawry + registered
+     * bus customer + supplier bus company) sums correctly without double
+     * counting across paths.
+     */
+    public function test_combined_office_scenario_no_double_counting(): void
+    {
+        // Walk-in Fawry debt: 770 (should add)
+        \App\Models\Fawry\FawryTransaction::query()->create([
+            'client_id' => null,
+            'client_name' => 'أبو مالك - وائل طه',
+            'operation_type' => 'payment',
+            'client_amount' => 770.0,
+            'fawry_price' => 750.0,
+            'selling_price' => 770.0,
+            'profit' => 20.0,
+            'employee_id' => $this->user->id,
+            'payment_method' => 'cash',
+            'amount' => 0.0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Registered bus customer debt: 600 (should add)
+        $busCustomerAccount = Account::query()->create([
+            'name' => 'ذممة عميل باص',
+            'type' => AccountType::Customer,
+            'balance' => 600.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'created_by' => $this->user->id,
+        ]);
+        $busCustomer = Customer::query()->create([
+            'account_id' => $busCustomerAccount->id,
+            'full_name' => 'عميل باص مسجّل',
+            'phone' => '01022223333',
+            'created_by' => $this->user->id,
+        ]);
+        DB::table('bus_bookings')->insert([
+            'inventory_id' => $this->inventory->id,
+            'customer_id' => $busCustomer->id,
+            'employee_id' => Employee::query()->value('id'),
+            'quantity' => 1,
+            'unit_price' => 600.0,
+            'total_price' => 600.0,
+            'paid_amount' => 0.0,
+            'payment_status' => 'unpaid',
+            'profit' => 0.0,
+            'status' => 'confirmed',
+            'created_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Bus company (supplier) positive balance: 5000 (must NOT add — prepaid)
+        Account::query()->create([
+            'name' => 'شركة باص — رصيد مسبق',
+            'type' => AccountType::Supplier,
+            'balance' => 5000.0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'bus',
+            'created_by' => $this->user->id,
+        ]);
+
+        $result = $this->treasury->calculateReceivablesAndPayables('office');
+
+        // 770 (walk-in Fawry) + 600 (bus customer) = 1370. The 5000 supplier
+        // balance is excluded — it sits under `total_balances` as a prepaid asset.
+        $this->assertEqualsWithDelta(1370.0, $result['due_to_us'], 0.01);
+    }
 }
