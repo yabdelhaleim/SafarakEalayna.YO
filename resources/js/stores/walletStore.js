@@ -66,15 +66,23 @@ export const useWalletStore = defineStore('wallet', {
       this.loading.walletTypes = true;
       const controller = new AbortController();
       try {
+        // Default to active-only so the create form never offers inactive wallet types.
+        const query = { active_only: 1, ...params };
         const res = await axios.get('/api/v1/wallet/types', {
-          params,
+          params: query,
           signal: controller.signal,
         });
-        this.walletTypes = res.data?.data || [];
+        const payload = res.data?.data ?? res.data ?? [];
+        this.walletTypes = Array.isArray(payload) ? payload : [];
       } catch (err) {
         if (axios.isCancel(err)) return;
         console.error('Failed to fetch wallet types:', err);
         this.walletTypes = [];
+        const status = err.response?.status;
+        const msg = status
+          ? `تعذّر تحميل أنواع المحافظ (${status}). تأكد من تسجيل الدخول وأنواع المحافظ مفعّلة.`
+          : 'تعذّر الاتصال بالخادم لتحميل أنواع المحافظ.';
+        this.addToast(msg, 'error');
       } finally {
         this.loading.walletTypes = false;
       }

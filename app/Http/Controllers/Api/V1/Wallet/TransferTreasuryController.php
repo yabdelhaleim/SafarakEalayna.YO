@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\V1\Wallet;
 use App\Enums\AccountType;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
-use App\Http\Resources\Finance\AccountResource;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\Finance\AccountModuleContract;
+use App\Support\Finance\LiquidityAccountGroups;
 
 class TransferTreasuryController extends Controller
 {
@@ -31,6 +31,15 @@ class TransferTreasuryController extends Controller
         // same as `where('module_type', $division)`.
         $division = AccountModuleContract::divisionFor('wallet_transfer') ?? AccountModuleContract::OFFICE_MODULE_TYPE;
 
+        // NOTE: We deliberately do NOT wrap these rows in
+        // AccountResource here. AccountResource hides `balance` for
+        // non-admin / non-owner users, but department managers in the
+        // office division need to read balances on their own treasury
+        // (this is the standard behaviour across every other office
+        // treasury controller: Bus, Fawry, Online, HajjUmra, Visa all
+        // return plain arrays with `balance` for every caller).
+        // Mirroring that behaviour here keeps wallet treasury consistent
+        // with the rest of the office division.
         $accounts = Account::query()
             ->whereIn('module_type', ['wallet_transfer', $division])
             ->where('is_active', true)
@@ -41,23 +50,32 @@ class TransferTreasuryController extends Controller
             ])
             ->orderBy('type')
             ->orderBy('name')
-            ->get()
-            ->groupBy(fn ($acc) => $acc->type instanceof AccountType ? $acc->type->value : (string) $acc->type);
+            ->get([
+                'id',
+                'name',
+                'type',
+                'balance',
+                'currency',
+                'module_type',
+                'is_active',
+                'wallet_provider',
+                'wallet_number',
+            ]);
 
-        $map = fn ($items) => AccountResource::collection(collect($items ?? []))->resolve();
+        $groups = LiquidityAccountGroups::group($accounts);
 
         return ApiResponse::success('Wallet treasury overview retrieved successfully', [
-            'wallets' => $map($accounts->get(AccountType::Wallet->value)),
-            'banks' => $map($accounts->get(AccountType::Bank->value)),
-            'cashboxes' => $map($accounts->get(AccountType::Cashbox->value)),
+            'wallets' => $groups['wallets'],
+            'banks' => $groups['banks'],
+            'cashboxes' => $groups['cashboxes'],
             // 'treasury' key kept for response-shape stability but
             // intentionally empty: AccountType::Treasury was retired in
             // Phase 3.5b. The previous value (`$map(...Bank->value)`)
             // was an alias for 'banks' that caused the same accounts to
             // appear in two UI sections. See TransferTreasury.vue and
             // WalletCreate.vue for the matching cleanup.
-            'treasury' => $map(collect()),
-            'accounts' => $map($accounts->flatten(1)),
+            'treasury' => collect(),
+            'accounts' => $accounts->values(),
         ]);
     }
 

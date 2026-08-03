@@ -78,7 +78,19 @@
           </div>
           <h2 class="text-xl font-bold text-text-main">نوع المحفظة</h2>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="activeWalletTypes.length === 0" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-400 space-y-2 leading-relaxed">
+          <p class="font-bold">⚠️ لا توجد أنواع محافظ مفعّلة في النظام.</p>
+          <p class="text-text-muted">
+            لإضافة نوع محفظة جديد (مثل فودافون كاش، إنستاباي…)، افتح لوحة الإدارة من هنا:
+            <a
+              href="/admin/wallet-types"
+              target="_blank"
+              class="text-gold underline hover:text-gold/80 font-bold"
+            >إدارة أنواع المحافظ</a>
+            ، ثم أضِف النوع وفعّل خيار «نشط».
+          </p>
+        </div>
+        <div v-else class="flex flex-wrap gap-2">
           <button
             v-for="wt in activeWalletTypes"
             :key="wt.id"
