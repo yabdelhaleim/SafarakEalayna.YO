@@ -107,7 +107,7 @@ class FlightGroupResource extends Resource
                             ->minValue(0)
                             ->maxValue(100)
                             ->suffix('%')
-                            ->nullable()
+                            ->default(0)
                             ->placeholder('اختياري'),
                         TextInput::make('credit_limit')
                             ->label('حد الائتمان (الدين المسموح)')
