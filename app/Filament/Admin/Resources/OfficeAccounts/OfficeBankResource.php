@@ -16,7 +16,7 @@ class OfficeBankResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'المالية للمكتب';
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $navigationLabel = 'بنوك وبريد المكتب';
 
