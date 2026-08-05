@@ -900,7 +900,7 @@
                     <label class="block text-sm font-medium text-gray-300 mb-2">
                       عملة الشراء من المورد
                       <span
-                        v-if="recommendedCurrency && recommendedCurrency !== 'EGP'"
+                        v-if="recommendedCurrency"
                         class="ms-2 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
                         :title="currencyAutoLockHint"
                       >
@@ -923,7 +923,7 @@
                       </option>
                     </select>
                     <p class="mt-2 text-xs leading-relaxed text-text-muted">
-                      <span v-if="recommendedCurrency && recommendedCurrency !== 'EGP'">
+                      <span v-if="recommendedCurrency">
                         العملة محددة تلقائياً ومقفلة بناءً على
                         <span class="font-bold text-amber-200">{{ currencyAutoLockReason }}</span>
                         — لتغيير العملة غيّر الساين أو السيستم أو المطار في الخطوات السابقة.
@@ -931,7 +931,7 @@
                         سعر الصرف يأتي من إعدادات الأدمن ولا يمكن تعديله من هنا.
                       </span>
                       <span v-else>
-                        اختر العملة التي اشتريت بها من المورد؛ سيتم التحويل تلقائياً للجنيه المصري.
+                        اختر النظام أو الساين أولاً لتحديد عملة الشراء تلقائياً.
                       </span>
                     </p>
                   </div>
@@ -3061,32 +3061,32 @@ const pricingCurrencyOptions = computed(() => {
   const list = store.currencies;
   const baseList = Array.isArray(list) && list.length > 0 ? list : PRICING_CURRENCY_FALLBACK;
 
-  // 2026-07-24: فلتر تلقائي على dropdown عملة التسعير.
-  // لو العملة الموصى بها (RecommendedCurrency) معروفة — لأنها
-  // إما من السيستم أو الساين أو دولة المطار — نُصفّي القائمة
-  // لتلك العملة فقط (بدون EGP كخيار ثانوي) لمنع اختيار خاطئ.
-  // تعريف "الكويتي عمله الكويت" — الساين الكويتي = KWD فقط.
+  // 2026-08-05: فلتر تلقائي على dropdown عملة التسعير.
+  // الـ dropdown دلوقتي بيُقفل على عملة السيستم/الساين/المطار في **كل**
+  // الحالات (حتى لو EGP). الفلسفة: العملة مش اختيار للموظف — هي
+  // نتيجة تلقائية للسياق (نظام، ساين، مطار). الموظف ميقدرش يعدّلها.
+  //
+  //   - لو `recommended` غير معروف (لسه ما اختارش سيستم/ساين) → القائمة فارغة
+  //     والـ step يفشل عبر `isExchangeRateMissing`، مش عرض قائمة خاطئة.
+  //   - لو `recommended = EGP` → يعرض EGP بس (مش كل العملات).
+  //   - لو `recommended = KWD` → يعرض KWD بس.
   const recommended = recommendedCurrency.value;
   if (!recommended) {
-    return baseList; // لم تُحدَّد توصية بعد، اعرض الكل.
+    // لا تُعرِض أي عملة قبل أن يتحدد السياق — الموظف سيُجبَر على
+    // اختيار سيستم أو ساين أولاً لتحديد العملة.
+    return [];
   }
 
-  // موصى بها EGP → اترك القائمة كما هي (الوضع التقليدي).
-  if (recommended === 'EGP') {
-    return baseList;
-  }
-
-  // موصى بها عملة غير مصرية → عرض العملة الموصى فقط (بدون EGP).
   const filtered = baseList.filter((c) => {
     const code = String(c.code || '').toUpperCase();
     return code === recommended;
   });
 
   // لو العملة الموصى غير موجودة في القائمة، أضفها كخيار افتراضي
+  // (لو الأدمن ما أضافش العملة في Filament بعد).
   if (filtered.length === 0) {
     return [
       { code: recommended, name: recommended, exchangeRate: 0 },
-      ...baseList,
     ];
   }
   return filtered;
