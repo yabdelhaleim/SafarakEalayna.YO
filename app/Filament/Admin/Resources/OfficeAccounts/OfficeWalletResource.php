@@ -16,7 +16,7 @@ class OfficeWalletResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-wallet';
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية للمكتب';
 
     protected static ?string $navigationLabel = 'محافظ المكتب';
 

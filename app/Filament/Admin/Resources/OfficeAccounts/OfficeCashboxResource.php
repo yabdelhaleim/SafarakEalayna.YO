@@ -16,7 +16,7 @@ class OfficeCashboxResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية للمكتب';
 
     protected static ?string $navigationLabel = 'خزائن المكتب النقدية';
 
