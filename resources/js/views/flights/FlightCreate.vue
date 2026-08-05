@@ -928,6 +928,7 @@
                         <span class="font-bold text-amber-200">{{ currencyAutoLockReason }}</span>
                         — لتغيير العملة غيّر الساين أو السيستم أو المطار في الخطوات السابقة.
                         الدفع بعد ذلك يتم بخزينة مصرية (EGP) بصرف النظر عن عملة الشراء.
+                        سعر الصرف يأتي من إعدادات الأدمن ولا يمكن تعديله من هنا.
                       </span>
                       <span v-else>
                         اختر العملة التي اشتريت بها من المورد؛ سيتم التحويل تلقائياً للجنيه المصري.
@@ -958,6 +959,41 @@
                       <span class="text-lg font-black text-gold">
                         {{ formatCurrency(form.purchase_price_egp) }}
                       </span>
+                    </div>
+
+                    <!-- 2026-08-05: حجز السعر بالقراءة فقط.
+                         سعر الصرف يأتي من إعدادات الأدمن (Filament → العملات)
+                         ولا يمكن للموظف تعديله. لو معدوم (صفر) يظهر خطأ واضح. -->
+                    <div
+                      v-if="form.currency !== 'EGP'"
+                      class="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2"
+                    >
+                      <span class="text-[11px] text-text-muted">سعر الصرف (من إعدادات الأدمن)</span>
+                      <span class="font-mono text-sm font-bold tabular-nums text-emerald-300">
+                        1 {{ form.currency }} = {{ Number(form.exchange_rate) > 0 ? Number(form.exchange_rate).toFixed(4) : '—' }} ج.م
+                      </span>
+                    </div>
+
+                    <!-- 2026-08-05: خطأ صريح عند غياب سعر صرف العملة الأجنبية.
+                         يظهر فقط لو `form.exchange_rate = 0` رغم اختيار عملة أجنبية،
+                         ولا يمكن تجاوزه — سعر الصرف يُحدَّد من الأدمن فقط. -->
+                    <div
+                      v-if="isExchangeRateMissing"
+                      class="rounded-lg border border-error/50 bg-error/10 p-3 text-xs text-error space-y-1.5"
+                      role="alert"
+                    >
+                      <div class="flex items-start gap-2">
+                        <AlertTriangle class="h-4 w-4 mt-0.5 shrink-0 text-error" />
+                        <div class="leading-relaxed">
+                          <div class="font-bold">لا يمكن إكمال التسعير</div>
+                          <div class="text-red-200/90 mt-1">
+                            سعر صرف
+                            <span class="font-mono font-bold">{{ form.currency }}</span>
+                            غير مُعرَّف في إعدادات العملات. تواصل مع مدير النظام
+                            لتحديث السعر من شاشة «العملات وأسعار الصرف»، ثم ارجع للحجز.
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2240,6 +2276,7 @@ import {
   Banknote,
   Activity,
   Lock,
+  AlertTriangle,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -3270,6 +3307,21 @@ const adminFilamentWalletAccountsUrl = computed(() => {
   return `${base}/admin/wallet-accounts/create`;
 });
 
+/**
+ * 2026-08-05: هل سعر صرف العملة المختارة مُعرَّف من الأدمن؟
+ *
+ * - لو العملة EGP → لا حاجة لسعر صرف (نفس العملة).
+ * - لو العملة أجنبية وسعر الصرف > 0 → مُعرَّف ✓
+ * - لو العملة أجنبية وسعر الصرف = 0 → غير مُعرَّف ✗
+ *   (يعني الأدمن ما حدّدش سعر الصرف في Filament → العملات، فالـ booking
+ *   يفشل هنا ولا يُسمح للموظف بتعديله أو تجاوزه)
+ */
+const isExchangeRateMissing = computed(() => {
+  if (!form.value.currency || form.value.currency === 'EGP') return false;
+  const rate = Number(form.value.exchange_rate) || 0;
+  return rate <= 0;
+});
+
 /** Per-step completion by form state (stays correct if user goes back a step). */
 const isBookingStepComplete = (step) => {
   switch (step) {
@@ -3287,8 +3339,12 @@ const isBookingStepComplete = (step) => {
       return true;
     case 4:
       return getStep4MissingFields().length === 0;
-    case 5:
+    case 5: {
+      // 2026-08-05: تشديد التحقق — سعر الصرف الأجنبي يجب أن يكون
+      // مُعرَّفاً من إعدادات الأدمن. لو غايب يفشل الـ step فوراً.
+      if (isExchangeRateMissing.value) return false;
       return Number(form.value.purchase_price_egp) > 0 && sellingPriceEgp.value > 0;
+    }
     case 6: {
       const pMethod = String(form.value.payment_method || '').trim();
       if (Number(form.value.initial_payment) <= 0) return true;
@@ -4073,7 +4129,9 @@ const submitBooking = async () => {
       purchase_balance_source: form.value.purchase_balance_source || 'carrier',
       currency: form.value.currency,
       purchase_price_foreign: form.value.purchase_price_foreign || null,
-      exchange_rate: form.value.exchange_rate || null,
+      // 2026-08-05: سعر الصرف لا يُرسَل من العميل — يجي من السيرفر
+      // بناءً على إعدادات الأدمن في `currencies` (Filament).
+      // الموظف لا يمكنه تعديله أو تجاوزه.
       purchase_price_egp: form.value.purchase_price_egp,
       selling_price: form.value.selling_price,
       account_id: form.value.account_id ? parseInt(String(form.value.account_id), 10) : null,
