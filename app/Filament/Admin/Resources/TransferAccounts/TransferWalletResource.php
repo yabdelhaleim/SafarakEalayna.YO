@@ -28,17 +28,18 @@ class TransferWalletResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('type', AccountType::Wallet);
+            ->where('type', AccountType::Wallet)
+            ->where('module_type', 'wallet_transfer');
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Wallet, 'office');
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Wallet, 'wallet_transfer');
     }
 
     public static function table(Table $table): Table
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configureTable($table, showTypeColumn: true, showWalletDetails: true);
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configureTable($table, showTypeColumn: false, showWalletDetails: true);
     }
 
     public static function getPages(): array

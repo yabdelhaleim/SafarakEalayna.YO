@@ -694,10 +694,15 @@ const selectedWalletType = computed(() => {
 
 const filteredWalletAccounts = computed(() => {
   const type = selectedWalletType.value;
+  // فلتر مزدوج: (1) محفظة موديول wallet_transfer فقط (مستقل عن المكتب/السياحة)
+  //              (2) provider يطابق نوع المحفظة المختار
+  const baseList = walletAccounts.value.filter(
+    (a) => a.module_type === 'wallet_transfer'
+  );
   if (!type) {
-    return walletAccounts.value;
+    return baseList;
   }
-  return walletAccounts.value.filter((a) => accountMatchesWalletType(a, type));
+  return baseList.filter((a) => accountMatchesWalletType(a, type));
 });
 
 const selectedWalletAccount = computed(() => {
