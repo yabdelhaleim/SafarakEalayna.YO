@@ -29,12 +29,23 @@ class TransferWalletResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('type', AccountType::Wallet)
-            ->where('module_type', 'wallet_transfer');
+            ->where(function (Builder $q): void {
+                $q->where('module_type', 'wallet_transfer')
+                  ->orWhere('module', 'wallet_transfer');
+            });
     }
 
     public static function form(Schema $schema): Schema
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure($schema, AccountType::Wallet, 'wallet_transfer');
+        // 'office' هو الـ division المطلوب للـ liquidity (الـ saving hook يفرضه)
+        // لكن 'wallet_transfer' في عمود `module` للتمييز بين محافظ موديول المحافظ
+        // ومحافظ المكتب العامة في صفحة الإدارة.
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configure(
+            $schema,
+            AccountType::Wallet,
+            'wallet_transfer',
+            lockModuleType: false
+        );
     }
 
     public static function table(Table $table): Table

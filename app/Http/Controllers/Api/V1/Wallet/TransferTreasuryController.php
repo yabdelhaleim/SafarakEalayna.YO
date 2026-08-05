@@ -41,7 +41,10 @@ class TransferTreasuryController extends Controller
         // Mirroring that behaviour here keeps wallet treasury consistent
         // with the rest of the office division.
         $accounts = Account::query()
-            ->whereIn('module_type', ['wallet_transfer', $division])
+            ->where(function ($q) use ($division) {
+                $q->whereIn('module_type', ['wallet_transfer', $division])
+                  ->orWhere('module', 'wallet_transfer');
+            })
             ->where('is_active', true)
             ->whereIn('type', [
                 AccountType::Wallet->value,
@@ -57,6 +60,7 @@ class TransferTreasuryController extends Controller
                 'balance',
                 'currency',
                 'module_type',
+                'module',
                 'is_active',
                 'wallet_provider',
                 'wallet_number',

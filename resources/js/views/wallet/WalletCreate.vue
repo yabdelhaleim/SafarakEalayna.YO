@@ -137,27 +137,37 @@
               ، ثم أضِف النوع وفعّل خيار «نشط».
             </p>
           </div>
-          <div v-else class="flex flex-wrap gap-2">
-            <button
-              v-for="wt in activeWalletTypes"
-              :key="wt.id"
-              type="button"
-              @click="selectWalletType(wt.id)"
-              :class="[
-                'group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all',
-                form.wallet_type_id === wt.id
+        <div v-else class="flex flex-wrap gap-2">
+          <button
+            v-for="wt in activeWalletTypes"
+            :key="wt.id"
+            type="button"
+            :disabled="!wt.is_active"
+            :title="!wt.is_active ? 'هذا النوع معطّل — فعّله من إدارة أنواع المحافظ' : null"
+            @click="wt.is_active && selectWalletType(wt.id)"
+            :class="[
+              'group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all',
+              !wt.is_active
+                ? 'cursor-not-allowed border-white/5 bg-white/[0.02] text-white/30 opacity-50'
+                : form.wallet_type_id === wt.id
                   ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-md shadow-amber-500/10'
                   : 'border-white/10 bg-white/5 text-white/80 hover:border-amber-500/40 hover:bg-amber-500/5',
-              ]"
+            ]"
+          >
+            <component :is="providerIcon(wt.code)" class="h-4 w-4" />
+            <span>{{ wt.name }}</span>
+            <span
+              v-if="!wt.is_active"
+              class="rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/40"
             >
-              <component :is="providerIcon(wt.code)" class="h-4 w-4" />
-              {{ wt.name }}
-              <code
-                v-if="form.wallet_type_id === wt.id"
-                class="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[10px] text-amber-200/70"
-              >{{ wt.code }}</code>
-            </button>
-          </div>
+              معطّل
+            </span>
+            <code
+              v-else-if="form.wallet_type_id === wt.id"
+              class="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[10px] text-amber-200/70"
+            >{{ wt.code }}</code>
+          </button>
+        </div>
           <p v-if="errors.wallet_type_id" class="mt-3 text-xs text-rose-400">{{ errors.wallet_type_id }}</p>
 
           <!-- Matching Wallet Accounts -->
@@ -697,7 +707,7 @@ const filteredWalletAccounts = computed(() => {
   // فلتر مزدوج: (1) محفظة موديول wallet_transfer فقط (مستقل عن المكتب/السياحة)
   //              (2) provider يطابق نوع المحفظة المختار
   const baseList = walletAccounts.value.filter(
-    (a) => a.module_type === 'wallet_transfer'
+    (a) => a.module_type === 'wallet_transfer' || a.module === 'wallet_transfer'
   );
   if (!type) {
     return baseList;

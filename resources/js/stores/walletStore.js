@@ -45,8 +45,14 @@ export const useWalletStore = defineStore('wallet', {
   }),
 
   getters: {
-    activeWalletTypes: (state) =>
-      state.walletTypes.filter((t) => t.is_active),
+    /**
+     * كل أنواع المحافظ (نشطة + معطّلة) عشان الواجهة تعرض الكل
+     * وتفرّق بصرياً بين النشط والمعطّل — يمكن تفعيل المعطّل من Filament.
+     */
+    activeWalletTypes: (state) => state.walletTypes,
+
+    inactiveWalletTypes: (state) =>
+      state.walletTypes.filter((t) => !t.is_active),
 
     transactionTypeOptions: () => [
       { value: 'send',    label: 'إرسال رصيد',    color: 'warning', icon: 'ArrowUpCircle' },
@@ -66,8 +72,9 @@ export const useWalletStore = defineStore('wallet', {
       this.loading.walletTypes = true;
       const controller = new AbortController();
       try {
-        // Default to active-only so the create form never offers inactive wallet types.
-        const query = { active_only: 1, ...params };
+        // جلب كل أنواع المحافظ (نشطة + معطّلة) — الـ Vue يفرّق بصرياً
+        // بين النشط (قابل للضغط) والمعطّل (مُعتم + tooltip للتعطيل).
+        const query = { active_only: 0, ...params };
         const res = await axios.get('/api/v1/wallet/types', {
           params: query,
           signal: controller.signal,
