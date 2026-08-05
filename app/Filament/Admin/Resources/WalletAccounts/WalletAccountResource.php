@@ -20,6 +20,16 @@ class WalletAccountResource extends Resource
 {
     use BelongsToWalletModuleNavigation;
 
+    /**
+     * مُعطَّل من القائمة الجانبية — تم توحيده مع TransferWalletResource
+     * (URL: /admin/transfer-accounts/transfer-wallets) كي يكون المصدر
+     * الوحيد لعرض وإدارة كل المحافظ الإلكترونية عبر الموديولات.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static ?string $model = Account::class;
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-device-phone-mobile';

@@ -856,3 +856,34 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+/* ─── Native <select> dropdown options ─────────────────────────────
+   المتصفح يرسم قائمة الـ <select> المنسدلة بألوان النظام الافتراضية،
+   فيظهر النص بتباين ضعيف (رمادي فاتح على أبيض) لا يُقرأ على الثيم
+   الداكن. نُجبر <option> على ألوان واضحة ومتسقة مع بقية الصفحة. */
+.wallet-create-page select option {
+  color: #0B2D4E;            /* كحلي غامق — نص أساسي واضح */
+  background-color: #FFFFFF; /* خلفية بيضاء */
+  font-weight: 600;
+}
+
+.wallet-create-page select option:checked,
+.wallet-create-page select option[selected],
+.wallet-create-page select option[aria-selected="true"] {
+  background-color: #185FA5; /* الأزرق الأساسي للهوية */
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+.wallet-create-page select option:hover {
+  background-color: #EDF4FC;
+  color: #0B2D4E;
+}
+
+/* تعطيل العنصر إن كان معطّلًا (defensive) */
+.wallet-create-page select option:disabled {
+  color: #9CA3AF;
+  background-color: #F4F8FD;
+}
+</style>

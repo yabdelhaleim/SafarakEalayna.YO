@@ -32,7 +32,7 @@ class WalletTypeResource extends Resource
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-credit-card';
 
-    protected static string|\UnitEnum|null $navigationGroup = WalletModuleNavigation::NAVIGATION_GROUP;
+    protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
 
     protected static ?string $navigationLabel = 'أنواع المحافظ';
 

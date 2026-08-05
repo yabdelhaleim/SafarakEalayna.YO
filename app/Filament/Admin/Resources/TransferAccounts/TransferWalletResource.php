@@ -15,20 +15,19 @@ class TransferWalletResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-wallet';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'مالية المكتب';
+    protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
 
-    protected static ?string $navigationLabel = 'محافظ المكتب';
+    protected static ?string $navigationLabel = 'كل المحافظ الإلكترونية';
 
-    protected static ?string $pluralLabel = 'محافظ المكتب';
+    protected static ?string $pluralLabel = 'كل المحافظ الإلكترونية';
 
-    protected static ?string $modelLabel = 'محفظة للمكتب';
+    protected static ?string $modelLabel = 'محفظة إلكترونية';
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 2;
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('module_type', 'office')
             ->where('type', AccountType::Wallet);
     }
 
@@ -39,7 +38,7 @@ class TransferWalletResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configureTable($table, showTypeColumn: false, showWalletDetails: true);
+        return \App\Filament\Admin\Resources\Accounts\AccountFormSchema::configureTable($table, showTypeColumn: true, showWalletDetails: true);
     }
 
     public static function getPages(): array
