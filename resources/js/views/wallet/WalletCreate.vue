@@ -123,6 +123,18 @@
               <h2 class="text-base font-bold text-white">2. نوع المحفظة والحساب</h2>
               <p class="text-xs text-white/40">اختر النوع — ستظهر المحافظ المتاحة من هذا النوع تلقائياً</p>
             </div>
+            <!-- اختصار لإدارة أنواع المحافظ (يفتح Filament في تبويب جديد) -->
+            <a
+              href="/admin/wallet-types"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-bold text-sky-300 transition hover:border-sky-500/50 hover:bg-sky-500/20"
+              title="افتح إدارة أنواع المحافظ في تبويب جديد"
+            >
+              <Settings2 class="h-3.5 w-3.5" />
+              إدارة الأنواع
+              <ExternalLink class="h-3 w-3 opacity-60" />
+            </a>
             <span v-if="selectedWalletType" class="text-xs font-bold text-emerald-400 flex items-center gap-1">
               <Check class="h-3.5 w-3.5" /> {{ selectedWalletType.name }}
             </span>
@@ -132,8 +144,15 @@
           <div v-if="activeWalletTypes.length === 0" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-300 space-y-2 leading-relaxed">
             <p class="font-bold">⚠️ لا توجد أنواع محافظ مفعّلة في النظام.</p>
             <p class="text-white/50">
-              لإضافة نوع محفظة جديد (مثل فودافون كاش، إنستاباي…)، افتح لوحة الإدارة من هنا:
-              <a href="/admin/wallet-types" target="_blank" class="text-amber-300 underline hover:text-amber-200 font-bold">إدارة أنواع المحافظ</a>
+              لإضافة نوع محفظة جديد (مثل فودافون كاش، إنستاباي…)، اضغط الزر:
+              <a
+                href="/admin/wallet-types"
+                target="_blank"
+                class="inline-flex items-center gap-1 mx-1 rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-bold text-amber-200 hover:bg-amber-400/20"
+              >
+                <Settings2 class="h-3 w-3" />
+                إدارة الأنواع
+              </a>
               ، ثم أضِف النوع وفعّل خيار «نشط».
             </p>
           </div>
@@ -620,6 +639,9 @@ import {
   CreditCard,
   Building2,
   Send,
+  Settings2,
+  ExternalLink,
+  Plus,
 } from 'lucide-vue-next';
 
 const router = useRouter();
