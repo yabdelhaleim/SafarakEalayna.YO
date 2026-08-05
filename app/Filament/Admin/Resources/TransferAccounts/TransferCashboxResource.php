@@ -15,7 +15,7 @@ class TransferCashboxResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
+    protected static string|\UnitEnum|null $navigationGroup = 'مالية المكتب';
 
     protected static ?string $navigationLabel = 'خزائن المكتب النقدية';
 

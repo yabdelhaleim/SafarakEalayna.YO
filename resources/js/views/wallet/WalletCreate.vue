@@ -1,415 +1,584 @@
 <template>
-  <div class="space-y-8 animate-in fade-in duration-700">
-    <!-- Header -->
-    <div class="flex items-center gap-4">
-      <router-link
-        to="/wallet"
-        class="p-2 hover:bg-white/10 rounded-lg transition-colors"
-      >
-        <ArrowRight class="w-6 h-6" />
-      </router-link>
-      <div>
-        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-text-main tracking-tight">
-          عملية محفظة جديدة
-        </h1>
-        <p class="text-text-muted mt-1">
-          تسجيل عملية إرسال أو استقبال رصيد
-        </p>
-      </div>
-    </div>
+  <div class="wallet-create-page mx-auto max-w-7xl space-y-6 pb-20" dir="rtl">
 
-    <form @submit.prevent="submit" class="max-w-4xl mx-auto space-y-8">
-      <!-- نوع العملية -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button
-          type="button"
-          @click="form.type = 'send'"
-          :class="[
-            'relative p-6 rounded-2xl border text-right transition-all',
-            form.type === 'send'
-              ? 'border-warning/50 bg-warning/10 ring-2 ring-warning/30 shadow-lg shadow-warning/5'
-              : 'border-white/10 bg-card-bg hover:border-warning/25',
-          ]"
-        >
-          <div class="flex items-center gap-3 mb-2">
-            <div class="p-2 bg-warning/15 rounded-xl text-warning">
-              <ArrowUpCircle class="w-6 h-6" />
-            </div>
-            <span class="font-bold text-text-main text-lg">إرسال رصيد</span>
-          </div>
-          <p class="text-sm text-text-muted leading-relaxed">
-            نرسل رصيد على محفظة العميل ويدفع لنا نقدي + خدمة
-          </p>
-          <div v-if="form.type === 'send'" class="absolute top-4 left-4 text-warning">
-            <CheckCircle2 class="w-6 h-6" />
-          </div>
-        </button>
-
-        <button
-          type="button"
-          @click="form.type = 'receive'"
-          :class="[
-            'relative p-6 rounded-2xl border text-right transition-all',
-            form.type === 'receive'
-              ? 'border-success/50 bg-success/10 ring-2 ring-success/30 shadow-lg shadow-success/5'
-              : 'border-white/10 bg-card-bg hover:border-success/25',
-          ]"
-        >
-          <div class="flex items-center gap-3 mb-2">
-            <div class="p-2 bg-success/15 rounded-xl text-success">
-              <ArrowDownCircle class="w-6 h-6" />
-            </div>
-            <span class="font-bold text-text-main text-lg">استقبال رصيد</span>
-          </div>
-          <p class="text-sm text-text-muted leading-relaxed">
-            العميل يرسل رصيد لمحفظتنا ونعطيه نقدي ناقص الخدمة
-          </p>
-          <div v-if="form.type === 'receive'" class="absolute top-4 left-4 text-success">
-            <CheckCircle2 class="w-6 h-6" />
-          </div>
-        </button>
-      </div>
-
-      <!-- نوع المحفظة -->
-      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="p-2 bg-info/10 rounded-lg">
-            <Wallet class="w-5 h-5 text-info" />
-          </div>
-          <h2 class="text-xl font-bold text-text-main">نوع المحفظة</h2>
-        </div>
-        <div v-if="activeWalletTypes.length === 0" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-400 space-y-2 leading-relaxed">
-          <p class="font-bold">⚠️ لا توجد أنواع محافظ مفعّلة في النظام.</p>
-          <p class="text-text-muted">
-            لإضافة نوع محفظة جديد (مثل فودافون كاش، إنستاباي…)، افتح لوحة الإدارة من هنا:
-            <a
-              href="/admin/wallet-types"
-              target="_blank"
-              class="text-gold underline hover:text-gold/80 font-bold"
-            >إدارة أنواع المحافظ</a>
-            ، ثم أضِف النوع وفعّل خيار «نشط».
-          </p>
-        </div>
-        <div v-else class="flex flex-wrap gap-2">
-          <button
-            v-for="wt in activeWalletTypes"
-            :key="wt.id"
-            type="button"
-            @click="form.wallet_type_id = wt.id"
-            :class="[
-              'px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all',
-              form.wallet_type_id === wt.id
-                ? 'border-gold/60 bg-gold/15 text-gold'
-                : 'border-white/10 bg-white/5 text-text-main hover:border-gold/30',
-            ]"
+    <!-- ════════════════════════════════════════
+         HEADER (Filament-style)
+    ════════════════════════════════════════ -->
+    <header class="relative overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-[#1a1200] via-[#1c1500] to-[#0d0d0d] p-6 sm:p-8 shadow-2xl">
+      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(245,158,11,0.14),_transparent_60%)]" />
+      <div class="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-4">
+          <router-link
+            to="/wallet"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-amber-300 transition hover:border-amber-400/40 hover:bg-amber-400/10"
+            title="العودة لقائمة المحافظ"
           >
-            {{ wt.name }}
-          </button>
-        </div>
-        <p v-if="errors.wallet_type_id" class="text-error text-sm mt-3">{{ errors.wallet_type_id }}</p>
-
-        <!-- المحافظ المتاحة لهذا النوع -->
-        <div v-if="form.wallet_type_id" class="mt-6 pt-6 border-t border-white/5">
-          <label class="block text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
-            المحافظ المتاحة (رقم المحفظة والرصيد) <span class="text-error">*</span>
-          </label>
-          <div v-if="filteredWalletAccounts.length === 0" class="text-xs text-amber-400 space-y-1.5 leading-relaxed">
-            <p>⚠️ لا توجد محافظ مسجلة للوكالة في النظام لهذا النوع.</p>
-            <p v-if="walletAccounts.length > 0">
-              يوجد {{ walletAccounts.length }} محفظة مسجلة ولكن نوع المحفظة لا يطابق
-              <strong class="text-gold">{{ selectedWalletType?.name }}</strong>
-              (المطلوب كود مقدم الخدمة: <code class="font-mono">{{ selectedWalletType?.code }}</code>).
+            <ArrowRight class="h-5 w-5" />
+          </router-link>
+          <div>
+            <p class="text-[11px] font-bold uppercase tracking-widest text-amber-400/80">
+              المحافظ والتحويلات
             </p>
-            <p v-else>
-              يمكنك إضافة محفظة جديدة مباشرة من صفحة 
-              <router-link to="/finance/accounts" class="text-gold underline hover:text-gold/80 font-bold">إدارة الحسابات والخزائن</router-link>. 
-              تأكد من اختيار نوع الحساب «محفظة»، واختيار نوع مقدم الخدمة الصحيح (مثل Vodafone Cash)، وتحديد الموديول المختص كـ «المحافظ والتحويلات».
+            <h1 class="mt-0.5 text-2xl font-black text-white">عملية محفظة جديدة</h1>
+            <p class="mt-1 text-sm text-white/50">
+              تسجيل عملية إرسال أو استقبال رصيد — اختر النوع والمحفظة، أدخل البيانات، واحفظ.
             </p>
           </div>
-          <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        </div>
+
+        <!-- Compact progress -->
+        <div class="flex items-center gap-3 self-start sm:self-auto">
+          <div class="text-center">
+            <div class="text-xs text-white/40">التقدم</div>
+            <div class="text-lg font-black text-amber-400">
+              {{ completedSteps }}<span class="text-sm text-white/30">/{{ totalSteps }}</span>
+            </div>
+          </div>
+          <div class="flex h-12 w-12 items-center justify-center rounded-full border-2 border-amber-400/40 text-sm font-black text-amber-300">
+            {{ Math.round((completedSteps / totalSteps) * 100) }}%
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <form @submit.prevent="submit" class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <!-- ════════════════════════════════════════
+           MAIN FORM (2 cols)
+      ════════════════════════════════════════ -->
+      <div class="space-y-6 lg:col-span-2">
+
+        <!-- STEP 1: Operation Type -->
+        <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
+              <ArrowLeftRight class="h-5 w-5" />
+            </div>
+            <div class="flex-1">
+              <h2 class="text-base font-bold text-white">1. نوع العملية</h2>
+              <p class="text-xs text-white/40">اختر اتجاه الرصيد</p>
+            </div>
+            <span v-if="form.type" class="text-xs font-bold text-emerald-400 flex items-center gap-1">
+              <Check class="h-3.5 w-3.5" /> تم الاختيار
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button
-              v-for="acc in filteredWalletAccounts"
-              :key="acc.id"
               type="button"
-              @click="form.wallet_account_id = acc.id"
+              @click="form.type = 'send'"
               :class="[
-                'p-4 rounded-xl border text-right transition-all flex flex-col gap-1',
-                form.wallet_account_id === acc.id
-                  ? 'border-gold/60 bg-gold/15 text-gold ring-2 ring-gold/20'
-                  : 'border-white/10 bg-white/5 hover:border-white/20 text-text-main',
+                'group relative flex items-start gap-3 rounded-xl border-2 p-4 text-right transition-all',
+                form.type === 'send'
+                  ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
+                  : 'border-white/10 bg-white/[0.02] hover:border-amber-500/40 hover:bg-amber-500/5',
               ]"
             >
-              <span class="font-bold text-sm">{{ acc.name }}</span>
-              <span class="text-xs font-mono text-text-muted">الرقم: {{ acc.wallet_number || '—' }}</span>
-              <span class="text-xs font-mono text-emerald-400 font-bold mt-1">الرصيد: {{ formatCurrency(acc.balance) }}</span>
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+                <ArrowUpCircle class="h-6 w-6" />
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-white">إرسال رصيد</span>
+                  <CheckCircle2 v-if="form.type === 'send'" class="h-5 w-5 text-amber-400" />
+                </div>
+                <p class="mt-1 text-xs text-white/50 leading-relaxed">
+                  نرسل رصيد على محفظة العميل ويدفع لنا نقدي + الخدمة
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              @click="form.type = 'receive'"
+              :class="[
+                'group relative flex items-start gap-3 rounded-xl border-2 p-4 text-right transition-all',
+                form.type === 'receive'
+                  ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10'
+                  : 'border-white/10 bg-white/[0.02] hover:border-emerald-500/40 hover:bg-emerald-500/5',
+              ]"
+            >
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                <ArrowDownCircle class="h-6 w-6" />
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-white">استقبال رصيد</span>
+                  <CheckCircle2 v-if="form.type === 'receive'" class="h-5 w-5 text-emerald-400" />
+                </div>
+                <p class="mt-1 text-xs text-white/50 leading-relaxed">
+                  العميل يرسل رصيد لمحفظتنا ونعطيه نقدي ناقص الخدمة
+                </p>
+              </div>
             </button>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <!-- بيانات العميل -->
-      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="p-2 bg-gold/10 rounded-lg">
-            <User class="w-5 h-5 text-gold" />
+        <!-- STEP 2: Wallet Type + Matching Wallets -->
+        <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-400">
+              <Wallet class="h-5 w-5" />
+            </div>
+            <div class="flex-1">
+              <h2 class="text-base font-bold text-white">2. نوع المحفظة والحساب</h2>
+              <p class="text-xs text-white/40">اختر النوع — ستظهر المحافظ المتاحة من هذا النوع تلقائياً</p>
+            </div>
+            <span v-if="selectedWalletType" class="text-xs font-bold text-emerald-400 flex items-center gap-1">
+              <Check class="h-3.5 w-3.5" /> {{ selectedWalletType.name }}
+            </span>
           </div>
-          <h2 class="text-xl font-bold text-text-main">بيانات العميل</h2>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              العميل المسجّل
-            </label>
-            <select
-              v-model="form.customer_id"
-              class="form-select-dark"
-            >
-              <option value="">— بدون اختيار (عميل جديد) —</option>
-              <option v-for="customer in customers" :key="customer.id" :value="customer.id">
-                {{ customer.full_name }}
-              </option>
-            </select>
-            <p class="text-xs text-text-muted mt-1">
-              <router-link to="/customers" class="text-gold hover:underline">إدارة العملاء</router-link>
+
+          <!-- Wallet Type chips -->
+          <div v-if="activeWalletTypes.length === 0" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-300 space-y-2 leading-relaxed">
+            <p class="font-bold">⚠️ لا توجد أنواع محافظ مفعّلة في النظام.</p>
+            <p class="text-white/50">
+              لإضافة نوع محفظة جديد (مثل فودافون كاش، إنستاباي…)، افتح لوحة الإدارة من هنا:
+              <a href="/admin/wallet-types" target="_blank" class="text-amber-300 underline hover:text-amber-200 font-bold">إدارة أنواع المحافظ</a>
+              ، ثم أضِف النوع وفعّل خيار «نشط».
             </p>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              اسم العميل <span class="text-error">*</span>
-              <span v-if="form.customer_id" class="text-text-muted font-normal text-xs">(يُحدَّث من القائمة)</span>
-            </label>
-            <input
-              v-model="form.customer_name"
-              type="text"
-              :readonly="!!form.customer_id"
-              :required="!form.customer_id"
-              placeholder="اسم العميل كما سيظهر في السجل"
-              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all read-only:opacity-70"
-              :class="{ '!border-error': errors.customer_name }"
-            />
-            <p v-if="errors.customer_name" class="text-error text-xs mt-1">{{ errors.customer_name }}</p>
+          <div v-else class="flex flex-wrap gap-2">
+            <button
+              v-for="wt in activeWalletTypes"
+              :key="wt.id"
+              type="button"
+              @click="selectWalletType(wt.id)"
+              :class="[
+                'group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all',
+                form.wallet_type_id === wt.id
+                  ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-md shadow-amber-500/10'
+                  : 'border-white/10 bg-white/5 text-white/80 hover:border-amber-500/40 hover:bg-amber-500/5',
+              ]"
+            >
+              <component :is="providerIcon(wt.code)" class="h-4 w-4" />
+              {{ wt.name }}
+              <code
+                v-if="form.wallet_type_id === wt.id"
+                class="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[10px] text-amber-200/70"
+              >{{ wt.code }}</code>
+            </button>
           </div>
-          <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              رقم المحفظة (الهاتف) <span class="text-error">*</span>
-            </label>
-            <input
-              v-model="form.wallet_number"
-              type="tel"
-              placeholder="01012345678"
-              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all font-mono tabular-nums"
-              :class="{ '!border-error': errors.wallet_number }"
-            />
-            <p v-if="errors.wallet_number" class="text-error text-xs mt-1">{{ errors.wallet_number }}</p>
-          </div>
-        </div>
-      </div>
+          <p v-if="errors.wallet_type_id" class="mt-3 text-xs text-rose-400">{{ errors.wallet_type_id }}</p>
 
-      <!-- المبالغ -->
-      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="p-2 bg-success/10 rounded-lg">
-            <Banknote class="w-5 h-5 text-success" />
-          </div>
-          <h2 class="text-xl font-bold text-text-main">المبالغ</h2>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              المبلغ <span class="text-error">*</span>
-            </label>
-            <div class="relative">
-              <input
-                v-model.number="form.amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
-                class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all font-mono tabular-nums"
-                :class="{ '!border-error': errors.amount }"
-              />
-              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-sm">ج.م</span>
+          <!-- Matching Wallet Accounts -->
+          <div v-if="form.wallet_type_id" class="mt-6 border-t border-white/5 pt-6">
+            <div class="mb-3 flex items-center justify-between">
+              <label class="text-xs font-bold text-white/60 uppercase tracking-wider">
+                المحافظ المتاحة من نوع «{{ selectedWalletType?.name }}»
+                <span class="text-rose-400">*</span>
+              </label>
+              <span class="text-[10px] text-white/40 font-mono">
+                {{ filteredWalletAccounts.length }} محفظة
+              </span>
             </div>
-            <p v-if="errors.amount" class="text-error text-xs mt-1">{{ errors.amount }}</p>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">قيمة الخدمة (العمولة)</label>
-            <div class="relative">
-              <input
-                v-model.number="form.service_fee"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all font-mono tabular-nums"
-              />
-              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-sm">ج.م</span>
+
+            <!-- Empty state — no wallets match -->
+            <div
+              v-if="filteredWalletAccounts.length === 0"
+              class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-300 space-y-2 leading-relaxed"
+            >
+              <p class="font-bold flex items-center gap-2">
+                <AlertTriangle class="h-4 w-4" />
+                لا توجد محافظ من نوع «{{ selectedWalletType?.name }}» مسجلة في النظام.
+              </p>
+              <p v-if="walletAccounts.length > 0" class="text-white/60">
+                يوجد {{ walletAccounts.length }} محفظة مسجلة فعلاً، لكن نوعها (<strong>{{ unmatchedWalletProviders.join('، ') }}</strong>) لا يطابق النوع المختار
+                (<code class="font-mono text-amber-200">{{ selectedWalletType?.code }}</code>).
+              </p>
+              <p v-else class="text-white/60">
+                يمكنك إضافة محفظة جديدة من صفحة
+                <router-link to="/finance/accounts" class="text-amber-300 underline hover:text-amber-200 font-bold">إدارة الحسابات والخزائن</router-link>.
+                اختر نوع الحساب «محفظة»، ثم حدّد نوع مقدم الخدمة (<strong>{{ selectedWalletType?.code }}</strong>) والرقم.
+              </p>
             </div>
-          </div>
-          <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              المبلغ المدفوع الآن <span class="text-error">*</span>
-            </label>
-            <div class="relative">
-              <input
-                v-model.number="form.amount_paid"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all font-mono tabular-nums"
-                :class="{ '!border-error': errors.amount_paid }"
-              />
-              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted text-sm">ج.م</span>
-            </div>
-            <p v-if="errors.amount_paid" class="text-error text-xs mt-1">{{ errors.amount_paid }}</p>
-            <!-- Quick amounts -->
-            <div class="mt-2 flex gap-2">
-              <button v-for="pct in [25,50,75,100]" :key="pct" type="button"
-                @click="setPaidPercent(pct)"
-                class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-text-muted hover:border-gold/40 hover:text-gold transition">
-                {{ pct }}٪
+
+            <!-- Wallet Cards -->
+            <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                v-for="acc in filteredWalletAccounts"
+                :key="acc.id"
+                type="button"
+                @click="form.wallet_account_id = acc.id"
+                :class="[
+                  'group relative flex flex-col gap-2 rounded-xl border-2 p-4 text-right transition-all',
+                  form.wallet_account_id === acc.id
+                    ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
+                    : 'border-white/10 bg-white/[0.02] hover:border-amber-500/40 hover:bg-amber-500/5',
+                ]"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <component :is="providerIcon(selectedWalletType?.code)" class="h-5 w-5 shrink-0 text-amber-400" />
+                    <span class="font-bold text-white truncate">{{ acc.name }}</span>
+                  </div>
+                  <CheckCircle2
+                    v-if="form.wallet_account_id === acc.id"
+                    class="h-5 w-5 shrink-0 text-amber-400"
+                  />
+                </div>
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <span class="font-mono text-white/50 truncate">
+                    {{ acc.wallet_number || '—' }}
+                  </span>
+                  <span
+                    v-if="acc.is_module_vault"
+                    class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
+                  >
+                    خزنة رسمية
+                  </span>
+                </div>
+                <div class="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
+                  <span class="text-[10px] uppercase tracking-wider text-white/40">الرصيد</span>
+                  <span class="font-mono text-base font-black text-emerald-400">
+                    {{ formatCurrency(acc.balance) }}
+                  </span>
+                </div>
               </button>
             </div>
+            <p v-if="errors.wallet_account_id" class="mt-3 text-xs text-rose-400">{{ errors.wallet_account_id }}</p>
           </div>
-        </div>
+        </section>
 
-        <div
-          v-if="form.amount"
-          :class="[
-            'rounded-xl p-5 border text-sm',
-            form.type === 'send'
-              ? 'bg-warning/5 border-warning/20'
-              : 'bg-success/5 border-success/20',
-          ]"
-        >
-          <template v-if="form.type === 'send'">
-            <p class="text-text-muted mb-1">
-              العميل يلتزم بـ:
-              <strong class="text-text-main">{{ formatCurrency(totalAmount) }}</strong>
-              ({{ formatCurrency(form.amount) }} + خدمة {{ formatCurrency(form.service_fee || 0) }})
-            </p>
-            <p class="text-text-muted mb-1">
-              المسدد حالياً: <strong class="text-emerald-400 font-mono">{{ formatCurrency(form.amount_paid || 0) }}</strong> · 
-              المتبقي آجل: <strong class="text-red-400 font-mono">{{ formatCurrency(totalAmount - (form.amount_paid || 0)) }}</strong>
-            </p>
-            <p class="text-text-muted">
-              ربح الوكالة: <strong class="text-success">{{ formatCurrency(form.service_fee || 0) }}</strong>
-            </p>
-          </template>
-          <template v-else>
-            <p class="text-text-muted mb-1">
-              العميل يستحق:
-              <strong class="text-text-main">{{ formatCurrency(totalAmount) }}</strong>
-              ({{ formatCurrency(form.amount) }} − خدمة {{ formatCurrency(form.service_fee || 0) }})
-            </p>
-            <p class="text-text-muted mb-1">
-              المصروف له حالياً: <strong class="text-emerald-400 font-mono">{{ formatCurrency(form.amount_paid || 0) }}</strong> · 
-              المتبقي دائن للعميل: <strong class="text-red-400 font-mono">{{ formatCurrency(totalAmount - (form.amount_paid || 0)) }}</strong>
-            </p>
-            <p class="text-text-muted">
-              ربح الوكالة: <strong class="text-success">{{ formatCurrency(form.service_fee || 0) }}</strong>
-            </p>
-          </template>
-        </div>
-      </div>
+        <!-- STEP 3: Customer -->
+        <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/15 text-purple-400">
+              <User class="h-5 w-5" />
+            </div>
+            <div class="flex-1">
+              <h2 class="text-base font-bold text-white">3. بيانات العميل</h2>
+              <p class="text-xs text-white/40">اختر العميل من السجل أو أدخل اسمه يدوياً</p>
+            </div>
+          </div>
 
-      <!-- الحسابات -->
-      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="p-2 bg-purple/10 rounded-lg">
-            <Landmark class="w-5 h-5 text-purple" />
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                العميل المسجّل
+              </label>
+              <select
+                v-model="form.customer_id"
+                class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10"
+              >
+                <option value="">— بدون اختيار (عميل جديد) —</option>
+                <option v-for="customer in customers" :key="customer.id" :value="customer.id">
+                  {{ customer.full_name }}
+                </option>
+              </select>
+              <p class="mt-1.5 text-xs text-white/40">
+                <router-link to="/customers" class="text-amber-400 hover:underline">إدارة العملاء</router-link>
+              </p>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                اسم العميل <span class="text-rose-400">*</span>
+                <span v-if="form.customer_id" class="text-white/30 font-normal text-[10px] mr-1">(يُحدَّث تلقائياً)</span>
+              </label>
+              <input
+                v-model="form.customer_name"
+                type="text"
+                :readonly="!!form.customer_id"
+                :required="!form.customer_id"
+                placeholder="اسم العميل كما سيظهر في السجل"
+                class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10 read-only:opacity-70 read-only:cursor-not-allowed"
+                :class="{ '!border-rose-500': errors.customer_name }"
+              />
+              <p v-if="errors.customer_name" class="mt-1.5 text-xs text-rose-400">{{ errors.customer_name }}</p>
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                رقم محفظة العميل <span class="text-rose-400">*</span>
+              </label>
+              <input
+                v-model="form.wallet_number"
+                type="tel"
+                placeholder="01012345678"
+                class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-mono text-white outline-none transition focus:border-amber-500 focus:bg-white/10 tabular-nums"
+                :class="{ '!border-rose-500': errors.wallet_number }"
+              />
+              <p v-if="errors.wallet_number" class="mt-1.5 text-xs text-rose-400">{{ errors.wallet_number }}</p>
+            </div>
           </div>
-          <h2 class="text-xl font-bold text-text-main">الحسابات</h2>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              حساب المحفظة الإلكترونية (للوكالة) <span class="text-error">*</span>
-            </label>
-            <select
-              v-model="form.wallet_account_id"
-              class="form-select-dark"
-              :class="{ '!border-error': errors.wallet_account_id }"
-            >
-              <option value="">— اختر الحساب —</option>
-              <option v-for="acc in filteredWalletAccounts" :key="acc.id" :value="acc.id">
-                {{ acc.name }} — {{ acc.wallet_number }} ({{ formatCurrency(acc.balance) }})
-              </option>
-            </select>
-            <p v-if="errors.wallet_account_id" class="text-error text-xs mt-1">{{ errors.wallet_account_id }}</p>
-            <p v-if="filteredWalletAccounts.length === 0 && walletAccounts.length > 0" class="text-amber-400 text-xs mt-1">
-              أنواع مسجلة في الحسابات: {{ unmatchedWalletProviders.join('، ') }}
-            </p>
+        </section>
+
+        <!-- STEP 4: Amounts -->
+        <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
+              <Banknote class="h-5 w-5" />
+            </div>
+            <div class="flex-1">
+              <h2 class="text-base font-bold text-white">4. المبالغ</h2>
+              <p class="text-xs text-white/40">أدخل المبلغ والعمولة والمبلغ المدفوع</p>
+            </div>
           </div>
+
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                المبلغ <span class="text-rose-400">*</span>
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="form.amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-12 text-sm font-mono text-white outline-none transition focus:border-amber-500 focus:bg-white/10 tabular-nums"
+                  :class="{ '!border-rose-500': errors.amount }"
+                />
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/40">ج.م</span>
+              </div>
+              <p v-if="errors.amount" class="mt-1.5 text-xs text-rose-400">{{ errors.amount }}</p>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                قيمة الخدمة (العمولة)
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="form.service_fee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-12 text-sm font-mono text-white outline-none transition focus:border-amber-500 focus:bg-white/10 tabular-nums"
+                />
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/40">ج.م</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+                المبلغ المدفوع <span class="text-rose-400">*</span>
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="form.amount_paid"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-12 text-sm font-mono text-white outline-none transition focus:border-amber-500 focus:bg-white/10 tabular-nums"
+                  :class="{ '!border-rose-500': errors.amount_paid }"
+                />
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/40">ج.م</span>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  v-for="pct in [25, 50, 75, 100]"
+                  :key="pct"
+                  type="button"
+                  @click="setPaidPercent(pct)"
+                  class="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-white/60 hover:border-amber-500/40 hover:text-amber-300 transition"
+                >
+                  {{ pct }}٪
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- STEP 5: Cash Account -->
+        <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400">
+              <Landmark class="h-5 w-5" />
+            </div>
+            <div class="flex-1">
+              <h2 class="text-base font-bold text-white">5. الحساب النقدي</h2>
+              <p class="text-xs text-white/40">الخزينة أو البنك الذي ستصرف منه / إليه نقدياً</p>
+            </div>
+          </div>
+
           <div>
-            <label class="block text-sm font-medium text-text-muted mb-2">
-              الحساب النقدي <span class="text-error">*</span>
+            <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+              الحساب النقدي <span class="text-rose-400">*</span>
             </label>
             <select
               v-model="form.cash_account_id"
-              class="form-select-dark"
-              :class="{ '!border-error': errors.cash_account_id }"
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10"
+              :class="{ '!border-rose-500': errors.cash_account_id }"
             >
               <option value="">— اختر الحساب —</option>
-              <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
+              <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }} — {{ formatCurrency(acc.balance) }}
+              </option>
             </select>
-            <p v-if="cashAccounts.length === 0" class="text-amber-400 text-xs mt-1 leading-relaxed">
-              لا توجد حسابات نقدية. يمكنك إضافة خزينة أو بنك جديد مباشرة من صفحة 
-              <router-link to="/finance/accounts" class="text-gold underline hover:text-gold/80 font-bold">إدارة الحسابات والخزائن</router-link>. 
-              تأكد من تحديد الموديول المختص كـ «المحافظ والتحويلات».
+            <p v-if="cashAccounts.length === 0" class="mt-2 text-xs text-amber-300 leading-relaxed">
+              لا توجد حسابات نقدية مفعّلة. أضف خزينة أو بنك من
+              <router-link to="/finance/accounts" class="font-bold underline hover:text-amber-200">إدارة الحسابات والخزائن</router-link>.
             </p>
-            <p v-if="errors.cash_account_id" class="text-error text-xs mt-1">{{ errors.cash_account_id }}</p>
+            <p v-if="errors.cash_account_id" class="mt-1.5 text-xs text-rose-400">{{ errors.cash_account_id }}</p>
           </div>
+
+          <div class="mt-5">
+            <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+              ملاحظات <span class="text-white/30 font-normal">(اختياري)</span>
+            </label>
+            <textarea
+              v-model="form.notes"
+              rows="2"
+              placeholder="أي ملاحظات إضافية..."
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10 resize-none"
+            />
+          </div>
+        </section>
+
+        <!-- Error -->
+        <div
+          v-if="globalError"
+          class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300 flex items-start gap-2"
+        >
+          <AlertCircle class="h-5 w-5 shrink-0" />
+          <span>{{ globalError }}</span>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            :disabled="loading.create || !canSubmit"
+            class="flex-1 min-w-[240px] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-amber-500 to-amber-600 px-6 py-3.5 text-base font-black text-black transition shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+          >
+            <Loader2 v-if="loading.create" class="h-5 w-5 animate-spin" />
+            <Save v-else class="h-5 w-5" />
+            <span v-if="loading.create">جاري الحفظ...</span>
+            <span v-else>
+              {{ form.type === 'send' ? 'تسجيل إرسال الرصيد' : 'تسجيل استقبال الرصيد' }}
+            </span>
+          </button>
+          <router-link
+            to="/wallet"
+            class="px-6 py-3.5 rounded-xl border border-white/10 bg-white/5 text-sm font-bold text-white/70 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+          >
+            إلغاء والعودة
+          </router-link>
         </div>
       </div>
 
-      <!-- ملاحظات -->
-      <div class="bg-card-bg border border-white/10 rounded-2xl p-8">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="p-2 bg-white/5 rounded-lg">
-            <FileText class="w-5 h-5 text-text-muted" />
+      <!-- ════════════════════════════════════════
+           LIVE SUMMARY SIDEBAR
+      ════════════════════════════════════════ -->
+      <aside class="lg:col-span-1">
+        <div class="sticky top-6 space-y-4">
+          <!-- Summary card -->
+          <div
+            class="rounded-2xl border p-5 transition-colors"
+            :class="form.type === 'send' ? 'border-amber-500/30 bg-amber-500/5' : form.type === 'receive' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/10 bg-[#111111]'"
+          >
+            <div class="flex items-center gap-2 mb-3">
+              <Receipt class="h-4 w-4 text-amber-400" />
+              <h3 class="text-sm font-black text-white uppercase tracking-wider">ملخص العملية</h3>
+            </div>
+
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center justify-between text-white/60">
+                <span>نوع العملية</span>
+                <span
+                  class="font-bold"
+                  :class="form.type === 'send' ? 'text-amber-300' : form.type === 'receive' ? 'text-emerald-300' : 'text-white/30'"
+                >
+                  {{ form.type === 'send' ? 'إرسال' : form.type === 'receive' ? 'استقبال' : '—' }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>نوع المحفظة</span>
+                <span class="font-bold text-white">{{ selectedWalletType?.name || '—' }}</span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>الحساب</span>
+                <span class="font-mono text-xs text-white truncate max-w-[140px]" :title="selectedWalletAccount?.name">
+                  {{ selectedWalletAccount?.name || '—' }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>العميل</span>
+                <span class="font-bold text-white truncate max-w-[140px]" :title="form.customer_name">
+                  {{ form.customer_name || '—' }}
+                </span>
+              </div>
+
+              <div class="my-2 h-px bg-white/10" />
+
+              <div class="flex items-center justify-between text-white/60">
+                <span>المبلغ</span>
+                <span class="font-mono font-bold text-white">{{ formatCurrency(form.amount || 0) }}</span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>الخدمة</span>
+                <span class="font-mono text-amber-300">{{ formatCurrency(form.service_fee || 0) }}</span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>الإجمالي</span>
+                <span class="font-mono font-bold text-white">{{ formatCurrency(totalAmount) }}</span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>المدفوع</span>
+                <span class="font-mono text-emerald-300">{{ formatCurrency(form.amount_paid || 0) }}</span>
+              </div>
+              <div class="flex items-center justify-between text-white/60">
+                <span>{{ form.type === 'send' ? 'المتبقي آجل' : 'المتبقي دائن' }}</span>
+                <span
+                  class="font-mono font-bold"
+                  :class="(totalAmount - (form.amount_paid || 0)) > 0 ? 'text-rose-400' : 'text-emerald-400'"
+                >
+                  {{ formatCurrency(Math.max(0, totalAmount - (form.amount_paid || 0))) }}
+                </span>
+              </div>
+
+              <div class="my-2 h-px bg-white/10" />
+
+              <div class="flex items-center justify-between">
+                <span class="text-white/70 font-bold">ربح الوكالة</span>
+                <span class="font-mono font-black text-emerald-400 text-base">
+                  {{ formatCurrency(form.service_fee || 0) }}
+                </span>
+              </div>
+            </div>
           </div>
-          <h2 class="text-xl font-bold text-text-main">ملاحظات (اختياري)</h2>
+
+          <!-- Step status -->
+          <div class="rounded-2xl border border-white/10 bg-[#111111] p-5">
+            <h3 class="mb-3 text-xs font-black text-white/70 uppercase tracking-wider">حالة الإكمال</h3>
+            <ul class="space-y-2 text-xs">
+              <li class="flex items-center gap-2">
+                <component :is="form.type ? Check : Circle" class="h-4 w-4" :class="form.type ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.type ? 'text-white' : 'text-white/40'">نوع العملية</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <component :is="form.wallet_type_id ? Check : Circle" class="h-4 w-4" :class="form.wallet_type_id ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.wallet_type_id ? 'text-white' : 'text-white/40'">نوع المحفظة</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <component :is="form.wallet_account_id ? Check : Circle" class="h-4 w-4" :class="form.wallet_account_id ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.wallet_account_id ? 'text-white' : 'text-white/40'">الحساب المختار</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <component :is="form.customer_name ? Check : Circle" class="h-4 w-4" :class="form.customer_name ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.customer_name ? 'text-white' : 'text-white/40'">بيانات العميل</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <component :is="form.amount > 0 ? Check : Circle" class="h-4 w-4" :class="form.amount > 0 ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.amount > 0 ? 'text-white' : 'text-white/40'">المبالغ</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <component :is="form.cash_account_id ? Check : Circle" class="h-4 w-4" :class="form.cash_account_id ? 'text-emerald-400' : 'text-white/30'" />
+                <span :class="form.cash_account_id ? 'text-white' : 'text-white/40'">الحساب النقدي</span>
+              </li>
+            </ul>
+          </div>
         </div>
-        <textarea
-          v-model="form.notes"
-          rows="3"
-          placeholder="أي ملاحظات إضافية..."
-          class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-all resize-none"
-        />
-      </div>
-
-      <div v-if="globalError" class="bg-error/10 border border-error/30 rounded-xl p-4 text-sm text-error">
-        {{ globalError }}
-      </div>
-
-      <div class="flex flex-wrap gap-3">
-        <button
-          type="submit"
-          :disabled="loading.create || !form.type"
-          class="flex-1 min-w-[200px] py-3.5 px-6 bg-gold hover:bg-gold/90 text-black rounded-xl font-bold transition-all shadow-lg shadow-gold/20 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span v-if="loading.create" class="inline-flex items-center justify-center gap-2">
-            <Loader2 class="w-5 h-5 animate-spin" />
-            جاري الحفظ...
-          </span>
-          <span v-else>
-            {{ form.type === 'send' ? 'تسجيل إرسال الرصيد' : 'تسجيل استقبال الرصيد' }}
-          </span>
-        </button>
-        <router-link
-          to="/wallet"
-          class="px-8 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-semibold text-text-main transition-all text-center"
-        >
-          إلغاء
-        </router-link>
-      </div>
+      </aside>
     </form>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated, watch } from 'vue';
+import { ref, computed, onMounted, onActivated, watch, h } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import axios from 'axios';
@@ -424,13 +593,23 @@ import {
   ArrowRight,
   ArrowUpCircle,
   ArrowDownCircle,
+  ArrowLeftRight,
   CheckCircle2,
+  Check,
+  Circle,
   Wallet,
   User,
   Banknote,
   Landmark,
-  FileText,
+  Receipt,
   Loader2,
+  Save,
+  AlertCircle,
+  AlertTriangle,
+  Smartphone,
+  CreditCard,
+  Building2,
+  Send,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -468,6 +647,7 @@ const walletAccounts = ref([]);
 const cashAccounts = ref([]);
 const customers = ref([]);
 
+/* ═══════ Computed totals ═══════ */
 const totalAmount = computed(() => {
   const amt = parseFloat(form.value.amount) || 0;
   const fee = parseFloat(form.value.service_fee) || 0;
@@ -505,6 +685,7 @@ watch(
   }
 );
 
+/* ═══════ Wallet type / account filtering ═══════ */
 const selectedWalletType = computed(() => {
   const id = form.value.wallet_type_id;
   if (!id) return null;
@@ -519,6 +700,12 @@ const filteredWalletAccounts = computed(() => {
   return walletAccounts.value.filter((a) => accountMatchesWalletType(a, type));
 });
 
+const selectedWalletAccount = computed(() => {
+  const id = form.value.wallet_account_id;
+  if (!id) return null;
+  return walletAccounts.value.find((a) => String(a.id) === String(id)) ?? null;
+});
+
 const unmatchedWalletProviders = computed(() => {
   const type = selectedWalletType.value;
   if (!type || walletAccounts.value.length === 0) return [];
@@ -528,6 +715,7 @@ const unmatchedWalletProviders = computed(() => {
     .filter((v, i, arr) => arr.indexOf(v) === i);
 });
 
+/* When the user changes wallet type, auto-pick the wallet account if only one matches */
 watch(filteredWalletAccounts, (newAccounts) => {
   if (newAccounts.length === 1) {
     form.value.wallet_account_id = newAccounts[0].id;
@@ -536,6 +724,44 @@ watch(filteredWalletAccounts, (newAccounts) => {
   }
 });
 
+/* ═══════ Progress ═══════ */
+const totalSteps = 6;
+const completedSteps = computed(() => {
+  let n = 0;
+  if (form.value.type) n++;
+  if (form.value.wallet_type_id) n++;
+  if (form.value.wallet_account_id) n++;
+  if (form.value.customer_name) n++;
+  if (form.value.amount > 0) n++;
+  if (form.value.cash_account_id) n++;
+  return n;
+});
+
+const canSubmit = computed(() => completedSteps.value >= totalSteps);
+
+/* ═══════ Provider icon helper (visual feedback per wallet type) ═══════ */
+const PROVIDER_ICONS = {
+  vodafone_cash: Smartphone,
+  instapay: Send,
+  etisalat_cash: Smartphone,
+  orange_cash: Smartphone,
+  we_pay: Smartphone,
+  paymob: CreditCard,
+  cash_wallet: Wallet,
+  postal: Building2,
+  fawry: Building2,
+};
+function providerIcon(code) {
+  if (!code) return Wallet;
+  return PROVIDER_ICONS[normalizeWalletProviderCode(code)] || Wallet;
+}
+
+/* ═══════ Select wallet type — convenience handler ═══════ */
+function selectWalletType(id) {
+  form.value.wallet_type_id = id;
+}
+
+/* ═══════ Lifecycle ═══════ */
 onMounted(async () => {
   resetForm();
   await store.fetchWalletTypes();
@@ -560,23 +786,10 @@ async function fetchCustomers() {
 
 async function fetchAccounts() {
   const typeOf = (a) => String(a?.type?.value ?? a?.type ?? '').toLowerCase();
-  const splitLiquidity = (all) => {
-    walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
-    // 'treasury' removed from the filter list — AccountType::Treasury
-    // was retired in Phase 3.5b, so no row can have type='treasury'
-    // anymore. Only cashbox + bank remain as the non-wallet liquidity
-    // types in this fallback path.
-    cashAccounts.value = all.filter((a) => ['cashbox', 'bank'].includes(typeOf(a)));
-  };
 
   try {
     const overview = await store.fetchTransferTreasury();
     const treasuryWallets = Array.isArray(overview?.wallets) ? overview.wallets : [];
-    // Note: `overview.treasury` is intentionally excluded — it was an
-    // alias for `overview.banks` (AccountType::Treasury was retired in
-    // Phase 3.5b). The controller now returns it empty, so including
-    // it here would either add nothing or, in older code, double-count
-    // the bank rows.
     const treasuryCash = [
       ...(Array.isArray(overview?.cashboxes) ? overview.cashboxes : []),
       ...(Array.isArray(overview?.banks) ? overview.banks : []),
@@ -591,7 +804,9 @@ async function fetchAccounts() {
   }
 
   try {
-    splitLiquidity(await fetchSettlementAccounts(axios, { module: 'wallet' }));
+    const all = await fetchSettlementAccounts(axios, { module: 'wallet' });
+    walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
+    cashAccounts.value = all.filter((a) => ['cashbox', 'bank'].includes(typeOf(a)));
   } catch (e) {
     console.error('Failed to load accounts', e);
     walletAccounts.value = [];
@@ -599,6 +814,7 @@ async function fetchAccounts() {
   }
 }
 
+/* ═══════ Formatters ═══════ */
 function formatCurrency(amount) {
   return new Intl.NumberFormat('ar-EG', {
     style: 'currency',
@@ -606,41 +822,20 @@ function formatCurrency(amount) {
   }).format(Number(amount) || 0);
 }
 
+/* ═══════ Submit ═══════ */
 async function submit() {
   errors.value = {};
   globalError.value = '';
 
-  if (!form.value.type) {
-    errors.value.type = 'اختر نوع العملية';
-    return;
-  }
-  if (!form.value.wallet_type_id) {
-    errors.value.wallet_type_id = 'اختر نوع المحفظة';
-    return;
-  }
-  if (!form.value.customer_name) {
-    errors.value.customer_name = 'اسم العميل مطلوب';
-    return;
-  }
-  if (!form.value.wallet_number) {
-    errors.value.wallet_number = 'رقم المحفظة مطلوب';
-    return;
-  }
-  if (!form.value.amount || parseFloat(form.value.amount) <= 0) {
-    errors.value.amount = 'المبلغ مطلوب';
-    return;
-  }
-  if (form.value.amount_paid === null || form.value.amount_paid === undefined || form.value.amount_paid === '') {
-    form.value.amount_paid = 0;
-  }
-  if (!form.value.wallet_account_id) {
-    errors.value.wallet_account_id = 'حساب المحفظة مطلوب';
-    return;
-  }
-  if (!form.value.cash_account_id) {
-    errors.value.cash_account_id = 'الحساب النقدي مطلوب';
-    return;
-  }
+  if (!form.value.type) errors.value.type = 'اختر نوع العملية';
+  if (!form.value.wallet_type_id) errors.value.wallet_type_id = 'اختر نوع المحفظة';
+  if (!form.value.customer_name) errors.value.customer_name = 'اسم العميل مطلوب';
+  if (!form.value.wallet_number) errors.value.wallet_number = 'رقم المحفظة مطلوب';
+  if (!form.value.amount || parseFloat(form.value.amount) <= 0) errors.value.amount = 'المبلغ مطلوب';
+  if (!form.value.wallet_account_id) errors.value.wallet_account_id = 'اختر محفظة من القائمة';
+  if (!form.value.cash_account_id) errors.value.cash_account_id = 'اختر الحساب النقدي';
+
+  if (Object.keys(errors.value).length > 0) return;
 
   try {
     await store.createTransaction({

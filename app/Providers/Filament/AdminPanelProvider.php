@@ -74,6 +74,8 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-paper-airplane'),
                 NavigationGroup::make('الحجوزات والعملاء')
                     ->icon('heroicon-o-ticket'),
+                NavigationGroup::make('مالية المكتب')
+                    ->icon('heroicon-o-banknotes'),
                 NavigationGroup::make('التقارير المالية')
                     ->icon('heroicon-o-currency-dollar'),
                 NavigationGroup::make('الإعدادات')

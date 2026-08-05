@@ -15,7 +15,7 @@ class TransferWalletResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-wallet';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
+    protected static string|\UnitEnum|null $navigationGroup = 'مالية المكتب';
 
     protected static ?string $navigationLabel = 'محافظ المكتب';
 

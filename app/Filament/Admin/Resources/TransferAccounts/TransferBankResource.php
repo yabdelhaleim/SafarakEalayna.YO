@@ -15,7 +15,7 @@ class TransferBankResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'المحافظ والتحويلات';
+    protected static string|\UnitEnum|null $navigationGroup = 'مالية المكتب';
 
     protected static ?string $navigationLabel = 'بنوك وبريد المكتب';
 

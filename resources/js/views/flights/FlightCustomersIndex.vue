@@ -1505,7 +1505,11 @@ const fetchCustomersList = async (page = 1) => {
       customers.value = raw;
       pagination.value = { total: customers.value.length, currentPage: 1, lastPage: 1, perPage: 1000 };
     } else {
-      const params = { module: 'flight', type: activeTab.value, search: searchQuery.value, page, per_page: 15 };
+      // Don't pass `module='flight'` — the page is already flight-specific.
+      // Passing it would apply `has('flightBookings')` on the backend, which
+      // hides newly-added companies/customers that don't yet have any flight
+      // bookings, producing "added successfully but not visible" UX bug.
+      const params = { type: activeTab.value, search: searchQuery.value, page, per_page: 15 };
       if (balanceFilter.value === 'settled') {
         params.balance_status = 'settled';
       } else if (balanceFilter.value === 'outstanding') {
@@ -1524,12 +1528,14 @@ const fetchCustomersList = async (page = 1) => {
 
 const fetchStats = async () => {
   try {
-    // Counter customers (flight module only)
-    const resRegular = await axios.get('/api/v1/customers', { params: { module: 'flight', type: 'regular', per_page: 1, page: 1 } });
+    // Counter customers (all types — matches the list query, so the tab
+    // badge stays in sync with newly-added rows that don't yet have flight
+    // bookings).
+    const resRegular = await axios.get('/api/v1/customers', { params: { type: 'regular', per_page: 1, page: 1 } });
     stats.counterCount = resRegular.data?.data?.pagination?.total || resRegular.data?.data?.total || 0;
 
-    // Company customers (flight module only)
-    const resCounter = await axios.get('/api/v1/customers', { params: { module: 'flight', type: 'counter', per_page: 1, page: 1 } });
+    // Company customers
+    const resCounter = await axios.get('/api/v1/customers', { params: { type: 'counter', per_page: 1, page: 1 } });
     stats.companiesCount = resCounter.data?.data?.pagination?.total || resCounter.data?.data?.total || 0;
 
     // Groups
@@ -1537,7 +1543,8 @@ const fetchStats = async () => {
     const groups = resGroups.data?.data || [];
     stats.groupsCount = groups.length;
 
-    // Total debt (flight module only — customers with positive balance)
+    // Total debt — keep module='flight' here on purpose: this card is the
+    // flight-business receivables total, not the office-wide AR.
     const resAll = await axios.get('/api/v1/customers', { params: { module: 'flight', per_page: 1000 } });
     const items = resAll.data?.data?.items || resAll.data?.data || [];
     let debtSum = 0;
