@@ -38,6 +38,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class FlightBookingService
 {
@@ -222,7 +224,22 @@ class FlightBookingService
                 $currency = $data['currency'] ?? 'EGP';
                 $purchasePriceEGP = 0;
                 $sellingPrice = (float) ($data['selling_price'] ?? 0);
-                $exchangeRate = (float) ($data['exchange_rate'] ?? 1.0);
+
+                // 2026-08-05: سعر الصرف يُجلب من السيرفر فقط (إعدادات الأدمن
+                // في جدول `currencies` عبر Filament). أي قيمة يرسلها العميل
+                // في `exchange_rate` يتم تجاهلها — الموظف لا يمكنه تعديلها.
+                // إن لم يُسجَّل السعر في `currencies` وفي الـ FALLBACK،
+                // يفشل الحجز بـ 422 Validation بدلاً من حساب 0 EGP.
+                $exchangeRate = $this->egpPerUnitOfCurrency($currency);
+                if ($exchangeRate <= 0 && $currency !== 'EGP') {
+                    throw new \Illuminate\Validation\ValidationException(
+                        validator: \Illuminate\Support\Facades\Validator::make(
+                            ['currency' => $currency],
+                            ['currency' => 'required'],
+                            ['currency' => "سعر صرف العملة ({$currency}) غير مُعرَّف في إعدادات العملات. تواصل مع مدير النظام لتحديث السعر من شاشة «العملات وأسعار الصرف» قبل إنشاء الحجز."]
+                        )
+                    );
+                }
 
                 if ($currency === 'EGP') {
                     $purchasePriceEGP = (float) ($data['purchase_price'] ?? 0);
@@ -1550,7 +1567,22 @@ class FlightBookingService
                             $purchasePriceEGP = (float) ($data['purchase_price'] ?? $data['purchase_price_egp'] ?? $purchasePriceEGP);
                         } else {
                             $pf = (float) ($data['purchase_price_foreign'] ?? $booking->purchase_price_foreign ?? 0);
-                            $rate = (float) ($data['exchange_rate'] ?? $booking->exchange_rate ?? 1.0);
+                            // 2026-08-05: سعر الصرف يُجلب من السيرفر فقط (إعدادات الأدمن).
+                            // أي قيمة من `exchange_rate` في الـ request يتم تجاهلها.
+                            // Fallback لو الحجز القديم ماعندوش سعر محفوظ: استخدم آخر سعر من currencies.
+                            $rate = (float) ($booking->exchange_rate ?? 0);
+                            if ($rate <= 0) {
+                                $rate = $this->egpPerUnitOfCurrency($currency);
+                            }
+                            if ($rate <= 0) {
+                                throw new ValidationException(
+                                    Validator::make(
+                                        ['currency' => $currency],
+                                        ['currency' => 'required'],
+                                        ['currency' => "سعر صرف العملة ({$currency}) غير مُعرَّف في إعدادات العملات. تواصل مع مدير النظام لتحديث السعر من شاشة «العملات وأسعار الصرف»."]
+                                    )
+                                );
+                            }
                             $purchasePriceEGP = $pf * $rate;
                             $updates['purchase_price_foreign'] = $pf;
                             $updates['exchange_rate'] = $rate;
