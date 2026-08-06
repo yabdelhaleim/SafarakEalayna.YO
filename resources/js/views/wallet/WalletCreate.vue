@@ -197,18 +197,55 @@
                 <span class="text-rose-400">*</span>
               </label>
               <span class="text-[10px] text-white/40 font-mono">
-                {{ filteredWalletAccounts.length }} محفظة
+                {{ visibleWalletAccounts.length }} محفظة
               </span>
+            </div>
+
+            <!-- ── فلتر تشغيلي: الكل / رسمية / قسم المكتب ── -->
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <button
+                v-for="opt in [
+                  { key: 'all', label: 'الكل', count: groupedWalletAccounts.official.length + groupedWalletAccounts.officeWide.length, color: 'sky' },
+                  { key: 'official', label: 'الرسمية للموديول', count: groupedWalletAccounts.official.length, color: 'amber' },
+                  { key: 'office', label: 'قسم المكتب', count: groupedWalletAccounts.officeWide.length, color: 'emerald' },
+                ]"
+                :key="opt.key"
+                type="button"
+                @click="walletScopeFilter = opt.key"
+                :class="[
+                  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition',
+                  walletScopeFilter === opt.key
+                    ? opt.color === 'amber'
+                      ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                      : opt.color === 'emerald'
+                        ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+                        : 'border-sky-500 bg-sky-500/15 text-sky-300'
+                    : 'border-white/10 bg-white/5 text-white/60 hover:border-white/20 hover:text-white',
+                ]"
+              >
+                <span>{{ opt.label }}</span>
+                <span class="rounded-full bg-white/10 px-1.5 py-0.5 font-mono text-[10px]">
+                  {{ opt.count }}
+                </span>
+              </button>
             </div>
 
             <!-- Empty state — no wallets match -->
             <div
-              v-if="filteredWalletAccounts.length === 0"
+              v-if="visibleWalletAccounts.length === 0"
               class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-300 space-y-2 leading-relaxed"
             >
               <p class="font-bold flex items-center gap-2">
                 <AlertTriangle class="h-4 w-4" />
-                لا توجد محافظ من نوع «{{ selectedWalletType?.name }}» مسجلة في النظام.
+                <span v-if="walletScopeFilter === 'official'">
+                  لا توجد محافظ رسمية للموديول من نوع «{{ selectedWalletType?.name }}».
+                </span>
+                <span v-else-if="walletScopeFilter === 'office'">
+                  لا توجد محافظ لقسم المكتب من نوع «{{ selectedWalletType?.name }}».
+                </span>
+                <span v-else>
+                  لا توجد محافظ من نوع «{{ selectedWalletType?.name }}» مسجلة في النظام.
+                </span>
               </p>
               <p v-if="walletAccounts.length > 0" class="text-white/60">
                 يوجد {{ walletAccounts.length }} محفظة مسجلة فعلاً، لكن نوعها (<strong>{{ unmatchedWalletProviders.join('، ') }}</strong>) لا يطابق النوع المختار
@@ -219,51 +256,143 @@
                 <router-link to="/finance/accounts" class="text-amber-300 underline hover:text-amber-200 font-bold">إدارة الحسابات والخزائن</router-link>.
                 اختر نوع الحساب «محفظة»، ثم حدّد نوع مقدم الخدمة (<strong>{{ selectedWalletType?.code }}</strong>) والرقم.
               </p>
+              <!-- اختصار لإضافة محفظة قسم مكتب جديدة -->
+              <p class="text-white/60 pt-2 border-t border-white/10">
+                <a
+                  href="/admin/accounts/create?type=wallet&module_type=office&wallet_provider={{ selectedWalletType?.code }}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-500/20"
+                >
+                  + إضافة محفظة «قسم مكتب» جديدة
+                </a>
+                <span class="text-white/40 text-xs mr-1">— ستفتح في تبويب جديد</span>
+              </p>
             </div>
 
-            <!-- Wallet Cards -->
-            <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <button
-                v-for="acc in filteredWalletAccounts"
-                :key="acc.id"
-                type="button"
-                @click="form.wallet_account_id = acc.id"
-                :class="[
-                  'group relative flex flex-col gap-2 rounded-xl border-2 p-4 text-right transition-all',
-                  form.wallet_account_id === acc.id
-                    ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
-                    : 'border-white/10 bg-white/[0.02] hover:border-amber-500/40 hover:bg-amber-500/5',
-                ]"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex items-center gap-2 min-w-0 flex-1">
-                    <component :is="providerIcon(selectedWalletType?.code)" class="h-5 w-5 shrink-0 text-amber-400" />
-                    <span class="font-bold text-white truncate">{{ acc.name }}</span>
+            <!-- ── Wallet Cards (مرتبة بمجموعات إذا كان الفلتر = 'all') ── -->
+            <template v-else>
+              <!-- مجموعة المحفظة الرسمية (تظهر فقط لو الفلتر = all أو official والمجموعة مش فاضية) -->
+              <template v-if="walletScopeFilter === 'all' || walletScopeFilter === 'official'">
+                <div v-if="groupedWalletAccounts.official.length > 0" class="mb-5">
+                  <div class="mb-2 flex items-center gap-2">
+                    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-amber-500/20 text-amber-300">
+                      <ShieldCheck class="h-3 w-3" />
+                    </span>
+                    <h4 class="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                      المحافظ الرسمية للموديول
+                    </h4>
+                    <span class="text-[10px] font-mono text-white/40">
+                      ({{ groupedWalletAccounts.official.length }})
+                    </span>
+                    <span class="text-[10px] text-white/40">
+                      — مخصصة لموديول المحافظ والتحويلات
+                    </span>
                   </div>
-                  <CheckCircle2
-                    v-if="form.wallet_account_id === acc.id"
-                    class="h-5 w-5 shrink-0 text-amber-400"
-                  />
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      v-for="acc in groupedWalletAccounts.official"
+                      :key="acc.id"
+                      type="button"
+                      @click="form.wallet_account_id = acc.id"
+                      :class="[
+                        'group relative flex flex-col gap-2 rounded-xl border-2 p-4 text-right transition-all',
+                        form.wallet_account_id === acc.id
+                          ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
+                          : 'border-white/10 bg-white/[0.02] hover:border-amber-500/40 hover:bg-amber-500/5',
+                      ]"
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                          <component :is="providerIcon(selectedWalletType?.code)" class="h-5 w-5 shrink-0 text-amber-400" />
+                          <span class="font-bold text-white truncate">{{ acc.name }}</span>
+                        </div>
+                        <CheckCircle2
+                          v-if="form.wallet_account_id === acc.id"
+                          class="h-5 w-5 shrink-0 text-amber-400"
+                        />
+                      </div>
+                      <div class="flex items-center justify-between gap-2 text-xs">
+                        <span class="font-mono text-white/50 truncate">
+                          {{ acc.wallet_number || '—' }}
+                        </span>
+                        <span
+                          v-if="acc.is_module_vault"
+                          class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
+                        >
+                          خزنة رسمية
+                        </span>
+                      </div>
+                      <div class="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
+                        <span class="text-[10px] uppercase tracking-wider text-white/40">الرصيد</span>
+                        <span class="font-mono text-base font-black text-emerald-400">
+                          {{ formatCurrency(acc.balance) }}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
                 </div>
-                <div class="flex items-center justify-between gap-2 text-xs">
-                  <span class="font-mono text-white/50 truncate">
-                    {{ acc.wallet_number || '—' }}
-                  </span>
-                  <span
-                    v-if="acc.is_module_vault"
-                    class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"
-                  >
-                    خزنة رسمية
-                  </span>
+              </template>
+
+              <!-- مجموعة محفظة قسم المكتب العامة -->
+              <template v-if="walletScopeFilter === 'all' || walletScopeFilter === 'office'">
+                <div v-if="groupedWalletAccounts.officeWide.length > 0">
+                  <div class="mb-2 flex items-center gap-2">
+                    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-300">
+                      <Building2 class="h-3 w-3" />
+                    </span>
+                    <h4 class="text-xs font-bold text-emerald-300 uppercase tracking-wider">
+                      محافظ قسم المكتب
+                    </h4>
+                    <span class="text-[10px] font-mono text-white/40">
+                      ({{ groupedWalletAccounts.officeWide.length }})
+                    </span>
+                    <span class="text-[10px] text-white/40">
+                      — محافظ مشتركة لكل الموديولات في قسم المكتب
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      v-for="acc in groupedWalletAccounts.officeWide"
+                      :key="acc.id"
+                      type="button"
+                      @click="form.wallet_account_id = acc.id"
+                      :class="[
+                        'group relative flex flex-col gap-2 rounded-xl border-2 p-4 text-right transition-all',
+                        form.wallet_account_id === acc.id
+                          ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10'
+                          : 'border-white/10 bg-white/[0.02] hover:border-emerald-500/40 hover:bg-emerald-500/5',
+                      ]"
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                          <component :is="providerIcon(selectedWalletType?.code)" class="h-5 w-5 shrink-0 text-emerald-400" />
+                          <span class="font-bold text-white truncate">{{ acc.name }}</span>
+                        </div>
+                        <CheckCircle2
+                          v-if="form.wallet_account_id === acc.id"
+                          class="h-5 w-5 shrink-0 text-emerald-400"
+                        />
+                      </div>
+                      <div class="flex items-center justify-between gap-2 text-xs">
+                        <span class="font-mono text-white/50 truncate">
+                          {{ acc.wallet_number || '—' }}
+                        </span>
+                        <span class="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                          قسم المكتب
+                        </span>
+                      </div>
+                      <div class="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
+                        <span class="text-[10px] uppercase tracking-wider text-white/40">الرصيد</span>
+                        <span class="font-mono text-base font-black text-emerald-400">
+                          {{ formatCurrency(acc.balance) }}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
                 </div>
-                <div class="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
-                  <span class="text-[10px] uppercase tracking-wider text-white/40">الرصيد</span>
-                  <span class="font-mono text-base font-black text-emerald-400">
-                    {{ formatCurrency(acc.balance) }}
-                  </span>
-                </div>
-              </button>
-            </div>
+              </template>
+            </template>
             <p v-if="errors.wallet_account_id" class="mt-3 text-xs text-rose-400">{{ errors.wallet_account_id }}</p>
           </div>
         </section>
@@ -642,6 +771,7 @@ import {
   Settings2,
   ExternalLink,
   Plus,
+  ShieldCheck,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -726,16 +856,72 @@ const selectedWalletType = computed(() => {
 
 const filteredWalletAccounts = computed(() => {
   const type = selectedWalletType.value;
-  // فلتر مزدوج: (1) محفظة موديول wallet_transfer فقط (مستقل عن المكتب/السياحة)
-  //              (2) provider يطابق نوع المحفظة المختار
-  const baseList = walletAccounts.value.filter(
-    (a) => a.module_type === 'wallet_transfer' || a.module === 'wallet_transfer'
-  );
+  // فلتر مزدوج:
+  //   (1) محفظة موديول wallet_transfer الرسمية OR محفظة قسم المكتب العامة (module_type='office')
+  //   (2) provider يطابق نوع المحفظة المختار
+  // الباك إند (TransferLiquidityAccount rule + TreasuryController) يقبل النطاقين.
+  const baseList = walletAccounts.value.filter((a) => {
+    if (a.module === 'wallet_transfer' || a.module_type === 'wallet_transfer') {
+      return true; // المحفظة الرسمية للموديول
+    }
+    if (a.module_type === 'office') {
+      return true; // محفظة عامة لقسم المكتب
+    }
+    return false;
+  });
   if (!type) {
     return baseList;
   }
   return baseList.filter((a) => accountMatchesWalletType(a, type));
 });
+
+/**
+ * تقسيم المحافظ المتاحة لمجموعتين بصرياً:
+ *   - official: المحفظة الرسمية للموديول (module='wallet_transfer')
+ *   - officeWide: محافظ قسم المكتب العامة (module_type='office' بدون tag wallet_transfer)
+ */
+const groupedWalletAccounts = computed(() => {
+  const list = filteredWalletAccounts.value;
+  const official = list.filter(
+    (a) => a.module === 'wallet_transfer' || a.module_type === 'wallet_transfer'
+  );
+  const officeWide = list.filter(
+    (a) =>
+      a.module_type === 'office'
+      && a.module !== 'wallet_transfer'
+      && a.module_type !== 'wallet_transfer'
+  );
+  return { official, officeWide };
+});
+
+/**
+ * فلتر تشغيلي للـ UI:
+ *   'all'      = كل المحافظ (افتراضي)
+ *   'official' = الرسمية للموديول فقط
+ *   'office'   = قسم المكتب فقط
+ */
+const walletScopeFilter = ref('all');
+
+const visibleWalletAccounts = computed(() => {
+  const { official, officeWide } = groupedWalletAccounts.value;
+  if (walletScopeFilter.value === 'official') return official;
+  if (walletScopeFilter.value === 'office') return officeWide;
+  return [...official, ...officeWide];
+});
+
+/**
+ * Helper: يحدد نطاق محفظة معينة (للـ badge والـ empty states)
+ */
+function walletScopeOf(account) {
+  if (!account) return null;
+  if (account.module === 'wallet_transfer' || account.module_type === 'wallet_transfer') {
+    return 'official';
+  }
+  if (account.module_type === 'office') {
+    return 'office';
+  }
+  return 'other';
+}
 
 const selectedWalletAccount = computed(() => {
   const id = form.value.wallet_account_id;
@@ -753,7 +939,7 @@ const unmatchedWalletProviders = computed(() => {
 });
 
 /* When the user changes wallet type, auto-pick the wallet account if only one matches */
-watch(filteredWalletAccounts, (newAccounts) => {
+watch(visibleWalletAccounts, (newAccounts) => {
   if (newAccounts.length === 1) {
     form.value.wallet_account_id = newAccounts[0].id;
   } else if (!newAccounts.some((a) => a.id === form.value.wallet_account_id)) {

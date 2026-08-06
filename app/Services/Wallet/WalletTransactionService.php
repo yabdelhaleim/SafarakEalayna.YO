@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Enums\WalletTransactionType;
 use App\Models\Account;
+use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\Transaction;
 use App\Models\Wallet\WalletTransaction;
@@ -146,6 +147,17 @@ class WalletTransactionService
                     'created_by' => $createdBy,
                 ]);
 
+                // ── Audit log ─────────────────────────────────────────────
+                // نسجل نوع العملية + النطاق المستخدم ( رسمي موديول / قسم مكتب )
+                // في جدول audit_logs بدون أي تأثير على المنطق المحاسبي.
+                // الفشل هنا لا يكسر العملية (صفر تأثير على الـ flow).
+                $this->writeAuditLog(
+                    action: 'wallet_transaction.created',
+                    record: $record,
+                    type: $type,
+                    oldValues: null,
+                );
+
                 return $record->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
@@ -165,6 +177,10 @@ class WalletTransactionService
     {
         try {
             return DB::transaction(function () use ($transaction, $data) {
+                // Snapshot OLD values BEFORE the update so audit log
+                // can record what changed.
+                $oldSnapshot = $this->snapshotForAudit($transaction);
+
                 // Detect ACTUAL changes (vs same value) — used to gate the
                 // ledger repost so we don't waste DB writes on no-op edits.
                 // Mirrors OnlineTransactionService Phase 9 / HajjUmra Phase 8.
@@ -215,6 +231,17 @@ class WalletTransactionService
                     $this->repostSettlementTransaction($transaction);
                 }
 
+                // ── Audit log — نسجل التعديل (القيم القديمة vs الجديدة) ──
+                $type = $transaction->type instanceof WalletTransactionType
+                    ? $transaction->type
+                    : WalletTransactionType::from((string) $transaction->type);
+                $this->writeAuditLog(
+                    action: 'wallet_transaction.updated',
+                    record: $transaction->fresh(),
+                    type: $type,
+                    oldValues: $oldSnapshot,
+                );
+
                 return $transaction->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
@@ -229,6 +256,45 @@ class WalletTransactionService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * سَنابشوت قبل التعديل — يُمرَّر للـ AuditLog::old_values
+     * عشان لما المستخدم يعدّل العملية نقدر نعرف القيم القديمة والجديدة.
+     *
+     * @return array<string, mixed>
+     */
+    protected function snapshotForAudit(WalletTransaction $transaction): array
+    {
+        // نفس منطق النطاق المستخدم في writeAuditLog — عشان old_values
+        // يبقى فيه نفس شكل new_values (مهم لعمليات update/delete).
+        $walletAccount = $transaction->wallet_account_id
+            ? Account::find($transaction->wallet_account_id)
+            : null;
+        $scope = ($walletAccount
+            && (
+                $walletAccount->module === 'wallet_transfer'
+                || $walletAccount->module_type === 'wallet_transfer'
+            )
+        ) ? 'official_module' : 'office_department';
+
+        return [
+            'type' => $transaction->type instanceof WalletTransactionType
+                ? $transaction->type->value
+                : (string) $transaction->type,
+            'wallet_account_id' => $transaction->wallet_account_id,
+            'wallet_account_scope' => $scope,
+            'wallet_account_name' => $walletAccount?->name,
+            'cash_account_id' => $transaction->cash_account_id,
+            'amount' => (float) $transaction->amount,
+            'service_fee' => (float) $transaction->service_fee,
+            'total_amount' => (float) $transaction->total_amount,
+            'amount_paid' => (float) $transaction->amount_paid,
+            'customer_id' => $transaction->customer_id,
+            'customer_name' => $transaction->customer_name,
+            'wallet_number' => $transaction->wallet_number,
+            'wallet_type_id' => $transaction->wallet_type_id,
+        ];
     }
 
     /**
@@ -686,6 +752,18 @@ class WalletTransactionService
                     'deleted_by' => Auth::id(),
                 ]);
 
+                // ── Audit log — نسجل الحذف في audit_logs (قبل الـ soft-delete
+                //    عشان نقدر نقرأ الحقول لـ old_values) ──
+                $type = $transaction->type instanceof WalletTransactionType
+                    ? $transaction->type
+                    : WalletTransactionType::from((string) $transaction->type);
+                $this->writeAuditLog(
+                    action: 'wallet_transaction.deleted',
+                    record: $transaction,
+                    type: $type,
+                    oldValues: $this->snapshotForAudit($transaction),
+                );
+
                 return true;
             });
         } catch (\Exception $e) {
@@ -775,5 +853,95 @@ class WalletTransactionService
             'total_received' => (float) ($result->total_received ?? 0),
             'total_fees' => (float) ($result->total_fees ?? 0),
         ];
+    }
+
+    /**
+     * كتابة سجل تدقيق (AuditLog) للعملية.
+     *
+     * يُسجَّل:
+     *  - نوع العملية (created / updated / deleted)
+     *  - نوع المحفظة المستخدم (إرسال/استقبال)
+     *  - النطاق (scope) = 'official_module' (محفظة wallet_transfer رسمية) أو
+     *                       'office_department' (محفظة قسم مكتب عامة)
+     *  - القيم الجديدة بعد العملية
+     *  - القيم القديمة (لو تعديل أو حذف) قبل العملية
+     *
+     * ضمانات الأمان:
+     *  - الـ AuditLog::create() محاط بـ try/catch — لو فشل التسجيل ما نكسرش العملية.
+     *  - صفر تأثير على المنطق المحاسبي أو على أي field آخر في الـ wallet_transactions.
+     *  - صفر تأثير على الـ return value للـ create/update/delete.
+     *
+     * @param  string  $action  مثل: 'wallet_transaction.created'
+     * @param  WalletTransaction  $record  الـ record بعد/قبل العملية
+     * @param  WalletTransactionType  $type
+     * @param  array<string, mixed>|null  $oldValues
+     */
+    protected function writeAuditLog(
+        string $action,
+        WalletTransaction $record,
+        WalletTransactionType $type,
+        ?array $oldValues = null,
+    ): void {
+        try {
+            $walletAccount = $record->wallet_account_id
+                ? Account::find($record->wallet_account_id)
+                : null;
+
+            // تحديد النطاق: رسمي موديول wallet_transfer vs قسم مكتب عام office
+            $scope = ($walletAccount
+                && (
+                    $walletAccount->module === 'wallet_transfer'
+                    || $walletAccount->module_type === 'wallet_transfer'
+                )
+            ) ? 'official_module' : 'office_department';
+
+            $scopeLabel = $scope === 'official_module'
+                ? 'رسمية للموديول'
+                : 'قسم المكتب';
+
+            $newValues = [
+                'type' => $type->value,
+                'wallet_account_id' => $record->wallet_account_id,
+                'wallet_account_scope' => $scope,           // ⭐ المفتاح الأساسي
+                'wallet_account_name' => $walletAccount?->name,
+                'wallet_account_module_type' => $walletAccount?->module_type,
+                'cash_account_id' => $record->cash_account_id,
+                'amount' => (float) $record->amount,
+                'service_fee' => (float) $record->service_fee,
+                'total_amount' => (float) $record->total_amount,
+                'amount_paid' => (float) $record->amount_paid,
+                'customer_id' => $record->customer_id,
+                'customer_name' => $record->customer_name,
+                'wallet_number' => $record->wallet_number,
+                'wallet_type_id' => $record->wallet_type_id,
+            ];
+
+            AuditLog::create([
+                'user_id' => Auth::id() ?? $record->created_by ?? 1,
+                'action' => $action,
+                'model_type' => WalletTransaction::class,
+                'model_id' => $record->id,
+                'old_values' => $oldValues,
+                'new_values' => $newValues,
+                'ip_address' => request()?->ip(),
+                'user_agent' => request()?->userAgent(),
+                'notes' => sprintf(
+                    'عملية محفظة (%s) باستخدام محفظة %s: %s — مبلغ %s + رسوم %s — عميل: %s',
+                    $type->value,
+                    $scopeLabel,
+                    $walletAccount?->name ?? '—',
+                    number_format((float) $record->amount, 2),
+                    number_format((float) $record->service_fee, 2),
+                    $record->customer_name ?: 'بدون اسم',
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            // ⚠️ فشل الـ audit log لا يكسر العملية أبداً
+            Log::warning('WalletTransaction audit log failed', [
+                'action' => $action,
+                'record_id' => $record->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
