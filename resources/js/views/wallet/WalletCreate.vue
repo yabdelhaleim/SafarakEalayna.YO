@@ -857,15 +857,32 @@ const selectedWalletType = computed(() => {
 const filteredWalletAccounts = computed(() => {
   const type = selectedWalletType.value;
   // فلتر مزدوج:
-  //   (1) محفظة موديول wallet_transfer الرسمية OR محفظة قسم المكتب العامة (module_type='office')
+  //   (1) محفظة liquidity نشطة من قسم المكتب (office) — مع توسيع النطاق
+  //       عشان نضمن إن أي محفظة ظاهرة في /wallet/treasury هتظهر هنا.
   //   (2) provider يطابق نوع المحفظة المختار
-  // الباك إند (TransferLiquidityAccount rule + TreasuryController) يقبل النطاقين.
+  // الباك إند (TransferLiquidityAccount rule + TreasuryController) بيقبل النطاق ده.
+  //
+  // شروط القبول (متطابقة مع TransferTreasuryController::overview):
+  //   ✓ module_type='wallet_transfer'  (المحفظة الرسمية للموديول)
+  //   ✓ module_type='office'          (محفظة قسم المكتب — division marker)
+  //   ✓ module='wallet_transfer'      (legacy alias)
+  //   ✓ module_type IN (['office','wallet_transfer'])  (defensive — لو رجع مع module_type='office' بس module='bus')
   const baseList = walletAccounts.value.filter((a) => {
+    // شرط 1: المحفظة الرسمية للموديول
     if (a.module === 'wallet_transfer' || a.module_type === 'wallet_transfer') {
-      return true; // المحفظة الرسمية للموديول
+      return true;
     }
+    // شرط 2: محفظة قسم المكتب العامة (module_type='office' أو لا يوجد)
     if (a.module_type === 'office') {
-      return true; // محفظة عامة لقسم المكتب
+      return true;
+    }
+    // شرط 3 (defensive): لو module_type ناقص/null بس module='wallet_transfer' أو type='wallet'
+    // ده بيغطي edge cases لو الـ data فيها module_type=null أو قيم غير متوقعة
+    if (
+      (a.module === 'wallet_transfer' || !a.module)
+      && (a.type === 'wallet' || a.type?.value === 'wallet' || a.type?.value === 'محفظة')
+    ) {
+      return true;
     }
     return false;
   });
@@ -877,19 +894,17 @@ const filteredWalletAccounts = computed(() => {
 
 /**
  * تقسيم المحافظ المتاحة لمجموعتين بصرياً:
- *   - official: المحفظة الرسمية للموديول (module='wallet_transfer')
- *   - officeWide: محافظ قسم المكتب العامة (module_type='office' بدون tag wallet_transfer)
+ *   - official: المحفظة الرسمية للموديول (module='wallet_transfer' OR module_type='wallet_transfer')
+ *   - officeWide: محافظ قسم المكتب العامة (كل اللي مش رسمي — أي محفظة liquidity تانية ظاهرة)
  */
 const groupedWalletAccounts = computed(() => {
   const list = filteredWalletAccounts.value;
   const official = list.filter(
     (a) => a.module === 'wallet_transfer' || a.module_type === 'wallet_transfer'
   );
+  // أي محفظة liquidity تانية (مكتب عام) — أي حاجة مش wallet_transfer رسمية
   const officeWide = list.filter(
-    (a) =>
-      a.module_type === 'office'
-      && a.module !== 'wallet_transfer'
-      && a.module_type !== 'wallet_transfer'
+    (a) => a.module !== 'wallet_transfer' && a.module_type !== 'wallet_transfer'
   );
   return { official, officeWide };
 });
