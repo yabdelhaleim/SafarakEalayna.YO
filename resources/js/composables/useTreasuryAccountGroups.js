@@ -128,10 +128,49 @@ export function normalizeWalletProviderCode(raw) {
     .replace(/[\s-]+/g, '_');
 }
 
+/**
+ * Alias map for legacy / abbreviated wallet type codes.
+ *
+ * Maps custom (non-canonical) codes → canonical WalletProvider enum value.
+ * This bridges data inserted manually before the canonical enum was
+ * enforced — e.g. 'v_cash' used in wallet_types where the canonical
+ * code is 'vodafone_cash'. The alias match runs AFTER normalization,
+ * so case/spacing differences are handled too.
+ *
+ * To add new aliases, append to this map. The canonical WalletProvider
+ * enum values themselves are NEVER aliased — only legacy shortcuts.
+ */
+export const WALLET_TYPE_CODE_ALIASES = Object.freeze({
+  v_cash: 'vodafone_cash',
+  vf_cash: 'vodafone_cash',
+  vodafone: 'vodafone_cash',
+  o_cash: 'orange_cash',
+  orange: 'orange_cash',
+  etisalat: 'etisalat_cash',
+  e_cash: 'etisalat_cash',
+  we: 'we_pay',
+  wepay: 'we_pay',
+  instapay_alt: 'instapay',
+  cash_wallet: 'cash_wallet',
+  postal_payout: 'postal',
+  fawry_wallet: 'fawry',
+});
+
+/**
+ * Resolve a wallet type code (after normalization) to its canonical form
+ * using {@link WALLET_TYPE_CODE_ALIASES}. Returns the input unchanged if
+ * no alias is registered.
+ */
+export function canonicalizeWalletTypeCode(code) {
+  const normalized = normalizeWalletProviderCode(code);
+  if (!normalized) return normalized;
+  return WALLET_TYPE_CODE_ALIASES[normalized] || normalized;
+}
+
 export function accountMatchesWalletType(account, walletType) {
   if (!walletType?.code) return true;
   const provider = normalizeWalletProviderCode(account?.wallet_provider);
-  const code = normalizeWalletProviderCode(walletType.code);
+  const code = canonicalizeWalletTypeCode(walletType.code);
   if (!provider) return false;
   return provider === code;
 }
