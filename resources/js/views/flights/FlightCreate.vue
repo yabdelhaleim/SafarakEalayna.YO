@@ -4295,6 +4295,31 @@ watch(
   { immediate: true }
 );
 
+/**
+ * 2026-08-06 fix: شبكة أمان — لو `form.currency` عملة أجنبية و
+ * `exchange_rate` لسه 0، اسحب السعر من `store.currencies` فوراً.
+ * ده بيغطّي الحالات اللي الـ watch بتاع `recommendedCurrency`
+ * بيرجّع فيها early (مثلاً `form.currency === newCurrency` بالفعل،
+ * أو الـ store فاضي وقت التحديث). متوافق مع كل من الموظف والأدمن.
+ */
+watch(
+  () => [form.value.currency, store.currencies],
+  ([ccy, list]) => {
+    if (!ccy || ccy === 'EGP') return;
+    const current = Number(form.value.exchange_rate) || 0;
+    if (current > 0) return;
+    const cur = Array.isArray(list)
+      ? list.find((x) => String(x.code).toUpperCase() === String(ccy).toUpperCase())
+      : null;
+    const rate = finiteNum(cur?.exchangeRate ?? cur?.exchange_rate, 0);
+    if (rate > 0) {
+      form.value.exchange_rate = rate;
+      syncPurchaseEgpFromForeign();
+    }
+  },
+  { immediate: true }
+);
+
 watch(
   () => [settlementCategoryUi.value, settlementAccounts.value],
   () => {
@@ -4397,15 +4422,18 @@ watch(
     if (form.value.currency === newCurrency) return;
 
     // طبّق العملة الموصى على الفور
-    const previous = form.value.currency;
     form.value.currency = newCurrency;
 
-    // أعد حساب سعر الصرف الأجنبي فوراً إن لزم
+    // 2026-08-06 fix: سعر الصرف لازم يتحدّث في **كل** الانتقالات
+    // لعملة أجنبية، حتى لو العملة السابقة كانت EGP — ده بالظبط
+    // الوقت اللي الموظف محتاج يعرف فيه السعر. حذفنا شرط
+    // `previous !== 'EGP'` لأنه كان يمنع التحديث في الحالة المطلوبة
+    // ويسبّب سعر صرف = 0 للموظف في صفحة إنشاء الحجز.
     const cur = pricingCurrencyOptions.value.find(
       (x) => String(x.code).toUpperCase() === newCurrency,
     );
     const rate = finiteNum(cur?.exchangeRate ?? cur?.exchange_rate, 0);
-    if (rate > 0 && previous !== 'EGP') {
+    if (rate > 0) {
       form.value.exchange_rate = rate;
     }
     if (newCurrency === 'EGP') {
