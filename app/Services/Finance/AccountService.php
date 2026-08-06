@@ -316,8 +316,12 @@ class AccountService
                                         ->orWhere('pnr', 'like', "%{$search}%")
                                         ->orWhereHas('customer', fn ($c) => $c->where('full_name', 'like', "%{$search}%"));
                                 } elseif ($type === BusBooking::class) {
-                                    $rq->where('booking_number', 'like', "%{$search}%")
-                                        ->orWhere('passenger_name', 'like', "%{$search}%");
+                                    // bus_bookings has no 'booking_number' or 'passenger_name' columns —
+                                    // those belong to flight_bookings and bus_tickets respectively.
+                                    // Search by booking notes and the related customer's full_name,
+                                    // mirroring the VisaBooking / HajjUmraBooking branch above.
+                                    $rq->where('notes', 'like', "%{$search}%")
+                                        ->orWhereHas('customer', fn ($c) => $c->where('full_name', 'like', "%{$search}%"));
                                 } elseif ($type === OnlineTransaction::class) {
                                     $rq->where('reference_number', 'like', "%{$search}%")
                                         ->orWhere('customer_name', 'like', "%{$search}%");

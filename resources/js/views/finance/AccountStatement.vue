@@ -1639,6 +1639,9 @@ async function fetchStatement() {
       if (data.pagination) pagination.value = data.pagination;
     } catch (err) {
       console.error('Failed to fetch customer statement:', err);
+      if (window.addToast) {
+        window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
+      }
       statement.value = [];
     } finally {
       loading.value = false;
@@ -1664,6 +1667,9 @@ async function fetchStatement() {
     }
   } catch (err) {
     console.error('Failed to fetch statement:', err);
+    if (window.addToast) {
+      window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
+    }
     statement.value = [];
   } finally {
     loading.value = false;
