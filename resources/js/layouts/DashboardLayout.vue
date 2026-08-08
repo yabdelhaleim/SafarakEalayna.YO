@@ -427,84 +427,82 @@
             </transition>
           </div>
 
-          <!-- Notification Detail Modal -->
-          <Teleport to="body">
-            <transition name="t-modal">
-              <div v-if="selectedNotif" class="notif-detail-overlay" @click.self="closeNotifDetail">
-                <div class="notif-detail-modal" role="dialog" aria-labelledby="notif-detail-title">
-
-                  <!-- ✅ PASSENGER ALERT NOTIFICATION DETAIL -->
-                  <template>
-                    <div class="notif-detail-header">
-                      <div class="notif-detail-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
-                      </div>
-                      <div>
-                        <p class="notif-detail-label">تفاصيل تنبيه السفر</p>
-                        <h2 id="notif-detail-title">{{ selectedNotif.data.passenger_name }}</h2>
-                      </div>
-                      <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-                      </button>
-                    </div>
-
-                    <div class="notif-detail-body">
-                      <div class="notif-detail-alert">
-                        <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
-                        <p>{{ selectedNotif.data.message }}</p>
-                      </div>
-
-                      <div class="notif-detail-grid">
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">خط السفر</span>
-                          <span class="notif-detail-field-value notif-detail-route">
-                            {{ selectedNotif.data.origin || '—' }}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                            {{ selectedNotif.data.destination || '—' }}
-                          </span>
-                        </div>
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">تاريخ المغادرة</span>
-                          <span class="notif-detail-field-value">{{ formatNotifDate(selectedNotif.data.departure_date) }}</span>
-                        </div>
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">وقت المغادرة</span>
-                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.departure_time || '—' }}</span>
-                        </div>
-                        <div class="notif-detail-field">
-                          <span class="notif-detail-field-label">PNR</span>
-                          <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.pnr || '—' }}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="notif-detail-footer">
-                      <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
-                      <button
-                        v-if="!selectedNotif.read_at"
-                        class="notif-detail-btn notif-detail-btn--ghost"
-                        @click="markAsRead(selectedNotif.id); closeNotifDetail()"
-                      >
-                        تحديد كمقروء
-                      </button>
-                      <button
-                        v-if="selectedNotif.data.flight_booking_id"
-                        class="notif-detail-btn notif-detail-btn--primary"
-                        @click="goToBooking(selectedNotif)"
-                      >
-                        عرض الحجز
-                      </button>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </transition>
-          </Teleport>
-
           <button class="hdr-avatar" type="button" aria-label="الملف الشخصي">{{ authStore.userInitial }}</button>
         </div>
 
       </header>
+
+      <!-- Notification Detail Modal — Teleport placed outside .top-bar to avoid
+           the top-bar's backdrop-filter stacking context interfering with the
+           fixed-position overlay. -->
+      <Teleport to="body">
+        <transition name="t-modal">
+          <div v-if="selectedNotif" class="notif-detail-overlay" @click.self="closeNotifDetail">
+            <div class="notif-detail-modal" role="dialog" aria-labelledby="notif-detail-title">
+              <div class="notif-detail-header">
+                <div class="notif-detail-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13.5l-3-2.5H3.5L2.5 7l7.5.5 1-4 1.5 1-1 4 3.5.75L18 13.5z"/></svg>
+                </div>
+                <div>
+                  <p class="notif-detail-label">تفاصيل تنبيه السفر</p>
+                  <h2 id="notif-detail-title">{{ selectedNotif.data.passenger_name }}</h2>
+                </div>
+                <button class="notif-detail-close" aria-label="إغلاق" @click="closeNotifDetail">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+                </button>
+              </div>
+
+              <div class="notif-detail-body">
+                <div class="notif-detail-alert">
+                  <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
+                  <p>{{ selectedNotif.data.message }}</p>
+                </div>
+
+                <div class="notif-detail-grid">
+                  <div class="notif-detail-field">
+                    <span class="notif-detail-field-label">خط السفر</span>
+                    <span class="notif-detail-field-value notif-detail-route">
+                      {{ selectedNotif.data.origin || '—' }}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                      {{ selectedNotif.data.destination || '—' }}
+                    </span>
+                  </div>
+                  <div class="notif-detail-field">
+                    <span class="notif-detail-field-label">تاريخ المغادرة</span>
+                    <span class="notif-detail-field-value">{{ formatNotifDate(selectedNotif.data.departure_date) }}</span>
+                  </div>
+                  <div class="notif-detail-field">
+                    <span class="notif-detail-field-label">وقت المغادرة</span>
+                    <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.departure_time || '—' }}</span>
+                  </div>
+                  <div class="notif-detail-field">
+                    <span class="notif-detail-field-label">PNR</span>
+                    <span class="notif-detail-field-value notif-detail-mono">{{ selectedNotif.data.pnr || '—' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="notif-detail-footer">
+                <button class="notif-detail-btn notif-detail-btn--ghost" @click="closeNotifDetail">إغلاق</button>
+                <button
+                  v-if="!selectedNotif.read_at"
+                  class="notif-detail-btn notif-detail-btn--ghost"
+                  @click="markAsRead(selectedNotif.id); closeNotifDetail()"
+                >
+                  تحديد كمقروء
+                </button>
+                <button
+                  v-if="selectedNotif.data.flight_booking_id"
+                  class="notif-detail-btn notif-detail-btn--primary"
+                  @click="goToBooking(selectedNotif)"
+                >
+                  عرض الحجز
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+      </Teleport>
 
       <!-- Page -->
       <main class="page-body">
@@ -1742,13 +1740,15 @@ html { direction: rtl; height: 100%; }
 }
 
 .notif-detail-modal {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 460px;
   background: var(--surf);
-  border: 1px solid rgba(212, 168, 67, .2);
+  border: 1px solid rgba(212, 168, 67, .35);
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, .75), 0 0 0 1px rgba(212, 168, 67, .08);
 }
 
 .notif-detail-header {

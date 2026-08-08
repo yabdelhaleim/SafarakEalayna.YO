@@ -309,8 +309,19 @@ Route::prefix('v1')->middleware([
         Route::get('customer-balances', [WalletTransactionController::class, 'customerBalances']);
         Route::get('customer-statement', [WalletTransactionController::class, 'customerStatement']);
         Route::get('transactions/daily-summary', [WalletTransactionController::class, 'dailySummary'])->name('wallet.transactions.daily-summary');
-        // Wallet writes (create/update/delete) are destructive — admin only
-        Route::middleware('admin')->apiResource('transactions', WalletTransactionController::class)->names('wallet_transactions');
+
+        // Recording a cash/wallet transaction (العملية النقدية) is the daily
+        // bread-and-butter for cashiers, so any user with the treasury module
+        // permission (`manage_treasury` / فوري والمحافظ) is allowed to POST.
+        // Edits and deletes still move money and reverse ledger entries, so
+        // they remain admin-only.
+        Route::post('transactions', [WalletTransactionController::class, 'store'])
+            ->middleware('permission:wallet.create');
+        Route::match(['put', 'patch'], 'transactions/{transaction}', [WalletTransactionController::class, 'update'])
+            ->middleware('admin');
+        Route::delete('transactions/{transaction}', [WalletTransactionController::class, 'destroy'])
+            ->middleware('admin');
+        Route::get('transactions/{transaction}', [WalletTransactionController::class, 'show']);
 
         // Treasury API for Wallets
         Route::get('treasury/overview', [TransferTreasuryController::class, 'overview']);
