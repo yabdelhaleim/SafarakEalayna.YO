@@ -377,6 +377,12 @@ const routes = [
         meta: { title: 'عملية جديدة', noKeepAlive: true },
       },
       {
+        path: 'transactions/:id',
+        name: 'wallet.show',
+        component: () => import('@/views/wallet/WalletShow.vue'),
+        meta: { title: 'تفاصيل العملية', noKeepAlive: true },
+      },
+      {
         path: 'customer-balances',
         name: 'wallet.customer-balances',
         component: () => import('@/views/wallet/WalletCustomerBalances.vue'),
