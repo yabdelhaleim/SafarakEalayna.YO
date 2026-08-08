@@ -568,7 +568,7 @@ import { useAuthStore } from '@/stores/authStore';
 import axios from 'axios';
 import { useFlightStore } from '@/stores/flightStore';
 import { usePrintSettingsStore } from '@/stores/printSettingsStore';
-import { onGlobalError } from '@/utils/api';
+import { onGlobalError, isRequestCanceled } from '@/utils/api';
 
 const router = useRouter();
 const route = useRoute();
@@ -749,7 +749,9 @@ async function fetchNotifications() {
     notifications.value = items;
     unreadCount.value = response.data.data.pagination?.total || 0;
   } catch (e) {
-    console.error('Failed to fetch notifications', e);
+    if (!isRequestCanceled(e)) {
+      console.error('Failed to fetch notifications', e);
+    }
   } finally {
     isNotifRefreshing.value = false;
   }
@@ -798,6 +800,7 @@ async function markAsRead(id) {
       selectedNotif.value = { ...selectedNotif.value, read_at: new Date().toISOString() };
     }
   } catch (e) {
+    if (isRequestCanceled(e)) return;
     console.error(e);
     addToast('فشل في تحديث حالة التنبيه', 'error');
   }
@@ -810,6 +813,7 @@ async function markAllAsRead() {
     unreadCount.value = 0;
     addToast('تم تحديد جميع التنبيهات كمقروءة', 'success');
   } catch (e) {
+    if (isRequestCanceled(e)) return;
     console.error(e);
     addToast('فشل في تحديث حالة التنبيهات', 'error');
   }
