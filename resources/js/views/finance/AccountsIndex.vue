@@ -70,34 +70,36 @@
       </div>
       <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div class="dashboard-kpi">
-          <div class="mb-3 flex items-center justify-between">
+          <div class="mb-4 flex items-start justify-between gap-3">
             <div class="dashboard-kpi__icon"><DollarSign class="h-6 w-6" /></div>
             <span class="rounded-lg bg-gold/15 px-3 py-1 text-sm font-black text-gold">سيولة</span>
           </div>
           <p class="text-sm font-black text-text-muted">إجمالي السيولة المتاحة</p>
-          <p class="mt-2 font-mono text-3xl font-black text-text-main">{{ formatCurrency(dbStats.total_balance, 'EGP') }}</p>
+          <p class="mt-2 font-mono text-3xl font-black text-text-main leading-tight break-all">{{ formatCurrency(dbStats.total_balance, 'EGP') }}</p>
         </div>
         <div class="dashboard-kpi">
-          <div class="mb-3 flex items-center justify-between">
+          <div class="mb-4 flex items-start justify-between gap-3">
             <div class="dashboard-kpi__icon"><Activity class="h-6 w-6" /></div>
             <span class="rounded-lg bg-success/15 px-3 py-1 text-sm font-black text-success">نشط</span>
           </div>
           <p class="text-sm font-black text-text-muted">الخزائن النشطة</p>
-          <p class="mt-2 font-mono text-3xl font-black text-success">{{ dbStats.active_count }}</p>
+          <p class="mt-2 font-mono text-3xl font-black text-success leading-tight">{{ dbStats.active_count }}</p>
         </div>
         <div class="dashboard-kpi">
-          <div class="mb-3 flex items-center justify-between">
+          <div class="mb-4 flex items-start justify-between gap-3">
             <div class="dashboard-kpi__icon"><Plane class="h-6 w-6" /></div>
+            <span class="rounded-lg bg-sky-400/15 px-3 py-1 text-sm font-black text-sky-300">سياحة</span>
           </div>
           <p class="text-sm font-black text-text-muted">حسابات السياحة</p>
-          <p class="mt-2 font-mono text-3xl font-black text-sky-300">{{ tourismCount }}</p>
+          <p class="mt-2 font-mono text-3xl font-black text-sky-300 leading-tight">{{ tourismCount }}</p>
         </div>
         <div class="dashboard-kpi">
-          <div class="mb-3 flex items-center justify-between">
+          <div class="mb-4 flex items-start justify-between gap-3">
             <div class="dashboard-kpi__icon"><LayoutGrid class="h-6 w-6" /></div>
+            <span class="rounded-lg bg-violet-400/15 px-3 py-1 text-sm font-black text-violet-300">مكتب</span>
           </div>
           <p class="text-sm font-black text-text-muted">حسابات المكتب</p>
-          <p class="mt-2 font-mono text-3xl font-black text-violet-300">{{ officeCount }}</p>
+          <p class="mt-2 font-mono text-3xl font-black text-violet-300 leading-tight">{{ officeCount }}</p>
         </div>
       </div>
 
@@ -231,17 +233,17 @@
               </div>
             </div>
             <div class="grid grid-cols-1 gap-3 border-t border-white/5 pt-4 sm:grid-cols-3">
-              <div class="rounded-xl bg-success/10 p-3">
-                <p class="text-sm font-black text-success/80">المبيعات</p>
-                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.income) }}</p>
+              <div class="rounded-xl bg-success/10 px-3 py-2.5">
+                <p class="text-xs font-black uppercase tracking-wider text-success/80">المبيعات</p>
+                <p class="mt-1 font-mono text-sm font-black text-text-main truncate" :title="formatCurrency(perf.income)">{{ formatCurrency(perf.income) }}</p>
               </div>
-              <div class="rounded-xl bg-amber-500/10 p-3">
-                <p class="text-sm font-black text-amber-300/90">تكلفة الحجوزات</p>
-                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.cogs) }}</p>
+              <div class="rounded-xl bg-amber-500/10 px-3 py-2.5">
+                <p class="text-xs font-black uppercase tracking-wider text-amber-300/90">تكلفة الحجوزات</p>
+                <p class="mt-1 font-mono text-sm font-black text-text-main truncate" :title="formatCurrency(perf.cogs)">{{ formatCurrency(perf.cogs) }}</p>
               </div>
-              <div class="rounded-xl bg-error/10 p-3">
-                <p class="text-sm font-black text-error/80">مصروفات تشغيلية</p>
-                <p class="mt-1 font-mono text-base font-black text-text-main">{{ formatCurrency(perf.expense) }}</p>
+              <div class="rounded-xl bg-error/10 px-3 py-2.5">
+                <p class="text-xs font-black uppercase tracking-wider text-error/80">مصروفات تشغيلية</p>
+                <p class="mt-1 font-mono text-sm font-black text-text-main truncate" :title="formatCurrency(perf.expense)">{{ formatCurrency(perf.expense) }}</p>
               </div>
             </div>
           </div>

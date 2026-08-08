@@ -4418,10 +4418,10 @@ watch(
   recommendedCurrency,
   (newCurrency) => {
     if (!newCurrency) return;
-    if (newCurrency === 'EGP') return;
     if (form.value.currency === newCurrency) return;
 
-    // طبّق العملة الموصى على الفور
+    // عملة الشراء تتبع مصدر الحجز، بما في ذلك EGP.
+    // سعر البيع ودفع العميل يظلان بالجنيه المصري في حقول مستقلة.
     form.value.currency = newCurrency;
 
     // 2026-08-06 fix: سعر الصرف لازم يتحدّث في **كل** الانتقالات
