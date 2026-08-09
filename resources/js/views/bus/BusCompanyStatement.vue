@@ -41,16 +41,69 @@
     </header>
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
-      
+
       <!-- Filters/Actions -->
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-bold text-white flex items-center gap-2">
-          <Clock class="w-5 h-5 text-blue-400" />
-          سجل الحركات
-        </h2>
-        <button @click="reload" :disabled="loading" class="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition">
-          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
-        </button>
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <Clock class="w-5 h-5 text-blue-400" />
+            سجل الحركات
+          </h2>
+          <button @click="reload" :disabled="loading" class="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition" title="تحديث">
+            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          </button>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+          <div class="relative">
+            <Search class="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <input
+              v-model="filters.search"
+              type="search"
+              placeholder="بحث في البيان / رقم الحركة..."
+              class="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder-white/30 outline-none transition focus:border-blue-500/50"
+              @input="onSearchInput"
+            />
+          </div>
+
+          <select
+            v-model="filters.type"
+            class="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition focus:border-blue-500/50"
+            @change="onFiltersChange"
+          >
+            <option value="">كل أنواع الحركات</option>
+            <option value="credit">إيداع / تسديد</option>
+            <option value="debit">سحب / فاتورة</option>
+          </select>
+
+          <input
+            v-model="filters.from_date"
+            type="date"
+            class="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition focus:border-blue-500/50"
+            :max="filters.to_date || undefined"
+            @change="onFiltersChange"
+          />
+
+          <div class="flex items-center gap-2">
+            <input
+              v-model="filters.to_date"
+              type="date"
+              class="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition focus:border-blue-500/50"
+              :min="filters.from_date || undefined"
+              @change="onFiltersChange"
+            />
+            <button
+              v-if="hasActiveFilters"
+              @click="resetFilters"
+              type="button"
+              class="rounded-xl border border-white/10 bg-white/5 p-2.5 text-white/40 hover:text-white hover:border-white/20 transition"
+              title="إعادة ضبط الفلاتر"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Transactions Table -->
@@ -144,18 +197,37 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="meta && meta.last_page > 1" class="flex items-center justify-center gap-4">
-        <button
-          :disabled="meta.current_page <= 1"
-          @click="loadPage(meta.current_page - 1)"
-          class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs font-bold text-white/60 hover:text-white transition disabled:opacity-20"
-        >السابق</button>
-        <span class="text-xs text-white/30">{{ meta.current_page }} / {{ meta.last_page }}</span>
-        <button
-          :disabled="meta.current_page >= meta.last_page"
-          @click="loadPage(meta.current_page + 1)"
-          class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs font-bold text-white/60 hover:text-white transition disabled:opacity-20"
-        >التالي</button>
+      <div v-if="meta && meta.total > 0" class="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-4">
+        <div class="text-xs text-white/40">
+          عرض
+          <span class="font-black text-white/80">{{ paginationRange.from }}</span>
+          –
+          <span class="font-black text-white/80">{{ paginationRange.to }}</span>
+          من
+          <span class="font-black text-white/80">{{ meta.total }}</span>
+          عملية
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            :disabled="meta.current_page <= 1 || loading"
+            @click="loadPage(meta.current_page - 1)"
+            class="flex items-center gap-1 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs font-bold text-white/60 hover:text-white transition disabled:opacity-20 disabled:cursor-not-allowed"
+          >
+            <ChevronRight class="w-3.5 h-3.5" />
+            السابق
+          </button>
+          <span class="text-xs text-white/30 px-2 tabular-nums">
+            صفحة <span class="font-black text-white/80">{{ meta.current_page }}</span> / {{ meta.last_page }}
+          </span>
+          <button
+            :disabled="meta.current_page >= meta.last_page || loading"
+            @click="loadPage(meta.current_page + 1)"
+            class="flex items-center gap-1 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs font-bold text-white/60 hover:text-white transition disabled:opacity-20 disabled:cursor-not-allowed"
+          >
+            التالي
+            <ChevronLeft class="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
     </div>
@@ -273,7 +345,7 @@
 import { onMounted, ref, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useBusStore } from '@/stores/busStore';
-import { ArrowRight, Building2, Clock, RefreshCw, Wallet, Loader2, CheckCircle, Link } from 'lucide-vue-next';
+import { ArrowRight, Building2, Clock, RefreshCw, Wallet, Loader2, CheckCircle, Link, Search, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import axios from 'axios';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 const route = useRoute();
@@ -284,6 +356,47 @@ const transactions = ref([]);
 const meta = ref(null);
 const loading = ref(true);
 const company_account_id = ref(null);
+
+const filters = ref({
+  search: '',
+  type: '',
+  from_date: '',
+  to_date: '',
+});
+
+const hasActiveFilters = computed(() => {
+  return !!(filters.value.search || filters.value.type || filters.value.from_date || filters.value.to_date);
+});
+
+const paginationRange = computed(() => {
+  if (!meta.value || !meta.value.total) return { from: 0, to: 0 };
+  const perPage = meta.value.per_page || 30;
+  const from = (meta.value.current_page - 1) * perPage + 1;
+  const to = Math.min(meta.value.current_page * perPage, meta.value.total);
+  return { from, to };
+});
+
+let searchDebounce = null;
+const onSearchInput = () => {
+  if (searchDebounce) clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    onFiltersChange();
+  }, 300);
+};
+
+const onFiltersChange = () => {
+  loadPage(1);
+};
+
+const resetFilters = () => {
+  filters.value = {
+    search: '',
+    type: '',
+    from_date: '',
+    to_date: '',
+  };
+  loadPage(1);
+};
 
 const showPaymentModal  = ref(false);
 const submitting        = ref(false);
@@ -483,13 +596,23 @@ const formatDt = (iso) => {
 const loadPage = async (page = 1) => {
   loading.value = true;
   try {
-    const res = await store.fetchCompanyBusStatement(route.params.id, { page });
-    
+    const params = {
+      page,
+      search: filters.value.search || undefined,
+      type: filters.value.type || undefined,
+      from_date: filters.value.from_date || undefined,
+      to_date: filters.value.to_date || undefined,
+    };
+
+    const res = await store.fetchCompanyBusStatement(route.params.id, params);
+
     company.value = res?.company || null;
     transactions.value = res?.transactions?.data || [];
     meta.value = {
       current_page: res?.transactions?.current_page || 1,
-      last_page: res?.transactions?.last_page || 1
+      last_page: res?.transactions?.last_page || 1,
+      total: res?.transactions?.total || 0,
+      per_page: res?.transactions?.per_page || 30,
     };
 
     if (!company_account_id.value) {

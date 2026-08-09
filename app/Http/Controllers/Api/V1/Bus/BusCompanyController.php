@@ -153,31 +153,81 @@ class BusCompanyController extends Controller
 public function statement(Request $request, BusCompany $company): JsonResponse
 {
     $company->load('account');
+
+    // Read filter inputs (kept consistent with other statement endpoints)
+    $from   = $request->query('from_date');
+    $to     = $request->query('to_date');
+    $type   = $request->query('type');     // 'credit' | 'debit' | null
+    $search = $request->query('search');
+
+    // Discard malformed dates so they don't crash the query (e.g. "garbage")
+    $isValidDate = function ($v) {
+        if (!is_string($v) || $v === '') return false;
+        $d = \DateTime::createFromFormat('Y-m-d', $v);
+        return $d && $d->format('Y-m-d') === $v;
+    };
+    if ($from !== null && !$isValidDate($from)) {
+        $from = null;
+    }
+    if ($to !== null && !$isValidDate($to)) {
+        $to = null;
+    }
+
+    // Page/per_page guards (avoid 0 / negative / absurd values)
+    $perPage     = max(1, min((int) $request->query('per_page', 30), 100));
+    $currentPage = max(1, (int) $request->query('page', 1));
+
+    $emptyPage = [
+        'data'         => [],
+        'total'        => 0,
+        'per_page'     => $perPage,
+        'current_page' => $currentPage,
+        'last_page'    => 1,
+    ];
+
     if (!$company->account_id) {
         return ApiResponse::success('Bus company statement retrieved.', [
-            'company' => [
+            'company'      => [
                 'id'      => $company->id,
                 'name'    => $company->name,
                 'balance' => 0,
             ],
-            'transactions' => [
-              'data'  => [],
-              'total' => 0,
-              'per_page' => 30,
-              'current_page' => 1,
-              'last_page' => 1,
-            ],
+            'transactions' => $emptyPage,
         ]);
     }
 
-    $perPage = min((int) $request->query('per_page', 30), 100);
-
-    $paginator = \App\Models\Transaction::query()
+    $query = \App\Models\Transaction::query()
         ->where('module', TransactionModule::Bus)
         ->where(function ($q) use ($company) {
             $q->where('from_account_id', $company->account_id)
                 ->orWhere('to_account_id', $company->account_id);
-        })
+        });
+
+    // Date range filter (created_at)
+    if ($from) {
+        $query->where('created_at', '>=', $from . ' 00:00:00');
+    }
+    if ($to) {
+        $query->where('created_at', '<=', $to . ' 23:59:59');
+    }
+
+    // Direction filter: credit (money IN) / debit (money OUT) relative to the company account
+    if ($type === 'credit') {
+        $query->where('to_account_id', $company->account_id);
+    } elseif ($type === 'debit') {
+        $query->where('from_account_id', $company->account_id);
+    }
+
+    // Free-text search in notes / id (limit length to avoid pathological queries)
+    if ($search !== null && $search !== '') {
+        $search = mb_substr((string) $search, 0, 100);
+        $query->where(function ($q) use ($search) {
+            $q->where('notes', 'like', '%' . $search . '%')
+              ->orWhere('id', 'like', '%' . $search . '%');
+        });
+    }
+
+    $paginator = $query
         ->with([
             'fromAccount:id,name',
             'toAccount:id,name',
