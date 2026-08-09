@@ -22,7 +22,7 @@ class FlightGroupController extends Controller
         $groups = FlightGroup::active()
             ->byCarrier($carrierId)
             ->orderBy('name')
-            ->get(['id', 'name', 'code', 'commission_rate', 'is_active']);
+            ->get(['id', 'name', 'code', 'currency', 'commission_rate', 'is_active']);
 
         return ApiResponse::success('Flight groups retrieved successfully', $groups);
     }

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'flight_carrier_id',
+    'currency',
     'account_id',
     'name',
     'code',

@@ -67,6 +67,19 @@ class FlightGroupResource extends Resource
                             ->label('شركة الطيران التابعة (اختياري)')
                             ->relationship('carrier', 'name')
                             ->searchable(),
+                        Select::make('currency')
+                            ->label('عملة المجموعة')
+                            ->options([
+                                'EGP' => 'جنيه مصري (EGP)',
+                                'KWD' => 'دينار كويتي (KWD)',
+                                'SAR' => 'ريال سعودي (SAR)',
+                                'USD' => 'دولار أمريكي (USD)',
+                                'AED' => 'درهم إماراتي (AED)',
+                            ])
+                            ->default('EGP')
+                            ->required()
+                            ->native(false)
+                            ->helperText('العملة المستخدمة في تسعير حجوزات المجموعة. الافتراضي EGP.'),
                         TextInput::make('name')
                             ->label('اسم المجموعة')
                             ->required()
@@ -207,11 +220,13 @@ class FlightGroupResource extends Resource
                     ->badge()
                     ->color('info')
                     ->sortable(),
-                TextColumn::make('carrier.currency')
-                    ->label('العملة')
+                TextColumn::make('currency')
+                    ->label('عملة المجموعة')
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {                        'EGP' => 'success',                        'KWD' => 'warning',                        'SAR' => 'info',                        'USD' => 'primary',                        default => 'gray',
-                    }),
+                    ->color(fn (?string $state): string => match ($state) {
+                        'EGP' => 'success', 'KWD' => 'warning', 'SAR' => 'info', 'USD' => 'primary', 'AED' => 'gray', default => 'gray',
+                    })
+                    ->sortable(),
                 TextColumn::make('contact_person')
                     ->label('المسؤول')
                     ->searchable()

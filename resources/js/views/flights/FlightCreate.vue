@@ -2971,10 +2971,13 @@ const recommendedCurrency = computed(() => {
     }
   }
 
-  // 3) Group booking → خذ عملة الناقل المرتبط بالمجموعة
+  // 3) Group booking → خذ عملة المجموعة (مستقلة عن الناقل)
   if (source === 'group') {
     const gid = form.value.flight_group_id;
     const group = availableGroups.value.find((g) => sameId(g.id, gid));
+    if (group?.currency) {
+      return String(group.currency).toUpperCase();
+    }
     if (group?.carrier?.currency) {
       return String(group.carrier.currency).toUpperCase();
     }
@@ -3024,6 +3027,7 @@ const currencyAutoLockReason = computed(() => {
   if (source === 'group') {
     const gid = form.value.flight_group_id;
     const group = availableGroups.value.find((g) => sameId(g.id, gid));
+    if (group?.currency) return `عملة المجموعة (${group.name || 'المجموعة'})`;
     if (group?.carrier?.currency) return `عملة ناقل المجموعة (${group.name || 'المجموعة'})`;
   }
 
@@ -4398,8 +4402,8 @@ watch(
   (groupId) => {
     if (form.value.booking_source === 'group' && groupId) {
       const selectedGroup = availableGroups.value.find(g => sameId(g.id, groupId));
-      if (selectedGroup && selectedGroup.carrier) {
-        form.value.currency = selectedGroup.carrier.currency || 'EGP';
+      if (selectedGroup) {
+        form.value.currency = selectedGroup.currency || selectedGroup.carrier?.currency || 'EGP';
       }
     }
   }
