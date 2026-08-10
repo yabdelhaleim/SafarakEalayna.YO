@@ -1,0 +1,5 @@
+$a = \App\Models\Account::find(109);
+$old = $a->balance;
+$a->balance = (float)$a->balance + 132000;
+$a->save();
+echo "Acc109: " . $old . " -> " . $a->balance . "\n";

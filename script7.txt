@@ -1,0 +1,21 @@
+$orig = \App\Models\Transaction::find(364);
+if (!$orig) { echo "Original not found.\n"; exit; }
+if ($orig->notes && strpos($orig->notes, 'عكس') === 0) { echo "ALREADY REVERSED!\n"; exit; }
+echo "Original Txn: amt={$orig->amount} curr={$orig->currency} from={$orig->from_account_id} to={$orig->to_account_id}\n";
+$rt = \App\Models\Transaction::create([
+    'type' => 'transfer',
+    'module' => 'flight',
+    'amount' => -1 * abs((float)$orig->amount),
+    'currency' => $orig->currency,
+    'from_account_id' => $orig->to_account_id,
+    'to_account_id' => $orig->from_account_id,
+    'related_type' => 'App\\Models\\Transaction',
+    'related_id' => $orig->id,
+    'created_by' => 1,
+    'notes' => 'عكس: ' . $orig->notes,
+    'posting_channel' => 'tinker_reversal',
+]);
+echo "Reverse Txn Created: ID={$rt->id} amt={$rt->amount}\n";
+$orig->notes = '[عكس بـ txn #' . $rt->id . '] ' . $orig->notes;
+$orig->save();
+echo "Original Txn notes updated.\n";

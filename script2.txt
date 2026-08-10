@@ -1,0 +1,6 @@
+$t = \App\Models\Transaction::find(325);
+echo "ID:{$t->id} Type:{$t->type->value} Amt:{$t->amount} From:{$t->from_account_id} To:{$t->to_account_id} Notes:{$t->notes}\n";
+$from = \App\Models\Account::find($t->from_account_id);
+$to = \App\Models\Account::find($t->to_account_id);
+echo "FromAcc:{$from->name} Bal:{$from->balance}\n";
+echo "ToAcc:{$to->name} Bal:{$to->balance}\n";

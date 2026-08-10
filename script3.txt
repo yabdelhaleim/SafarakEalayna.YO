@@ -1,0 +1,4 @@
+$fgt = \App\Models\Flight\FlightGroupTransaction::query()->orderByDesc('id')->limit(10)->get();
+foreach ($fgt as $g) {
+    echo "FGT#{$g->id} type={$g->type} amt={$g->amount} created={$g->created_at} notes={$g->notes}\n";
+}

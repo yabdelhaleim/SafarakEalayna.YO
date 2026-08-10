@@ -240,10 +240,18 @@ class CustomerController extends Controller
                 $toAccount = Account::findOrFail($validated['account_id']); // Treasury/Bank receiving the payment
                 $fromAccount = $customerAccount; // Customer's ledger account
 
-                $type = $validated['type'] ?? 'receipt'; // 'receipt' or 'payment'
+                $type = $validated['type'] ?? 'receipt'; // 'receipt' (سند قبض) or 'payment' (سند صرف)
 
-                $fromId = $type === 'payment' ? $toAccount->id : $fromAccount->id;
-                $toId = $type === 'payment' ? $fromAccount->id : $toAccount->id;
+                // Both receipt and payment reduce the customer AR balance under
+                // the project's convention (positive balance = receivable).
+                // - سند قبض (receipt): customer pays us → customer balance ↓
+                // - سند صرف (payment): we pay/refund customer → customer balance ↓
+                // The label differs; the journal direction does not. Previously
+                // this branch swapped from/to for type='payment', which made the
+                // customer's balance grow by `amount` instead of shrink by `amount`
+                // (Bug TX-201 — 119,047 + 50,000 = 169,047 instead of 69,047).
+                $fromId = $fromAccount->id; // customer is always the journal "from"
+                $toId   = $toAccount->id;   // treasury/bank is always the journal "to"
 
                 $moduleStr = $validated['module'] ?? 'flight';
                 $moduleEnum = TransactionModule::tryFrom($moduleStr) ?? TransactionModule::Flight;

@@ -1,0 +1,4 @@
+$big = \App\Models\Transaction::query()->where('amount', '>=', 100000)->orderByDesc('id')->limit(15)->get();
+foreach ($big as $t) {
+    echo "Txn#{$t->id} amt={$t->amount} from={$t->from_account_id} to={$t->to_account_id} created={$t->created_at}\n";
+}

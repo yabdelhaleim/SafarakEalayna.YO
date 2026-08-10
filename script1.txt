@@ -1,0 +1,2 @@
+$lp = \App\Models\Flight\FlightPayment::find(6);
+echo "ID:{$lp->id} Amt:{$lp->amount} Cur:{$lp->currency} Date:{$lp->payment_date} BookingID:{$lp->flight_booking_id}\n";

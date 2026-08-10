@@ -1,0 +1,4 @@
+$a109 = \App\Models\Account::find(109);
+$a27 = \App\Models\Account::find(27);
+echo "Acc109: ID={$a109->id} Name='{$a109->name}' Bal={$a109->balance} Curr={$a109->currency} CustID=" . ($a109->customer_id ?? 'NULL') . "\n";
+echo "Acc27:  ID={$a27->id} Name='{$a27->name}' Bal={$a27->balance} Curr={$a27->currency}\n";

@@ -1,0 +1,14 @@
+$o = \App\Models\Transaction::find(364);
+$r = \App\Models\Transaction::create([
+    'type' => 'transfer',
+    'module' => 'flight',
+    'amount' => -132000,
+    'currency' => 'EGP',
+    'from_account_id' => 27,
+    'to_account_id' => 109,
+    'related_type' => 'App\\Models\\Transaction',
+    'related_id' => 364,
+    'created_by' => 1,
+    'notes' => 'عكس: ' . $o->notes,
+]);
+echo "RevID:" . $r->id . "\n";

@@ -27,20 +27,18 @@ class CustomerService
                 'fawryTransactions',
                 'onlineTransactions',
             ])
-            // Phase 4 — Flight/Bus debt computed from actual bookings (not shared ledger),
-            // so a bus customer no longer shows up in the flight list with bus-only debt.
+            // Phase 4 — bus debt aggregate (flight_bookings does NOT have
+            // total_price/paid_amount columns — only bus_bookings does, and
+            // the per-module bus debt is computed in BusCustomerController
+            // instead). Reverting the broken flightBookings aggregates so the
+            // /api/v1/customers endpoint stops throwing "Unknown column"
+            // SQL errors when this query runs on MySQL.
             ->withSum([
-                'flightBookings as total_flight_amount' => function ($q) {
-                    $q->whereNotIn('status', ['cancelled']);
-                },
                 'busBookings as total_bus_amount' => function ($q) {
                     $q->whereNotIn('status', ['cancelled']);
                 },
             ], 'total_price')
             ->withSum([
-                'flightBookings as total_flight_paid' => function ($q) {
-                    $q->whereNotIn('status', ['cancelled']);
-                },
                 'busBookings as total_bus_paid' => function ($q) {
                     $q->whereNotIn('status', ['cancelled']);
                 },

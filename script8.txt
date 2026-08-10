@@ -1,0 +1,7 @@
+$orig = \App\Models\Transaction::find(364);
+echo "Orig#364 amt={$orig->amount} notes=" . substr($orig->notes, 0, 80) . "\n";
+$revs = \App\Models\Transaction::query()->where('notes','LIKE','%عكس%')->where('related_id',364)->where('related_type','App\\Models\\Transaction')->get();
+echo "Reverses found: " . count($revs) . "\n";
+foreach ($revs as $r) {
+    echo "  Rev#{$r->id} amt={$r->amount}\n";
+}

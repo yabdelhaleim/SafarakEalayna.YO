@@ -1,0 +1,3 @@
+$a109 = \App\Models\Account::find(109);
+echo "Acc109: ID={$a109->id} Name='{$a109->name}' Bal={$a109->balance} Curr={$a109->currency} CustID=" . ($a109->customer_id ?? 'NULL') . "\n";
+echo "After reversal: Bal will be " . ((float)$a109->balance + 132000) . " EGP\n";

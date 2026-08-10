@@ -1,0 +1,67 @@
+echo "=== WIDE INVESTIGATION ===\n";
+
+echo "\n-- LAST FLIGHT PAYMENT (lp=6) --\n";
+$lp = \App\Models\Flight\FlightPayment::query()->orderByDesc('id')->first();
+echo "FlightPayment ID: {$lp->id}\n";
+echo "Amount: {$lp->amount}\n";
+echo "Currency: {$lp->currency}\n";
+echo "Transaction ID: {$lp->transaction_id}\n";
+
+echo "\n-- TRANSACTION #325 (linked to FlightPayment) --\n";
+$t325 = \App\Models\Transaction::find(325);
+if ($t325) {
+    $tType = $t325->type;
+    if (is_object($tType) && property_exists($tType, 'value')) { $tType = $tType->value; }
+    echo "ID: {$t325->id}\n";
+    echo "Type: {$tType}\n";
+    echo "Amount: {$t325->amount}\n";
+    echo "From Acc: {$t325->from_account_id}\n";
+    echo "To Acc: {$t325->to_account_id}\n";
+    echo "Notes: {$t325->notes}\n";
+    echo "Created: {$t325->created_at}\n";
+} else {
+    echo "Transaction 325 NOT FOUND\n";
+}
+
+echo "\n-- LAST 5 FLIGHT_GROUP_TRANSACTIONS --\n";
+$lastFGTs = \App\Models\Flight\FlightGroupTransaction::query()->orderByDesc('id')->limit(5)->get();
+foreach ($lastFGTs as $fgt) {
+    echo "FGT #{$fgt->id}: type={$fgt->type} amount={$fgt->amount} created={$fgt->created_at} notes={$fgt->notes}\n";
+}
+
+echo "\n-- SEARCHING FOR 132000 in FlightGroupTransaction --\n";
+$matches = \App\Models\Flight\FlightGroupTransaction::query()->where('amount', 132000)->orWhere('amount', 132000.00)->limit(5)->get();
+foreach ($matches as $m) {
+    echo "FOUND: FGT #{$m->id}: type={$m->type} amount={$m->amount}\n";
+}
+if ($matches->isEmpty()) { echo "No FGT with 132000 found.\n"; }
+
+echo "\n-- LAST 5 TRANSACTIONS (general) --\n";
+$lastTxns = \App\Models\Transaction::query()->orderByDesc('id')->limit(5)->get();
+foreach ($lastTxns as $tx) {
+    $txType = $tx->type;
+    if (is_object($txType) && property_exists($txType, 'value')) { $txType = $txType->value; }
+    echo "Txn #{$tx->id}: type={$txType} amount={$tx->amount} from={$tx->from_account_id} to={$tx->to_account_id} created={$tx->created_at}\n";
+}
+
+echo "\n-- SEARCHING 132000 in Transactions --\n";
+$bigTxns = \App\Models\Transaction::query()->where('amount', '>=', 100000)->orderByDesc('id')->limit(10)->get();
+foreach ($bigTxns as $bt) {
+    $btType = $bt->type;
+    if (is_object($btType) && property_exists($btType, 'value')) { $btType = $btType->value; }
+    echo "Txn #{$bt->id}: type={$btType} amount={$bt->amount} created={$bt->created_at} notes={$bt->notes}\n";
+}
+
+echo "\n-- ALL ACCOUNTS FOR CUSTOMER (Ahmed) --\n";
+$b = \App\Models\Flight\FlightBooking::find($lp->flight_booking_id);
+if ($b && $b->customer_id) {
+    $ahmedId = $b->customer_id;
+    $c = \App\Models\Customer::find($ahmedId);
+    echo "Customer: {$c->name} (ID={$ahmedId})\n";
+    $custs = \App\Models\Account::query()->where('customer_id', $ahmedId)->get(['id','name','balance','currency']);
+    foreach ($custs as $cu) {
+        echo "  Acct ID={$cu->id} Name='{$cu->name}' Bal={$cu->balance} Curr={$cu->currency}\n";
+    }
+}
+
+echo "\n=== END ===\n";
