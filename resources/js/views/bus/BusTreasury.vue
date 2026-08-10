@@ -163,8 +163,8 @@
                 >
                   <td class="px-5 py-3.5 font-mono text-xs text-white/40">{{ formatDt(tx.created_at) }}</td>
                   <td class="px-5 py-3.5">
-                    <span :class="[tx.type === 'income' ? 'text-emerald-400' : 'text-red-400', 'text-xs font-bold uppercase']">
-                      {{ tx.type === 'income' ? 'إيداع' : 'سحب' }}
+                    <span :class="[txTypeClass(tx.type), 'text-xs font-bold uppercase']">
+                      {{ txTypeLabel(tx.type) }}
                     </span>
                   </td>
                   <td class="px-5 py-3.5 font-mono font-black text-white text-sm tabular-nums">{{ Number(tx.amount).toLocaleString('ar-EG') }}</td>
@@ -219,8 +219,8 @@
                 <tr v-for="tx in accountTxRows" :key="tx.id" class="hover:bg-white/[0.02]">
                   <td class="px-4 py-3 font-mono text-white/40">{{ formatDt(tx.created_at) }}</td>
                   <td class="px-4 py-3">
-                    <span :class="tx.type === 'income' ? 'text-emerald-400' : 'text-red-400'" class="font-bold">
-                      {{ tx.type === 'income' ? 'إيداع' : 'سحب' }}
+                    <span :class="txTypeClass(tx.type)" class="font-bold">
+                      {{ txTypeLabel(tx.type) }}
                     </span>
                   </td>
                   <td class="px-4 py-3 font-mono font-bold text-white tabular-nums text-sm">{{ Number(tx.amount).toLocaleString('ar-EG') }}</td>
@@ -273,6 +273,30 @@ const formatDt = (iso) => {
     return new Date(iso).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
   } catch {
     return iso;
+  }
+};
+
+// Map raw transaction.type (matches App\Enums\TransactionType) to a display label.
+// Backend can legitimately return: income | expense | transfer | refund | writeoff.
+const txTypeLabel = (type) => {
+  switch (type) {
+    case 'income':   return 'إيداع';
+    case 'expense':  return 'سحب';
+    case 'transfer': return 'تحويل';
+    case 'refund':   return 'استرداد';
+    case 'writeoff': return 'شطب';
+    default:         return type || '—';
+  }
+};
+
+const txTypeClass = (type) => {
+  switch (type) {
+    case 'income':   return 'text-emerald-400';
+    case 'expense':  return 'text-red-400';
+    case 'transfer': return 'text-sky-400';
+    case 'refund':   return 'text-red-400';
+    case 'writeoff': return 'text-amber-400';
+    default:         return 'text-white/50';
   }
 };
 
