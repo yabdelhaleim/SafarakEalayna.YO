@@ -45,6 +45,7 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Transaction;
+use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\DB;
 
 // ───── CLI args ─────
@@ -220,11 +221,16 @@ DB::transaction(function () use ($rows) {
         $txIds = $r['tx_ids'];
 
         // 1) Update the account balance directly.
-        //    Lock the row to prevent races with concurrent payDebt operations.
-        $account = Account::where('id', $accountId)->lockForUpdate()->firstOrFail();
-        $newBalance = round((float) $account->balance - $fix, 2);
-        $account->balance = $newBalance;
-        $account->save();
+        //    Wrap in LedgerBalanceMutationGuard::run() so the Account::booted()
+        //    updating guard (which rejects unauthorized balance writes) lets
+        //    this correction through — this IS an authorized ledger mutation,
+        //    paired with an AccountEntry row below.
+        LedgerBalanceMutationGuard::run(function () use ($accountId, $fix, &$newBalance) {
+            $account = Account::where('id', $accountId)->lockForUpdate()->firstOrFail();
+            $newBalance = round((float) $account->balance - $fix, 2);
+            $account->balance = $newBalance;
+            $account->save();
+        });
 
         // 2) Append a balancing AccountEntry (append-only — never modify the
         //    original buggy entries; create an offsetting one).
