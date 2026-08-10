@@ -1266,7 +1266,8 @@ class FinancialReportService
                         continue;
                     }
 
-                    $dir = $balance < 0 ? 'payables' : 'receivables';
+                    // ✅ FlightGroup = supplier (مورد): موجب = دين علينا لهم (payables)، سالب = رصيد مسبق لنا (receivables).
+                    $dir = $balance > 0 ? 'payables' : 'receivables';
                     if ($direction !== 'all' && $direction !== $dir) {
                         continue;
                     }
@@ -1351,17 +1352,27 @@ class FinancialReportService
             return abs($b['balance_egp']) <=> abs($a['balance_egp']);
         });
 
-        // Calculate totals
-        $totalReceivables = 0.0;
-        $totalPayables = 0.0;
+// Calculate totals — FlightGroup behaves like a supplier:
+// موجب = المستحق علينا، سالب = المستحق لنا.
+$totalReceivables = 0.0;
+$totalPayables = 0.0;
 
-        foreach ($results as $item) {
-            if ($item['balance_egp'] > 0) {
-                $totalReceivables += $item['balance_egp'];
-            } else {
-                $totalPayables += abs($item['balance_egp']);
-            }
+foreach ($results as $item) {
+    $isSupplier = in_array($item['entity_type'] ?? '', ['flight_group'], true);
+    if ($isSupplier) {
+        if ($item['balance_egp'] > 0) {
+            $totalPayables += abs($item['balance_egp']);
+        } else {
+            $totalReceivables += abs($item['balance_egp']);
         }
+    } else {
+        if ($item['balance_egp'] > 0) {
+            $totalReceivables += $item['balance_egp'];
+        } else {
+            $totalPayables += abs($item['balance_egp']);
+        }
+    }
+}
 
         return [
             'total_receivables' => round($totalReceivables, 2),
