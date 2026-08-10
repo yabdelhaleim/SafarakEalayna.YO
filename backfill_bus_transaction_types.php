@@ -44,12 +44,20 @@
  *
  * Usage
  * -----
- *   php backfill_bus_transaction_types.php              # dry-run (default)
- *   php backfill_bus_transaction_types.php --apply      # actually update
+ *   php backfill_bus_transaction_types.php                       # dry-run (default)
+ *   php backfill_bus_transaction_types.php --apply               # actually update
  *   php backfill_bus_transaction_types.php --apply --module=bus,flight
+ *   php backfill_bus_transaction_types.php --apply --full-backup # full DB dump first
  *
  * The script is idempotent: running it twice produces no second wave of
  * changes because it filters on `type='transfer'`.
+ *
+ * Backups
+ * --------
+ * With --apply, a SQL snapshot of the rows-about-to-change is always
+ * written to storage/app/backups/. Add --full-backup to also dump the
+ * whole database via mysqldump (using Laravel's DB credentials from
+ * config/database.php — no shell access required).
  */
 
 declare(strict_types=1);
@@ -66,6 +74,7 @@ $kernel->bootstrap();
 
 $argv = $_SERVER['argv'];
 $apply = in_array('--apply', $argv, true);
+$fullBackup = in_array('--full-backup', $argv, true);
 $moduleArg = null;
 foreach ($argv as $a) {
     if (str_starts_with($a, '--module=')) {
@@ -75,6 +84,11 @@ foreach ($argv as $a) {
 $modules = $moduleArg
     ? array_map('trim', explode(',', $moduleArg))
     : [TransactionModule::Bus->value];
+
+if ($fullBackup && ! $apply) {
+    fwrite(STDERR, "--full-backup only makes sense with --apply; ignoring.\n");
+    $fullBackup = false;
+}
 
 echo "=== Bus transaction-type backfill ===\n";
 echo 'Mode: '.($apply ? 'APPLY (writing to DB)' : 'DRY-RUN (no writes)')."\n";
@@ -86,7 +100,89 @@ $stats = [
     'skipped'    => 0,
     'unresolved' => 0,
     'by_target'  => [],
+    'backup'     => null,
 ];
+
+// In APPLY mode, take a SQL snapshot of the rows we're about to touch so
+// the operator can roll back without needing DB credentials. The dump
+// goes to storage/app/backups/ next to the application so it doesn't need
+// a writable $HOME or /tmp.
+if ($apply) {
+    $backupDir = __DIR__.'/storage/app/backups';
+    if (! is_dir($backupDir) && ! @mkdir($backupDir, 0755, true) && ! is_dir($backupDir)) {
+        fwrite(STDERR, "FATAL: could not create backup directory: {$backupDir}\n");
+        exit(1);
+    }
+    $stats['backup'] = [];
+
+    // ── Optional full DB dump via mysqldump (using Laravel credentials) ──
+    if ($fullBackup) {
+        $fullBackupFile = $backupDir.'/full_db_pre_backfill_'.date('Ymd_His').'.sql';
+        $cfg = config('database.connections.'.config('database.default'));
+
+        if (($cfg['driver'] ?? null) === 'mysql' && ! empty($cfg['database'])) {
+            $mysqldumpBin = trim((string) @shell_exec('command -v mysqldump 2>/dev/null'));
+
+            if ($mysqldumpBin !== '') {
+                // Pass password via env var so it doesn't leak in `ps`.
+                $env = 'MYSQL_PWD='.escapeshellarg((string) ($cfg['password'] ?? ''));
+                $cmd = sprintf(
+                    '%s mysqldump --host=%s --port=%s --user=%s --single-transaction --routines --triggers %s > %s 2>/dev/null',
+                    $env,
+                    escapeshellarg((string) ($cfg['host'] ?? '127.0.0.1')),
+                    escapeshellarg((string) ($cfg['port'] ?? '3306')),
+                    escapeshellarg((string) ($cfg['username'] ?? 'root')),
+                    escapeshellarg((string) $cfg['database']),
+                    escapeshellarg($fullBackupFile)
+                );
+
+                $exit = 0;
+                passthru($cmd, $exit);
+                if ($exit === 0 && file_exists($fullBackupFile) && filesize($fullBackupFile) > 0) {
+                    echo "Full DB backup: {$fullBackupFile} (".number_format(filesize($fullBackupFile))." bytes)\n";
+                    $stats['backup'][] = $fullBackupFile;
+                } else {
+                    @unlink($fullBackupFile);
+                    fwrite(STDERR, "WARN: mysqldump failed (exit {$exit}); falling back to row-level backup only.\n");
+                }
+            } else {
+                fwrite(STDERR, "WARN: mysqldump binary not found on PATH; skipping full DB dump.\n");
+                echo "      (Install mysql-client or run a manual dump if you need a full snapshot.)\n";
+            }
+        } else {
+            fwrite(STDERR, "WARN: --full-backup only supports MySQL connections; current driver is '".($cfg['driver'] ?? 'unknown')."'.\n");
+        }
+    }
+
+    // ── Row-level backup (always written when --apply is set) ────────
+    $backupFile = $backupDir.'/bus_tx_type_pre_backfill_'.date('Ymd_His').'.sql';
+
+    $rows = DB::table('transactions')
+        ->whereIn('module', $modules)
+        ->where('type', TransactionType::Transfer->value)
+        ->get(['id', 'type', 'amount', 'from_account_id', 'to_account_id', 'notes']);
+
+    $fh = fopen($backupFile, 'w');
+    if ($fh === false) {
+        fwrite(STDERR, "FATAL: could not open backup file for writing: {$backupFile}\n");
+        exit(1);
+    }
+    fwrite($fh, "-- Bus transaction-type backfill snapshot\n");
+    fwrite($fh, '-- Generated: '.date('c')."\n");
+    fwrite($fh, '-- Rows: '.count($rows)."\n");
+    fwrite($fh, "-- To restore: UPDATE transactions SET type = '<original>' WHERE id IN (...);\n\n");
+    foreach ($rows as $r) {
+        $notes = str_replace("'", "''", (string) $r->notes);
+        fwrite($fh,
+            "UPDATE transactions SET type='".$r->type."' WHERE id=".$r->id.
+            "; -- notes='".$notes."'\n"
+        );
+    }
+    fclose($fh);
+    $stats['backup'][] = $backupFile;
+
+    echo "Row-level backup: {$backupFile} (".count($rows)." rows)\n\n";
+}
 
 // Process in chunks to avoid loading the whole history into memory.
 Transaction::query()
