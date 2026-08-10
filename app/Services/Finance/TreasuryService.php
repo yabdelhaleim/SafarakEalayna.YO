@@ -643,6 +643,15 @@ class TreasuryService
         // 1) Iterate over the unified debts report (booking-derived taxonomy).
         foreach ($debtsReport['items'] as $item) {
             $balance = (float) ($item['balance'] ?? 0);
+            $entityType = (string) ($item['entity_type'] ?? '');
+
+            // ⚠️ FlightGroup = supplier (مورد): تقرير الديون يُرسل موجب = المستحق علينا،
+            // بينما هذا الـ trial balance يحسب موجب = المستحق لنا. نعكس الإشارة للمجموعات
+            // فقط كي لا تُحسب مرتين بإشارتين متعاكستين عند fallback (الخطوة 3).
+            if ($entityType === 'flight_group') {
+                $balance = -$balance;
+            }
+
             if ($balance === 0.0) {
                 continue;
             }
@@ -652,7 +661,6 @@ class TreasuryService
             $egp = abs($balance) * $rate;
 
             if ($balance > 0) {
-                $entityType = (string) ($item['entity_type'] ?? '');
                 // الأرصدة الموجبة للموردين/الشركات/الخطوط مُدرجة في total_balances كأصول مسبقة الدفع
                 if (! in_array($entityType, self::TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES, true)) {
                     continue;
@@ -713,6 +721,12 @@ class TreasuryService
                     return;
                 }
                 $balance = (float) $acc->balance;
+                // ⚠️ flight_group = supplier: في الحسابات الفعلية رصيدها سالب = علينا،
+                // وفي تقرير الديون رصيدها موجب = علينا أيضًا. نعكس الإشارة هنا لتطابق
+                // اتجاه $dueFromUs (الذي يستقبل الموجب من الخطوة 1 للمجموعات).
+                if (((string) $acc->type) === 'flight_group') {
+                    $balance = -$balance;
+                }
                 if ($balance === 0.0) {
                     return;
                 }
