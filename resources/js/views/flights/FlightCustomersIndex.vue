@@ -184,14 +184,18 @@
                 </td>
                 <!-- Affiliation -->
                 <td><span class="text-xs text-muted">{{ customer.affiliation || '—' }}</span></td>
-                <!-- Balance -->
+                <!-- Balance (Phase 4 — flight-only debt; bus debt no longer leaks here) -->
                 <td @click="openPayDebtModal(customer)" class="balance-cell" title="اضغط لتسجيل سند قبض">
                   <div class="flex flex-col">
-                    <span :class="['font-mono text-sm', formatBalance(customer.balance, 'customer').class]">
-                      {{ formatBalance(customer.balance, 'customer').text }}
-                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(customer.balance, 'customer').label">
-                        {{ formatBalance(customer.balance, 'customer').label }}
+                    <span :class="['font-mono text-sm', formatBalance(customer.flight_remaining_debt, 'customer').class]">
+                      {{ formatBalance(customer.flight_remaining_debt, 'customer').text }}
+                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(customer.flight_remaining_debt, 'customer').label">
+                        {{ formatBalance(customer.flight_remaining_debt, 'customer').label }}
                       </span>
+                    </span>
+                    <span v-if="(customer.flight_bookings_count || 0) === 0 && Number(customer.flight_remaining_debt || 0) === 0" class="text-[10px] text-muted/60 mt-0.5">
+                      لا يوجد نشاط طيران
+                    </span>
                     </span>
                   </div>
                 </td>
@@ -284,14 +288,18 @@
                   </span>
                   <span v-else class="text-muted/40">—</span>
                 </td>
-                <!-- Balance -->
+                <!-- Balance (Phase 4 — flight-only debt; bus debt no longer leaks here) -->
                 <td @click="openPayDebtModal(customer)" class="balance-cell" title="اضغط لتسجيل سند قبض">
                   <div class="flex flex-col">
-                    <span :class="['font-mono text-sm', formatBalance(customer.balance, 'customer').class]">
-                      {{ formatBalance(customer.balance, 'customer').text }}
-                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(customer.balance, 'customer').label">
-                        {{ formatBalance(customer.balance, 'customer').label }}
+                    <span :class="['font-mono text-sm', formatBalance(customer.flight_remaining_debt, 'customer').class]">
+                      {{ formatBalance(customer.flight_remaining_debt, 'customer').text }}
+                      <span class="text-[11px] font-sans mr-1" v-if="formatBalance(customer.flight_remaining_debt, 'customer').label">
+                        {{ formatBalance(customer.flight_remaining_debt, 'customer').label }}
                       </span>
+                    </span>
+                    <span v-if="(customer.flight_bookings_count || 0) === 0 && Number(customer.flight_remaining_debt || 0) === 0" class="text-[10px] text-muted/60 mt-0.5">
+                      لا يوجد نشاط طيران
+                    </span>
                     </span>
                   </div>
                 </td>
@@ -1543,14 +1551,16 @@ const fetchStats = async () => {
     const groups = resGroups.data?.data || [];
     stats.groupsCount = groups.length;
 
-    // Total debt — keep module='flight' here on purpose: this card is the
-    // flight-business receivables total, not the office-wide AR.
+    // Total debt — flight-business receivables total only.
+    // Phase 4: sum the per-customer flight_remaining_debt (computed from
+    // non-cancelled flight bookings) instead of the shared ledger balance,
+    // so bus debt is no longer counted in the flight total.
     const resAll = await axios.get('/api/v1/customers', { params: { module: 'flight', per_page: 1000 } });
     const items = resAll.data?.data?.items || resAll.data?.data || [];
     let debtSum = 0;
     items.forEach(c => {
-      const bal = parseFloat(c.balance || 0);
-      if (bal > 0) debtSum += bal;
+      const d = parseFloat(c.flight_remaining_debt || 0);
+      if (d > 0) debtSum += d;
     });
     stats.totalDebt = debtSum;
   } catch (error) {
@@ -1794,9 +1804,12 @@ const openPayDebtModal = (customerRef, booking = null) => {
     // bal < 0 = مستحق لنا → سند قبض
     defaultType = parseFloat(customer.balance || 0) > 0 ? 'payment' : 'debt';
   } else {
-    // bal > 0 means customer owes us → collect (receipt)
-    // bal < 0 means we owe customer → refund (payment)
-    defaultType = parseFloat(customer.balance || 0) > 0 ? 'receipt' : 'payment';
+    // Phase 4 — use flight_remaining_debt (computed from non-cancelled flight
+    // bookings only) so a bus customer's bus debt doesn't trigger a wrong
+    // default receipt on the flight page.
+    // debt > 0 means customer owes us → collect (receipt)
+    // debt < 0 means we owe customer → refund (payment)
+    defaultType = parseFloat(customer.flight_remaining_debt || 0) > 0 ? 'receipt' : 'payment';
   }
   payDebtForm.type = defaultType;
 
@@ -1810,7 +1823,10 @@ const openPayDebtModal = (customerRef, booking = null) => {
     payDebtForm.booking_id = null;
     payDebtForm.booking_number = null;
     payDebtForm.booking_remaining = null;
-    payDebtForm.amount = customer.balance !== 0 ? Math.abs(parseFloat(customer.balance)) : '';
+    // Phase 4 — pre-fill with the flight-only debt so the modal default
+    // matches what the user sees in the row above (no bus-debt leak).
+    const flightDebt = parseFloat(customer.flight_remaining_debt || 0);
+    payDebtForm.amount = flightDebt !== 0 ? Math.abs(flightDebt) : '';
     payDebtForm.notes = isGroup
       ? (defaultType === 'debt' ? `سند قبض — تحصيل من مجموعة طيران: ${customer.name}` : `سند صرف — دفع لمجموعة طيران: ${customer.name}`)
       : (defaultType === 'payment' ? `سند صرف — إرجاع متبقي للعميل: ${customer.name || customer.full_name}` : `سند قبض — تسديد مديونية: ${customer.name || customer.full_name}`);

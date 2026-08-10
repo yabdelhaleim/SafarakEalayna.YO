@@ -229,6 +229,20 @@ class CustomerResource extends Resource
                     ])
                     ->action(function (Customer $record, array $data): void {
                         try {
+                            // Phase 4 fix: derive the pay-debt module from the
+                            // customer's actual module_type instead of always
+                            // hard-coding 'flight'. Bus/hajj/visa customers
+                            // were being misclassified on every payment.
+                            $moduleForPayDebt = match (strtolower((string) $record->module_type)) {
+                                'bus'         => 'bus',
+                                'fawry'       => 'fawry',
+                                'online'      => 'online',
+                                'wallet_transfer' => 'wallet_transfer',
+                                'visas'       => 'visa',
+                                'hajj_umra'   => 'hajj_umra',
+                                default       => 'flights', // flights / null / office / unknown → default to flight
+                            };
+
                             $resp = \Illuminate\Support\Facades\Http::withHeaders([
                                 'Authorization' => 'Bearer ' . (\Illuminate\Support\Facades\Auth::user()?->createToken('filament')->plainTextToken ?? ''),
                                 'Accept' => 'application/json',
@@ -236,7 +250,7 @@ class CustomerResource extends Resource
                                 'amount' => (float) $data['amount'],
                                 'account_id' => (int) $data['account_id'],
                                 'notes' => $data['notes'] ?? null,
-                                'module' => 'flight',
+                                'module' => $moduleForPayDebt,
                             ]);
                             if ($resp->successful()) {
                                 \Filament\Notifications\Notification::make()

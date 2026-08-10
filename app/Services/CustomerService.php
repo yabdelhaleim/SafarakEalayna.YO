@@ -27,6 +27,24 @@ class CustomerService
                 'fawryTransactions',
                 'onlineTransactions',
             ])
+            // Phase 4 — Flight/Bus debt computed from actual bookings (not shared ledger),
+            // so a bus customer no longer shows up in the flight list with bus-only debt.
+            ->withSum([
+                'flightBookings as total_flight_amount' => function ($q) {
+                    $q->whereNotIn('status', ['cancelled']);
+                },
+                'busBookings as total_bus_amount' => function ($q) {
+                    $q->whereNotIn('status', ['cancelled']);
+                },
+            ], 'total_price')
+            ->withSum([
+                'flightBookings as total_flight_paid' => function ($q) {
+                    $q->whereNotIn('status', ['cancelled']);
+                },
+                'busBookings as total_bus_paid' => function ($q) {
+                    $q->whereNotIn('status', ['cancelled']);
+                },
+            ], 'paid_amount')
             ->leftJoin('accounts', 'customers.account_id', '=', 'accounts.id')
             ->select('customers.*');
 

@@ -37,6 +37,13 @@ class CustomerResource extends JsonResource
             $activeModules[] = ['id' => 'online', 'name' => 'أونلاين', 'color' => 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'];
         }
 
+        // Phase 4 — Per-module debt, computed from non-cancelled bookings only,
+        // so the flight page no longer inherits bus debt from the shared ledger.
+        $flightAmount = (float) ($this->total_flight_amount ?? 0);
+        $flightPaid   = (float) ($this->total_flight_paid ?? 0);
+        $busAmount    = (float) ($this->total_bus_amount ?? 0);
+        $busPaid      = (float) ($this->total_bus_paid ?? 0);
+
         return [
             'id' => $this->id,
             'full_name' => $this->full_name,
@@ -54,6 +61,9 @@ class CustomerResource extends JsonResource
             'customer_tier' => $this->customer_tier?->value,
             'notes' => $this->notes,
             'balance' => (float) ($this->ledgerAccount?->balance ?? 0),
+            // Per-module outstanding balances (bookings - payments, non-cancelled only).
+            'flight_remaining_debt' => round($flightAmount - $flightPaid, 2),
+            'bus_remaining_debt'    => round($busAmount - $busPaid, 2),
             'active_modules' => $activeModules,
             'created_by_id' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->id),
             'created_by_name' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->name),
