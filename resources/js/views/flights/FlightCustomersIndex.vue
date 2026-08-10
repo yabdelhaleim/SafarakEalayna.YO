@@ -196,7 +196,6 @@
                     <span v-if="(customer.flight_bookings_count || 0) === 0 && Number(customer.flight_remaining_debt || 0) === 0" class="text-[10px] text-muted/60 mt-0.5">
                       لا يوجد نشاط طيران
                     </span>
-                    </span>
                   </div>
                 </td>
                 <!-- Actions -->
@@ -299,7 +298,6 @@
                     </span>
                     <span v-if="(customer.flight_bookings_count || 0) === 0 && Number(customer.flight_remaining_debt || 0) === 0" class="text-[10px] text-muted/60 mt-0.5">
                       لا يوجد نشاط طيران
-                    </span>
                     </span>
                   </div>
                 </td>
