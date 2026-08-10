@@ -382,8 +382,19 @@ const summary = ref({ total_receivables: 0, total_payables: 0, net_balance: 0 })
 const moduleStats = ref({ total_income: 0, total_expense: 0 });
 
 // Derived lists
-const receivableItems = computed(() => allItems.value.filter(i => i.balance > 0));
-const payableItems = computed(() => allItems.value.filter(i => i.balance < 0));
+// المورد (flight_group) عنده منطق معكوس: موجب = المستحق علينا، سالب = المستحق لنا.
+// باقي الكيانات (customer, supplier, bus_company...) تتبع المنطق المعتاد.
+const SUPPLIER_ENTITY_TYPES = ['flight_group', 'flight_carrier'];
+
+const isSupplierLike = (item) =>
+    SUPPLIER_ENTITY_TYPES.includes(item?.entity_type);
+
+const receivableItems = computed(() =>
+    allItems.value.filter(i => isSupplierLike(i) ? i.balance < 0 : i.balance > 0)
+);
+const payableItems = computed(() =>
+    allItems.value.filter(i => isSupplierLike(i) ? i.balance > 0 : i.balance < 0)
+);
 
 const filteredReceivables = computed(() => {
   let list = receivableItems.value;
