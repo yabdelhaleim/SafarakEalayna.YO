@@ -268,7 +268,9 @@ function classify(Transaction $tx): ?string
         return TransactionType::Refund->value;
     }
     // Paying off supplier debt at the office: "تسديد دين شركة باصات ..."
-    if (preg_match('/تسديد دين شركة/u', $notes)) {
+    // or generic "تسديد يوم X" / "تسديد حتى تاريخ X" — both are office
+    // → supplier outflows and should be classified as expenses.
+    if (preg_match('/تسديد/u', $notes)) {
         return TransactionType::Expense->value;
     }
     // Customer payment to office: "تحصيل دفعة حجز باص ..."
