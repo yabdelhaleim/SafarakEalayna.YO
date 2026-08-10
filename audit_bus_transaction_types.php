@@ -166,6 +166,13 @@ function expectedType(?string $fromType, ?string $toType, string $toName, string
         return null; // REVIEW
     }
 
+    // Supplier → expense_clearing: office is recording a cost owed to
+    // this supplier (debit expense clearing, credit supplier AP).
+    // This IS an expense.
+    if ($fromType === $supplier && str_contains($toName, 'إقفال تكاليف')) {
+        return TransactionType::Expense->value;
+    }
+
     // expense_clearing → Supplier: reversing a cost = expense (reversal)
     if (str_contains($fromName, 'إقفال تكاليف') && $toType === $supplier) {
         return TransactionType::Expense->value;
