@@ -552,13 +552,24 @@ class TransactionService
 
     /**
      * Balanced movement between two GL accounts (debit from, credit to).
-     * Creates one Transaction (type transfer) and two AccountEntry rows.
+     * Creates one Transaction and two AccountEntry rows.
+     *
+     * The `type` column on the transaction is purely a semantic label for
+     * reports/treasury UI; it does NOT affect the two-leg balance because
+     * both AccountEntry rows are always created (debit on from, credit on to).
+     *
+     * Callers should pass a `type` whenever the journal represents a
+     * semantic outcome other than a plain transfer (e.g. customer payment
+     * posting to income clearing → 'income'; cost posting to expense
+     * clearing → 'expense'; cancellation reversal of customer debt →
+     * 'refund'). Default is 'transfer' for genuine inter-account movements.
      *
      * @param  array{
      *     amount: float,
      *     from_account_id: int,
      *     to_account_id: int,
      *     module: string,
+     *     type?: string|null,           // TransactionType value, defaults to 'transfer'
      *     related_type?: class-string|null,
      *     related_id?: int|null,
      *     notes?: string|null,
@@ -582,8 +593,16 @@ class TransactionService
                 throw new \InvalidArgumentException('from_account_id and to_account_id must differ.');
             }
 
+            // Resolve the semantic type. Default = Transfer for genuine
+            // inter-account movements (vault→bank, currency conversions).
+            // Anything else must be an explicit TransactionType case.
+            $typeValue = TransactionType::Transfer->value;
+            if (! empty($data['type'])) {
+                $typeValue = TransactionType::from((string) $data['type'])->value;
+            }
+
             $transaction = $this->persistTransaction([
-                'type' => TransactionType::Transfer->value,
+                'type' => $typeValue,
                 'amount' => $amount,
                 'currency' => $data['currency'] ?? null,
                 'module' => $data['module'],
