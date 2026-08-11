@@ -108,10 +108,12 @@ $e2eCustomerIds = DB::table('customers')
 
 // Double check: also include accounts whose customer_id is in E2E customers
 // (handles case where account name doesn't match pattern but customer does)
-foreach ($e2eCustomerIds as $cid) {
-    $acc = DB::table('accounts')->where('customer_id', $cid)->value('id');
-    if ($acc && !in_array($acc, $e2eAccountIds)) {
-        $e2eAccountIds[] = $acc;
+if (Schema::hasColumn('accounts', 'customer_id') && !empty($e2eCustomerIds)) {
+    $linked = DB::table('accounts')
+        ->whereIn('customer_id', $e2eCustomerIds)
+        ->pluck('id')->toArray();
+    foreach ($linked as $id) {
+        if (!in_array($id, $e2eAccountIds)) $e2eAccountIds[] = $id;
     }
 }
 
