@@ -181,7 +181,58 @@ echo "    ✅ backups created with prefix: {$bkPrefix}\n\n";
 echo "▶ [4/6] DELETE: removing test data inside DB transaction...\n";
 
 try {
-    DB::transaction(function () use ($e2eAccountIds, $e2eCustomerIds, $bookingsCounts) {
+    DB::transaction(function () use ($e2eAccountIds, $e2eCustomerIds, $bookingsCounts, $bkPrefix) {
+
+        // 0. Discover all child tables that FK into our target tables
+        // (we need to delete from them BEFORE deleting parents)
+        $dbName = config('database.connections.' . config('database.default') . '.database');
+
+        $childFkRows = DB::select("
+            SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = ?
+              AND REFERENCED_TABLE_NAME IN ('transactions', 'accounts', 'customers')
+              AND TABLE_SCHEMA = REFERENCED_TABLE_SCHEMA
+        ", [$dbName]);
+
+        $childTables = [];
+        foreach ($childFkRows as $fk) {
+            $childTables[$fk->TABLE_NAME] = $fk;
+        }
+
+        // Back up the child tables that have rows we're about to delete
+        // AND delete from them first
+        $knownBookingTables = array_keys($bookingsCounts);
+        foreach ($childTables as $tbl => $fk) {
+            // Skip the parents themselves
+            if (in_array($tbl, ['transactions', 'accounts', 'customers'])) continue;
+            // Skip the booking tables we already handle explicitly
+            if (in_array($tbl, $knownBookingTables)) continue;
+
+            // Decide which E2E IDs this FK references
+            $e2eIds = [];
+            if ($fk->REFERENCED_TABLE_NAME === 'customers')   $e2eIds = $e2eCustomerIds;
+            if ($fk->REFERENCED_TABLE_NAME === 'accounts')    $e2eIds = $e2eAccountIds;
+            if ($fk->REFERENCED_TABLE_NAME === 'transactions') $e2eIds = DB::table('transactions')
+                ->whereIn('from_account_id', $e2eAccountIds)
+                ->orWhereIn('to_account_id', $e2eAccountIds)
+                ->pluck('id')->toArray();
+
+            if (empty($e2eIds)) continue;
+
+            // Count first
+            $cnt = DB::table($tbl)->whereIn($fk->COLUMN_NAME, $e2eIds)->count();
+            if ($cnt > 0) {
+                // Backup child table rows
+                DB::statement("CREATE TABLE {$bkPrefix}{$tbl} AS
+                    SELECT * FROM {$tbl}
+                    WHERE {$fk->COLUMN_NAME} IN (" . implode(',', array_map('intval', $e2eIds)) . ")");
+                // Delete child rows
+                $d = DB::table($tbl)->whereIn($fk->COLUMN_NAME, $e2eIds)->delete();
+                echo "    ✓ deleted {$d} rows from {$tbl} ({$fk->COLUMN_NAME} → {$fk->REFERENCED_TABLE_NAME})\n";
+            }
+        }
+
         // 1. Delete all transactions touching E2E accounts
         $tx = DB::table('transactions')
             ->whereIn('from_account_id', $e2eAccountIds)
