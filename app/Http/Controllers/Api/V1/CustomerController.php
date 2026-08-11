@@ -41,21 +41,30 @@ class CustomerController extends Controller
             $filters = $request->only(['search', 'type', 'is_active', 'per_page', 'module', 'customer_tier', 'balance_status']);
             $filters['page'] = $request->get('page', 1);
 
-            $cacheKey = 'customers_list_' . md5(serialize($filters));
+            // Cache removed (2026-08-11): the 60s TTL was causing production
+            // issues after deploys — the /api/v1/customers response kept
+            // returning stale results until either the TTL expired or an
+            // operator manually ran `php artisan cache:clear`. The query
+            // itself is not slow enough to justify caching, and customers
+            // are an actively-edited entity where freshness matters.
+            //
+            // If we ever need to re-add caching here, prefer:
+            //   1. Tag-based invalidation via ClearsCache trait on Customer
+            //      model (already wired) so writes invalidate the cache
+            //      automatically — no manual cache:clear needed.
+            //   2. Short TTL (5s max) and document the deploy caveat.
+            $paginator = $this->customerService->getAllCustomers($filters);
 
-            $data = \App\Helpers\CacheHelper::tags(['customers'])->remember($cacheKey, 60, function () use ($filters) {
-                $paginator = $this->customerService->getAllCustomers($filters);
-                return [
-                    'items' => CustomerResource::collection($paginator)->resolve(),
-                    'pagination' => [
-                        'total' => $paginator->total(),
-                        'per_page' => $paginator->perPage(),
-                        'current_page' => $paginator->currentPage(),
-                        'last_page' => $paginator->lastPage(),
-                        'has_more' => $paginator->hasMorePages(),
-                    ],
-                ];
-            });
+            $data = [
+                'items' => CustomerResource::collection($paginator)->resolve(),
+                'pagination' => [
+                    'total' => $paginator->total(),
+                    'per_page' => $paginator->perPage(),
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'has_more' => $paginator->hasMorePages(),
+                ],
+            ];
 
             return ApiResponse::success('Customers retrieved successfully.', $data);
         } catch (\Exception $e) {
