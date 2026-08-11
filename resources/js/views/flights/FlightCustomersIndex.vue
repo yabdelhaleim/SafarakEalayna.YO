@@ -1505,11 +1505,24 @@ const fetchCustomersList = async (page = 1) => {
       customers.value = raw;
       pagination.value = { total: customers.value.length, currentPage: 1, lastPage: 1, perPage: 1000 };
     } else {
-      // Don't pass `module='flight'` — the page is already flight-specific.
-      // Passing it would apply `has('flightBookings')` on the backend, which
-      // hides newly-added companies/customers that don't yet have any flight
-      // bookings, producing "added successfully but not visible" UX bug.
-      const params = { type: activeTab.value, search: searchQuery.value, page, per_page: 15 };
+      // Pass `module='flight'` so the backend filters with `has('flightBookings')`.
+      // This fixes the production leak where bus-module customers appeared in
+      // the Flight customers list (e.g. هيثم محمود قتب — bus-only customer
+      // with 400 EGP debt). Customers with bookings in multiple modules
+      // (e.g. bus + flight) still appear correctly here because they DO have
+      // an active flight booking.
+      //
+      // Trade-off accepted: customers added via Filament without any flight
+      // booking yet won't appear in this list until their first booking is
+      // recorded. We'll address that as a separate follow-up if it becomes
+      // a real problem.
+      const params = {
+        type: activeTab.value,
+        search: searchQuery.value,
+        page,
+        per_page: 15,
+        module: 'flight',
+      };
       if (balanceFilter.value === 'settled') {
         params.balance_status = 'settled';
       } else if (balanceFilter.value === 'outstanding') {
