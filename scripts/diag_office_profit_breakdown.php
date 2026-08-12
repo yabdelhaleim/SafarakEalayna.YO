@@ -628,6 +628,110 @@ printf("  الصافي حسب transactions    : %s EGP\n", number_format($busNet
 printf("  الـ profits (من P&L)        : %s EGP\n", number_format(10172.80, 2));
 printf("  الفرق                      : %s EGP\n", number_format($busNetActual - 10172.80, 2));
 
+// ═════════════════════════════════════════════════════════════════════════
+// [17] تحقيق الـ duplication: هل في transactions مكررة على نفس related؟
+// ═════════════════════════════════════════════════════════════════════════
+$section('[17] تحقق من الـ duplication');
+
+// 17.1) income tx per booking
+$busIncomeGrouped = DB::select("
+    SELECT related_type, related_id,
+           COUNT(*) as cnt,
+           SUM(amount) as total,
+           GROUP_CONCAT(id ORDER BY id) as tx_ids,
+           GROUP_CONCAT(amount ORDER BY id) as amounts
+    FROM transactions
+    WHERE module = 'bus'
+      AND type = 'income'
+    GROUP BY related_type, related_id, amount
+    HAVING COUNT(*) > 1
+    ORDER BY cnt DESC, total DESC
+    LIMIT 20
+");
+
+echo "  --- income tx: bookings عندها > 1 transaction بنفس المبلغ ---\n";
+echo "  related                    | cnt | total     | tx_ids         | amounts\n";
+echo "  ---------------------------|-----|-----------|----------------|-------------\n";
+foreach ($busIncomeGrouped as $r) {
+    printf(
+        "  %-25s | %3d | %9s | %-14s | %s\n",
+        $r->related_type . '#' . $r->related_id,
+        $r->cnt,
+        number_format($r->total, 2),
+        $r->tx_ids,
+        $r->amounts
+    );
+}
+$report['bus_income_duplicates'] = $busIncomeGrouped;
+
+// 17.2) كل الـ bookings عندها أكتر من tx (مش بس بنفس المبلغ)
+$busAllGrouped = DB::select("
+    SELECT related_id,
+           COUNT(*) as cnt,
+           SUM(amount) as total,
+           SUM(profit_per) as profit_sum
+    FROM (
+        SELECT related_id, amount, amount as profit_per
+        FROM transactions
+        WHERE module = 'bus'
+          AND type = 'income'
+          AND related_type = 'bus_bookings'
+    ) AS sub
+    GROUP BY related_id
+    HAVING COUNT(*) > 1
+    ORDER BY cnt DESC
+    LIMIT 15
+");
+
+echo "\n  --- كل bookings عندها > 1 income tx (مع proof) ---\n";
+echo "  booking_id | income tx count | total income\n";
+echo "  -----------|-----------------|--------------\n";
+foreach ($busAllGrouped as $r) {
+    printf(
+        "  %-10d | %15d | %s\n",
+        $r->related_id,
+        $r->cnt,
+        number_format($r->total, 2)
+    );
+}
+
+// 17.3) bus_bookings exported by total_price — هل كل حجز بيعمل tx مرتين؟
+$eachBooking = DB::select("
+    SELECT b.id AS booking_id,
+           b.total_price,
+           b.paid_amount,
+           b.profit,
+           (SELECT COUNT(*) FROM transactions t
+            WHERE t.related_type = 'bus_bookings'
+              AND t.related_id = b.id
+              AND t.type = 'income') AS income_tx_count,
+           (SELECT SUM(amount) FROM transactions t
+            WHERE t.related_type = 'bus_bookings'
+              AND t.related_id = b.id
+              AND t.type = 'income') AS income_tx_sum
+    FROM bus_bookings b
+    WHERE b.deleted_at IS NULL
+      AND b.status NOT IN ('cancelled', 'refunded', 'partially_refunded')
+    ORDER BY b.id DESC
+    LIMIT 25
+");
+
+echo "\n  --- تفاصيل آخر 25 booking: total_price vs income tx sum ---\n";
+echo "  booking_id | total_price | paid_amount | profit     | inc_tx_cnt | inc_tx_sum\n";
+echo "  -----------|-------------|-------------|------------|------------|------------\n";
+foreach ($eachBooking as $r) {
+    printf(
+        "  %-10d | %11s | %11s | %10s | %10d | %s\n",
+        $r->booking_id,
+        number_format($r->total_price, 2),
+        number_format($r->paid_amount, 2),
+        number_format($r->profit, 2),
+        $r->income_tx_count,
+        number_format($r->income_tx_sum ?? 0, 2)
+    );
+}
+$report['each_booking'] = $eachBooking;
+
 echo "\n✅ Done. كل النتيجة في: {$logFile}\n";
 echo "\n";
 echo "══════════════════════════════════════════════════════════════════════════\n";
