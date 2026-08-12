@@ -79,17 +79,34 @@ $line('DB_DATABASE', $report['db_database']);
 // Defensive check: scan the script's source for any write keyword.
 // This script is supposed to be read-only. If anyone adds a write by mistake,
 // the script refuses to run.
+//
+// Use PHP token_get_all() to extract ONLY executable code (ignore comments
+// and string literals — otherwise the scanner would match itself).
 $scriptSource = file_get_contents(__FILE__);
+$tokens = token_get_all($scriptSource);
+$executableCode = '';
+foreach ($tokens as $token) {
+    if (is_array($token)) {
+        // Skip comments
+        if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+            continue;
+        }
+        $executableCode .= $token[1];
+    } else {
+        $executableCode .= $token;
+    }
+}
+
 $writeKeywords = ['DB::insert', 'DB::update', 'DB::delete', 'DB::statement',
     '->insert(', '->update(', '->delete(', '->increment(', '->decrement(',
     'TRUNCATE', 'DROP TABLE', 'DROP DATABASE', 'ALTER TABLE', 'CREATE TABLE'];
 $foundWrite = [];
 foreach ($writeKeywords as $kw) {
-    if (stripos($scriptSource, $kw) !== false) {
+    if (stripos($executableCode, $kw) !== false) {
         $foundWrite[] = $kw;
     }
 }
-$line('Write keywords found in source', empty($foundWrite) ? 'NONE (good — read-only)' : $foundWrite);
+$line('Write keywords found in executable code', empty($foundWrite) ? 'NONE (good — read-only)' : $foundWrite);
 if (! empty($foundWrite)) {
     echo "\n  ⚠️  ABORTING: this script must be read-only but contains write keywords.\n";
     exit(1);
