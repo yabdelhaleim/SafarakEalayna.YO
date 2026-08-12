@@ -283,7 +283,7 @@ echo "════════════════════════�
 echo "  Income tx:    {$preSnapshot['income_tx_count']} → {$postSnapshot['income_tx_count']} (Δ " . ($postSnapshot['income_tx_count'] - $preSnapshot['income_tx_count']) . ")\n";
 echo "  Transfer tx:  {$preSnapshot['transfer_tx_count']} → {$postSnapshot['transfer_tx_count']} (Δ " . ($postSnapshot['transfer_tx_count'] - $preSnapshot['transfer_tx_count']) . ")\n";
 echo "  Total tx:     {$preSnapshot['transactions_count']} → {$postSnapshot['transactions_count']}\n";
-echo "  Duplicate groups: " . count($dupGroups) . " → {$postDupCount}\n";
+echo "  Duplicate groups: " . count($dupBookings) . " → {$postDupCount}\n";
 
 echo "\n";
 echo "══════════════════════════════════════════════════════════════════════════\n";
