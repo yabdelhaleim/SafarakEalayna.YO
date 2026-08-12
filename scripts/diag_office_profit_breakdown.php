@@ -379,16 +379,18 @@ if ($officeTb) {
 $section('[10] حسابات الـ balance ≠ Σ entries (ghost balance)');
 
 $ghostAccounts = DB::select("
-    SELECT a.id, a.name, a.type, a.module_type, a.currency, a.balance AS stored_balance,
-           COALESCE(SUM(e.debit), 0)  AS sum_debit,
-           COALESCE(SUM(e.credit), 0) AS sum_credit,
-           (COALESCE(SUM(e.debit),0) - COALESCE(SUM(e.credit),0)) AS entries_balance,
-           a.balance - (COALESCE(SUM(e.debit),0) - COALESCE(SUM(e.credit),0)) AS diff
-    FROM accounts a
-    LEFT JOIN account_entries e ON e.account_id = a.id
-    WHERE a.is_active = 1
-    GROUP BY a.id, a.name, a.type, a.module_type, a.currency, a.balance
-    HAVING ABS(diff) > 0.01
+    SELECT * FROM (
+        SELECT a.id, a.name, a.type, a.module_type, a.currency, a.balance AS stored_balance,
+               COALESCE(SUM(e.debit), 0)  AS sum_debit,
+               COALESCE(SUM(e.credit), 0) AS sum_credit,
+               (COALESCE(SUM(e.debit),0) - COALESCE(SUM(e.credit),0)) AS entries_balance,
+               a.balance - (COALESCE(SUM(e.debit),0) - COALESCE(SUM(e.credit),0)) AS diff
+        FROM accounts a
+        LEFT JOIN account_entries e ON e.account_id = a.id
+        WHERE a.is_active = 1
+        GROUP BY a.id, a.name, a.type, a.module_type, a.currency, a.balance
+    ) AS sub
+    WHERE ABS(diff) > 0.01
     ORDER BY ABS(diff) DESC
     LIMIT 25
 ");
@@ -515,6 +517,81 @@ $report['refunds_by_module'] = $refundsByModule;
 $section('[15] حفظ JSON');
 file_put_contents($logFile, json_encode($report, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 $line('JSON saved to', $logFile);
+
+// ═════════════════════════════════════════════════════════════════════════
+// [16] تحقيقات إضافية — تحقق من tx#303 + bus profit discrepancy
+// ═════════════════════════════════════════════════════════════════════════
+$section('[16] تحقيقات إضافية');
+
+// 16.1) تفاصيل tx#303 والفرق الموجود في entries
+$rows = DB::select("
+    SELECT e.id AS entry_id, e.account_id, e.debit, e.credit, e.balance_after, e.notes
+    FROM account_entries e
+    WHERE e.transaction_id = 303
+");
+echo "  --- entries لمعاملة tx#303 ---\n";
+echo "  entry_id | account_id | debit       | credit      | balance_after | notes\n";
+foreach ($rows as $r) {
+    printf(
+        "  %-8d | %-10d | %-11s | %-11s | %-13s | %s\n",
+        $r->entry_id,
+        $r->account_id,
+        number_format($r->debit, 2),
+        number_format($r->credit, 2),
+        number_format($r->balance_after, 2),
+        mb_substr((string) ($r->notes ?? ''), 0, 40)
+    );
+}
+
+// 16.2) تفاصيل الحسابات from=26, to=27
+$acc26 = DB::table('accounts')->where('id', 26)->first();
+$acc27 = DB::table('accounts')->where('id', 27)->first();
+echo "\n  --- تفاصيل الحسابات اللي اشتركت في tx#303 ---\n";
+echo "  account #26: name={$acc26->name} | type={$acc26->type} | module_type={$acc26->module_type} | balance={$acc26->balance} | currency={$acc26->currency}\n";
+echo "  account #27: name={$acc27->name} | type={$acc27->type} | module_type={$acc27->module_type} | balance={$acc27->balance} | currency={$acc27->currency}\n";
+
+// 16.3) bus_bookings profit vs income−expense
+$busProfitSum = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('profit');
+$busBookingsTotal = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum(DB::raw('selling_price - purchase_price'));
+$busIncomeAll = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('selling_price');
+$busExpenseAll = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('purchase_price');
+
+echo "\n  --- bus_bookings: profit column vs (selling - purchase) ---\n";
+printf("  Σ profit (column)                       : %s EGP\n", number_format($busProfitSum, 2));
+printf("  Σ (selling_price - purchase_price)      : %s EGP\n", number_format($busBookingsTotal, 2));
+printf("  Σ selling_price                         : %s EGP\n", number_format($busIncomeAll, 2));
+printf("  Σ purchase_price                        : %s EGP\n", number_format($busExpenseAll, 2));
+printf("  الفرق profit vs (selling-purchase)      : %s EGP\n", number_format($busProfitSum - $busBookingsTotal, 2));
+
+// 16.4) P&L Breakdown — نرى revenueRows/expenseRows
+echo "\n  --- P&L detailed rows (revenue) ---\n";
+try {
+    $plReport2 = $reportService->report(['category' => 'office']);
+    if (! empty($plReport2['revenueRows'])) {
+        foreach ($plReport2['revenueRows'] as $r) {
+            printf("    %-30s | %s\n", $r['label'] ?? '?', number_format($r['amount'] ?? 0, 2));
+        }
+    } else {
+        echo "    (فارغ — ده السبب إن total revenue = 0)\n";
+    }
+    echo "\n  --- P&L detailed rows (expense) ---\n";
+    if (! empty($plReport2['expenseRows'])) {
+        foreach ($plReport2['expenseRows'] as $r) {
+            printf("    %-30s | %s\n", $r['label'] ?? '?', number_format($r['amount'] ?? 0, 2));
+        }
+    }
+} catch (\Throwable $e) {
+    echo "  ⚠️  P&L error: " . $e->getMessage() . "\n";
+}
+
+// 16.5) مقارنة الأرباح الحقيقية (income - expense) من transactions
+$busNetActual = $totalIncome - $totalExpense;
+echo "\n  --- الأرباح الفعلية حسب transactions ---\n";
+printf("  Income (bus)                : %s EGP\n", number_format($totalIncome, 2));
+printf("  Expense (bus+office)        : %s EGP\n", number_format($totalExpense, 2));
+printf("  الصافي حسب transactions    : %s EGP\n", number_format($busNetActual, 2));
+printf("  الـ profits (من P&L)        : %s EGP\n", number_format(10172.80, 2));
+printf("  الفرق                      : %s EGP\n", number_format($busNetActual - 10172.80, 2));
 
 echo "\n✅ Done. كل النتيجة في: {$logFile}\n";
 echo "\n";
