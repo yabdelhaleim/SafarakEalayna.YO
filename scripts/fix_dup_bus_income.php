@@ -99,29 +99,49 @@ echo "════════════════════════�
 echo "  [2] Identify duplicate income transactions\n";
 echo "══════════════════════════════════════════════════════════════════════════\n";
 
-$dupGroups = DB::select("
-    SELECT related_type, related_id, amount, currency,
-           COUNT(*) AS cnt,
+echo "  Step 2a: identify bookings with > 1 income tx (regardless of amount)\n";
+
+// Step 2a: find all bookings with multiple income tx
+$dupBookings = DB::select("
+    SELECT related_id, COUNT(*) AS cnt,
            GROUP_CONCAT(id ORDER BY id) AS tx_ids,
-           MIN(id) AS original_id,
-           MAX(id) AS duplicate_id
+           GROUP_CONCAT(amount ORDER BY id) AS amounts
     FROM transactions
     WHERE module = 'bus'
       AND type = 'income'
       AND related_type IS NOT NULL
-    GROUP BY related_type, related_id, amount, currency
+    GROUP BY related_id
     HAVING COUNT(*) > 1
-    ORDER BY related_id, amount
+    ORDER BY related_id
 ");
 
+echo "  Step 2b: for each booking, the OLDEST income tx is the sale (kept as income)\n";
+echo "            ALL other income tx are duplicates (re-typed to transfer)\n\n";
+
+// Build the duplicate list: for each booking with > 1 income tx,
+// keep the FIRST (MIN id) as income, mark the rest as duplicates to re-type
 $totalDuplicates = 0;
 $totalDuplicatedAmount = 0;
-foreach ($dupGroups as $g) {
-    $totalDuplicates += ($g->cnt - 1);
-    $totalDuplicatedAmount += ($g->cnt - 1) * (float) $g->amount;
+$updatePlan = []; // [tx_id, booking_id, amount, original_id]
+
+foreach ($dupBookings as $b) {
+    $txIds = array_map('intval', explode(',', $b->tx_ids));
+    $amounts = array_map('floatval', explode(',', $b->amounts));
+    $origId = $txIds[0]; // oldest = sale
+
+    for ($i = 1; $i < count($txIds); $i++) {
+        $updatePlan[] = [
+            'tx_id' => $txIds[$i],
+            'booking_id' => $b->related_id,
+            'amount' => $amounts[$i],
+            'original_id' => $origId,
+        ];
+        $totalDuplicates++;
+        $totalDuplicatedAmount += $amounts[$i];
+    }
 }
 
-echo str_pad('عدد groups (bookings) عندها duplicates', 60, ' ') . " : " . count($dupGroups) . " group\n";
+echo str_pad('عدد bookings عندها multiple income tx', 60, ' ') . " : " . count($dupBookings) . " booking\n";
 echo str_pad('عدد duplicate transactions (اللي هتتحدث)', 60, ' ') . " : {$totalDuplicates} tx\n";
 echo str_pad('إجمالي المبلغ المكرر', 60, ' ') . " : " . number_format($totalDuplicatedAmount, 2) . " EGP\n";
 
@@ -132,37 +152,22 @@ echo "\n";
 echo "══════════════════════════════════════════════════════════════════════════\n";
 echo "  [3] Per-pair detail (sample only — 10 first + 5 last)\n";
 echo "══════════════════════════════════════════════════════════════════════════\n";
-$sample = array_merge(
-    array_slice($dupGroups, 0, 10),
-    array_slice($dupGroups, max(0, count($dupGroups) - 5))
-);
+$sample = array_slice($updatePlan, 0, 15);
 
 echo "  original_tx | duplicate_tx | related_id | amount    | created_at_txB         | txB_notes\n";
 echo "  ------------|--------------|------------|-----------|------------------------|----------------------\n";
 
-$updates = []; // for apply mode
-foreach ($sample as $g) {
-    $txIds = array_map('intval', explode(',', $g->tx_ids));
-    $origId = $txIds[0];
-    $dupId = $txIds[1];
-    $dup = DB::table('transactions')->where('id', $dupId)->first();
-
+foreach ($sample as $u) {
+    $dup = DB::table('transactions')->where('id', $u['tx_id'])->first();
     printf(
         "  tx#%-9d | tx#%-9d | %-10d | %9s | %-22s | %s\n",
-        $origId,
-        $dupId,
-        $g->related_id,
-        number_format($g->amount, 2),
+        $u['original_id'],
+        $u['tx_id'],
+        $u['booking_id'],
+        number_format($u['amount'], 2),
         $dup->created_at,
         mb_substr((string) ($dup->notes ?? ''), 0, 30)
     );
-
-    $updates[] = [
-        'tx_id' => $dupId,
-        'booking_id' => $g->related_id,
-        'amount' => (float) $g->amount,
-        'orig_id' => $origId,
-    ];
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -179,7 +184,6 @@ if ($apply) {
         echo '  > ';
         $confirm = trim(fgets(STDIN));
         if (strtolower($confirm) !== 'yes' && $confirm !== 'y' && $confirm !== '') {
-            // empty input still confirms for interactive safety
             if (strtolower($confirm) !== 'yes' && strtolower($confirm) !== 'y') {
                 echo "\n  ❌ Aborted.\n";
                 exit(0);
@@ -188,18 +192,17 @@ if ($apply) {
     }
 
     try {
-        DB::transaction(function () use ($dupGroups, &$totalUpdates) {
+        DB::transaction(function () use ($updatePlan, &$totalUpdates) {
             $totalUpdates = 0;
-            foreach ($dupGroups as $g) {
-                $txIds = array_map('intval', explode(',', $g->tx_ids));
-                $origId = $txIds[0];
-                $dupId = $txIds[1];
+            foreach ($updatePlan as $u) {
+                $origId = $u['original_id'];
+                $dupId = $u['tx_id'];
 
                 // Sanity check: make sure the original (sale) is still income
                 $orig = DB::table('transactions')->where('id', $origId)->first();
                 if (! $orig || $orig->type !== 'income') {
                     throw new \RuntimeException(
-                        "Sanity check failed: original tx#{$origId} for booking #{$g->related_id} ".
+                        "Sanity check failed: original tx#{$origId} for booking #{$u['booking_id']} ".
                         "is not income (type={$orig->type}). Aborting transaction."
                     );
                 }
