@@ -105,7 +105,7 @@ $line('إجمالي المعاملات', number_format($totalTx));
 $line('معاملات غير متوازنة', $unbalancedCount, 'transaction');
 
 if ($unbalancedCount > 0) {
-    echo "\n  --- أول 20 معاملة غير متوازنة في قسم المكتب ---\n";
+    echo "\n  --- كل المعاملات غير المتوازنة (التفاصيل الكاملة) ---\n";
     foreach ($unbalancedTx as $tx) {
         if (! in_array($tx->module, ['bus', 'fawry', 'online', 'wallet_transfer', 'general', 'office'])) {
             continue;
@@ -122,8 +122,31 @@ if ($unbalancedCount > 0) {
             number_format($tx->diff, 2)
         );
     }
+    echo "\n  --- تفاصيل الـ from/to/notes/related لكل معاملة غير متوازنة ---\n";
+    foreach ($unbalancedTx as $tx) {
+        if (! in_array($tx->module, ['bus', 'fawry', 'online', 'wallet_transfer', 'general', 'office'])) {
+            continue;
+        }
+        $full = DB::table('transactions')->where('id', $tx->id)->first();
+        if ($full) {
+            printf(
+                "    tx#%d | %s | %s | amount=%s | from=%s | to=%s | related=%s#%s | by=%s | notes=%s\n",
+                $full->id,
+                $full->type,
+                $full->module,
+                number_format($full->amount, 2),
+                $full->from_account_id ?? 'NULL',
+                $full->to_account_id ?? 'NULL',
+                $full->related_type ?? 'NULL',
+                $full->related_id ?? 'NULL',
+                $full->created_by,
+                mb_substr((string) ($full->notes ?? ''), 0, 60)
+            );
+        }
+    }
 }
 $report['unbalanced_count'] = $unbalancedCount;
+$report['unbalanced_tx'] = $unbalancedTx;
 
 // ═════════════════════════════════════════════════════════════════════════
 // [3] معاملات يتيمة (transactions من غير entries)
@@ -216,7 +239,6 @@ $incomeByModule = DB::table('transactions')
     ->select('module', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as cnt'))
     ->where('type', 'income')
     ->whereIn('module', ['bus', 'fawry', 'online', 'wallet_transfer', 'general', 'office'])
-    ->whereNull('deleted_at')
     ->groupBy('module')
     ->get();
 
@@ -240,7 +262,6 @@ $expenseByModule = DB::table('transactions')
     ->select('module', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as cnt'))
     ->where('type', 'expense')
     ->whereIn('module', ['bus', 'fawry', 'online', 'wallet_transfer', 'general', 'office'])
-    ->whereNull('deleted_at')
     ->groupBy('module')
     ->get();
 
@@ -454,7 +475,6 @@ $expensesDetailed = DB::table('transactions')
     ->select('module', 'related_type', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as cnt'))
     ->where('type', 'expense')
     ->whereIn('module', ['general', 'office'])
-    ->whereNull('deleted_at')
     ->groupBy('module', 'related_type')
     ->orderByDesc('total')
     ->get();
@@ -481,7 +501,6 @@ $refundsByModule = DB::table('transactions')
     ->select('module', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as cnt'))
     ->where('type', 'refund')
     ->whereIn('module', ['bus', 'fawry', 'online', 'wallet_transfer', 'general', 'office'])
-    ->whereNull('deleted_at')
     ->groupBy('module')
     ->get();
 
