@@ -25,6 +25,15 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        // Idempotent: if the column was already added in a previous failed run,
+        // drop it first so we can add it + the unique index together.
+        $hasColumn = collect(DB::select("SHOW COLUMNS FROM transactions LIKE 'income_unique_key'"))->isNotEmpty();
+        if ($hasColumn) {
+            // Drop the column if it exists (no index can exist on it either, since
+            // the previous run failed BEFORE adding the unique index).
+            DB::statement('ALTER TABLE transactions DROP COLUMN income_unique_key');
+        }
+
         // Step 1: add the generated column
         // IFNULL returns NULL when type != 'income', preventing duplicates from
         // non-income rows. MySQL allows multiple NULLs in a unique index.
@@ -51,6 +60,11 @@ return new class extends Migration {
             $table->dropUnique('transactions_income_unique_key_unique');
         });
 
-        DB::statement('ALTER TABLE transactions DROP COLUMN income_unique_key');
+        // Drop the column only if it exists (defensive — the previous failed up()
+        // may have left it behind).
+        $hasColumn = collect(DB::select("SHOW COLUMNS FROM transactions LIKE 'income_unique_key'"))->isNotEmpty();
+        if ($hasColumn) {
+            DB::statement('ALTER TABLE transactions DROP COLUMN income_unique_key');
+        }
     }
 };
