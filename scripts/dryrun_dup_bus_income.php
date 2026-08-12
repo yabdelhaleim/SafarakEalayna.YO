@@ -81,14 +81,14 @@ $line('DB_DATABASE', $report['db_database']);
 // the script refuses to run.
 //
 // Use PHP token_get_all() to extract ONLY executable code (ignore comments
-// and string literals — otherwise the scanner would match itself).
+// AND string literals — otherwise the scanner would match its own keyword list).
 $scriptSource = file_get_contents(__FILE__);
 $tokens = token_get_all($scriptSource);
 $executableCode = '';
 foreach ($tokens as $token) {
     if (is_array($token)) {
-        // Skip comments
-        if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+        // Skip comments and string literals (so the scanner doesn't match itself)
+        if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING, T_INLINE_HTML], true)) {
             continue;
         }
         $executableCode .= $token[1];
