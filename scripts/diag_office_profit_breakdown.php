@@ -550,18 +550,53 @@ echo "\n  --- تفاصيل الحسابات اللي اشتركت في tx#303 --
 echo "  account #26: name={$acc26->name} | type={$acc26->type} | module_type={$acc26->module_type} | balance={$acc26->balance} | currency={$acc26->currency}\n";
 echo "  account #27: name={$acc27->name} | type={$acc27->type} | module_type={$acc27->module_type} | balance={$acc27->balance} | currency={$acc27->currency}\n";
 
-// 16.3) bus_bookings profit vs income−expense
-$busProfitSum = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('profit');
-$busBookingsTotal = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum(DB::raw('selling_price - purchase_price'));
-$busIncomeAll = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('selling_price');
-$busExpenseAll = (float) DB::table('bus_bookings')->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])->whereNull('deleted_at')->sum('purchase_price');
+// 16.3) bus_bookings profit vs income−expense (using actual columns: total_price, paid_amount)
+$busProfitSum = (float) DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->sum('profit');
 
-echo "\n  --- bus_bookings: profit column vs (selling - purchase) ---\n";
-printf("  Σ profit (column)                       : %s EGP\n", number_format($busProfitSum, 2));
-printf("  Σ (selling_price - purchase_price)      : %s EGP\n", number_format($busBookingsTotal, 2));
-printf("  Σ selling_price                         : %s EGP\n", number_format($busIncomeAll, 2));
-printf("  Σ purchase_price                        : %s EGP\n", number_format($busExpenseAll, 2));
-printf("  الفرق profit vs (selling-purchase)      : %s EGP\n", number_format($busProfitSum - $busBookingsTotal, 2));
+$busTotalPrice = (float) DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->sum('total_price');
+
+$busPaidAmount = (float) DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->sum('paid_amount');
+
+$busDebtSum = $busTotalPrice - $busPaidAmount;
+
+$busProfitZero = DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->where('profit', '<=', 0)
+    ->count();
+
+$busProfitPositive = DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->where('profit', '>', 0)
+    ->count();
+
+$busAllCount = DB::table('bus_bookings')
+    ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+    ->whereNull('deleted_at')
+    ->count();
+
+echo "\n  --- bus_bookings: profit column vs total_price/paid_amount ---\n";
+printf("  عدد الحجوزات النشطة                : %d\n", $busAllCount);
+printf("  عدد الحجوزات بـ profit > 0         : %d\n", $busProfitPositive);
+printf("  عدد الحجوزات بـ profit <= 0        : %d\n", $busProfitZero);
+printf("  Σ total_price (سعر البيع)          : %s EGP\n", number_format($busTotalPrice, 2));
+printf("  Σ paid_amount (المدفوع)             : %s EGP\n", number_format($busPaidAmount, 2));
+printf("  Σ profit (الربح المسجّل)           : %s EGP\n", number_format($busProfitSum, 2));
+printf("  إجمالي الدين (total − paid)        : %s EGP\n", number_format($busDebtSum, 2));
+printf("  الدخل الفعلي (income tx)           : %s EGP\n", number_format($totalIncome, 2));
+printf("  المصروف الفعلي (expense tx)        : %s EGP\n", number_format($totalExpense, 2));
+printf("  الصافي الفعلي (income − expense)   : %s EGP\n", number_format($totalIncome - $totalExpense, 2));
+printf("  الفرق (profit column vs actual)    : %s EGP\n", number_format($busProfitSum - ($totalIncome - $totalExpense), 2));
 
 // 16.4) P&L Breakdown — نرى revenueRows/expenseRows
 echo "\n  --- P&L detailed rows (revenue) ---\n";
