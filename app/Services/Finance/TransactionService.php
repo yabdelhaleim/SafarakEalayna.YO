@@ -601,6 +601,29 @@ class TransactionService
                 $typeValue = TransactionType::from((string) $data['type'])->value;
             }
 
+            // FIX (2026-08-12): guard against duplicate income transactions on the
+            // same related entity. A booking (or any morph entity) can have AT MOST
+            // ONE income transaction — the sale. Any subsequent collection must be
+            // a Transfer (cash → AR), not a new Income. This bug previously caused
+            // every bus booking to register 2 income tx (sale + payment) and doubled
+            // the office income sum in the trial balance.
+            $relatedType = $data['related_type'] ?? null;
+            $relatedId = $data['related_id'] ?? null;
+            if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId) {
+                $existingIncome = DB::table('transactions')
+                    ->where('related_type', $relatedType)
+                    ->where('related_id', $relatedId)
+                    ->where('type', TransactionType::Income->value)
+                    ->exists();
+                if ($existingIncome) {
+                    throw new \InvalidArgumentException(
+                        "Duplicate income transaction blocked for {$relatedType}#{$relatedId}. ".
+                        'Each booking can have only ONE income transaction (the sale). '.
+                        'Subsequent collections must be a Transfer (type=transfer).'
+                    );
+                }
+            }
+
             $transaction = $this->persistTransaction([
                 'type' => $typeValue,
                 'amount' => $amount,

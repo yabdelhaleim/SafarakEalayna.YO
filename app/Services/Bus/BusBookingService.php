@@ -541,7 +541,12 @@ class BusBookingService
                         'from_account_id' => $customerAccount->id,
                         'to_account_id' => $accountId,
                         'module' => TransactionModule::Bus->value,
-                        'type' => \App\Enums\TransactionType::Income->value,
+                        // FIX (2026-08-12): the payment must be a TRANSFER (cash collected
+                        // against the AR receivable), not a new INCOME. The previous
+                        // Income type caused every bus booking to register 2 income tx
+                        // (sale + payment) and doubled the office income sum in the
+                        // trial balance — see scripts/dryrun_dup_bus_income.php.
+                        'type' => \App\Enums\TransactionType::Transfer->value,
                         'related_type' => BusBooking::class,
                         'related_id' => $booking->id,
                         'notes' => 'تحصيل دفعة حجز باص #'.$booking->id.(($data['notes'] ?? null) ? ' — '.$data['notes'] : ''),
