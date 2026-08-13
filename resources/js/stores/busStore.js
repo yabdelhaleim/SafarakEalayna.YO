@@ -615,6 +615,10 @@ export const useBusStore = defineStore('bus', {
      * fawry, online, general, etc. Sister to
      * {@link fetchAccountBusTransactions} which only returns `module=bus`.
      *
+     * Also returns `manual_entries` (orphan ledger entries without a parent
+     * transaction) so the UI can show the user the full balance math:
+     * opening balances + transactions net = current balance.
+     *
      * Used by the unified office modal in BusTreasury.vue when the user
      * toggles "Show all operations" so they can audit a single vault
      * across every office module that has touched it.

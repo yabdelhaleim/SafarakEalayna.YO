@@ -227,6 +227,51 @@
             </span>
           </div>
           <div class="max-h-[60vh] overflow-auto p-6">
+            <!-- Opening balances / manual entries (only when office scope is active) -->
+            <div
+              v-if="accountTxScope === 'office' && manualEntries.length > 0"
+              class="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-amber-400 text-lg">⚖</span>
+                  <h4 class="text-sm font-bold text-amber-200">قيود يدوية على الحساب (بدون معاملة)</h4>
+                </div>
+                <span class="text-[10px] text-amber-400/70 font-bold">
+                  {{ manualEntries.length }} قيد
+                </span>
+              </div>
+              <div class="space-y-2">
+                <div
+                  v-for="me in manualEntries"
+                  :key="me.id"
+                  class="flex items-start justify-between gap-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs"
+                >
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span
+                        class="rounded px-1.5 py-0.5 text-[10px] font-bold"
+                        :class="manualEntryBadgeClass(me.kind)"
+                      >
+                        {{ manualEntryLabel(me.kind) }}
+                      </span>
+                      <span class="font-mono text-white/40">{{ formatDt(me.date) }}</span>
+                    </div>
+                    <div v-if="me.notes" class="text-white/60 truncate" :title="me.notes">
+                      {{ me.notes }}
+                    </div>
+                  </div>
+                  <div class="font-mono font-bold text-amber-200 tabular-nums shrink-0">
+                    <span v-if="me.amount >= 0">+</span>{{ formatNumber(me.amount) }}
+                  </div>
+                </div>
+              </div>
+              <div v-if="manualEntries.length > 0" class="mt-3 pt-3 border-t border-amber-500/20 text-[10px] text-amber-300/70">
+                <strong>تعريف:</strong> قيود مباشرة على الدفتر بدون معاملة (initial balance،
+                تسويات يدوية، إصلاحات). لاحظ أن المجموع ما يشملش الـ transactions العادية.
+              </div>
+            </div>
+
             <table class="min-w-full text-right text-xs">
               <thead class="sticky top-0 bg-[#0a111e] text-white/40 uppercase tracking-wider">
                 <tr>
@@ -266,6 +311,43 @@
               </div>
             </div>
             <div v-if="!accountTxLoading && !accountTxError && !accountTxRows.length" class="py-12 text-center text-white/20">لا توجد حركات مسجلة.</div>
+
+            <!-- Balance math summary (office scope only — needs manual entries to make sense) -->
+            <div
+              v-if="accountTxScope === 'office' && (manualEntries.length > 0 || accountTxRows.length > 0)"
+              class="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+            >
+              <p class="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">
+                كيف اتحسب الرصيد الحالي
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm font-mono">
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                  <div class="text-[10px] font-bold text-amber-300/70 mb-1">رصيد افتتاحي</div>
+                  <div class="text-amber-200 tabular-nums font-bold">
+                    {{ formatNumber(manualEntriesNet) }} <span class="text-[10px] text-amber-300/60">ج.م</span>
+                  </div>
+                </div>
+                <div class="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+                  <div class="text-[10px] font-bold text-emerald-300/70 mb-1">صافي المعاملات (الصفحة الحالية)</div>
+                  <div class="text-emerald-200 tabular-nums font-bold">
+                    {{ formatNumber(transactionsNet) }} <span class="text-[10px] text-emerald-300/60">ج.م</span>
+                  </div>
+                </div>
+                <div class="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2">
+                  <div class="text-[10px] font-bold text-blue-300/70 mb-1">الرصيد الحالي للحساب</div>
+                  <div class="text-blue-200 tabular-nums font-bold">
+                    {{ formatNumber(totalBalance) }} <span class="text-[10px] text-blue-300/60">ج.م</span>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-3 text-[10px] text-white/40 leading-relaxed">
+                <strong class="text-white/60">المعادلة:</strong>
+                رصيد افتتاحي + صافي المعاملات = الرصيد الحالي.
+                <span v-if="manualEntries.length > 0">
+                  الـرصيد الافتتاحي هنا مجموع كل القيود اليدوية (initial balance، تسويات، إصلاحات) المسجلة على الحساب.
+                </span>
+              </p>
+            </div>
           </div>
           <div v-if="accountTxMeta && accountTxMeta.last_page > 1" class="flex items-center justify-center gap-4 border-t border-white/5 px-6 py-4">
             <button
@@ -309,6 +391,17 @@ const formatDt = (iso) => {
   }
 };
 
+// Format a number with thousand separators + 2 decimal places, falling back to
+// '0.00' for null/undefined/NaN. Used everywhere amounts are shown in the modal.
+const formatNumber = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '0.00';
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 // Map raw transaction.type (matches App\Enums\TransactionType) to a display label.
 // Backend can legitimately return: income | expense | transfer | refund | writeoff.
 const txTypeLabel = (type) => {
@@ -345,6 +438,13 @@ const accountTxMeta = ref(null);
 const accountTxLoading = ref(false);
 const accountTxError = ref(null);
 
+// Orphan account_entries returned by the office endpoint — opening balances,
+// manual adjustments, and correction entries that are NOT tied to a
+// transaction. These explain the gap between SUM(transaction credits-debits)
+// and the account.balance column.
+const manualEntries = ref([]);
+const manualEntriesNet = ref(0);
+
 // 'bus' = original BusTreasuryController::accountBusTransactions endpoint,
 //         filters by module=bus only.
 // 'office' = new OfficeTreasuryController::accountTransactions endpoint,
@@ -368,6 +468,8 @@ const closeModal = () => {
   accountTxMeta.value = null;
   accountTxError.value = null;
   accountTxLoading.value = false;
+  manualEntries.value = [];
+  manualEntriesNet.value = 0;
   // Reset to bus scope so the NEXT opened account starts in bus mode.
   // Per PHASE 3 spec: "Open Account B → MUST start in Bus mode".
   accountTxScope.value = 'bus';
@@ -381,6 +483,8 @@ const openAccountTx = async (acc) => {
   accountTxMeta.value = null;
   accountTxError.value = null;
   accountTxLoading.value = false;
+  manualEntries.value = [];
+  manualEntriesNet.value = 0;
   modal.value = { type: 'account', account: acc };
   await loadAccountPage(1);
 };
@@ -411,6 +515,17 @@ const loadAccountPage = async (page) => {
       current_page: data?.current_page ?? 1,
       last_page: data?.last_page ?? 1,
     };
+    // Office endpoint also ships orphan account_entries (opening balances,
+    // manual adjustments). Bus endpoint doesn't — clear them on scope switch.
+    if (accountTxScope.value === 'office') {
+      manualEntries.value = Array.isArray(data?.manual_entries)
+        ? data.manual_entries
+        : [];
+      manualEntriesNet.value = Number(data?.manual_entries_net ?? 0);
+    } else {
+      manualEntries.value = [];
+      manualEntriesNet.value = 0;
+    }
   } catch (err) {
     if (mySeq !== accountTxRequestSeq) return; // ignore stale failures
     accountTxRows.value = [];
@@ -450,6 +565,65 @@ const moduleBadgeClass = (m) => {
     default:               return 'text-white/40';
   }
 };
+
+// Manual-entry (orphan account_entry) kind label + color.
+// `kind` is set by the backend when the row is a single-sided entry:
+//   - opening_balance → initial seed of the account
+//   - correction      → audit fix (e.g. cross-currency reconciliation)
+//   - manual          → admin-typed ledger entry
+const manualEntryLabel = (kind) => {
+  switch (kind) {
+    case 'opening_balance': return 'رصيد افتتاحي';
+    case 'correction':      return 'تسوية / إصلاح';
+    case 'manual':          return 'قيد يدوي';
+    default:                return 'قيد';
+  }
+};
+
+const manualEntryBadgeClass = (kind) => {
+  switch (kind) {
+    case 'opening_balance': return 'bg-amber-500/20 text-amber-200';
+    case 'correction':      return 'bg-rose-500/20 text-rose-200';
+    case 'manual':          return 'bg-violet-500/20 text-violet-200';
+    default:                return 'bg-white/10 text-white/60';
+  }
+};
+
+// Sum of per-account net impact visible in the current paginator (office scope only).
+// Each Transaction row has a SIGNED `amount` and a direction (from/to):
+//   - tx.from_account_id === current account → money leaves, so subtract
+//   - tx.to_account_id   === current account → money enters, so add
+//   - tx.type === 'refund' / 'writeoff' signs flip — handled below
+// The account.balance should equal manualEntriesNet + this sum. Surfacing both
+// gives the user the math behind the "current balance" number.
+const transactionsNet = computed(() => {
+  if (!Array.isArray(accountTxRows.value)) return 0;
+  const accountId = modal.value?.account?.id;
+  if (!accountId) return 0;
+  return accountTxRows.value.reduce((sum, tx) => {
+    const amount = Number(tx.amount) || 0;
+    if (!amount) return sum;
+    const outgoing = tx.from_account_id === accountId;
+    // Refund/writeoff flips the sign on the from_account side (money comes
+    // back IN, not goes OUT). For non-from legs, the existing direction is
+    // already correct.
+    let impact;
+    if (outgoing) {
+      impact = (tx.type === 'refund' || tx.type === 'writeoff') ? amount : -amount;
+    } else {
+      impact = amount;
+    }
+    return sum + impact;
+  }, 0);
+});
+
+const totalBalance = computed(() => {
+  // account.balance field is provided by the controller's `account_summary`
+  // when present; fall back to manualEntriesNet + transactionsNet otherwise.
+  const declared = Number(modal.value?.account?.balance ?? 0);
+  if (declared) return declared;
+  return (Number(manualEntriesNet.value) || 0) + (Number(transactionsNet.value) || 0);
+});
 </script>
 
 <style scoped>

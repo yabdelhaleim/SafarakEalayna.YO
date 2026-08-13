@@ -6,6 +6,7 @@ use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Models\AccountEntry;
 use App\Models\Transaction;
 use App\Support\Finance\AccountModuleContract;
 use Illuminate\Http\JsonResponse;
@@ -116,7 +117,62 @@ class OfficeTreasuryController extends Controller
             page: $validated['page'],
         );
 
-        return ApiResponse::success('معاملات الحساب في قسم المكتب.', $paginator);
+        // ─── Manual ledger entries (NO transaction) ─────────────────
+        // These include opening balances (e.g. "رصيد افتتاحي") and
+        // manual corrections (e.g. "تصحيح TX-201"). They are NOT
+        // transactions but they DO contribute to the balance. Returning
+        // them separately lets the UI show the user the full math:
+        //   opening balances + transactions net = current balance
+        // Without this, the user sees a balance that doesn't match the
+        // sum of visible transactions, which is what triggered the
+        // "missing 1,444 EGP" investigation in the first place.
+        $manualEntries = AccountEntry::query()
+            ->where('account_id', $account->id)
+            ->where(function ($q) {
+                $q->whereNull('transaction_id')
+                    ->orWhereNotIn('transaction_id', Transaction::pluck('id'));
+            })
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'credit', 'debit', 'created_at', 'notes', 'created_by']);
+
+        $manualEntriesFormatted = $manualEntries->map(function (AccountEntry $e) {
+            $credit = (float) $e->credit;
+            $debit = (float) $e->debit;
+            $net = $credit - $debit;
+
+            // Auto-categorise so the UI can style opening balances vs
+            // corrections differently.
+            $isOpening = $e->notes && str_contains($e->notes, 'افتتاحي');
+            $isCorrection = $e->notes && str_contains($e->notes, 'تصحيح');
+
+            return [
+                'id' => $e->id,
+                'credit' => $credit,
+                'debit' => $debit,
+                'amount' => $net,
+                'kind' => $isOpening ? 'opening_balance' : ($isCorrection ? 'correction' : 'manual'),
+                'date' => $e->created_at?->toIso8601String(),
+                'notes' => $e->notes,
+                'created_by' => $e->created_by,
+            ];
+        })->values()->all();
+
+        $openingBalanceNet = array_sum(array_column($manualEntriesFormatted, 'amount'));
+
+        // Return paginator + manual entries in a single envelope.
+        // Backward compatible: every existing field is preserved, we
+        // only ADD `manual_entries` and `opening_balance_net`.
+        return ApiResponse::success('معاملات الحساب في قسم المكتب.', [
+            'data' => $paginator->items(),
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
+            'manual_entries' => $manualEntriesFormatted,
+            'manual_entries_net' => $openingBalanceNet,
+        ]);
     }
 
     /**
