@@ -12,6 +12,7 @@ use App\Services\Reports\ReportOperationsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -107,6 +108,157 @@ class ReportController extends Controller
             return ApiResponse::success('Profit & Loss retrieved successfully.', $data)
                 ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
                 ->header('Pragma', 'no-cache');
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Loss-drill-down — list every office transaction that contributed to a
+     * negative net profit, ranked by absolute impact on P&L.
+     *
+     * Why this endpoint exists (vs `finance/operations`):
+     *   `finance/operations` only returns transfer-shape rows (recharges,
+     *   module transfers, prepaid movements). It silently DROPS pure
+     *   income/expense/refund/writeoff rows, which is exactly what the
+     *   loss-drill-down on /finance/profit-loss needs to render.
+     *   This endpoint queries the raw transactions table directly, filters
+     *   to the office-division modules, applies the same signed-amount
+     *   convention as the P&L engine, and returns 25–200 rows ranked by
+     *   `abs(signed_amount) desc`.
+     *
+     * Filters:
+     *   - from_date, to_date (Y-m-d, required)
+     *   - category ('office' | 'tourism' | default 'office')
+     *   - module (single module filter, optional)
+     *   - limit (1..200, default 25)
+     *   - request_type (optional — 'expense', 'income', 'refund', 'writeoff',
+     *     'negative' to limit the rows to those that hurt P&L)
+     *
+     * Each row:
+     *   {
+     *     id, date, type, module, amount, signed_impact, currency,
+     *     notes, related_type, related_id,
+     *     from_account{id,name,type}, to_account{id,name,type},
+     *     created_by_name
+     *   }
+     *
+     * Sorted by abs(signed_impact) DESC so the worst offenders float to
+     * the top.
+     */
+    public function lossDrillDown(Request $request): JsonResponse
+    {
+        try {
+            $filters = $this->validateDateFilters($request);
+            if (empty($filters['from_date']) || empty($filters['to_date'])) {
+                return ApiResponse::error('from_date and to_date are required.', null, 422);
+            }
+            $category = $request->input('category', 'office');
+            $module = $request->input('module');
+            $limit = max(1, min((int) $request->input('limit', 25), 200));
+            $requestType = $request->input('request_type');
+
+            // Modules per division — mirror the canonical list in
+            // ProfitLossReportService so the same set of transactions feeds
+            // both the headline P&L and the drill-down.
+            $officeModules = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+            $tourismModules = ['flight', 'hajj_umra', 'visa', 'tourism'];
+            $modules = $category === 'tourism' ? $tourismModules : $officeModules;
+            if ($module && $module !== 'all') {
+                $modules = [$module];
+            }
+
+            $query = DB::table('transactions as t')
+                ->leftJoin('accounts as fa', 'fa.id', '=', 't.from_account_id')
+                ->leftJoin('accounts as ta', 'ta.id', '=', 't.to_account_id')
+                ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+                ->whereIn('t.module', $modules)
+                ->whereBetween('t.created_at', [
+                    $filters['from_date'].' 00:00:00',
+                    $filters['to_date'].' 23:59:59',
+                ])
+                ->select([
+                    't.id', 't.created_at', 't.type', 't.module', 't.amount',
+                    't.currency', 't.notes', 't.related_type', 't.related_id',
+                    't.from_account_id', 't.to_account_id',
+                    'fa.name as from_account_name', 'fa.type as from_account_type',
+                    'ta.name as to_account_name', 'ta.type as to_account_type',
+                    'u.name as created_by_name',
+                ]);
+
+            // Filter to a specific transaction type if requested.
+            // 'expense' shows only expenses, 'negative' shows only rows
+            // with negative impact (the actual loss drivers).
+            if ($requestType === 'expense') {
+                $query->where('t.type', 'expense');
+            } elseif ($requestType === 'income') {
+                $query->where('t.type', 'income');
+            } elseif ($requestType === 'refund') {
+                $query->where('t.type', 'refund');
+            } elseif ($requestType === 'writeoff') {
+                $query->where('t.type', 'writeoff');
+            } elseif ($requestType === 'negative') {
+                $query->whereIn('t.type', ['expense', 'refund', 'writeoff']);
+            }
+
+            // Pre-sort: pull enough rows so we can rank by abs(amount) desc
+            // in the post-process step. Limit is applied AFTER signing.
+            $rows = $query->orderBy('t.amount', 'desc')->limit($limit * 4)->get();
+
+            $signed = $rows->map(function ($r) {
+                $type = strtolower((string) $r->type);
+                $amount = (float) $r->amount;
+                $signed_impact = match ($type) {
+                    'income' => +$amount,
+                    'expense', 'refund', 'writeoff' => -$amount,
+                    default => 0.0,
+                };
+                return [
+                    'id' => (int) $r->id,
+                    'date' => $r->created_at,
+                    'type' => $r->type,
+                    'module' => $r->module,
+                    'amount' => round($amount, 2),
+                    'signed_impact' => round($signed_impact, 2),
+                    'currency' => $r->currency,
+                    'notes' => $r->notes,
+                    'related_type' => $r->related_type,
+                    'related_id' => (int) $r->related_id,
+                    'from_account' => [
+                        'id' => (int) $r->from_account_id,
+                        'name' => $r->from_account_name,
+                        'type' => $r->from_account_type,
+                    ],
+                    'to_account' => [
+                        'id' => (int) $r->to_account_id,
+                        'name' => $r->to_account_name,
+                        'type' => $r->to_account_type,
+                    ],
+                    'created_by_name' => $r->created_by_name,
+                ];
+            })
+            // Drop zero-impact (transfers)
+            ->filter(fn ($r) => $r['signed_impact'] !== 0.0)
+            // Sort by absolute impact DESC so the worst loss drivers float up
+            ->sortByDesc(fn ($r) => abs($r['signed_impact']))
+            // Take the requested number
+            ->take($limit)
+            ->values();
+
+            return ApiResponse::success('Loss drill-down retrieved.', [
+                'period' => [
+                    'from' => $filters['from_date'],
+                    'to' => $filters['to_date'],
+                ],
+                'category' => $category,
+                'module' => $module,
+                'request_type' => $requestType,
+                'total_scanned' => $rows->count(),
+                'returned' => $signed->count(),
+                'limit' => $limit,
+                'rows' => $signed->all(),
+            ])
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }

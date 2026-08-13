@@ -214,51 +214,112 @@
 
       <!-- Loss drill-down results table -->
       <div v-if="lossDrillDown.results.length > 0" class="rounded-xl bg-black/20 border border-rose-500/20 overflow-hidden">
+        <!-- Quick-filter buttons + summary -->
+        <div class="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-b border-rose-500/10 bg-rose-500/5">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[10px] font-bold text-rose-300/70 ml-2">تصفية سريعة:</span>
+            <button
+              v-for="qf in [
+                { key: 'all', label: 'الكل' },
+                { key: 'negative', label: 'الخسارة فقط' },
+                { key: 'expense', label: 'مصروفات' },
+                { key: 'income', label: 'إيرادات' },
+                { key: 'refund', label: 'استردادات' },
+                { key: 'writeoff', label: 'شطب' },
+              ]"
+              :key="qf.key"
+              type="button"
+              @click="runLossDrillDown(qf.key)"
+              :disabled="lossDrillDown.loading"
+              class="text-[10px] font-bold px-2 py-1 rounded transition"
+              :class="lossDrillDown.quickFilter === qf.key
+                ? 'bg-rose-500/30 text-rose-100 border border-rose-500/50'
+                : 'bg-white/5 text-white/50 hover:bg-white/10 border border-transparent'"
+            >
+              {{ qf.label }}
+            </button>
+          </div>
+          <div v-if="lossDrillDownSummary" class="text-[10px] font-mono text-white/60">
+            <span class="text-emerald-300">+{{ formatCurrency(lossDrillDownSummary.totalPositive).replace(' EGP','') }}</span>
+            <span class="mx-1">|</span>
+            <span class="text-rose-300">{{ formatCurrency(lossDrillDownSummary.totalNegative).replace(' EGP','') }}</span>
+            <span class="mx-1">|</span>
+            <span class="text-white font-bold">الصافي {{ formatCurrency(lossDrillDownSummary.totalNet).replace(' EGP','') }}</span>
+          </div>
+        </div>
+
         <table class="min-w-full text-right text-xs">
           <thead class="bg-rose-500/10 text-rose-200/70 uppercase tracking-wider">
             <tr>
+              <th class="px-3 py-2">#</th>
               <th class="px-3 py-2">التاريخ</th>
               <th class="px-3 py-2">الموديول</th>
               <th class="px-3 py-2">النوع</th>
               <th class="px-3 py-2">الوصف / المبلغ</th>
               <th class="px-3 py-2">من حساب</th>
               <th class="px-3 py-2">إلى حساب</th>
+              <th class="px-3 py-2">بواسطة</th>
               <th class="px-3 py-2">الأثر على الربح</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-rose-500/10">
             <tr v-for="item in lossDrillDown.results" :key="item.id" class="hover:bg-rose-500/5">
-              <td class="px-3 py-2 font-mono text-white/50">{{ formatDt(item.created_at) }}</td>
+              <td class="px-3 py-2 font-mono text-white/40">
+                <a
+                  v-if="item.related_id && item.related_type"
+                  :href="`#${item.id}`"
+                  class="text-sky-400 hover:text-sky-300"
+                  :title="`${item.related_type}#${item.related_id}`"
+                >
+                  #{{ item.id }}
+                </a>
+                <span v-else>#{{ item.id }}</span>
+              </td>
+              <td class="px-3 py-2 font-mono text-white/50">{{ formatDt(item.date) }}</td>
               <td class="px-3 py-2">
                 <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-white/70">
                   {{ moduleLabel(item.module) }}
                 </span>
               </td>
               <td class="px-3 py-2">
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-white/60">
-                  {{ item.type }}
+                <span
+                  class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  :class="typeBadgeClass(item.type)"
+                >
+                  {{ typeBadgeLabel(item.type) }}
                 </span>
               </td>
               <td class="px-3 py-2 max-w-[280px] truncate text-white/70" :title="item.notes">
-                {{ item.notes || '—' }}
+                <span class="block">{{ item.notes || '—' }}</span>
+                <span v-if="item.related_type" class="text-[9px] text-white/30">
+                  {{ relatedTypeLabel(item.related_type) }}#{{ item.related_id }}
+                </span>
               </td>
-              <td class="px-3 py-2 text-white/60">{{ item.from_account || '—' }}</td>
-              <td class="px-3 py-2 text-white/60">{{ item.to_account || '—' }}</td>
-              <td class="px-3 py-2 font-mono font-bold tabular-nums"
-                  :class="item.impact < 0 ? 'text-rose-300' : 'text-emerald-300'">
-                {{ item.impact >= 0 ? '+' : '' }}{{ formatCurrency(item.impact).replace(' EGP','') }}
+              <td class="px-3 py-2 text-white/60">
+                <span v-if="item.from_account?.name">{{ item.from_account.name }}</span>
+                <span v-else class="text-white/20">—</span>
+              </td>
+              <td class="px-3 py-2 text-white/60">
+                <span v-if="item.to_account?.name">{{ item.to_account.name }}</span>
+                <span v-else class="text-white/20">—</span>
+              </td>
+              <td class="px-3 py-2 text-white/40 text-[10px]">{{ item.created_by_name || '—' }}</td>
+              <td class="px-3 py-2 font-mono font-bold tabular-nums whitespace-nowrap"
+                  :class="item.signed_impact < 0 ? 'text-rose-300' : 'text-emerald-300'">
+                {{ item.signed_impact >= 0 ? '+' : '' }}{{ formatCurrency(item.signed_impact).replace(' EGP','') }}
               </td>
             </tr>
           </tbody>
         </table>
-        <div class="px-4 py-3 text-[10px] text-rose-300/60 border-t border-rose-500/10">
-          <strong>تعريف الأثر:</strong> دخل (income) = + المبلغ، مصروف/استرداد/شطب = - المبلغ.
-          تحويلات (transfers) لا تظهر لأن تأثيرها على الربح = صفر.
-          <span v-if="lossDrillDown.truncated">
-            يتم عرض أعلى {{ lossDrillDown.results.length }} عملية فقط؛ شغّل
-            <code class="text-rose-200">php scripts/_diag_office_pnl.php {{ filters.from }} {{ filters.to }}</code>
-            على السيرفر للحصول على التقرير الكامل.
-          </span>
+        <div class="px-4 py-3 text-[10px] text-rose-300/60 border-t border-rose-500/10 space-y-1">
+          <div>
+            <strong>قواعد الإشارات:</strong> دخل (income) = + المبلغ، مصروف/استرداد/شطب = - المبلغ.
+            تحويلات (transfers) لا تظهر لأن تأثيرها على الربح = صفر.
+          </div>
+          <div v-if="lossDrillDown.truncated">
+            <strong>⚠️ تنبيه:</strong> تم فحص {{ lossDrillDown.totalScanned }} عملية وعرض أعلى {{ lossDrillDown.results.length }} فقط.
+            للتقرير الكامل: <code class="text-rose-200">php scripts/_diag_office_pnl.php {{ filters.from }} {{ filters.to }}</code>
+          </div>
         </div>
       </div>
     </div>
@@ -633,8 +694,8 @@ const fetchReport = async () => {
 };
 
 // ─── Loss drill-down ──────────────────────────────────────────────
-// When the office P&L is negative, pull the top 25 office transactions
-// in the selected period and rank them by absolute impact on P&L:
+// When the office P&L is negative, surface the top 25 office transactions
+// in the selected period, ranked by absolute impact on P&L.
 //   income (+) → positive impact
 //   expense/refund/writeoff (-) → negative impact
 //   transfer → 0 (excluded from the visible list, in the math it cancels)
@@ -642,56 +703,62 @@ const fetchReport = async () => {
 const lossDrillDown = ref({
   loading: false,
   results: [],
+  filtered: false,           // true when the user has narrowed via quick-filter buttons
+  quickFilter: 'all',        // 'all' | 'negative' | 'expense' | 'income' | 'refund' | 'writeoff'
   truncated: false,
+  totalScanned: 0,
   error: null,
 });
 
-function signedImpact(tx) {
-  const amount = Number(tx.amount) || 0;
-  switch (tx.type) {
-    case 'income':   return +amount;
-    case 'expense':
-    case 'refund':
-    case 'writeoff': return -amount;
-    default:         return 0; // transfer
-  }
-}
-
-const runLossDrillDown = async () => {
+const runLossDrillDown = async (quickFilter = 'all') => {
   lossDrillDown.value.loading = true;
   lossDrillDown.value.error = null;
+  lossDrillDown.value.quickFilter = quickFilter;
   try {
     const params = {
       from_date: filters.value.from,
       to_date: filters.value.to,
       category: filters.value.category,
       module: filters.value.module,
-      // We pull all office modules' transactions, sorted by amount desc,
-      // to surface the biggest movers first.
-      per_page: 100,
-      page: 1,
+      limit: 50,
+      request_type: quickFilter === 'all' ? undefined : quickFilter,
       _t: Date.now(),
     };
-    const res = await axios.get('/api/v1/reports/finance/operations', { params });
-    const items = res?.data?.data?.items || [];
-    // Compute signed impact, drop zero-impact (transfers)
-    const ranked = items
-      .map((tx) => ({
-        ...tx,
-        impact: signedImpact(tx),
-      }))
-      .filter((tx) => tx.impact !== 0)
-      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
-    lossDrillDown.value.results = ranked.slice(0, 25);
-    lossDrillDown.value.truncated = ranked.length > 25;
+    const res = await axios.get('/api/v1/reports/loss-drilldown', { params });
+    const payload = res?.data?.data || {};
+    lossDrillDown.value.results = Array.isArray(payload.rows) ? payload.rows : [];
+    lossDrillDown.value.totalScanned = Number(payload.total_scanned) || 0;
+    lossDrillDown.value.truncated = Number(payload.returned) > 0
+      && (Number(payload.total_scanned) || 0) > (Number(payload.returned) || 0);
   } catch (error) {
     lossDrillDown.value.error = error?.response?.data?.message
       || error?.message
       || 'فشل تحميل تفاصيل العمليات.';
+    lossDrillDown.value.results = [];
   } finally {
     lossDrillDown.value.loading = false;
   }
 };
+
+const lossDrillDownSummary = computed(() => {
+  const rows = lossDrillDown.value.results;
+  if (!rows.length) return null;
+  let totalPositive = 0;
+  let totalNegative = 0;
+  for (const r of rows) {
+    const impact = Number(r.signed_impact) || 0;
+    if (impact > 0) totalPositive += impact;
+    else if (impact < 0) totalNegative += impact;
+  }
+  return {
+    count: rows.length,
+    totalPositive: round2(totalPositive),
+    totalNegative: round2(totalNegative),
+    totalNet: round2(totalPositive + totalNegative),
+  };
+});
+
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 const formatDt = (iso) => {
   if (!iso) return '—';
@@ -715,6 +782,37 @@ const moduleLabel = (m) => {
     office: 'مكتب',
   };
   return map[m] || m || '—';
+};
+
+// Type-badge styling for the loss-drill-down table — color-codes
+// income/expense/refund/writeoff so the eye groups them at a glance.
+const typeBadgeLabel = (t) => {
+  switch (t) {
+    case 'income':   return 'دخل';
+    case 'expense':  return 'مصروف';
+    case 'refund':   return 'استرداد';
+    case 'writeoff': return 'شطب';
+    case 'transfer': return 'تحويل';
+    default:         return t || '—';
+  }
+};
+
+const typeBadgeClass = (t) => {
+  switch (t) {
+    case 'income':   return 'bg-emerald-500/20 text-emerald-300';
+    case 'expense':  return 'bg-rose-500/20 text-rose-300';
+    case 'refund':   return 'bg-amber-500/20 text-amber-300';
+    case 'writeoff': return 'bg-violet-500/20 text-violet-300';
+    case 'transfer': return 'bg-white/5 text-white/60';
+    default:         return 'bg-white/5 text-white/60';
+  }
+};
+
+// Friendly label for transaction.related_type (App\Models\Foo → "Foo")
+const relatedTypeLabel = (fqcn) => {
+  if (!fqcn) return '';
+  const parts = String(fqcn).split('\\');
+  return parts[parts.length - 1] || fqcn;
 };
 
 const printReport = () => {
