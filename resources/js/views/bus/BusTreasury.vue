@@ -41,6 +41,78 @@
         جاري تحميل بيانات الخزينة…
       </div>
 
+      <!-- Office P&L widget — current month summary -->
+      <section
+        v-if="officePnlLoading || officePnl"
+        class="rounded-2xl border bg-gradient-to-br p-5"
+        :class="(officePnl?.netProfit ?? 0) < 0
+          ? 'border-rose-500/30 from-rose-500/10 to-amber-500/5'
+          : 'border-emerald-500/30 from-emerald-500/10 to-emerald-500/5'"
+      >
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span
+              class="rounded-lg p-1.5"
+              :class="(officePnl?.netProfit ?? 0) < 0
+                ? 'bg-rose-500/20 text-rose-300'
+                : 'bg-emerald-500/20 text-emerald-300'"
+            >
+              <Building2 class="w-4 h-4" />
+            </span>
+            <h2 class="text-base font-bold text-white">
+              أرباح المكتب — الشهر الحالي
+            </h2>
+          </div>
+          <router-link
+            :to="{ name: 'finance.profit-loss' }"
+            class="text-[11px] font-bold text-sky-400 hover:text-sky-300"
+          >
+            التفاصيل ←
+          </router-link>
+        </div>
+
+        <div v-if="officePnlLoading" class="text-white/40 text-xs py-4 text-center">
+          جاري تحميل أرباح المكتب…
+        </div>
+        <div v-else-if="officePnl" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
+            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي الإيرادات</div>
+            <div class="font-mono text-base font-bold text-emerald-300 tabular-nums">
+              +{{ Number(officePnl.totalRevenues || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+            </div>
+          </div>
+          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
+            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي المصروفات</div>
+            <div class="font-mono text-base font-bold text-rose-300 tabular-nums">
+              -{{ Number(officePnl.totalExpenses || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+            </div>
+          </div>
+          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
+            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي المرتجعات</div>
+            <div class="font-mono text-base font-bold text-amber-300 tabular-nums">
+              -{{ Number(officePnl.totalRefunds || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+            </div>
+          </div>
+          <div class="rounded-lg bg-black/30 border px-3 py-2"
+               :class="(officePnl.netProfit || 0) < 0 ? 'border-rose-500/40' : 'border-emerald-500/40'">
+            <div class="text-[10px] font-bold text-white/40 mb-1">صافي الربح</div>
+            <div
+              class="font-mono text-lg font-black tabular-nums"
+              :class="(officePnl.netProfit || 0) < 0 ? 'text-rose-300' : 'text-emerald-300'"
+            >
+              {{ (officePnl.netProfit || 0) >= 0 ? '+' : '' }}{{ Number(officePnl.netProfit || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+              <span class="text-[10px] text-white/40 font-bold mr-1">ج.م</span>
+            </div>
+          </div>
+        </div>
+        <p
+          v-if="officePnl && (officePnl.netProfit || 0) < 0"
+          class="mt-3 text-[10px] text-rose-300/70"
+        >
+          ⚠️ المكتب خاسر في الشهر الحالي. افتح "التفاصيل" لمشاهدة تشخيص الخسارة.
+        </p>
+      </section>
+
       <template v-else-if="ov">
         <!-- حسابات التحصيل -->
         <section class="space-y-6">
@@ -428,8 +500,36 @@ const txTypeClass = (type) => {
 
 const reload = () => store.fetchBusTreasuryOverview();
 
+// ─── Office P&L summary widget ────────────────────────────────────
+// Pulled on mount so the hero shows current-month office net profit
+// alongside the cashbox balances. Fail-soft — if the API is down, the
+// widget just hides itself and the rest of the page works as before.
+const officePnl = ref(null);
+const officePnlLoading = ref(false);
+
+const loadOfficePnl = async () => {
+  officePnlLoading.value = true;
+  try {
+    const today = new Date();
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      .toISOString().split('T')[0];
+    const todayStr = today.toISOString().split('T')[0];
+    const data = await store.fetchOfficePnlSummary({
+      from_date: firstOfMonth,
+      to_date: todayStr,
+    });
+    officePnl.value = data;
+  } catch (e) {
+    // Should never reach here — fetchOfficePnlSummary swallows errors.
+    officePnl.value = null;
+  } finally {
+    officePnlLoading.value = false;
+  }
+};
+
 onMounted(() => {
   reload();
+  loadOfficePnl();
 });
 
 const modal = ref({ type: 'idle', account: null });

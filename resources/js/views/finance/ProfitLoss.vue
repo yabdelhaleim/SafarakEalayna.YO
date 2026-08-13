@@ -35,7 +35,12 @@
           بيان الأرباح والخسائر
         </h1>
         <p class="text-sm text-text-muted mt-2 font-medium">
-          تقرير مالي متكامل يوضح إيراداتك ومصروفاتك وصافي الربح للمدة المحددة (Income Statement).
+          {{ filters.category === 'office'
+              ? 'أرباح المكتب — كل الإيرادات والمصروفات والاستردادات عبر موديولات المكتب (باص، فوري، أونلاين، محفظة، عام).'
+              : (filters.category === 'tourism'
+                ? 'أرباح قسم السياحة (طيران، حج وعمرة، تأشيرات).'
+                : 'تقرير مالي متكامل يوضح إيراداتك ومصروفاتك وصافي الربح للمدة المحددة (Income Statement).')
+          }}
         </p>
       </div>
 
@@ -173,6 +178,86 @@
             :class="netProfit >= 0 ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'"
           >
             {{ netProfit >= 0 ? 'ربح صافي ممتاز 🚀' : 'خسارة محققة ⚠️' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loss explanation: when net profit is negative, drill down to the worst
+         transactions so the user can see WHAT made the office lose money. -->
+    <div
+      v-if="!isLoading() && netProfit < 0 && (filters.category === 'office' || filters.category === 'all')"
+      class="bg-gradient-to-br from-rose-500/10 to-amber-500/5 border border-rose-500/30 rounded-2xl p-6 shadow-xl"
+    >
+      <div class="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h3 class="text-lg font-bold text-rose-200 flex items-center gap-2">
+            <AlertTriangle class="w-5 h-5" />
+            تشخيص الخسارة — أرباح المكتب
+          </h3>
+          <p class="text-xs text-rose-300/70 mt-1">
+            مكتب خسر <strong class="text-rose-200">{{ formatCurrency(Math.abs(netProfit)) }}</strong>
+            في الفترة المختارة. دوس على "تحليل الأسباب" عشان تشوف كل عملية أثرت على الرصيد.
+          </p>
+        </div>
+        <button
+          type="button"
+          @click="runLossDrillDown"
+          :disabled="lossDrillDown.loading"
+          class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-rose-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
+        >
+          <Search v-if="!lossDrillDown.loading" class="w-4 h-4" />
+          <RefreshCw v-else class="w-4 h-4 animate-spin" />
+          {{ lossDrillDown.loading ? 'جاري التحليل...' : 'تحليل الأسباب' }}
+        </button>
+      </div>
+
+      <!-- Loss drill-down results table -->
+      <div v-if="lossDrillDown.results.length > 0" class="rounded-xl bg-black/20 border border-rose-500/20 overflow-hidden">
+        <table class="min-w-full text-right text-xs">
+          <thead class="bg-rose-500/10 text-rose-200/70 uppercase tracking-wider">
+            <tr>
+              <th class="px-3 py-2">التاريخ</th>
+              <th class="px-3 py-2">الموديول</th>
+              <th class="px-3 py-2">النوع</th>
+              <th class="px-3 py-2">الوصف / المبلغ</th>
+              <th class="px-3 py-2">من حساب</th>
+              <th class="px-3 py-2">إلى حساب</th>
+              <th class="px-3 py-2">الأثر على الربح</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-rose-500/10">
+            <tr v-for="item in lossDrillDown.results" :key="item.id" class="hover:bg-rose-500/5">
+              <td class="px-3 py-2 font-mono text-white/50">{{ formatDt(item.created_at) }}</td>
+              <td class="px-3 py-2">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-white/70">
+                  {{ moduleLabel(item.module) }}
+                </span>
+              </td>
+              <td class="px-3 py-2">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-white/60">
+                  {{ item.type }}
+                </span>
+              </td>
+              <td class="px-3 py-2 max-w-[280px] truncate text-white/70" :title="item.notes">
+                {{ item.notes || '—' }}
+              </td>
+              <td class="px-3 py-2 text-white/60">{{ item.from_account || '—' }}</td>
+              <td class="px-3 py-2 text-white/60">{{ item.to_account || '—' }}</td>
+              <td class="px-3 py-2 font-mono font-bold tabular-nums"
+                  :class="item.impact < 0 ? 'text-rose-300' : 'text-emerald-300'">
+                {{ item.impact >= 0 ? '+' : '' }}{{ formatCurrency(item.impact).replace(' EGP','') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="px-4 py-3 text-[10px] text-rose-300/60 border-t border-rose-500/10">
+          <strong>تعريف الأثر:</strong> دخل (income) = + المبلغ، مصروف/استرداد/شطب = - المبلغ.
+          تحويلات (transfers) لا تظهر لأن تأثيرها على الربح = صفر.
+          <span v-if="lossDrillDown.truncated">
+            يتم عرض أعلى {{ lossDrillDown.results.length }} عملية فقط؛ شغّل
+            <code class="text-rose-200">php scripts/_diag_office_pnl.php {{ filters.from }} {{ filters.to }}</code>
+            على السيرفر للحصول على التقرير الكامل.
           </span>
         </div>
       </div>
@@ -381,7 +466,8 @@ import {
   Printer,
   FileText,
   Coins,
-  Search
+  Search,
+  AlertTriangle
 } from 'lucide-vue-next';
 import axios from 'axios';
 import { useAsyncState } from '@/composables/useAsyncState';
@@ -397,7 +483,7 @@ const { state, setLoading, setSuccess, setEmpty, setError, isLoading, isSuccess,
 const filters = ref({
   from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
   to: new Date().toISOString().split('T')[0], // Today
-  category: 'all',
+  category: 'office', // Default to OFFICE view per user request — أرباح المكتب فقط
   module: 'all',
   section: 'all'
 });
@@ -526,6 +612,13 @@ const fetchReport = async () => {
     if (res?.data?.data) {
       reportData.value = res.data.data;
       setSuccess();
+      // Re-run loss drill-down automatically if net is negative AND the
+      // current view is office-only. Lets the user see the cause
+      // immediately, without having to click anything.
+      if (reportData.value.netProfit < 0
+          && (filters.value.category === 'office' || filters.value.category === 'all')) {
+        runLossDrillDown().catch(() => {});
+      }
     } else {
       throw new Error('Invalid response format');
     }
@@ -537,6 +630,91 @@ const fetchReport = async () => {
       || 'حدث خطأ في جلب تقرير الأرباح والخسائر. تأكد من صحة التواريخ.';
     setError(error);
   }
+};
+
+// ─── Loss drill-down ──────────────────────────────────────────────
+// When the office P&L is negative, pull the top 25 office transactions
+// in the selected period and rank them by absolute impact on P&L:
+//   income (+) → positive impact
+//   expense/refund/writeoff (-) → negative impact
+//   transfer → 0 (excluded from the visible list, in the math it cancels)
+// The table lets the user see EXACTLY which transactions caused the loss.
+const lossDrillDown = ref({
+  loading: false,
+  results: [],
+  truncated: false,
+  error: null,
+});
+
+function signedImpact(tx) {
+  const amount = Number(tx.amount) || 0;
+  switch (tx.type) {
+    case 'income':   return +amount;
+    case 'expense':
+    case 'refund':
+    case 'writeoff': return -amount;
+    default:         return 0; // transfer
+  }
+}
+
+const runLossDrillDown = async () => {
+  lossDrillDown.value.loading = true;
+  lossDrillDown.value.error = null;
+  try {
+    const params = {
+      from_date: filters.value.from,
+      to_date: filters.value.to,
+      category: filters.value.category,
+      module: filters.value.module,
+      // We pull all office modules' transactions, sorted by amount desc,
+      // to surface the biggest movers first.
+      per_page: 100,
+      page: 1,
+      _t: Date.now(),
+    };
+    const res = await axios.get('/api/v1/reports/finance/operations', { params });
+    const items = res?.data?.data?.items || [];
+    // Compute signed impact, drop zero-impact (transfers)
+    const ranked = items
+      .map((tx) => ({
+        ...tx,
+        impact: signedImpact(tx),
+      }))
+      .filter((tx) => tx.impact !== 0)
+      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
+    lossDrillDown.value.results = ranked.slice(0, 25);
+    lossDrillDown.value.truncated = ranked.length > 25;
+  } catch (error) {
+    lossDrillDown.value.error = error?.response?.data?.message
+      || error?.message
+      || 'فشل تحميل تفاصيل العمليات.';
+  } finally {
+    lossDrillDown.value.loading = false;
+  }
+};
+
+const formatDt = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+};
+
+const moduleLabel = (m) => {
+  const map = {
+    bus: 'الباص',
+    fawry: 'فوري',
+    online: 'أونلاين',
+    wallet: 'محفظة',
+    wallet_transfer: 'محفظة',
+    wallets: 'محفظة',
+    general: 'عام',
+    service: 'خدمات',
+    office: 'مكتب',
+  };
+  return map[m] || m || '—';
 };
 
 const printReport = () => {

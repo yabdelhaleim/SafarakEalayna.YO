@@ -637,6 +637,33 @@ export const useBusStore = defineStore('bus', {
       return data;
     },
 
+    /**
+     * Fetch the Office P&L summary for a given period. Wraps
+     * `GET /api/v1/reports/profit-loss?category=office&from_date=...&to_date=...`.
+     *
+     * Used by the P&L widget on BusTreasury.vue so the user sees the
+     * current month's office net profit at a glance, right next to the
+     * cashbox balances they're auditing.
+     *
+     * Returns the raw report payload ({totalRevenues, totalExpenses,
+     * netProfit, grossProfit, ...}) on success, null on failure (the
+     * widget should fail-soft — never break the page).
+     */
+    async fetchOfficePnlSummary(params = {}) {
+      try {
+        const response = await axios.get('/api/v1/reports/profit-loss', {
+          params: { category: 'office', ...params },
+        });
+        return response.data?.data ?? null;
+      } catch (error) {
+        // Fail-soft — the widget is a nice-to-have, never block the
+        // treasury page on it. We log so the dev can spot the issue
+        // in the console.
+        console.warn('fetchOfficePnlSummary failed', error?.response?.data?.message || error?.message);
+        return null;
+      }
+    },
+
     async fetchCompanyBusStatement(companyId, params = {}) {
       try {
         const response = await axios.get(`/api/v1/bus/companies/${companyId}/statement`, { params });
