@@ -34,84 +34,64 @@
           </button>
         </div>
       </div>
-    </header>
 
-    <div class="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8 mt-8">
-      <div v-if="store.loading.payments && !ov" class="rounded-2xl border border-white/10 bg-white/[0.03] py-24 text-center text-white/40">
-        جاري تحميل بيانات الخزينة…
-      </div>
-
-      <!-- Office P&L widget — current month summary -->
-      <section
-        v-if="officePnlLoading || officePnl"
-        class="rounded-2xl border bg-gradient-to-br p-5"
-        :class="(officePnl?.netProfit ?? 0) < 0
+      <!-- Office P&L widget — compact horizontal strip mounted inside the hero -->
+      <div
+        v-if="officePnl"
+        class="relative z-10 mx-auto mt-5 max-w-7xl rounded-xl border bg-gradient-to-l px-4 py-3 flex flex-wrap items-center gap-3"
+        :class="(officePnl.netProfit || 0) < 0
           ? 'border-rose-500/30 from-rose-500/10 to-amber-500/5'
           : 'border-emerald-500/30 from-emerald-500/10 to-emerald-500/5'"
       >
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div class="flex items-center gap-2">
-            <span
-              class="rounded-lg p-1.5"
-              :class="(officePnl?.netProfit ?? 0) < 0
-                ? 'bg-rose-500/20 text-rose-300'
-                : 'bg-emerald-500/20 text-emerald-300'"
-            >
-              <Building2 class="w-4 h-4" />
-            </span>
-            <h2 class="text-base font-bold text-white">
-              أرباح المكتب — الشهر الحالي
-            </h2>
-          </div>
-          <router-link
-            :to="{ name: 'finance.profit-loss' }"
-            class="text-[11px] font-bold text-sky-400 hover:text-sky-300"
+        <div class="flex items-center gap-2">
+          <span
+            class="rounded p-1"
+            :class="(officePnl.netProfit || 0) < 0
+              ? 'bg-rose-500/20 text-rose-300'
+              : 'bg-emerald-500/20 text-emerald-300'"
           >
-            التفاصيل ←
-          </router-link>
+            <Building2 class="w-3.5 h-3.5" />
+          </span>
+          <span class="text-[11px] font-bold text-white/70">أرباح المكتب — الشهر الحالي</span>
         </div>
-
-        <div v-if="officePnlLoading" class="text-white/40 text-xs py-4 text-center">
-          جاري تحميل أرباح المكتب…
+        <div class="flex items-center gap-1.5 font-mono tabular-nums text-xs">
+          <span class="text-white/40">إيرادات</span>
+          <span class="text-emerald-300 font-bold">+{{ formatCompact(officePnl.totalRevenues) }}</span>
         </div>
-        <div v-else-if="officePnl" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
-            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي الإيرادات</div>
-            <div class="font-mono text-base font-bold text-emerald-300 tabular-nums">
-              +{{ Number(officePnl.totalRevenues || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
-            </div>
-          </div>
-          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
-            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي المصروفات</div>
-            <div class="font-mono text-base font-bold text-rose-300 tabular-nums">
-              -{{ Number(officePnl.totalExpenses || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
-            </div>
-          </div>
-          <div class="rounded-lg bg-black/20 border border-white/5 px-3 py-2">
-            <div class="text-[10px] font-bold text-white/40 mb-1">إجمالي المرتجعات</div>
-            <div class="font-mono text-base font-bold text-amber-300 tabular-nums">
-              -{{ Number(officePnl.totalRefunds || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
-            </div>
-          </div>
-          <div class="rounded-lg bg-black/30 border px-3 py-2"
-               :class="(officePnl.netProfit || 0) < 0 ? 'border-rose-500/40' : 'border-emerald-500/40'">
-            <div class="text-[10px] font-bold text-white/40 mb-1">صافي الربح</div>
-            <div
-              class="font-mono text-lg font-black tabular-nums"
-              :class="(officePnl.netProfit || 0) < 0 ? 'text-rose-300' : 'text-emerald-300'"
-            >
-              {{ (officePnl.netProfit || 0) >= 0 ? '+' : '' }}{{ Number(officePnl.netProfit || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
-              <span class="text-[10px] text-white/40 font-bold mr-1">ج.م</span>
-            </div>
-          </div>
+        <div class="flex items-center gap-1.5 font-mono tabular-nums text-xs">
+          <span class="text-white/40">مصروفات</span>
+          <span class="text-rose-300 font-bold">-{{ formatCompact(officePnl.totalExpenses) }}</span>
         </div>
-        <p
-          v-if="officePnl && (officePnl.netProfit || 0) < 0"
-          class="mt-3 text-[10px] text-rose-300/70"
+        <div class="flex items-center gap-1.5 font-mono tabular-nums text-xs">
+          <span class="text-white/40">مرتجعات</span>
+          <span class="text-amber-300 font-bold">-{{ formatCompact(officePnl.totalRefunds) }}</span>
+        </div>
+        <div class="flex items-center gap-1.5 font-mono tabular-nums text-sm">
+          <span class="text-white/40">الصافي</span>
+          <span
+            class="font-black"
+            :class="(officePnl.netProfit || 0) < 0 ? 'text-rose-300' : 'text-emerald-300'"
+          >
+            {{ (officePnl.netProfit || 0) >= 0 ? '+' : '' }}{{ formatCompact(officePnl.netProfit) }}
+            <span class="text-[9px] text-white/40 font-bold mr-0.5">ج.م</span>
+          </span>
+        </div>
+        <router-link
+          :to="{ name: 'finance.profit-loss' }"
+          class="mr-auto text-[10px] font-bold text-sky-400 hover:text-sky-300"
         >
-          ⚠️ المكتب خاسر في الشهر الحالي. افتح "التفاصيل" لمشاهدة تشخيص الخسارة.
-        </p>
-      </section>
+          التفاصيل ←
+        </router-link>
+      </div>
+      <div v-else-if="officePnlLoading" class="relative z-10 mx-auto mt-5 max-w-7xl text-[10px] text-white/30">
+        جاري تحميل ملخص أرباح المكتب…
+      </div>
+    </header>
+
+    <div class="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8 mt-8">
+      <div v-if="store.loading.payments && !ov" class="rounded-2xl border border-white/10 bg-white/[0.03] py-12 text-center text-white/40">
+        جاري تحميل بيانات الخزينة…
+      </div>
 
       <template v-else-if="ov">
         <!-- حسابات التحصيل -->
@@ -472,6 +452,14 @@ const formatNumber = (n) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+// Compact form for the hero P&L strip — no decimals, just thousands.
+// E.g. 39760 → "39,760", 12430.20 → "12,430". Saves horizontal space.
+const formatCompact = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '0';
+  return Math.round(num).toLocaleString('en-US');
 };
 
 // Map raw transaction.type (matches App\Enums\TransactionType) to a display label.
