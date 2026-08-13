@@ -9,9 +9,12 @@ on a Linux VPS (Ubuntu/Debian) with **Nginx + PHP-FPM + MySQL/MariaDB**.
 
 ```
 deploy/
-├── deploy.sh                  # main entry point
+├── deploy.sh                  # main entry point (production)
 ├── deploy.conf.example        # copy → deploy.conf to override defaults
 ├── .env.production.example    # copy → .env on the server
+├── staging.sh                 # STAGING deploy script (separate path/env/DB)
+├── staging.conf.example       # copy → staging.conf to override staging defaults
+├── .env.staging.example       # copy → .env.staging on the server
 └── README.md                  # this file
 ```
 
@@ -257,3 +260,145 @@ sudo -u deploy ./deploy/deploy.sh --no-build --skip-migrate
 
 If a migration went out, write a forward-fixing migration rather than
 reverting — never hand-edit the database in production.
+
+---
+
+## Staging deploy
+
+Staging lives **completely separate** from production:
+
+| | Production | Staging |
+| -- | -- | -- |
+| Script | `deploy/deploy.sh` | `deploy/staging.sh` |
+| APP_DIR | `/var/www/safarakEalayna` | `/var/www/safarakealayna-staging` |
+| Env file | `.env` | `.env.staging` |
+| APP_ENV | `production` | `staging` |
+| Database | `safarakealayna` | `safarakealayna_staging` |
+| Nginx vhost | domain root | `staging.your-domain.com` |
+| Deploy logs | `/var/log/safarakealayna-deploy` | `/var/log/safarakealayna-deploy-staging` |
+
+`deploy/staging.sh` refuses to run if `APP_DIR` points at the production path.
+
+### One-time staging setup
+
+```bash
+# 1. create staging app directory
+sudo mkdir -p /var/www/safarakealayna-staging
+sudo chown deploy:www-data /var/www/safarakealayna-staging
+
+# 2. clone the repo into a separate working copy
+sudo -u deploy git clone <your-repo-url> /var/www/safarakealayna-staging
+cd /var/www/safarakealayna-staging
+
+# 3. seed .env.staging and key
+cp deploy/.env.staging.example .env.staging
+php artisan key:generate
+# Edit .env.staging: APP_URL, DB creds, CORS, MAIL, SANCTUM_STATEFUL_DOMAINS
+
+# 4. create the staging database
+mysql -u root -p -e "CREATE DATABASE safarakealayna_staging CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p -e "GRANT ALL ON safarakealayna_staging.* TO 'travel_app'@'localhost';"
+
+# 5. initial composer install + build
+composer install --no-dev --optimize-autoloader
+cp deploy/staging.conf.example deploy/staging.conf
+# Edit staging.conf if you want to override the defaults
+
+# 6. log dir
+sudo mkdir -p /var/log/safarakealayna-deploy-staging
+sudo chown deploy:www-data /var/log/safarakealayna-deploy-staging
+
+# 7. permissions
+sudo chown -R deploy:www-data storage bootstrap/cache
+sudo find storage bootstrap/cache -type d -exec chmod 775 {} +
+sudo find storage bootstrap/cache -type f -exec chmod 664 {} +
+```
+
+### Nginx vhost for staging
+
+```nginx
+server {
+    listen 80;
+    server_name staging.your-domain.com;
+    root /var/www/safarakealayna-staging/public;
+
+    index index.php;
+    client_max_body_size 50M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_read_timeout 300;
+    }
+
+    location ~ /\.(?!well-known).* { deny all; }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/safarak-staging /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Daily staging deploys
+
+```bash
+cd /var/www/safarakealayna-staging
+sudo -u deploy ./deploy/staging.sh
+```
+
+Useful flags (same surface as `deploy.sh`):
+
+| flag              | effect                                                    |
+| ----------------- | --------------------------------------------------------- |
+| `--dry-run`       | print every command, run nothing                          |
+| `--no-build`      | skip `npm ci` + `npm run build`                           |
+| `--skip-migrate`  | skip `php artisan migrate --force`                        |
+| `--no-backup`     | don't snapshot `.env.staging` before the run              |
+| `--branch=NAME`   | check out a specific branch before pulling                |
+| `--dir=PATH`      | override `APP_DIR`                                        |
+| `--user=USER`     | override the web user                                     |
+| `--fpm=UNIT`      | override the systemd PHP-FPM unit name                    |
+| `-h`, `--help`    | show usage                                                |
+
+Each run writes:
+
+- `staging-deploy-<timestamp>.log` — full output
+- `env-staging.backup-<timestamp>` — snapshot of `.env.staging` taken before deploy
+
+Both land in `$LOG_DIR` (default `/var/log/safarakealayna-deploy-staging`).
+
+### Running ad-hoc scripts against staging
+
+Once `.env.staging` exists and `APP_ENV=staging` is set inside it, `config('app.env')`
+returns `staging` and hard guards like:
+
+```php
+if (config('app.env') !== 'staging') {
+    exit("❌ REFUSED: must run on staging\n");
+}
+```
+
+will pass. You can then run staging-only scripts from the repo root:
+
+```bash
+cd /var/www/safarakealayna-staging
+sudo -u deploy php tests/e2e/flights_e2e_staging.php
+sudo -u deploy php tests/e2e/fix_staging_data.php
+```
+
+### Staging rollback
+
+Same idea as production — `git pull --ff-only` only, so rollback is just:
+
+```bash
+cd /var/www/safarakealayna-staging
+sudo -u deploy git reset --hard <previous-sha>
+sudo -u deploy ./deploy/staging.sh --no-build --skip-migrate
+```
+
+Never hand-edit the staging database — write a forward migration.

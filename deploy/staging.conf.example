@@ -1,0 +1,26 @@
+# -----------------------------------------------------------------------------
+# staging.conf — local overrides for staging.sh
+# Copy this file to `staging.conf` next to staging.sh and edit values.
+# Anything you don't set falls back to the defaults baked into staging.sh.
+# -----------------------------------------------------------------------------
+# ⚠️  STAGING ONLY — point APP_DIR at the staging copy, never at production.
+
+# Path on the server where the staging Laravel project lives.
+# Default: /var/www/safarakealayna-staging
+#APP_DIR="/var/www/safarakealayna-staging"
+
+# Linux user that owns the staging application files (matches Nginx/PHP-FPM).
+#APP_USER="www-data"
+#APP_GROUP="www-data"
+
+# systemd unit name for your PHP-FPM service.
+#PHP_FPM_SERVICE="php8.3-fpm"
+
+# Where staging deploy logs (.env.staging backups, per-run logs) are written.
+#LOG_DIR="/var/log/safarakealayna-deploy-staging"
+
+# Path to the staging env file inside APP_DIR.
+#ENV_FILE=".env.staging"
+
+# Git branch to deploy by default. Override per-run with --branch=NAME.
+#BRANCH="main"
