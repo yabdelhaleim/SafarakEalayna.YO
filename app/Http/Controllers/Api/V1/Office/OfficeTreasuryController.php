@@ -117,23 +117,33 @@ class OfficeTreasuryController extends Controller
             page: $validated['page'],
         );
 
-        // ─── Manual ledger entries (NO transaction) ─────────────────
+// ─── Manual ledger entries (NO transaction) ─────────────────
         // These include opening balances (e.g. "رصيد افتتاحي") and
         // manual corrections (e.g. "تصحيح TX-201"). They are NOT
         // transactions but they DO contribute to the balance. Returning
-        // them separately lets the UI show the user the full math:
+        // them separately lets the UI show the full math:
         //   opening balances + transactions net = current balance
         // Without this, the user sees a balance that doesn't match the
         // sum of visible transactions, which is what triggered the
         // "missing 1,444 EGP" investigation in the first place.
+        //
+        // IMPORTANT: do NOT use `Transaction::pluck('id')` and feed it
+        // into whereNotIn — on a busy prod DB with thousands of
+        // transactions, the Collection overflows MySQL's
+        // `max_prepared_stmt_count` / placeholder limit and the
+        // query blows up with HTTP 500. Use a subquery instead so the
+        // DB handles the IN-list server-side, no PHP-side explosion.
         $manualEntries = AccountEntry::query()
             ->where('account_id', $account->id)
             ->where(function ($q) {
                 $q->whereNull('transaction_id')
-                    ->orWhereNotIn('transaction_id', Transaction::pluck('id'));
+                    ->orWhereNotIn(
+                        'transaction_id',
+                        Transaction::query()->select('id')
+                    );
             })
             ->orderBy('created_at', 'desc')
-            ->get(['id', 'credit', 'debit', 'created_at', 'notes', 'created_by']);
+            ->get(['id', 'credit', 'debit', 'created_at', 'notes']);
 
         $manualEntriesFormatted = $manualEntries->map(function (AccountEntry $e) {
             $credit = (float) $e->credit;
@@ -153,7 +163,6 @@ class OfficeTreasuryController extends Controller
                 'kind' => $isOpening ? 'opening_balance' : ($isCorrection ? 'correction' : 'manual'),
                 'date' => $e->created_at?->toIso8601String(),
                 'notes' => $e->notes,
-                'created_by' => $e->created_by,
             ];
         })->values()->all();
 
