@@ -694,13 +694,14 @@ class FinancialReportController extends Controller
                     'a.type as account_type',
                     'a.module_type as account_module_type',
                     'a.module as account_module',
+                    'a.currency as account_currency',
                     'a.balance as account_balance',
                     DB::raw('SUM(ae.debit) as total_debit'),
                     DB::raw('SUM(ae.credit) as total_credit'),
                     DB::raw('SUM(ae.debit) - SUM(ae.credit) as net_balance'),
                     DB::raw('COUNT(DISTINCT ae.transaction_id) as transaction_count'),
                 ])
-                ->groupBy('a.id', 'a.name', 'a.type', 'a.module_type', 'a.module', 'a.balance')
+                ->groupBy('a.id', 'a.name', 'a.type', 'a.module_type', 'a.module', 'a.currency', 'a.balance')
                 ->orderBy('a.type')
                 ->orderBy('a.name')
                 ->get();

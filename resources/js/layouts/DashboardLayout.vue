@@ -242,6 +242,7 @@
               <router-link to="/finance/transactions/create" class="nl-sub">معاملة جديدة</router-link>
               <router-link to="/finance/transfers" class="nl-sub">التحويلات المالية</router-link>
               <router-link to="/finance/profit-loss" class="nl-sub">الأرباح والخسائر</router-link>
+              <router-link to="/finance/trial-balance" class="nl-sub">ميزان الحسابات</router-link>
               <router-link to="/finance/department/tourism" class="nl-sub">المركز المالي - السياحة</router-link>
               <router-link to="/finance/department/office" class="nl-sub">المركز المالي - المكتب</router-link>
               <router-link to="/finance/operations/ledger" class="nl-sub">شحن الأنظمة والتحويلات</router-link>

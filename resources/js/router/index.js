@@ -643,6 +643,12 @@ const routes = [
         meta: { title: 'بيان الأرباح والخسائر' },
       },
       {
+        path: 'trial-balance',
+        name: 'finance.trial-balance',
+        component: () => import('@/views/finance/TrialBalance.vue'),
+        meta: { title: 'ميزان الحسابات' },
+      },
+      {
         path: 'department/tourism',
         name: 'finance.department.tourism',
         component: () => import('@/views/finance/TourismManagement.vue'),
