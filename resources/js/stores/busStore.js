@@ -602,13 +602,35 @@ export const useBusStore = defineStore('bus', {
     },
 
     async fetchAccountBusTransactions(accountId, params = {}) {
-      try {
-        const response = await axios.get(`/api/v1/bus/treasury/accounts/${accountId}/bus-transactions`, { params });
-        return response.data?.data ?? null;
-      } catch (error) {
-        console.error('Failed to fetch account bus transactions', error);
-        return null;
+      // Behavior preserved: returns the paginator on success, throws on
+      // failure (the caller in BusTreasury.vue handles empty/error state
+      // distinctly). Empty results return a paginator with `data: []`,
+      // not null, so the UI can distinguish "no data" from "request failed".
+      const response = await axios.get(`/api/v1/bus/treasury/accounts/${accountId}/bus-transactions`, { params });
+      return response.data?.data ?? null;
+    },
+
+    /**
+     * Fetch ALL transactions touching an office-division account — bus,
+     * fawry, online, general, etc. Sister to
+     * {@link fetchAccountBusTransactions} which only returns `module=bus`.
+     *
+     * Used by the unified office modal in BusTreasury.vue when the user
+     * toggles "Show all operations" so they can audit a single vault
+     * across every office module that has touched it.
+     */
+    async fetchOfficeAccountTransactions(accountId, params = {}) {
+      // Same contract as fetchAccountBusTransactions: returns the paginator
+      // on success, throws on failure. Validates the envelope shape so
+      // silent API contract drift (e.g. backend returns a non-paginated
+      // payload) surfaces immediately instead of producing empty rows.
+      const response = await axios.get(`/api/v1/office/treasury/accounts/${accountId}/transactions`, { params });
+      const data = response.data?.data ?? null;
+      if (data && !Array.isArray(data.data)) {
+        // Defensive: a paginator should have a `data` array inside.
+        console.warn('fetchOfficeAccountTransactions: non-paginated payload', data);
       }
+      return data;
     },
 
     async fetchCompanyBusStatement(companyId, params = {}) {

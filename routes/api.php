@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\V1\Flight\FlightDashboardController;
 use App\Http\Controllers\Api\V1\Flight\FlightGroupController;
 use App\Http\Controllers\Api\V1\Flight\FlightSystemController;
 use App\Http\Controllers\Api\V1\Flight\FlightTreasuryController;
+use App\Http\Controllers\Api\V1\Office\OfficeTreasuryController;
 use App\Http\Controllers\Api\V1\Flight\ModificationController;
 use App\Http\Controllers\Api\V1\Flight\PassengerController;
 use App\Http\Controllers\Api\V1\Flight\RefundController;
@@ -301,6 +302,15 @@ Route::prefix('v1')->middleware([
             });
         });
     });
+
+    // Office treasury — unified view across all office-division modules
+    // (bus, fawry, online, wallet_transfer). Sister to the bus-only
+    // endpoint above; required because the bus endpoint hides operations
+    // from the other office modules on the same account.
+    Route::prefix('office/treasury')->group(function () {
+        Route::get('accounts/{account}/transactions', [OfficeTreasuryController::class, 'accountTransactions']);
+    });
+
 
     // Wallet & Transfers API
     Route::prefix('wallet')->group(function () {

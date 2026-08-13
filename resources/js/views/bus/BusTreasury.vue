@@ -204,12 +204,35 @@
             </div>
             <button type="button" class="rounded-lg p-2 text-white/30 hover:bg-white/5 hover:text-white" @click="closeModal">✕</button>
           </div>
+          <!-- Tab strip: switch between bus-only and full office view -->
+          <div class="flex items-center gap-1 border-b border-white/5 bg-white/[0.02] px-4 py-2">
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-bold transition"
+              :class="accountTxScope === 'bus'
+                ? 'bg-blue-500/20 text-blue-200 border border-blue-500/30'
+                : 'text-white/40 hover:text-white/70 border border-transparent'"
+              @click="setAccountTxScope('bus')"
+            >عمليات الباص فقط</button>
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-bold transition"
+              :class="accountTxScope === 'office'
+                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/30'
+                : 'text-white/40 hover:text-white/70 border border-transparent'"
+              @click="setAccountTxScope('office')"
+            >كل عمليات المكتب</button>
+            <span v-if="accountTxScope === 'office'" class="mr-auto text-[10px] text-emerald-300/70 font-bold">
+              يشمل: فوري، أونلاين، محفظة، تحويلات، عام
+            </span>
+          </div>
           <div class="max-h-[60vh] overflow-auto p-6">
             <table class="min-w-full text-right text-xs">
               <thead class="sticky top-0 bg-[#0a111e] text-white/40 uppercase tracking-wider">
                 <tr>
                   <th class="px-4 py-3">التاريخ</th>
                   <th class="px-4 py-3">النوع</th>
+                  <th v-if="accountTxScope === 'office'" class="px-4 py-3">الموديول</th>
                   <th class="px-4 py-3">المبلغ</th>
                   <th class="px-4 py-3">الطرف الآخر</th>
                   <th class="px-4 py-3">ملاحظات</th>
@@ -223,6 +246,11 @@
                       {{ txTypeLabel(tx.type) }}
                     </span>
                   </td>
+                  <td v-if="accountTxScope === 'office'" class="px-4 py-3">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5" :class="moduleBadgeClass(tx.module)">
+                      {{ moduleLabel(tx.module) }}
+                    </span>
+                  </td>
                   <td class="px-4 py-3 font-mono font-bold text-white tabular-nums text-sm">{{ Number(tx.amount).toLocaleString('ar-EG') }}</td>
                   <td class="px-4 py-3 text-white/60">
                     {{ tx.from_account_id === modal.account.id ? (tx.to_account?.name || '—') : (tx.from_account?.name || '—') }}
@@ -232,7 +260,12 @@
               </tbody>
             </table>
             <div v-if="accountTxLoading" class="py-12 text-center text-white/20">جاري التحميل…</div>
-            <div v-if="!accountTxLoading && !accountTxRows.length" class="py-12 text-center text-white/20">لا توجد حركات مسجلة.</div>
+            <div v-if="accountTxError" class="py-6 text-center">
+              <div class="inline-block rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+                ⚠ {{ accountTxError }}
+              </div>
+            </div>
+            <div v-if="!accountTxLoading && !accountTxError && !accountTxRows.length" class="py-12 text-center text-white/20">لا توجد حركات مسجلة.</div>
           </div>
           <div v-if="accountTxMeta && accountTxMeta.last_page > 1" class="flex items-center justify-center gap-4 border-t border-white/5 px-6 py-4">
             <button
@@ -310,33 +343,111 @@ const modal = ref({ type: 'idle', account: null });
 const accountTxRows = ref([]);
 const accountTxMeta = ref(null);
 const accountTxLoading = ref(false);
+const accountTxError = ref(null);
+
+// 'bus' = original BusTreasuryController::accountBusTransactions endpoint,
+//         filters by module=bus only.
+// 'office' = new OfficeTreasuryController::accountTransactions endpoint,
+//         returns ALL operations on the account (fawry, online, general, etc.).
+//
+// ALWAYS starts in 'bus' so opening a different account after the user
+// toggled to 'office' doesn't leak the previous account's state. The
+// reset is enforced in both `openAccountTx` and `closeModal` below.
+const accountTxScope = ref('bus');
+
+// Tracks the most recent in-flight request so older responses cannot
+// overwrite newer state (handles scope-switch + account-switch races).
+let accountTxRequestSeq = 0;
 
 const closeModal = () => {
+  // Abort any in-flight request implicitly by bumping the sequence —
+  // its callback will see a stale seq and bail out.
+  accountTxRequestSeq += 1;
   modal.value = { type: 'idle', account: null };
   accountTxRows.value = [];
   accountTxMeta.value = null;
+  accountTxError.value = null;
+  accountTxLoading.value = false;
+  // Reset to bus scope so the NEXT opened account starts in bus mode.
+  // Per PHASE 3 spec: "Open Account B → MUST start in Bus mode".
+  accountTxScope.value = 'bus';
 };
 
 const openAccountTx = async (acc) => {
+  // Per PHASE 3 spec: opening a new account must reset scope to bus and
+  // clear stale rows/pagination/loading state from a previous open.
+  accountTxScope.value = 'bus';
+  accountTxRows.value = [];
+  accountTxMeta.value = null;
+  accountTxError.value = null;
+  accountTxLoading.value = false;
   modal.value = { type: 'account', account: acc };
   await loadAccountPage(1);
 };
 
+const setAccountTxScope = (scope) => {
+  if (accountTxScope.value === scope) return;
+  if (scope !== 'bus' && scope !== 'office') return; // defensive
+  accountTxScope.value = scope;
+  // Refresh from page 1 whenever the user flips the tab.
+  loadAccountPage(1);
+};
+
 const loadAccountPage = async (page) => {
   if (!modal.value.account) return;
+  // Bump the sequence so any in-flight older request is treated as stale.
+  const mySeq = ++accountTxRequestSeq;
   accountTxLoading.value = true;
+  accountTxError.value = null;
   try {
-    const data = await store.fetchAccountBusTransactions(modal.value.account.id, { page, per_page: 25 });
+    const fetcher = accountTxScope.value === 'office'
+      ? store.fetchOfficeAccountTransactions
+      : store.fetchAccountBusTransactions;
+    const data = await fetcher(modal.value.account.id, { page, per_page: 25 });
+    // Stale response guard — only apply if THIS request is still the latest.
+    if (mySeq !== accountTxRequestSeq) return;
     accountTxRows.value = data?.data || [];
     accountTxMeta.value = {
       current_page: data?.current_page ?? 1,
       last_page: data?.last_page ?? 1,
     };
-  } catch {
+  } catch (err) {
+    if (mySeq !== accountTxRequestSeq) return; // ignore stale failures
     accountTxRows.value = [];
     accountTxMeta.value = null;
+    // Distinguish API failure from a successful empty result, per PHASE 10.
+    accountTxError.value = err?.response?.data?.message
+      || err?.message
+      || 'فشل تحميل المعاملات. حاول مرة أخرى.';
   } finally {
-    accountTxLoading.value = false;
+    if (mySeq === accountTxRequestSeq) {
+      accountTxLoading.value = false;
+    }
+  }
+};
+
+// Module badge label + color for the new "office" scope column.
+const moduleLabel = (m) => {
+  switch (m) {
+    case 'bus':            return 'باص';
+    case 'fawry':          return 'فوري';
+    case 'online':         return 'اونلاين';
+    case 'wallet_transfer':return 'محفظة';
+    case 'general':        return 'عام';
+    case 'office':         return 'مكتب';
+    default:               return m || '—';
+  }
+};
+
+const moduleBadgeClass = (m) => {
+  switch (m) {
+    case 'bus':            return 'text-blue-300';
+    case 'fawry':          return 'text-orange-300';
+    case 'online':         return 'text-violet-300';
+    case 'wallet_transfer':return 'text-emerald-300';
+    case 'general':        return 'text-white/60';
+    case 'office':         return 'text-sky-200';
+    default:               return 'text-white/40';
   }
 };
 </script>
