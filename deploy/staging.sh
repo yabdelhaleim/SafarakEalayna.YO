@@ -134,6 +134,12 @@ if [[ "$APP_DIR" == "/var/www/safarakEalayna" ]]; then
 fi
 
 cd "$APP_DIR"
+
+# Export APP_ENV so Laravel's LoadEnvironmentVariables picks up .env.staging.
+# Laravel only checks $_ENV/getenv() for APP_ENV — values from `.env` alone
+# don't trigger loading of `.env.{APP_ENV}`.
+export APP_ENV=staging
+
 ok "Environment OK (PHP $PHP_VER, cwd=$APP_DIR, env_file=$ENV_FILE, branch=$BRANCH, dry_run=$DRY_RUN)"
 log "Log file: $LOG_FILE"
 
