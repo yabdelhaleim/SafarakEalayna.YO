@@ -395,6 +395,17 @@ class WalletTransactionService
         // account and the customer account. The pair uniquely identifies
         // the settlement row (the main income/expense use wallet_account
         // or customer_account alone, never cash+customer together).
+        //
+        // BUG-FIX (audit 2026-08-14): use the LATEST settlement (order by
+        // id desc) instead of the FIRST. Without this fix, every update
+        // reverses the same oldest settlement row (F.1) while later
+        // settlements accumulate unstacked — the customer balance then
+        // drifts MORE negative than expected on every subsequent update
+        // (e.g. paying 3k → 5k → 10k on a 10k debt left the customer at
+        // −12.7k instead of 0). The mirror entries from previous
+        // reversals are excluded by `notes NOT LIKE 'عكس%'` so the
+        // chain of "reverse of reverse of reverse" does not pollute
+        // the match.
         $settlement = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $transaction->id)
             ->where(function ($q) use ($transaction, $customerAccount) {
@@ -406,6 +417,16 @@ class WalletTransactionService
                         ->where('to_account_id', $transaction->cash_account_id);
                 });
             })
+            ->whereNotIn('id', function ($sub) use ($transaction) {
+                // Exclude mirror / reversal transactions stamped with
+                // 'عكس' notes so we don't pick a reversed-then-reversed
+                // row as if it were a fresh settlement.
+                $sub->select('id')->from('transactions')
+                    ->where('related_type', WalletTransaction::class)
+                    ->where('related_id', $transaction->id)
+                    ->where('notes', 'like', 'عكس%');
+            })
+            ->orderBy('id', 'desc')
             ->first();
 
         if ($settlement) {
@@ -727,9 +748,21 @@ class WalletTransactionService
                     (int) $transaction->id,
                     $settlementAccountId,
                 );
+                // BUG-FIX (audit 2026-08-14): for walk-in operations
+                // (customer_id IS NULL), pass null for $currentPaidAmount
+                // so the guard's Check 1 is skipped. For walk-in there is
+                // no customer account to "later pay", and amount_paid is
+                // set at creation time reflecting the cash flow — it is
+                // NOT a signal of a subsequent debt payment. Failing
+                // Check 1 here was a false positive that blocked every
+                // legitimate walk-in deletion.
+                $currentPaidAmount = $customerAccountId !== null
+                    ? (float) ($transaction->amount_paid ?? 0.0)
+                    : null;
+
                 $this->deletionGuard->ensureNoLaterPayment(
                     $transaction->created_at,
-                    (float) ($transaction->amount_paid ?? 0.0),
+                    $currentPaidAmount,
                     $originalSettlement,
                     $customerAccountId,
                     WalletTransaction::class,

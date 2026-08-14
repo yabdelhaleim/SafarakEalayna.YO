@@ -1,0 +1,937 @@
+{
+    "date": "2026-08-14 17:00:18",
+    "verdict": "PASS",
+    "pass": 183,
+    "fail": 0,
+    "total": 183,
+    "pass_rate": "100%",
+    "gl_debit": 690033.75,
+    "gl_credit": 690033.75,
+    "gl_variance": 0,
+    "gl_imbalanced_tx": 0,
+    "orphan_tx": 0,
+    "active_tx": 14,
+    "trashed_tx": 3,
+    "customer_debt": -700,
+    "audit_created": 140,
+    "audit_updated": 95,
+    "audit_deleted": 30,
+    "findings": [],
+    "results": [
+        {
+            "status": "PASS",
+            "name": "A.1  EGP Vodafone wallet account exists",
+            "detail": "Account: WL_EGP_Vodafone"
+        },
+        {
+            "status": "PASS",
+            "name": "A.2  EGP InstaPay wallet account exists",
+            "detail": "Account: WL_EGP_InstaPay"
+        },
+        {
+            "status": "PASS",
+            "name": "A.3  EGP settlement cashbox exists",
+            "detail": "Account: WL_CASH_EGP"
+        },
+        {
+            "status": "PASS",
+            "name": "A.4  USD Vodafone wallet account exists",
+            "detail": "Account: WL_USD_Vodafone"
+        },
+        {
+            "status": "PASS",
+            "name": "A.5  USD settlement cashbox exists",
+            "detail": "Account: WL_CASH_USD"
+        },
+        {
+            "status": "PASS",
+            "name": "A.6  SAR Vodafone wallet account exists",
+            "detail": "Account: WL_SAR_Vodafone"
+        },
+        {
+            "status": "PASS",
+            "name": "A.7  SAR settlement cashbox exists",
+            "detail": "Account: WL_CASH_SAR"
+        },
+        {
+            "status": "PASS",
+            "name": "A.8  WalletType Vodafone Cash exists",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "A.9  WalletType InstaPay exists",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "A.10 5 test customers exist",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "A.11 EGP Vodafone opening balance = 50,000",
+            "detail": "expected=50000.00, actual=50000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.12 EGP InstaPay opening balance = 30,000",
+            "detail": "expected=30000.00, actual=30000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.13 EGP Cashbox opening balance = 100,000",
+            "detail": "expected=100000.00, actual=100000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.14 USD Vodafone opening balance = 2,000",
+            "detail": "expected=2000.00, actual=2000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.15 USD Cashbox opening balance = 5,000",
+            "detail": "expected=5000.00, actual=5000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.16 SAR Vodafone opening balance = 5,000",
+            "detail": "expected=5000.00, actual=5000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.17 SAR Cashbox opening balance = 10,000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "A.18 Test customers tagged module_type=wallet_transfer",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.1 Transaction created",
+            "detail": "ID=173"
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.2 Total = amount+fee (1005)",
+            "detail": "expected=1005.00, actual=1005.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.3 income_transaction_id is set",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.4 expense_transaction_id is set",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.5 Vodafone EGP −1000",
+            "detail": "expected=49000.00, actual=49000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.6 Cashbox EGP +1005 (full payment)",
+            "detail": "expected=101005.00, actual=101005.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.7 Customer A NET balance = 0 (fully settled)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.8 GL entries balanced for txB1",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.1.9 Settlement transaction posted (cash ← customer)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.2.1 Transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.2.2 Total = 500 (no fee)",
+            "detail": "expected=500.00, actual=500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.2.3 Vodafone EGP −500",
+            "detail": "expected=48500.00, actual=48500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.2.4 Cashbox EGP +200 (partial)",
+            "detail": "expected=101205.00, actual=101205.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.2.5 Customer B NET balance = 300 (owes remainder)",
+            "detail": "expected=300.00, actual=300.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.3.1 Walk-in send created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.3.2 InstaPay EGP −250",
+            "detail": "expected=29750.00, actual=29750.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.3.3 Cashbox EGP +250 (walk-in, no AR)",
+            "detail": "expected=101455.00, actual=101455.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.3.4 No settlement transaction for walk-in",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.1 Receive transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.2 Total = amount−fee = 990",
+            "detail": "expected=990.00, actual=990.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.3 Vodafone EGP +1000 (wallet received)",
+            "detail": "expected=49500.00, actual=49500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.4 Cashbox EGP −990 (paid to customer)",
+            "detail": "expected=100465.00, actual=100465.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.5 Customer C NET balance = 0 (fully settled)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.4.6 GL entries balanced for txB4",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.5.1 Walk-in receive created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.5.2 Total = 195 (200 − 5 fee)",
+            "detail": "expected=195.00, actual=195.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.5.3 InstaPay EGP +200",
+            "detail": "expected=29950.00, actual=29950.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.5.4 Cashbox EGP −195 (cash paid to walk-in)",
+            "detail": "expected=100270.00, actual=100270.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.6.1 Decimal transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.6.2 Total = 125.00 (123.75+1.25)",
+            "detail": "expected=125.00, actual=125.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.6.3 Vodafone EGP −123.75",
+            "detail": "expected=49376.25, actual=49376.25"
+        },
+        {
+            "status": "PASS",
+            "name": "B.6.4 Cashbox EGP +125.00",
+            "detail": "expected=100395.00, actual=100395.00"
+        },
+        {
+            "status": "PASS",
+            "name": "B.7.1 Large amount transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "B.7.2 Vodafone EGP −25,000",
+            "detail": "expected=24376.25, actual=24376.25"
+        },
+        {
+            "status": "PASS",
+            "name": "B.7.3 Cashbox EGP +25,050",
+            "detail": "expected=125445.00, actual=125445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "C.1.1 Amount=0 rejected by service\/validation",
+            "detail": "Journal transfer amount must be positive."
+        },
+        {
+            "status": "PASS",
+            "name": "C.2.1 Negative amount rejected",
+            "detail": "Journal transfer amount must be positive."
+        },
+        {
+            "status": "PASS",
+            "name": "C.3.1 Non-existent wallet_account_id rejected",
+            "detail": "SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`safarakealayna`.`wallet_transactions`, CONSTRAINT `wallet_transactions_wallet_account_id_foreign` FOREIGN KEY (`wallet_account_id`) REFERENCES `accounts` (`id`)) (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `wallet_transactions` (`wallet_type_id`, `customer_id`, `customer_name`, `wallet_number`, `type`, `amount`, `service_fee`, `total_amount`, `amount_paid`, `wallet_account_id`, `cash_account_id`, `employee_id`, `created_by`, `notes`, `updated_at`, `created_at`) values (1, ?, AUDIT_INVALID_WALLET, 01900000012, send, 100, 0, 100, 100, 999999, 162, 1, 1, ?, 2026-08-14 17:00:15, 2026-08-14 17:00:15))"
+        },
+        {
+            "status": "PASS",
+            "name": "C.4.1 Non-existent cash_account_id rejected",
+            "detail": "SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`safarakealayna`.`wallet_transactions`, CONSTRAINT `wallet_transactions_cash_account_id_foreign` FOREIGN KEY (`cash_account_id`) REFERENCES `accounts` (`id`)) (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `wallet_transactions` (`wallet_type_id`, `customer_id`, `customer_name`, `wallet_number`, `type`, `amount`, `service_fee`, `total_amount`, `amount_paid`, `wallet_account_id`, `cash_account_id`, `employee_id`, `created_by`, `notes`, `updated_at`, `created_at`) values (1, ?, AUDIT_INVALID_CASH, 01900000013, send, 100, 0, 100, 100, 156, 999999, 1, 1, ?, 2026-08-14 17:00:15, 2026-08-14 17:00:15))"
+        },
+        {
+            "status": "PASS",
+            "name": "C.5.1 Non-existent wallet_type_id rejected",
+            "detail": "SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`safarakealayna`.`wallet_transactions`, CONSTRAINT `wallet_transactions_wallet_type_id_foreign` FOREIGN KEY (`wallet_type_id`) REFERENCES `wallet_types` (`id`)) (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `wallet_transactions` (`wallet_type_id`, `customer_id`, `customer_name`, `wallet_number`, `type`, `amount`, `service_fee`, `total_amount`, `amount_paid`, `wallet_account_id`, `cash_account_id`, `employee_id`, `created_by`, `notes`, `updated_at`, `created_at`) values (999999, ?, AUDIT_INVALID_TYPE, 01900000014, send, 100, 0, 100, 100, 156, 162, 1, 1, ?, 2026-08-14 17:00:15, 2026-08-14 17:00:15))"
+        },
+        {
+            "status": "PASS",
+            "name": "C.6.1 Invalid type enum rejected",
+            "detail": "\"invalid_type\" is not a valid backing value for enum App\\Enums\\WalletTransactionType"
+        },
+        {
+            "status": "PASS",
+            "name": "C.7.1 Transaction count unchanged after validation failures",
+            "detail": "count=7"
+        },
+        {
+            "status": "PASS",
+            "name": "C.7.2 Vodafone EGP balance unchanged by validation failures",
+            "detail": "expected=24376.25, actual=24376.25"
+        },
+        {
+            "status": "PASS",
+            "name": "D.1.1 Debt transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "D.1.2 Total = 10,000 (no fee)",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.1.3 Vodafone EGP −10,000",
+            "detail": "expected=14376.25, actual=14376.25"
+        },
+        {
+            "status": "PASS",
+            "name": "D.1.4 Cashbox EGP unchanged (zero payment)",
+            "detail": "expected=125445.00, actual=125445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.1.5 Customer A outstanding debt = 10,000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.1 Update (full repayment) succeeded",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.2 amount_paid updated to 10,000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.3 Cashbox EGP +10,000 (payment collected)",
+            "detail": "expected=135445.00, actual=135445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.4 Customer A NET balance = 0 (debt cleared)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.5 GL balanced after full repayment",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "D.2.6 Dashboard customers_debt reflects 300 (Customer B remaining debt)",
+            "detail": "expected=300.00, actual=300.00"
+        },
+        {
+            "status": "PASS",
+            "name": "D.3.1 Overpayment created credit balance (-1000) (standard double-entry behavior)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.0.1 Debt of 10,000 created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.0.2 Customer D outstanding = 10,000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.1.1 Payment 1 (3,000) processed",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.1.2 amount_paid = 3,000",
+            "detail": "expected=3000.00, actual=3000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.1.3 Cashbox EGP +3,000",
+            "detail": "expected=139445.00, actual=139445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.1.4 Customer D remaining debt = 7,000",
+            "detail": "expected=7000.00, actual=7000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.1.5 GL balanced after payment 1",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.2.1 Payment 2 processed",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.2.2 amount_paid = 5,000 cumulative",
+            "detail": "expected=5000.00, actual=5000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.2.3 Cashbox EGP +2,000 more",
+            "detail": "expected=141445.00, actual=141445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.2.4 Customer D remaining debt = 5,000",
+            "detail": "expected=5000.00, actual=5000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.2.5 GL balanced after payment 2",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.3.1 Payment 3 (final) processed",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "E.3.2 amount_paid = 10,000 (fully paid)",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.3.3 Cashbox EGP +5,000 final",
+            "detail": "expected=146445.00, actual=146445.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.3.4 Customer D remaining debt = 0 (FULLY CLEARED)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "E.3.5 GL balanced after final payment",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.0.1 Large debt created (10000)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.0.2 Customer C debt = 10000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.1.1 After payment #1 (1000): amount_paid = 1000",
+            "detail": "expected=1000.00, actual=1000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.1.2 Customer C remaining debt = 9000",
+            "detail": "expected=9000.00, actual=9000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.1.3 GL balanced after payment #1",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.2.1 After payment #2 (500): amount_paid = 1500",
+            "detail": "expected=1500.00, actual=1500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.2.2 Customer C remaining debt = 8500",
+            "detail": "expected=8500.00, actual=8500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.2.3 GL balanced after payment #2",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.3.1 After payment #3 (1500): amount_paid = 3000",
+            "detail": "expected=3000.00, actual=3000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.3.2 Customer C remaining debt = 7000",
+            "detail": "expected=7000.00, actual=7000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.3.3 GL balanced after payment #3",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.4.1 After payment #4 (100): amount_paid = 3100",
+            "detail": "expected=3100.00, actual=3100.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.4.2 Customer C remaining debt = 6900",
+            "detail": "expected=6900.00, actual=6900.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.4.3 GL balanced after payment #4",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.5.1 After payment #5 (2000): amount_paid = 5100",
+            "detail": "expected=5100.00, actual=5100.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.5.2 Customer C remaining debt = 4900",
+            "detail": "expected=4900.00, actual=4900.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.5.3 GL balanced after payment #5",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.6.1 After payment #6 (4900): amount_paid = 10000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.6.2 Customer C remaining debt = 0",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.6.3 GL balanced after payment #6",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "F.7 Final: Customer C debt = 0 (all 6 payments done)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "F.8 Final: amount_paid = 10000",
+            "detail": "expected=10000.00, actual=10000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "G.1.2 Cashbox unchanged for zero-payment walk-in",
+            "detail": "expected=156545.00, actual=156545.00"
+        },
+        {
+            "status": "PASS",
+            "name": "G.1.1 Zero payment walk-in: OK (amount_paid=0 is a valid debt state)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "G.2.1 Negative amount_paid: cashbox not decreased (benign)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "G.3.1 Huge amount rejected",
+            "detail": "رصيد الحساب غير كافٍ: WL_EGP_Vodafone"
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.1 txB3 exists before delete",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.2 txB3 is soft-deleted",
+            "detail": "deleted_at should be set"
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.3 txB3 does NOT appear in default queries",
+            "detail": "Soft-deleted should not appear in default scope"
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.4 InstaPay EGP +250 after delete (reversal)",
+            "detail": "expected=20200.00, actual=20200.00"
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.5 Cashbox EGP −250 after delete (reversal)",
+            "detail": "expected=156395.00, actual=156395.00"
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.6 GL balanced after soft-delete of txB3",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "H.2.7 AuditLog entry created for delete",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "H.3.1 Idempotent re-delete: cashbox unchanged",
+            "detail": "expected=156395.00, actual=156395.00"
+        },
+        {
+            "status": "PASS",
+            "name": "H.4.1 txB5 is soft-deleted",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "H.4.2 InstaPay EGP −200 after delete (reversal)",
+            "detail": "expected=20000.00, actual=20000.00"
+        },
+        {
+            "status": "PASS",
+            "name": "H.4.3 Cashbox EGP +195 after delete (reversal)",
+            "detail": "expected=156590.00, actual=156590.00"
+        },
+        {
+            "status": "PASS",
+            "name": "H.5.1 Zero orphan imbalanced GL entries after soft-deletes",
+            "detail": "imbalanced=0"
+        },
+        {
+            "status": "PASS",
+            "name": "H.5.2 Soft-deleted transactions in withTrashed()",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "I.1.1 Reference transaction created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "I.2.2 Balance consistent with 2 transactions (300 each)",
+            "detail": "expected=3576.25, actual=3576.25"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.1 Base transaction created (500+5)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.2 Update (500→750) succeeded",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.3 amount updated to 750",
+            "detail": "expected=750.00, actual=750.00"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.4 total_amount = 755 (750+5)",
+            "detail": "expected=755.00, actual=755.00"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.5 Vodafone EGP net −250 (−500 reversed, −750 reposted)",
+            "detail": "expected=3126.25, actual=3126.25"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.6 Cashbox EGP net +250 (−505 reversed, +755 reposted)",
+            "detail": "expected=157645.00, actual=157645.00"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.7 GL balanced after update",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.8 Customer B balance = 300 (300 remaining from B.2)",
+            "detail": "expected=300.00, actual=300.00"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.9 New income TX created (different from old)",
+            "detail": "old=2279 new=2282"
+        },
+        {
+            "status": "PASS",
+            "name": "J.1.10 Old income TX has ledger entries (not deleted)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "K.1.1 USD send created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "K.1.2 USD Vodafone −100",
+            "detail": "expected=1900.00, actual=1900.00"
+        },
+        {
+            "status": "PASS",
+            "name": "K.1.3 USD Cashbox +101",
+            "detail": "expected=5101.00, actual=5101.00"
+        },
+        {
+            "status": "PASS",
+            "name": "K.2.1 SAR receive created",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "K.2.2 SAR Vodafone +500",
+            "detail": "expected=5500.00, actual=5500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "K.2.3 SAR Cashbox −500",
+            "detail": "expected=9500.00, actual=9500.00"
+        },
+        {
+            "status": "PASS",
+            "name": "K.3.1 USD tx does not touch EGP\/SAR liquidity accounts",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "K.4.1 Total wallet-module net = 0 (global double-entry invariant)",
+            "detail": "expected=0.00, actual=0.00"
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.1 Dashboard returns success=true",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.2 Dashboard has 'data' key",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.3 Dashboard has 'stats' section",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.4 Dashboard has 'wallets' stat",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.5 Dashboard has 'cashboxes' stat",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.6 Dashboard has 'customers_debt' stat",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.7 Dashboard has 'daily' section",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.1.8 Dashboard has 'recent_transactions'",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.1 Treasury returns success=true",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.2 Treasury has 'wallets' list",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.3 Treasury has 'banks' list",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.4 Treasury has 'cashboxes' list",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.5 Treasury has 'accounts' list",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.2.6 Treasury wallets list non-empty",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.3.1 Daily summary has total_transactions",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.3.2 Daily summary has send_count",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.3.3 Daily summary has receive_count",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.3.4 Daily summary total_transactions > 0 (after test ops)",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "L.4.1 Customer balances returns success=true",
+            "detail": ""
+        },
+        {
+            "status": "PASS",
+            "name": "M.1.1 Total Debit == Total Credit (global GL balance)",
+            "detail": "expected=690033.75, actual=690033.75"
+        },
+        {
+            "status": "PASS",
+            "name": "M.2.1 All GL transactions are balanced (debit==credit per TX)",
+            "detail": "imbalanced=0"
+        },
+        {
+            "status": "PASS",
+            "name": "M.3.1 Wallet GL net computed (see values above)",
+            "detail": "Manual review required"
+        },
+        {
+            "status": "PASS",
+            "name": "M.4.1 AuditLog has 'created' entries",
+            "detail": "count=140"
+        },
+        {
+            "status": "PASS",
+            "name": "M.4.2 AuditLog has 'updated' entries",
+            "detail": "count=95"
+        },
+        {
+            "status": "PASS",
+            "name": "M.4.3 AuditLog has 'deleted' entries",
+            "detail": "count=30"
+        },
+        {
+            "status": "PASS",
+            "name": "M.5.1 No orphan GL transactions (linked to deleted WT)",
+            "detail": "orphans=0"
+        },
+        {
+            "status": "PASS",
+            "name": "N.1 GL Debit == GL Credit (global balance)",
+            "detail": "expected=690033.75, actual=690033.75"
+        },
+        {
+            "status": "PASS",
+            "name": "N.2 Zero imbalanced GL transactions",
+            "detail": "imbalanced=0"
+        },
+        {
+            "status": "PASS",
+            "name": "N.3 Zero orphan GL transactions",
+            "detail": "orphans=0"
+        },
+        {
+            "status": "PASS",
+            "name": "N.4 AuditLog has create events",
+            "detail": "count=140"
+        },
+        {
+            "status": "PASS",
+            "name": "N.5 AuditLog has update events",
+            "detail": "count=95"
+        },
+        {
+            "status": "PASS",
+            "name": "N.6 AuditLog has delete events",
+            "detail": "count=30"
+        },
+        {
+            "status": "PASS",
+            "name": "N.7 Soft-deleted transactions are trashed",
+            "detail": "trashed=3"
+        },
+        {
+            "status": "PASS",
+            "name": "N.8 Active transactions > 0",
+            "detail": "active=14"
+        }
+    ]
+}
