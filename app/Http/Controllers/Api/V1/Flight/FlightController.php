@@ -268,7 +268,18 @@ class FlightController extends Controller
     public function addPayment(StoreFlightPaymentRequest $request, FlightBooking $flightBooking): JsonResponse
     {
         try {
-            $this->bookingService->addPayment($flightBooking, $request->validated());
+            $payment = $this->bookingService->addPayment($flightBooking, $request->validated());
+
+            // D3 FIX (2026-08-15): when the service returns an existing
+            // payment that was created earlier with the same idempotency_key,
+            // surface HTTP 200 OK + the idempotent_replay flag instead of
+            // HTTP 201 Created. The client can distinguish a fresh payment
+            // from a replay via the `idempotent_replay` field in the payload.
+            $isReplay = (bool) ($payment->idempotent_replay ?? false);
+            $status = $isReplay ? 200 : 201;
+            $message = $isReplay
+                ? 'Payment replay detected — returning the original payment (no new financial effect).'
+                : 'Payment recorded successfully.';
 
             $flightBooking->refresh();
             $flightBooking->load([
@@ -288,9 +299,12 @@ class FlightController extends Controller
             ]);
 
             return ApiResponse::success(
-                'Payment recorded successfully.',
-                new FlightBookingResource($flightBooking),
-                201
+                $message,
+                array_merge(
+                    (new FlightBookingResource($flightBooking))->resolve($request),
+                    ['idempotent_replay' => $isReplay],
+                ),
+                $status
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

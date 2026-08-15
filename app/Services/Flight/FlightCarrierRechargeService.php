@@ -65,6 +65,22 @@ class FlightCarrierRechargeService
     ): array {
         return DB::transaction(function () use ($carrier, $source, $amount, $notes) {
             // ─────────────────────────────────────────────────────────────
+            // [0] D5 FIX (2026-08-15): reject inactive carriers BEFORE any
+            //     locks, BEFORE any financial mutation. The previous closure
+            //     gap report proved that inactive carriers were silently
+            //     recharged (CLASS-B business rule violation).
+            //
+            //     Enforced at the SERVICE layer (not just the controller)
+            //     so any caller — HTTP, CLI, internal service — is protected.
+            // ─────────────────────────────────────────────────────────────
+            if (! $carrier->is_active) {
+                throw new \App\Exceptions\InactiveFlightCarrierException(
+                    "لا يمكن شحن رصيد ناقل غير نشط: الناقل «{$carrier->name}» ".
+                    "({$carrier->code}) غير مُفعَّل. قم بتفعيله أولاً من شاشة إدارة الناقلين."
+                );
+            }
+
+            // ─────────────────────────────────────────────────────────────
             // [1] تطبيع العملة (فشل سريع قبل أي locks)
             // ─────────────────────────────────────────────────────────────
             if (strtoupper($source->currency) !== strtoupper($carrier->currency)) {

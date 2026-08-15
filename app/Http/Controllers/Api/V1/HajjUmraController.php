@@ -141,16 +141,33 @@ class HajjUmraController extends Controller
 
     public function addPayment(StoreHajjUmraPaymentRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
     {
+        // PRE-PHASE-B IDEMPOTENCY FIX (2026-08-15):
+        //   The service is the source of truth for replay detection. It
+        //   tags the returned HajjUmraPayment with a transient boolean
+        //   `idempotent_replay` when the row it returned was pre-existing
+        //   (i.e. this call was a replay of a prior request that supplied
+        //   the same `idempotency_key`). The HTTP layer surfaces that as
+        //   a 200 OK + explicit body flag so the client can distinguish
+        //   "first request, payment was created" (201) from "replay, payment
+        //   already existed" (200).
         try {
             $payment = $this->service->addPayment($hajjUmra, $request->validated());
         } catch (\Throwable $e) {
             return ApiResponse::error('فشل تسجيل الدفعة: '.$e->getMessage());
         }
 
-        return ApiResponse::success('تم تسجيل الدفعة', [
-            'payment' => $payment->load('account', 'transaction'),
-            'booking' => new HajjUmraBookingResource($this->service->find($hajjUmra->id)),
-        ], 201);
+        $isReplay = (bool) ($payment->idempotent_replay ?? false);
+        $status = $isReplay ? 200 : 201;
+
+        return ApiResponse::success(
+            $isReplay ? 'تم استرجاع الدفعة السابقة (إعادة طلب)' : 'تم تسجيل الدفعة',
+            [
+                'payment' => $payment->load('account', 'transaction'),
+                'booking' => new HajjUmraBookingResource($this->service->find($hajjUmra->id)),
+                'idempotent_replay' => $isReplay,
+            ],
+            $status
+        );
     }
 
     /**

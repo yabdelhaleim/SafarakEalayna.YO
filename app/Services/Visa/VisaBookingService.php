@@ -155,8 +155,29 @@ class VisaBookingService
             ]);
 
             $purchase = (float) $data['purchase_price'];
-            $selling = (float) $data['selling_price'];
+            $selling  = (float) $data['selling_price'];
             $serviceFee = (float) ($data['service_fee'] ?? 0);
+
+            // ─────────────────────────────────────────────────────────────
+            // FIX VISA-D02 (Class-B, 2026-08-15):
+            //   Service-layer price boundary validation must occur BEFORE
+            //   any DB insert, financial mutation, or account balance change.
+            //   HTTP validation (StoreVisaBookingRequest) catches negative
+            //   prices from the API, but programmatic / Filament callers that
+            //   bypass the FormRequest could previously persist negative prices
+            //   when selling_price + service_fee > 0 kept the total positive.
+            //   This guard is the authoritative service-level invariant.
+            // ─────────────────────────────────────────────────────────────
+            if ($purchase < 0) {
+                throw new \InvalidArgumentException('سعر الشراء لا يمكن أن يكون سالباً (purchase_price=' . $purchase . ').');
+            }
+            if ($selling < 0) {
+                throw new \InvalidArgumentException('سعر البيع لا يمكن أن يكون سالباً (selling_price=' . $selling . ').');
+            }
+            if ($serviceFee < 0) {
+                throw new \InvalidArgumentException('رسوم الخدمة لا يمكن أن تكون سالبة (service_fee=' . $serviceFee . ').');
+            }
+
             $profit = round(($selling + $serviceFee) - $purchase, 2);
 
             $accountId = (int) ($data['account_id'] ?? 0);
@@ -202,31 +223,39 @@ class VisaBookingService
                 }
             }
 
-            $expense = $this->transactions->recordExpense([
-                'amount' => $purchase,
-                'from_account_id' => $expenseAccountId,
-                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
-                'module' => TransactionModule::Visa->value,
-                'related_type' => VisaBooking::class,
-                'related_id' => $booking->id,
-                'notes' => "تكلفة تأشيرة {$detail->country} - {$customer->full_name}",
-                'created_by' => $createdBy,
-            ]);
+            $expenseId = null;
+            if ($purchase > 0) {
+                $expense = $this->transactions->recordExpense([
+                    'amount' => $purchase,
+                    'from_account_id' => $expenseAccountId,
+                    'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
+                    'module' => TransactionModule::Visa->value,
+                    'related_type' => VisaBooking::class,
+                    'related_id' => $booking->id,
+                    'notes' => "تكلفة تأشيرة {$detail->country} - {$customer->full_name}",
+                    'created_by' => $createdBy,
+                ]);
+                $expenseId = $expense->id;
+            }
 
-            $income = $this->transactions->recordIncome([
-                'amount' => $selling + $serviceFee,
-                'to_account_id' => $customerAccount->id,
-                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
-                'module' => TransactionModule::Visa->value,
-                'related_type' => VisaBooking::class,
-                'related_id' => $booking->id,
-                'notes' => "بيع تأشيرة {$detail->country} - {$customer->full_name}",
-                'created_by' => $createdBy,
-            ]);
+            $incomeId = null;
+            if (($selling + $serviceFee) > 0) {
+                $income = $this->transactions->recordIncome([
+                    'amount' => $selling + $serviceFee,
+                    'to_account_id' => $customerAccount->id,
+                    'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
+                    'module' => TransactionModule::Visa->value,
+                    'related_type' => VisaBooking::class,
+                    'related_id' => $booking->id,
+                    'notes' => "بيع تأشيرة {$detail->country} - {$customer->full_name}",
+                    'created_by' => $createdBy,
+                ]);
+                $incomeId = $income->id;
+            }
 
             $booking->update([
-                'expense_transaction_id' => $expense->id,
-                'income_transaction_id' => $income->id,
+                'expense_transaction_id' => $expenseId,
+                'income_transaction_id' => $incomeId,
             ]);
 
             if (! empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
@@ -285,12 +314,28 @@ class VisaBookingService
             $hasPriceChange = false;
             if (array_key_exists('purchase_price', $data) || array_key_exists('selling_price', $data) || array_key_exists('service_fee', $data)) {
                 $purchase = (float) ($data['purchase_price'] ?? $booking->purchase_price);
-                $selling = (float) ($data['selling_price'] ?? $booking->selling_price);
-                $fee = (float) ($data['service_fee'] ?? $booking->service_fee ?? 0);
+                $selling  = (float) ($data['selling_price'] ?? $booking->selling_price);
+                $fee      = (float) ($data['service_fee'] ?? $booking->service_fee ?? 0);
+
+                // ─────────────────────────────────────────────────────────
+                // FIX VISA-D02 (Class-B, 2026-08-15):
+                //   Same invariant as create() — validate BEFORE any financial
+                //   mutation (repostExpenseTransaction / repostIncomeTransaction).
+                // ─────────────────────────────────────────────────────────
+                if ($purchase < 0) {
+                    throw new \InvalidArgumentException('سعر الشراء لا يمكن أن يكون سالباً (purchase_price=' . $purchase . ').');
+                }
+                if ($selling < 0) {
+                    throw new \InvalidArgumentException('سعر البيع لا يمكن أن يكون سالباً (selling_price=' . $selling . ').');
+                }
+                if ($fee < 0) {
+                    throw new \InvalidArgumentException('رسوم الخدمة لا يمكن أن تكون سالبة (service_fee=' . $fee . ').');
+                }
+
                 $fields['purchase_price'] = $purchase;
-                $fields['selling_price'] = $selling;
-                $fields['service_fee'] = $fee;
-                $fields['profit'] = round(($selling + $fee) - $purchase, 2);
+                $fields['selling_price']  = $selling;
+                $fields['service_fee']    = $fee;
+                $fields['profit']         = round(($selling + $fee) - $purchase, 2);
                 $hasPriceChange = true;
             }
 
@@ -439,23 +484,15 @@ class VisaBookingService
     public function addPayment(VisaBooking $booking, array $data): VisaPayment
     {
         // ─────────────────────────────────────────────────────────────────
-        // BUG-FIX 2026-07-27: lifecycle guard — match the pattern that
-        //   `addDebtPayment()` already enforces (line 354+) for cancelled
-        //   status. Add the missing refunded + soft-deleted checks, plus
-        //   an overpayment guard. Without these:
-        //     • a payment on a cancelled booking creates a NEW income tx
-        //       that the booking's old (additively-reversed) income can't
-        //       offset — corrupting the ledger;
-        //     • a payment on a trashed (soft-deleted) booking resurrects the
-        //       financial state after the admin reversal already cleared it;
-        //     • overpayments leave the customer balance negative and create
-        //       credit the customer never asked for.
+        // Lifecycle guard: reject payments on cancelled / refunded / deleted
+        // bookings. Same invariant enforced by addDebtPayment() and the
+        // HajjUmra counterpart.
         // ─────────────────────────────────────────────────────────────────
         $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
         if ($status === VisaStatus::Cancelled->value) {
             throw new \RuntimeException(
                 'لا يمكن إضافة دفعة على حجز تأشيرة مُلغى (status=cancelled). '
-                .'يجب استخدام VisaRefundService::refund() لاسترداد المبالغ أو VisaRefundService::deleteWithReversal() للعكس الإداري.'
+                . 'يجب استخدام VisaRefundService::refund() لاسترداد المبالغ أو VisaRefundService::deleteWithReversal() للعكس الإداري.'
             );
         }
         if ($status === VisaStatus::Refunded->value) {
@@ -466,55 +503,174 @@ class VisaBookingService
         if ($booking->trashed()) {
             throw new \RuntimeException(
                 'لا يمكن إضافة دفعة على حجز تأشيرة محذوف (soft-deleted). '
-                .'يجب استخدام VisaRefundService::deleteWithReversal() للعكس الإداري.'
+                . 'يجب استخدام VisaRefundService::deleteWithReversal() للعكس الإداري.'
             );
         }
 
-        return DB::transaction(function () use ($booking, $data) {
-            $amount = (float) $data['amount'];
-            $accountId = (int) ($data['account_id'] ?? $booking->account_id);
-            $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+        // ─────────────────────────────────────────────────────────────────
+        // IDEMPOTENCY — 2026-08-15:
+        //   If the caller supplies an idempotency_key we apply three-layer
+        //   replay protection (pre-check → DB unique index → outer catch).
+        //   Legacy callers without a key keep their existing behaviour.
+        //
+        //   Key semantics:
+        //     - Same booking + same key  → idempotent return (existing row)
+        //     - Same booking + diff key  → new legitimate payment
+        //     - Diff booking + same key  → new legitimate payment
+        //     - No key supplied          → no replay protection (legacy)
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
 
-            // Overpayment guard (BUG-FIX): reject if amount > remaining.
-            // Mirror of the guard in addDebtPayment() (line 357+) — same
-            // invariant, same error.
-            $booking->refresh();
-            $totalDue = (float) $booking->selling_price + (float) ($booking->service_fee ?? 0);
-            $paidAlready = (float) $booking->paid_amount;
-            $remaining = max(0.0, $totalDue - $paidAlready);
-            if ($amount > ($remaining + 0.01)) {
-                throw new \RuntimeException(
-                    'مبلغ الدفعة ('.round($amount, 2).') يتجاوز المبلغ المتبقي على الحجز ('.round($remaining, 2).').'
-                );
+        try {
+            return DB::transaction(function () use ($booking, $data, $idempotencyKey) {
+                // Serialize concurrent calls on the same booking with a
+                // row-level lock acquired BEFORE reading paid_amount.
+                // (BUG-FIX 2026-08-14: prevents two concurrent calls reading
+                // the same paid_amount snapshot and both passing the
+                // overpayment guard.)
+                $locked = VisaBooking::lockForUpdate()->findOrFail($booking->id);
+
+                // ─── Layer 1 — pre-check ────────────────────────────────
+                // If a payment already exists for this (booking, key), return
+                // it without any financial mutation (idempotent replay).
+                if ($idempotencyKey !== null) {
+                    $existing = VisaPayment::query()
+                        ->where('visa_booking_id', $locked->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+                        return $existing;
+                    }
+                }
+
+                $amount    = (float) $data['amount'];
+                $accountId = (int) ($data['account_id'] ?? $locked->account_id);
+                $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+
+                // Overpayment guard: reject if amount > remaining.
+                $totalDue    = (float) $locked->selling_price + (float) ($locked->service_fee ?? 0);
+                $paidAlready = (float) $locked->paid_amount;
+                $remaining   = max(0.0, $totalDue - $paidAlready);
+                if ($amount > ($remaining + 0.01)) {
+                    throw new \RuntimeException(
+                        'مبلغ الدفعة (' . round($amount, 2) . ') يتجاوز المبلغ المتبقي على الحجز (' . round($remaining, 2) . ').'
+                    );
+                }
+
+                $customerAccount = $this->ensureCustomerAccount($locked->customer_id);
+
+                // ─── FIX VISA-D01 (Class-A, 2026-08-15) ─────────────────
+                //
+                // ROOT CAUSE:
+                //   The original code called recordIncome() with related_type=
+                //   VisaBooking and related_id=booking->id. After the FC-AUDIT
+                //   D1 fix (2026-08-14), recordIncome() routes through
+                //   recordJournalTransfer() with type='Income'. The duplicate-
+                //   income guard in recordJournalTransfer (lines 650–675) then
+                //   blocks every payment because the booking's initial SALE
+                //   income transaction is already active.
+                //
+                // CORRECT SEMANTICS:
+                //   A customer payment is a COLLECTION against an existing
+                //   receivable (AR), NOT a new income/sale event. The accounting
+                //   entry is:
+                //
+                //     Dr  Customer AR account    (customer owes less)
+                //     Cr  Treasury/Cash account  (office receives cash)
+                //
+                //   i.e. a transfer FROM the customer AR account TO the
+                //   receiving treasury account. type=Transfer (NOT Income).
+                //
+                //   This is identical to the pattern used by:
+                //     - HajjUmraBookingService::addPayment() (lines 778–788)
+                //
+                //   The initial booking sale (recordIncome on create()) stays
+                //   untouched — it remains the ONE active Income transaction.
+                // ─────────────────────────────────────────────────────────
+                $transfer = $this->transactions->recordJournalTransfer([
+                    'amount'          => $amount,
+                    'from_account_id' => $customerAccount->id,   // customer AR ↓
+                    'to_account_id'   => $accountId,             // treasury ↑
+                    'type'            => \App\Enums\TransactionType::Transfer->value,
+                    'module'          => TransactionModule::Visa->value,
+                    'related_type'    => VisaBooking::class,
+                    'related_id'      => $locked->id,
+                    'notes'           => "دفعة على تأشيرة #{$locked->id}",
+                    'created_by'      => $createdBy,
+                    'currency'        => $locked->currency,
+                    // allow_from_negative: customer AR can go negative if the
+                    // booking was partially pre-paid or the customer has a
+                    // credit balance. Same flag used by addDebtPayment().
+                    'allow_from_negative' => true,
+                ]);
+
+                // ─── Layer 2 backstop: DB unique constraint ──────────────
+                // The pre-check + lockForUpdate should prevent duplicates in
+                // normal operation. The try/catch below is the final backstop
+                // for pathological race conditions.
+                try {
+                    return $locked->payments()->create([
+                        'payment_method'       => $data['payment_method'] ?? 'cash',
+                        'amount'               => $amount,
+                        'currency'             => $data['currency'] ?? $locked->currency ?? 'EGP',
+                        'treasury_account'     => $data['treasury_account'] ?? 'office_drawer',
+                        'account_id'           => $accountId,
+                        'transaction_id'       => $transfer->id,
+                        'transaction_reference'=> $data['reference'] ?? $data['transaction_reference'] ?? null,
+                        'idempotency_key'      => $idempotencyKey,
+                        'payment_date'         => $data['payment_date'] ?? now(),
+                        'paid_by'              => $data['paid_by'] ?? $locked->customer?->full_name ?? '',
+                        'created_by'           => $createdBy,
+                    ]);
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Layer 2: if a concurrent request raced past the pre-check
+                    // and hit the DB unique index, return the winning row.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        $existing = VisaPayment::query()
+                            ->where('visa_booking_id', $locked->id)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+                            return $existing;
+                        }
+                    }
+                    throw $qe;
+                }
+            });
+        } catch (\Illuminate\Database\QueryException $qe) {
+            // Outer catch: DB::transaction re-raised a duplicate-key exception
+            // after the inner transaction committed the winning row. Return the
+            // existing payment as an idempotent result.
+            if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                $existing = VisaPayment::query()
+                    ->where('visa_booking_id', $booking->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+                if ($existing) {
+                    $existing->idempotent_replay = true;
+                    return $existing;
+                }
             }
+            throw $qe;
+        }
+    }
 
-            $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
-
-            $income = $this->transactions->recordIncome([
-                'amount' => $amount,
-                'to_account_id' => $accountId,
-                'contra_account_id' => $customerAccount->id,
-                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
-                'module' => TransactionModule::Visa->value,
-                'related_type' => VisaBooking::class,
-                'related_id' => $booking->id,
-                'notes' => "دفعة على تأشيرة #{$booking->id}",
-                'created_by' => $createdBy,
-            ]);
-
-            return $booking->payments()->create([
-                'payment_method' => $data['payment_method'] ?? 'cash',
-                'amount' => $amount,
-                'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
-                'treasury_account' => $data['treasury_account'] ?? 'office_drawer',
-                'account_id' => $accountId,
-                'transaction_id' => $income->id,
-                'transaction_reference' => $data['reference'] ?? $data['transaction_reference'] ?? null,
-                'payment_date' => $data['payment_date'] ?? now(),
-                'paid_by' => $data['paid_by'] ?? $booking->customer?->full_name ?? '',
-                'created_by' => $createdBy,
-            ]);
-        });
+    /**
+     * Identify a "duplicate entry on unique index" QueryException.
+     * MySQL: SQLSTATE 23000, error code 1062.
+     */
+    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+        return $code === 1062;
     }
 
     protected function resolveCustomer(?array $data, ?int $existingId): Customer

@@ -59,13 +59,17 @@ class StoreVisaPaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => ['required', 'numeric', 'gt:0'],
-            'payment_method' => ['required', 'string', 'max:50'],
-            'account_id' => ['required', 'integer', 'exists:accounts,id'],
-            'payment_date' => ['nullable', 'date'],
-            'reference' => ['nullable', 'string', 'max:100'],
-            'paid_by' => ['nullable', 'string', 'max:150'],
-            'currency' => ['nullable', 'string', 'max:3'],
+            'amount'          => ['required', 'numeric', 'gt:0'],
+            'payment_method'  => ['required', 'string', 'max:50'],
+            'account_id'      => ['required', 'integer', 'exists:accounts,id'],
+            'payment_date'    => ['nullable', 'date'],
+            'reference'       => ['nullable', 'string', 'max:100'],
+            'paid_by'         => ['nullable', 'string', 'max:150'],
+            'currency'        => ['nullable', 'string', 'max:3'],
+            // Idempotency key (2026-08-15): optional per-booking replay key.
+            // Same (visa_booking_id, idempotency_key) → replay existing payment.
+            // Different key or no key → new payment.
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'currency',
     'treasury_account',
     'transaction_reference',
+    'idempotency_key',  // D3 FIX (2026-08-15): opt-in idempotency identity
     'payment_date',
     'paid_by',
     'account_id',

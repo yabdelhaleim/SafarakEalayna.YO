@@ -187,7 +187,23 @@ class ReportFinanceService
      */
     public function getIncomeByModule(array $filters): array
     {
-        $query = DB::table('transactions')->where('type', 'income');
+        $query = DB::table('transactions')
+            ->where('type', 'income')
+            // FIX (Path C, 2026-08-14): exclude reversed income rows from the
+            // per-module income total. A reversed Income contributes 0 net
+            // (its original entries + inverse entries cancel out in GL), so
+            // including it would over-count by the original amount after a
+            // HajjUmraBookingService::repostIncomeTransaction() reposts.
+            // Idempotency note: a second reversal call would no-op via
+            // reverseTransaction() line 312 idempotency check, but the
+            // notes prefix would remain on the row.
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                    ->orWhere(function ($q2) {
+                        $q2->where('notes', 'not like', 'عكس:%')
+                            ->where('notes', 'not like', 'عكس %');
+                    });
+            });
 
         if (! empty($filters['from_date'])) {
             $query->whereDate('created_at', '>=', $filters['from_date']);
@@ -264,6 +280,15 @@ class ReportFinanceService
                 SUM(CASE WHEN type = "income" THEN amount ELSE 0 END) as total_income,
                 SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) as total_expense
             ')
+            // FIX (Path C, 2026-08-14): same exclusion as getIncomeByModule — reversed
+            // Income rows must not inflate the daily-chart total.
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                    ->orWhere(function ($q2) {
+                        $q2->where('notes', 'not like', 'عكس:%')
+                            ->where('notes', 'not like', 'عكس %');
+                    });
+            })
             ->whereDate('created_at', '>=', $filters['from_date'])
             ->whereDate('created_at', '<=', $filters['to_date'])
             ->groupByRaw('DATE(created_at)')

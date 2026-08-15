@@ -214,6 +214,21 @@ class FlightBookingService
     {
         $startedAt = microtime(true);
 
+        // D4 FIX (2026-08-15): defensive guard for callers that bypass the
+        // HTTP FormRequest (CLI, internal services, batch imports). The
+        // StoreFlightBookingRequest already validates `min:0` on
+        // purchase_price and selling_price, but the service must also
+        // enforce the invariant because runProfitMutation will credit
+        // the carrier by negative-purchase_amount (money-creation vector).
+        foreach (['purchase_price', 'purchase_price_egp', 'purchase_price_foreign', 'selling_price'] as $priceKey) {
+            if (array_key_exists($priceKey, $data) && $data[$priceKey] !== null && (float) $data[$priceKey] < 0) {
+                throw new \InvalidArgumentException(
+                    "Flight price «{$priceKey}» must be non-negative. ".
+                    "Received: ".(float) $data[$priceKey]
+                );
+            }
+        }
+
         try {
             $booking = DB::transaction(function () use ($data) {
                 $data = $this->prepareFlightBookingPayload($data);
@@ -1668,6 +1683,20 @@ class FlightBookingService
             throw new \Exception('Only pending bookings can have prices updated.');
         }
 
+        // D4 FIX (2026-08-15): defensive guard — reject negative prices at the
+        // service layer so callers bypassing the HTTP FormRequest (CLI, internal
+        // services, raw SQL replay) cannot slip a negative value into the
+        // financial pipeline. A negative purchase_price credits the carrier's
+        // prepaid balance via runProfitMutation, which is a money-creation
+        // vector (CLASS-A risk per FLIGHT_CLOSURE_GAP_REPORT_20260815.md).
+        // Zero is allowed; only negatives are blocked.
+        if ($purchasePrice < 0 || $sellingPrice < 0) {
+            throw new \InvalidArgumentException(
+                "Flight prices must be non-negative. ".
+                "Received purchase_price={$purchasePrice}, selling_price={$sellingPrice}."
+            );
+        }
+
         try {
             $profit = $sellingPrice - $purchasePrice;
 
@@ -1775,19 +1804,65 @@ class FlightBookingService
             throw new \Exception('Cannot add payment to a cancelled or refunded booking.');
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // D3 FIX (2026-08-15): replay protection for the flight payment
+        // endpoint. Mirrors the established Hajj/Umrah convention.
+        //
+        //   Identity:    (flight_booking_id, idempotency_key)
+        //   Stored on:   flight_payments.idempotency_key  (nullable, 100 chars)
+        //   Enforced:    UNIQUE index fp_idem_uniq  (MySQL allows multiple
+        //                NULLs so legacy callers that don't supply a key are
+        //                unaffected).
+        //
+        //   Layered protection:
+        //     1. Pre-check (inside the lock): SELECT existing payment with
+        //        same (booking_id, idempotency_key). If found and not
+        //        soft-deleted → return it (idempotent return).
+        //     2. DB-level UNIQUE constraint (the migration) — backstop in
+        //        case two callers bypass the lock. The INSERT will fail
+        //        with MySQL error 1062 / SQLSTATE 23000, which we catch
+        //        and convert to an idempotent return.
+        //     3. `lockForUpdate()` on the booking row serializes concurrent
+        //        calls on the same booking. The lock is held for the
+        //        duration of the transaction (released on commit/rollback).
+        //
+        //   Backward compat:
+        //     - When `idempotency_key` is null/empty, no protection is
+        //       applied. Legacy callers keep their existing behavior.
+        //     - When supplied, replays return the original payment
+        //       (200 OK with the original row) — no second financial
+        //       mutation, no extra AccountEntry rows, no extra Transaction.
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
+
         try {
-            return DB::transaction(function () use ($booking, $data) {
-                // Bug #C3 fix: lock the booking row for update to prevent
-                // TOCTOU race between concurrent payment requests. Without this,
-                // two parallel calls could both read the same totalPaid, both
-                // pass the overpayment check, and both insert FlightPayment
-                // rows whose sum exceeds selling_price — customer overpays.
+            return DB::transaction(function () use ($booking, $data, $idempotencyKey) {
+                // Serialize concurrent calls on the same booking.
                 $lockedBooking = FlightBooking::query()
                     ->whereKey($booking->id)
                     ->lockForUpdate()
                     ->firstOrFail();
                 // Reuse locked copy for downstream reads.
                 $booking = $lockedBooking;
+
+                // Layer 1 — pre-check: if a payment already exists for this
+                // (booking, idempotency_key), return it instead of creating
+                // a duplicate. We also honor soft-deletes: a soft-deleted
+                // payment with the same key is treated as "deleted" and a
+                // new payment may be inserted (the unique index will be
+                // violated only by ACTIVE rows).
+                if ($idempotencyKey !== null) {
+                    $existing = FlightPayment::query()
+                        ->where('flight_booking_id', $booking->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+                        return $existing;
+                    }
+                }
 
                 $amount = (float) $data['amount'];
                 if ($amount <= 0) {
@@ -1904,21 +1979,96 @@ class FlightBookingService
                 // تحصيل الدفعة من حساب العميل (تخفيض المديونية) إلى الخزينة
                 // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
                 // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
-                $transaction = $this->transactionService->recordIncome([
-                    'amount' => $transferAmount,
-                    'converted_amount' => $convertedAmount,
-                    'exchange_rate' => $booking->exchange_rate ?? null,
-                    'to_account_id' => $accountId,
-                    'contra_account_id' => $customerAccount->id,
-                    'module' => TransactionModule::Flight->value,
-                    'related_type' => FlightBooking::class,
-                    'related_id' => $booking->id,
-                    'notes' => $paymentNotes,
-                ]);
-
+                //
+                // D3 FIX (2026-08-15): rekey the duplicate-income guard.
+                // Previously this called recordIncome with related_type=FlightBooking
+                // + related_id=$booking->id, which caused the duplicate-income guard
+                // (TransactionService::recordJournalTransfer line ~650) to reject
+                // the SECOND and subsequent payment for the same booking. The guard
+                // treats each (related_type, related_id) as a unique income slot, but
+                // the booking has only ONE slot — so partial payments were blocked.
+                //
+                // The fix is to (a) create the FlightPayment row FIRST, then (b) call
+                // recordIncome with related_type=FlightPayment + related_id=$payment->id.
+                // Each payment now gets its own slot. The duplicate-income guard
+                // still prevents the SAME FlightPayment row from generating two income
+                // transactions (i.e. a true retry that bypasses the lockForUpdate).
+                //
+                // Order of operations:
+                //   1. FlightPayment::create (no transaction_id yet)
+                //   2. recordIncome with FlightPayment as related
+                //   3. FlightPayment::update with the transaction_id
+                //   4. TreasuryLedgerMirror (depends on $transaction->id)
+                //
+                // If step 2 fails, the payment row is left with transaction_id=NULL.
+                // The idempotency_key layer-2 catch below will surface the failure.
+                //
+                // Compute the treasury_label BEFORE the create() call. The
+                // `treasury_account` column is NOT NULL in the schema, so we
+                // cannot defer it to a later update().
                 $treasuryLabel = $account
                     ? (string) $account->id.'|'.($account->name ?? '')
                     : (string) ($data['account_id'] ?? '');
+
+                try {
+                    $payment = FlightPayment::create([
+                        'flight_booking_id' => $booking->id,
+                        'amount' => $transferAmount, // EGP-equivalent for ledger and total-paid calculations
+                        'original_amount' => $amount,
+                        'payment_method' => $data['payment_method'] ?? $data['method'] ?? FlightPaymentMethod::Cash->value,
+                        'currency' => $paymentCurrency,
+                        'treasury_account' => $treasuryLabel,
+                        'account_id' => $accountId,
+                        'idempotency_key' => $idempotencyKey,  // D3 FIX
+                        'transaction_id' => null,  // set after recordIncome succeeds
+                        'payment_date' => now(),
+                        'paid_by' => (string) (Auth::user()?->name ?? 'system'),
+                        'created_by' => Auth::id(),
+                        'notes' => $paymentNotes,
+                    ]);
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Layer 2 — defense in depth. If a concurrent INSERT beat
+                    // us to the unique index on (flight_booking_id, idempotency_key),
+                    // the pre-check missed it (race window between SELECT and
+                    // INSERT). The unique index is the last line. Convert the
+                    // duplicate-key error into an idempotent return.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        $existing = FlightPayment::query()
+                            ->where('flight_booking_id', $booking->id)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+                            return $existing;
+                        }
+                    }
+                    throw $qe;
+                }
+
+                try {
+                    $transaction = $this->transactionService->recordIncome([
+                        'amount' => $transferAmount,
+                        'converted_amount' => $convertedAmount,
+                        'exchange_rate' => $booking->exchange_rate ?? null,
+                        'to_account_id' => $accountId,
+                        'contra_account_id' => $customerAccount->id,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightPayment::class,
+                        'related_id' => $payment->id,
+                        'notes' => $paymentNotes,
+                    ]);
+                } catch (\Throwable $t) {
+                    // If recordIncome fails, the payment row exists with
+                    // transaction_id=NULL — soft-delete it to keep the ledger
+                    // consistent (no orphan payment without a transaction).
+                    $payment->delete();
+                    throw $t;
+                }
+
+                $payment->update([
+                    'transaction_id' => $transaction->id,
+                    'transaction_reference' => (string) $transaction->id,
+                ]);
 
                 TreasuryLedgerMirror::mirrorFlightInboundReceipt(
                     $transaction,
@@ -1928,24 +2078,22 @@ class FlightBookingService
                     $treasuryLabel,
                 );
 
-                $payment = FlightPayment::create([
-                    'flight_booking_id' => $booking->id,
-                    'amount' => $transferAmount, // EGP-equivalent for ledger and total-paid calculations
-                    // Bug #B13 fix: persist the ACTUAL payment currency and amount, not always EGP.
-                    // For foreign-currency payments (auto-converted), this preserves the
-                    // original payment info needed for refunds and reporting.
-                    'original_amount' => $amount, // actual amount paid in paymentCurrency
-                    'payment_method' => $data['payment_method'] ?? $data['method'] ?? FlightPaymentMethod::Cash->value,
-                    'currency' => $paymentCurrency,
-                    'treasury_account' => $treasuryLabel,
-                    'transaction_reference' => (string) $transaction->id,
-                    'payment_date' => now(),
-                    'paid_by' => (string) (Auth::user()?->name ?? 'system'),
-                    'account_id' => $accountId,
-                    'transaction_id' => $transaction->id,
-                    'notes' => $paymentNotes,
-                    'created_by' => Auth::id(),
-                ]);
+
+                // DEFECT-1 FIX (2026-08-15): Auto-promote PENDING → CONFIRMED when
+                // cumulative successful payments reach the booking's selling_price.
+                // Partial payments remain PENDING; only the final payment triggers
+                // the transition. Runs inside the same DB::transaction, so the
+                // promotion is atomic with the payment insert. Does NOT mutate
+                // any ledger entry, account balance, or transaction — only the
+                // booking.status column. If the booking is already past PENDING
+                // (CONFIRMED/CANCELLED/REFUNDED), no-op.
+                if ($booking->status === FlightBookingStatus::PENDING) {
+                    $cumulativePaid = (float) $booking->payments()->sum('amount');
+                    $sellingPrice = (float) $booking->selling_price;
+                    if ($sellingPrice > 0 && $cumulativePaid + 0.0001 >= $sellingPrice) {
+                        $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
+                    }
+                }
 
                 Log::info('Flight payment recorded', [
                     'payment_id' => $payment->id,
@@ -2166,19 +2314,17 @@ class FlightBookingService
                             $reversalPosted = true;
                         }
                     }
-                    // FIX (2026-07-27): only clear sale_gl_transaction_id if we
-                    // actually posted a reversal entry. When the cancellation has
-                    // full penalty (refund=0, sale_reversal=0), the sale is
-                    // still "open" on the books — clearing sale_gl_transaction_id
-                    // would silently break the subsequent deleteBookingWithReversal()
-                    // which checks this field to decide whether to reverse the GL
-                    // sale. Result: the customer AR would gain 12000 EGP from the
-                    // payment reversal but never lose it via the sale reversal,
-                    // leaving a phantom receivable on the books (root cause of
-                    // the cancelled-then-deleted booking imbalance).
-                    if ($reversalPosted) {
-                        $booking->forceFill(['sale_gl_transaction_id' => null])->save();
-                    }
+                    // DEFECT-2 FIX (2026-08-15): DO NOT clear sale_gl_transaction_id
+                    // on cancellation. The original sale transaction is preserved
+                    // (additive reversal accounting); the booking's reference to
+                    // its original sale transaction is preserved as an audit trail.
+                    // The previous "FIX (2026-07-27)" workaround is removed because
+                    // clearing the reference broke the audit trail and caused
+                    // downstream deleteBookingWithReversal() to mis-detect the
+                    // sale as not-yet-reversed. The downstream flow must rely on
+                    // its own state (the reversal-posted flag, flight_refunds row,
+                    // or transaction notes) rather than overloading
+                    // sale_gl_transaction_id as a bookkeeping signal.
                 }
 
                 if ($refundAmount > 0 && empty($data['account_id'])) {
@@ -3239,5 +3385,21 @@ class FlightBookingService
             'penalty' => $airlinePenalty,
             'currency' => $groupCurrency,
         ]);
+    }
+
+    /**
+     * D3 FIX (2026-08-15): Identify a "duplicate entry on unique index"
+     * QueryException across MySQL and SQLite. SQLSTATE 23000 is the
+     * standard; MySQL error code 1062 is the canonical "Duplicate entry"
+     * code. Mirrors the helper in HajjUmraBookingService.
+     */
+    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+        return $code === 1062;
     }
 }

@@ -19,6 +19,11 @@ class StoreFlightPaymentRequest extends FormRequest
             'payment_method' => 'required|in:cash,bank_transfer,cash_wallet,postal_transfer,office_safe,office_drawer,mixed,vodafone_cash,instapay',
             'account_id' => 'required|integer|exists:accounts,id',
             'notes' => 'nullable|string|max:1000',
+            // D3 FIX (2026-08-15): opt-in idempotency key. When supplied,
+            // replay of the same logical payment returns the original row
+            // (HTTP 200 OK + idempotent_replay=true) instead of creating a
+            // duplicate. When null/empty, legacy behavior is preserved.
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
         ];
     }
 
@@ -34,6 +39,8 @@ class StoreFlightPaymentRequest extends FormRequest
             'account_id.exists' => 'The selected account is invalid.',
             'notes.string' => 'The notes must be a valid string.',
             'notes.max' => 'The notes may not exceed 1000 characters.',
+            'idempotency_key.string' => 'The idempotency key must be a string.',
+            'idempotency_key.max' => 'The idempotency key may not exceed 100 characters.',
         ];
     }
 
@@ -44,6 +51,7 @@ class StoreFlightPaymentRequest extends FormRequest
             'payment_method',
             'account_id',
             'notes',
+            'idempotency_key',  // D3 FIX
         ];
 
         $unknown = array_diff(array_keys($this->all()), $allowed);

@@ -11,6 +11,16 @@ class VisaPayment extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Transient flag set by VisaBookingService::addPayment() when an existing
+     * payment is returned as an idempotent replay (same booking + same key).
+     * The controller uses this to emit HTTP 200 instead of 201, and to include
+     * `idempotent_replay = true` in the response body.
+     *
+     * NOT persisted to the database.
+     */
+    public bool $idempotent_replay = false;
+
     protected $fillable = [
         'visa_booking_id',
         'account_id',
@@ -20,6 +30,7 @@ class VisaPayment extends Model
         'currency',
         'treasury_account',
         'transaction_reference',
+        'idempotency_key',
         'payment_date',
         'paid_by',
         'created_by',
@@ -28,7 +39,7 @@ class VisaPayment extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'amount'       => 'decimal:2',
             'payment_date' => 'datetime',
         ];
     }

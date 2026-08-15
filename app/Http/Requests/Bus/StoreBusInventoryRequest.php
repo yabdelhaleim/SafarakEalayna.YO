@@ -4,6 +4,7 @@ namespace App\Http\Requests\Bus;
 
 use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class StoreBusInventoryRequest extends FormRequest
@@ -16,7 +17,7 @@ class StoreBusInventoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'company_id' => 'required|integer|exists:bus_companies,id',
+            'company_id' => ['required', 'integer', Rule::exists('bus_companies', 'id')->whereNull('deleted_at')],
             'route' => 'required|string|max:200',
             'travel_date' => 'required|date|after_or_equal:today',
             'departure_time' => 'nullable|date_format:H:i',

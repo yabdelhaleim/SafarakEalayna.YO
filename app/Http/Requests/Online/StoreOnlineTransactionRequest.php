@@ -81,6 +81,27 @@ class StoreOnlineTransactionRequest extends FormRequest
                 );
             }
 
+            // 🛡️ Phase 11 — Walk-in (customer_id == null) requires a phone.
+            //
+            // The `customers.phone` column is NOT NULL at the DB level (see
+            // `2026_04_26_211146_create_customers_table.php`) but the
+            // validators in this request were permissive (`nullable|max:64`).
+            // The `OnlineTransactionService::ensureCustomerIsLinked()` code
+            // path auto-creates a Customer when no customer_id is supplied,
+            // and would propagate `phone: null` to the DB — producing a raw
+            // SQLSTATE[23000] error. Mirror the existing `customer_name`
+            // rule (just above) and require a phone for walk-in flows *only*
+            // so we don't reject registered customers that happen to have no
+            // phone on file.
+            $phoneRaw = $this->input('customer_phone');
+            $phone = is_string($phoneRaw) ? trim($phoneRaw) : '';
+            if (! $customerId && $phone === '') {
+                $validator->errors()->add(
+                    'customer_phone',
+                    'يجب إدخال رقم هاتف العميل عند إنشاء معاملة لعميل غير مسجل.'
+                );
+            }
+
             if ($validator->errors()->has('payment_method') || $validator->errors()->has('account_id')) {
                 return;
             }

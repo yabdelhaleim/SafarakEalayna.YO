@@ -20,6 +20,7 @@ class HajjUmraPayment extends Model
         'currency',
         'treasury_account',
         'transaction_reference',
+        'idempotency_key',
         'payment_date',
         'paid_by',
         'created_by',

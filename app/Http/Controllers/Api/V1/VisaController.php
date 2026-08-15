@@ -235,8 +235,44 @@ class VisaController extends Controller
                 $fromAccount = $customerAccount; // Customer's ledger account
 
                 $transactionService = app(TransactionService::class);
+                $amount = (float) $v['amount'];
+
+                // BUG-FIX (audit 2026-08-14, BUG-VISA-2026-08-14-002):
+                // Distribute the payment across active bookings FIFO so that
+                // each booking's `paid_amount` reflects the customer's payment.
+                // Previously only the journal transfer was recorded — no
+                // VisaPayment rows were created, leaving booking.paid_amount
+                // stale and `remaining_amount` stale.
+                $bookings = VisaBooking::where('customer_id', $customer->id)
+                    ->whereNotIn('status', ['cancelled', 'rejected', 'refunded'])
+                    ->whereNull('deleted_at')
+                    ->orderBy('created_at')
+                    ->get();
+
+                $remaining = $amount;
+                $appliedTo = [];
+
+                foreach ($bookings as $booking) {
+                    if ($remaining < 0.01) {
+                        break;
+                    }
+                    $bookingRemaining = (float) $booking->remaining_amount;
+                    if ($bookingRemaining < 0.01) {
+                        continue;
+                    }
+                    $apply = min($remaining, $bookingRemaining);
+
+                    $appliedTo[] = [
+                        'booking_id' => $booking->id,
+                        'amount' => round($apply, 2),
+                    ];
+
+                    $remaining = round($remaining - $apply, 2);
+                }
+
+                // Now record the journal transfer for the full amount
                 $transaction = $transactionService->recordJournalTransfer([
-                    'amount' => (float) $v['amount'],
+                    'amount' => $amount,
                     'from_account_id' => $fromAccount->id,
                     'to_account_id' => $toAccount->id,
                     'allow_from_negative' => true,
@@ -245,9 +281,32 @@ class VisaController extends Controller
                     'created_by' => Auth::id() ?? 1,
                 ]);
 
+                // Create a VisaPayment record for each booking portion so
+                // booking.paid_amount reflects the payment.
+                foreach ($appliedTo as $row) {
+                    $booking = VisaBooking::find($row['booking_id']);
+                    if (! $booking) {
+                        continue;
+                    }
+                    $booking->payments()->create([
+                        'payment_method' => 'cash',
+                        'amount' => $row['amount'],
+                        'currency' => $booking->currency ?? 'EGP',
+                        'treasury_account' => 'office_drawer',
+                        'account_id' => $toAccount->id,
+                        'transaction_id' => $transaction->id,
+                        'transaction_reference' => 'DEBT-PAY-'.$customer->id.'-TX'.$transaction->id,
+                        'payment_date' => now(),
+                        'paid_by' => $customer->full_name,
+                        'notes' => 'سداد مديونية من سند قبض #'.$transaction->id,
+                        'created_by' => Auth::id() ?? 1,
+                    ]);
+                }
+
                 return ApiResponse::success('تم سداد المبلغ بنجاح وقيد سند القبض.', [
                     'transaction_id' => $transaction->id,
                     'new_balance' => (float) $fromAccount->fresh()->balance,
+                    'applied_to' => $appliedTo,
                 ]);
             });
         } catch (\Exception $e) {

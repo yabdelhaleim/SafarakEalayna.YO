@@ -371,7 +371,19 @@ Route::prefix('v1')->middleware([
         Route::get('transactions/daily-summary', [OnlineTransactionController::class, 'dailySummary']);
         Route::apiResource('transactions', OnlineTransactionController::class)
             ->parameters(['transactions' => 'onlineTransaction'])
+            ->except(['destroy'])
             ->names('online_transactions');
+
+        // 🛡️ Phase 11 — DELETE is admin-only.
+        //
+        // Mirrors the Bus pattern at routes/api.php:328. Soft-delete +
+        // additive financial reversal is destructive (and, for a walk-in
+        // overpayment, reclaimable money) so it must be restricted to
+        // admin/owner roles. Any other authenticated user gets a 403.
+        Route::middleware('role:admin')->group(function () {
+            Route::delete('transactions/{onlineTransaction}', [OnlineTransactionController::class, 'destroy'])
+                ->name('online_transactions.destroy');
+        });
     });
 
     // Fawry API

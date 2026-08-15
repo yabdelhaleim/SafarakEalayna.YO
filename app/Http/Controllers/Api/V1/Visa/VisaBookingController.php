@@ -173,13 +173,20 @@ class VisaBookingController extends Controller
         try {
             $payment = $this->service->addPayment($visa, $request->validated());
         } catch (\Throwable $e) {
-            return ApiResponse::error('فشل تسجيل الدفعة: '.$e->getMessage());
+            return ApiResponse::error('فشل تسجيل الدفعة: ' . $e->getMessage());
         }
 
-        return ApiResponse::success('تم تسجيل الدفعة', [
-            'payment' => $payment->load('account', 'transaction'),
-            'booking' => new VisaBookingResource($this->service->find($visa->id)),
-        ], 201);
+        // Idempotent replay → HTTP 200 (same result, no new financial mutation).
+        // New payment        → HTTP 201 (created).
+        $isReplay  = $payment->idempotent_replay;
+        $httpCode  = $isReplay ? 200 : 201;
+        $message   = $isReplay ? 'دفعة موجودة مسبقاً (إعادة تشغيل آمنة)' : 'تم تسجيل الدفعة';
+
+        return ApiResponse::success($message, [
+            'idempotent_replay' => $isReplay,
+            'payment'           => $payment->load('account', 'transaction'),
+            'booking'           => new VisaBookingResource($this->service->find($visa->id)),
+        ], $httpCode);
     }
 
     /**

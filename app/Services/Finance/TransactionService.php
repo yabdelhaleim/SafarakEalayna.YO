@@ -198,6 +198,15 @@ class TransactionService
                 'from_account_id' => $resolvedContra,
                 'to_account_id' => $toId,
                 'allow_from_negative' => (bool) ($data['allow_contra_negative'] ?? true),
+                // FC-AUDIT-20260814 fix (D1): pass `type='Income'` so that:
+                //   1) The 2026-08-12 duplicate-Income guard in recordJournalTransfer
+                //      (lines 612–625) fires on the second call with same related_type+related_id.
+                //   2) The resulting Transaction row is correctly categorized as 'Income'
+                //      for income reports and accounting breakdowns.
+                //   3) Audit trail + reversal queries that filter type='Income' now match.
+                // Previously recordIncome silently defaulted to TransactionType::Transfer,
+                // bypassing the duplicate guard and mis-categorizing all income postings.
+                'type' => TransactionType::Income->value,
                 'module' => $moduleValue,
                 'related_type' => $data['related_type'] ?? null,
                 'related_id' => $data['related_id'] ?? null,
@@ -601,25 +610,66 @@ class TransactionService
                 $typeValue = TransactionType::from((string) $data['type'])->value;
             }
 
-            // FIX (2026-08-12): guard against duplicate income transactions on the
-            // same related entity. A booking (or any morph entity) can have AT MOST
-            // ONE income transaction — the sale. Any subsequent collection must be
-            // a Transfer (cash → AR), not a new Income. This bug previously caused
-            // every bus booking to register 2 income tx (sale + payment) and doubled
-            // the office income sum in the trial balance.
+            // FIX (Path C, 2026-08-14): guard against duplicate ACTIVE income
+            // transactions on the same related entity.
+            //
+            // Invariant: a booking (or any morph entity) can have AT MOST ONE
+            // ACTIVE income transaction — the sale. Any subsequent collection
+            // MUST be a Transfer (cash → AR), not a new Income. This bug
+            // previously caused every bus booking to register 2 income tx
+            // (sale + payment) and doubled the office income sum in the
+            // trial balance (FC-AUDIT 2026-08-12, original guard).
+            //
+            // Path C extension: when the original sale income is REVERSED
+            // additively (notes prefix `عكس:` / `عكس ` — the project's
+            // de-facto reversal convention set by TransactionService::reverseTransaction
+            // line 352 and consumed by 8+ downstream readers), the related
+            // slot becomes available again for a new income posting.
+            //
+            // Why this is correct:
+            //   1. Additive reversal preserves the original transaction row
+            //      (project rule: original transactions are never deleted or
+            //      modified — only inverse entries are added).
+            //   2. The original's contribution to GL is already 0
+            //      (original debit + inverse credit cancel out).
+            //   3. Reports that filter on this convention
+            //      (FinancialReportService::classifyPL line 1751 et al.)
+            //      already treat reversed rows as `revenue_reversal`.
+            //   4. The 8 existing consumers in the codebase (Documented in
+            //      .zcode/plans/path-c-analysis-20260814.md Section 3A)
+            //      already filter on `notes NOT LIKE 'عكس:%'` — the
+            //      application guard using the same convention stays
+            //      consistent.
+            //
+            // This change unblocks `HajjUmraBookingService::repostIncomeTransaction()`
+            // (lines 327-350) which previously threw at this guard, breaking
+            // every attempt to edit the selling_price of an active HajjUmra
+            // booking.
             $relatedType = $data['related_type'] ?? null;
             $relatedId = $data['related_id'] ?? null;
             if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId) {
-                $existingIncome = DB::table('transactions')
+                $existingActiveIncome = DB::table('transactions')
                     ->where('related_type', $relatedType)
                     ->where('related_id', $relatedId)
                     ->where('type', TransactionType::Income->value)
+                    ->where(function ($q) {
+                        // A row is "ACTIVE" if its notes are absent or do
+                        // NOT start with the reversal prefix. Reversed
+                        // rows are excluded from the unique slot.
+                        $q->whereNull('notes')
+                            ->orWhere(function ($q2) {
+                                $q2->where('notes', 'not like', 'عكس:%')
+                                    ->where('notes', 'not like', 'عكس %');
+                            });
+                    })
                     ->exists();
-                if ($existingIncome) {
+                if ($existingActiveIncome) {
                     throw new \InvalidArgumentException(
                         "Duplicate income transaction blocked for {$relatedType}#{$relatedId}. ".
-                        'Each booking can have only ONE income transaction (the sale). '.
-                        'Subsequent collections must be a Transfer (type=transfer).'
+                        'Each booking can have only ONE ACTIVE income transaction (the sale). '.
+                        'Reversed (عكس:) incomes do not occupy this slot — repostIncomeTransaction() '.
+                        'can re-issue a new sale once the prior sale is reversed. '.
+                        'Subsequent COLLECTIONS on a booking must use Transfer (type=transfer).'
                     );
                 }
             }

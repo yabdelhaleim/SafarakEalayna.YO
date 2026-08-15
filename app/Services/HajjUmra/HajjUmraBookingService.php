@@ -384,6 +384,60 @@ class HajjUmraBookingService
         }
 
         return DB::transaction(function () use ($booking, $data) {
+            // ─────────────────────────────────────────────────────────────
+            // LOCK-DOWN (Phase 4.6, 2026-08-14): financial price columns
+            // are FROZEN at booking creation. Once saved, a Hajj/Umrah
+            // booking's selling/purchase/companion/accommodation prices
+            // cannot be modified through ANY caller — API, Tinker, jobs.
+            //
+            // Why:
+            //   - The duplicate-income guard in TransactionService is
+            //     correctly strict; with prices locked, the booking never
+            //     needs `repostIncomeTransaction()` again.
+            //   - The MySQL `transactions_income_unique_key` index would
+            //     otherwise reject a repost on production (generated
+            //     column → NULL only when `type != 'income'`, ignores
+            //     notes). Locking the input side avoids the DB-level
+            //     collision entirely.
+            //   - Reversal+repost would double-count reversed income rows
+            //     in revenue reports unless every consumer also filters
+            //     on `notes NOT LIKE 'عكس:%'`. The locked-input approach
+            //     sidesteps that audit-trail contamination by preventing
+            //     the reversal from ever happening on a HajjUmra booking.
+            //
+            // Defense-in-depth: UpdateHajjUmraBookingRequest strips these
+            // fields at the HTTP boundary (clean 422). This guard catches
+            // every other caller with the same Arabic business error.
+            // ─────────────────────────────────────────────────────────────
+            $arFieldNames = [
+                'selling_price'             => 'سعر البيع',
+                'purchase_price'            => 'سعر الشراء',
+                'companion_selling_price'   => 'سعر بيع المرافق',
+                'companion_purchase_price'  => 'سعر شراء المرافق',
+                'accommodation_extra_charge' => 'رسوم الإقامة الإضافية',
+            ];
+            $presentLocked = array_intersect_key(
+                $data,
+                array_flip(array_keys($arFieldNames))
+            );
+            // array_intersect_key() matches by key AND keeps the values —
+            // but a caller could pass null/empty as "I'm not really
+            // trying to change it" (e.g. a UI that re-emits the full
+            // row). Only block when the value is meaningfully non-empty.
+            $presentLocked = array_filter($presentLocked, function ($v) {
+                return $v !== null && $v !== '';
+            });
+            if (! empty($presentLocked)) {
+                $first = array_key_first($presentLocked);
+                $arabicName = $arFieldNames[$first];
+                $allList = implode('، ', $arFieldNames);
+                throw new \RuntimeException(
+                    "لا يمكن تعديل {$arabicName} بعد إنشاء الحجز. "
+                    ."الحقول المالية مُقفلة بعد الإنشاء: {$allList}. "
+                    ."لتصحيح سعر، ألغِ الحجز (cancel) وأنشئ حجزاً جديداً."
+                );
+            }
+
             $fields = collect($data)->only([
                 'companion_customer_id',
                 'supplier_id',
@@ -641,37 +695,169 @@ class HajjUmraBookingService
             );
         }
 
-        return DB::transaction(function () use ($booking, $data) {
-            $amount = (float) $data['amount'];
-            $accountId = (int) ($data['account_id'] ?? $booking->account_id);
-            $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+        // ─────────────────────────────────────────────────────────────────
+        // PRE-PHASE-B IDEMPOTENCY FIX (2026-08-15):
+        //   Replay protection for the payment endpoint.
+        //
+        //   Identity:  (hajj_umra_booking_id, idempotency_key)
+        //   Stored on: hajj_umra_payments.idempotency_key  (nullable, 100 chars)
+        //   Enforced:  UNIQUE index hup_idem_uniq  (MySQL allows multiple NULLs
+        //              so legacy callers that don't supply a key are unaffected).
+        //
+        //   Layered protection:
+        //     1. Pre-check (this method, inside the lock): SELECT existing
+        //        payment with same (booking_id, idempotency_key). If found
+        //        and not soft-deleted → return it (idempotent return).
+        //     2. DB-level UNIQUE constraint (the migration) — backstop in
+        //        case two callers bypass the lock. The INSERT will fail
+        //        with MySQL error 1062 / SQLSTATE 23000, which we catch
+        //        and convert to an idempotent return.
+        //     3. `lockForUpdate()` on the booking row serializes concurrent
+        //        calls on the same booking. The lock is held for the
+        //        duration of the transaction (released on commit/rollback).
+        //
+        //   Backward compat:
+        //     - When `idempotency_key` is null/empty, no protection is
+        //       applied and the call may still be replayed. Legacy
+        //       callers keep their existing behavior.
+        //     - When supplied, replays return the original payment
+        //       (200 OK with the original row) — no second financial
+        //       mutation, no extra AccountEntry rows, no extra Transaction.
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
 
-            $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+        try {
+            return DB::transaction(function () use ($booking, $data, $idempotencyKey) {
+                // Serialize concurrent calls on the same booking.
+                $locked = HajjUmraBooking::query()->lockForUpdate()->find($booking->id);
+                if (! $locked) {
+                    throw new \RuntimeException("Booking {$booking->id} not found.");
+                }
 
-            $income = $this->transactions->recordIncome([
-                'amount' => $amount,
-                'to_account_id' => $accountId,
-                'contra_account_id' => $customerAccount->id,
-                'module' => TransactionModule::HajjUmra->value,
-                'related_type' => HajjUmraBooking::class,
-                'related_id' => $booking->id,
-                'notes' => "دفعة على حجز #{$booking->id}",
-                'created_by' => $createdBy,
-            ]);
+                // Layer 1 — pre-check: if a payment already exists for this
+                // (booking, idempotency_key), return it instead of creating
+                // a duplicate. We also honor soft-deletes: a soft-deleted
+                // payment with the same key is treated as "deleted" and a
+                // new payment may be inserted (the unique index will be
+                // violated only by ACTIVE rows, so the DB would block a
+                // second ACTIVE one with the same key — but soft-deleted
+                // rows coexist).
+                if ($idempotencyKey !== null) {
+                    $existing = HajjUmraPayment::query()
+                        ->where('hajj_umra_booking_id', $locked->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        // Tag the returned model with a transient flag so
+                        // the HTTP layer can surface 200 OK + replay marker
+                        // instead of 201 Created.
+                        $existing->idempotent_replay = true;
+                        return $existing;
+                    }
+                }
 
-            return $booking->payments()->create([
-                'payment_method' => $data['payment_method'] ?? 'cash',
-                'amount' => $amount,
-                'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
-                'treasury_account' => $data['treasury_account'] ?? 'office_drawer',
-                'account_id' => $accountId,
-                'transaction_id' => $income->id,
-                'transaction_reference' => $data['reference'] ?? $data['transaction_reference'] ?? null,
-                'payment_date' => $data['payment_date'] ?? now(),
-                'paid_by' => $data['paid_by'] ?? $booking->customer?->full_name ?? '',
-                'created_by' => $createdBy,
-            ]);
-        });
+                $amount = (float) $data['amount'];
+                $accountId = (int) ($data['account_id'] ?? $booking->account_id);
+                $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
+
+                $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+
+                // FIX (latent-bug-after-FC-AUDIT-20260814): a payment on an existing
+                // booking is a TRANSFER (customer AR → treasury), NOT a new Income.
+                // The booking's sale Income was already recorded at create(); a
+                // payment represents cash movement against existing debt. Using
+                // recordIncome() here would, after the FC-AUDIT D1 fix, set
+                // type=Income and trigger the duplicate-income guard at
+                // TransactionService::recordJournalTransfer (lines 612–625) on
+                // the second payment. We now use recordJournalTransfer() with
+                // explicit type=Transfer, which (a) matches the pre-FC-AUDIT
+                // behaviour exactly (silent default) and (b) is the semantically
+                // correct category for cash collection against a known sale.
+                $income = $this->transactions->recordJournalTransfer([
+                    'amount' => $amount,
+                    'from_account_id' => $customerAccount->id,
+                    'to_account_id' => $accountId,
+                    'module' => TransactionModule::HajjUmra->value,
+                    'type' => \App\Enums\TransactionType::Transfer->value,
+                    'related_type' => HajjUmraBooking::class,
+                    'related_id' => $booking->id,
+                    'notes' => "دفعة على حجز #{$booking->id}",
+                    'created_by' => $createdBy,
+                ]);
+
+                try {
+                    return $booking->payments()->create([
+                        'payment_method' => $data['payment_method'] ?? 'cash',
+                        'amount' => $amount,
+                        'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
+                        'treasury_account' => $data['treasury_account'] ?? 'office_drawer',
+                        'account_id' => $accountId,
+                        'transaction_id' => $income->id,
+                        'transaction_reference' => $data['reference'] ?? $data['transaction_reference'] ?? null,
+                        'idempotency_key' => $idempotencyKey,
+                        'payment_date' => $data['payment_date'] ?? now(),
+                        'paid_by' => $data['paid_by'] ?? $booking->customer?->full_name ?? '',
+                        'created_by' => $createdBy,
+                    ]);
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Layer 2 — defense in depth. The pre-check above plus
+                    // the `lockForUpdate` should make this catch unreachable
+                    // in normal operation, but if two transactions somehow
+                    // race past the pre-check (e.g. on a connection pool
+                    // without row locks), the UNIQUE index is the last line.
+                    //
+                    // MySQL: SQLSTATE 23000, error code 1062 ("Duplicate entry").
+                    // SQLite: SQLSTATE 23000 with a similar message.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        // Re-query: the row that another tx created must now
+                        // be visible. Return it as the idempotent result.
+                        $existing = HajjUmraPayment::query()
+                            ->where('hajj_umra_booking_id', $locked->id)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+                            return $existing;
+                        }
+                    }
+                    throw $qe;
+                }
+            });
+        } catch (\Illuminate\Database\QueryException $qe) {
+            // Outer catch: if the inner transaction's DB::transaction
+            // re-raised a duplicate-key error from `recordJournalTransfer`
+            // or the create() call after we've already inserted the
+            // payment row, we surface a clean idempotent return when the
+            // (booking, key) is still resolvable.
+            if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                $existing = HajjUmraPayment::query()
+                    ->where('hajj_umra_booking_id', $booking->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+                if ($existing) {
+                    $existing->idempotent_replay = true;
+                    return $existing;
+                }
+            }
+            throw $qe;
+        }
+    }
+
+    /**
+     * Identify a "duplicate entry on unique index" QueryException across
+     * MySQL and SQLite. SQLSTATE 23000 is the standard; MySQL error code
+     * 1062 is the canonical "Duplicate entry" code.
+     */
+    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+        return $code === 1062;
     }
 
     protected function resolveCustomer(?array $data, ?int $existingId): Customer
