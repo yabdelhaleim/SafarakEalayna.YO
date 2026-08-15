@@ -190,8 +190,19 @@ class HajjUmraExecutingCompanyAdvances extends Page implements HasTable
             \Filament\Forms\Components\Select::make('to_account_id')
                 ->label('تحويل إلى (حساب الحج والعمرة)')
                 ->options(fn () => Account::query()
-                    ->where('module_type', 'hajj_umra')
                     ->where('is_active', true)
+                    ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+                    ->where(function ($q) {
+                        $q->whereIn('module', ['hajj_umra', 'hajj', 'umrah'])
+                            ->orWhereIn('module_type', ['hajj_umra', 'hajj', 'umrah'])
+                            ->orWhere(function ($sub) {
+                                $sub->where('module_type', 'tourism')
+                                    ->where(function ($m) {
+                                        $m->whereNull('module')
+                                            ->orWhereIn('module', ['hajj_umra', 'hajj', 'umrah', 'general', 'tourism']);
+                                    });
+                            });
+                    })
                     ->pluck('name', 'id')
                     ->all())
                 ->searchable()
@@ -216,8 +227,19 @@ class HajjUmraExecutingCompanyAdvances extends Page implements HasTable
             \Filament\Forms\Components\Select::make('from_account_id')
                 ->label('السداد من (حساب الحج والعمرة)')
                 ->options(fn () => Account::query()
-                    ->where('module_type', 'hajj_umra')
                     ->where('is_active', true)
+                    ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+                    ->where(function ($q) {
+                        $q->whereIn('module', ['hajj_umra', 'hajj', 'umrah'])
+                            ->orWhereIn('module_type', ['hajj_umra', 'hajj', 'umrah'])
+                            ->orWhere(function ($sub) {
+                                $sub->where('module_type', 'tourism')
+                                    ->where(function ($m) {
+                                        $m->whereNull('module')
+                                            ->orWhereIn('module', ['hajj_umra', 'hajj', 'umrah', 'general', 'tourism']);
+                                    });
+                            });
+                    })
                     ->pluck('name', 'id')
                     ->all())
                 ->searchable()

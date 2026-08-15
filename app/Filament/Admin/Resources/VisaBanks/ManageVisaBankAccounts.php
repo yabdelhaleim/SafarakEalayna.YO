@@ -14,7 +14,8 @@ class ManageVisaBankAccounts extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['module_type'] = 'visas';
+                    $data['module_type'] = 'tourism';
+                    $data['module'] = 'visas';
                     return $data;
                 }),
         ];

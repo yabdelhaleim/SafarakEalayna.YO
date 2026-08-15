@@ -145,8 +145,8 @@ class LedgerRepairService
     public function fixMisclassifiedTreasuryModules(): array
     {
         $map = [
-            'Flight Cashbox' => ['module_type' => 'flights', 'module' => 'flight'],
-            'Bus Cashbox' => ['module_type' => 'bus', 'module' => 'bus'],
+            'Flight Cashbox' => ['module_type' => 'tourism', 'module' => 'flights'],
+            'Bus Cashbox' => ['module_type' => 'office', 'module' => 'bus'],
             'Main Cashbox' => ['module_type' => 'office', 'module' => 'general'],
         ];
 

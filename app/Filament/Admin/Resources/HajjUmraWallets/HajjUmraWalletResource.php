@@ -39,7 +39,10 @@ class HajjUmraWalletResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('type', AccountType::Wallet->value)
-            ->where('module_type', 'hajj_umra');
+            ->where(function (Builder $q): void {
+                $q->whereIn('module', ['hajj_umra', 'hajj', 'umrah'])
+                    ->orWhereIn('module_type', ['hajj_umra', 'hajj', 'umrah']);
+            });
     }
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema

@@ -14,7 +14,8 @@ class ManageHajjUmraWallets extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['module_type'] = 'hajj_umra';
+                    $data['module_type'] = 'tourism';
+                    $data['module'] = 'hajj_umra';
                     return $data;
                 }),
         ];

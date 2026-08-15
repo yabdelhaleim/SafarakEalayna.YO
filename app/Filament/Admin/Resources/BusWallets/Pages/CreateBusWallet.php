@@ -12,7 +12,8 @@ class CreateBusWallet extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['module_type'] = 'bus';
+        $data['module_type'] = 'office';
+        $data['module'] = 'bus';
         return $data;
     }
 }

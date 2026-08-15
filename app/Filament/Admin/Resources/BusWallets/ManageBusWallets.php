@@ -14,7 +14,8 @@ class ManageBusWallets extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['module_type'] = 'bus';
+                    $data['module_type'] = 'office';
+                    $data['module'] = 'bus';
                     return $data;
                 }),
         ];

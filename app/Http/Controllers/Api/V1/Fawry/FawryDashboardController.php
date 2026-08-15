@@ -31,7 +31,14 @@ class FawryDashboardController extends Controller
         ];
 
         // 2. Account Balances (Fawry module only)
-        $accounts = Account::where('module_type', 'fawry')->where('is_active', true)->get();
+        $accounts = Account::query()
+            ->where('is_active', true)
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+            ->where(function ($q) {
+                $q->where('module', 'fawry')
+                    ->orWhere('module_type', 'fawry');
+            })
+            ->get();
 
         $stats['cashboxes'] = LiquidityAccountGroups::countAndBalance(
             $accounts,

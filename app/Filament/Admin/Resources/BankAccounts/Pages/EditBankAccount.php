@@ -22,7 +22,8 @@ class EditBankAccount extends EditRecord
             $data['type'] = AccountType::Bank->value;
         }
 
-        $data['module_type'] = $data['module_type'] ?? 'flights';
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'flights';
 
         return $data;
     }

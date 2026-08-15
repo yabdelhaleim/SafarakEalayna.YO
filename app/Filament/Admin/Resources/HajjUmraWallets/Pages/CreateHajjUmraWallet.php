@@ -12,7 +12,8 @@ class CreateHajjUmraWallet extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['module_type'] = 'hajj_umra';
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'hajj_umra';
         return $data;
     }
 }
