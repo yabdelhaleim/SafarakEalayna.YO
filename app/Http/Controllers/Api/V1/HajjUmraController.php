@@ -76,18 +76,10 @@ class HajjUmraController extends Controller
         );
     }
 
-    public function update(UpdateHajjUmraBookingRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
-    {
-        try {
-            $booking = $this->service->update($hajjUmra, $request->validated());
-        } catch (\Throwable $e) {
-            return ApiResponse::error('فشل تحديث الحجز: '.$e->getMessage(), null, 422);
-        }
+    // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
+//   Cancellation is the supported correction path.
 
-        return ApiResponse::success('تم تحديث الحجز', new HajjUmraBookingResource($booking));
-    }
-
-    /**
+/**
      * DELETE /api/v1/hajj-umra/bookings/{hajjUmra}
      *
      * Soft delete the booking with full financial reversal.

@@ -703,7 +703,7 @@ class FlightBookingService
     /**
      * سعر الصرف المحفوظ للعملة: عدد وحدات الجنيه المصري لكل 1 وحدة من العملة الأجنبية (مثل إعدادات العملات في Filament).
      */
-    private function egpPerUnitOfCurrency(string $currencyCode): float
+    public static function egpPerUnitOfCurrency(string $currencyCode): float
     {
         $code = strtoupper(trim($currencyCode));
         if ($code === '' || $code === 'EGP') {
@@ -760,16 +760,16 @@ class FlightBookingService
             if ($r > 0) {
                 return $r;
             }
-            $live = $this->egpPerUnitOfCurrency($bal);
+            $live = self::egpPerUnitOfCurrency($bal);
 
             return $live > 0 ? $live : null;
         }
         if ($book === 'EGP') {
-            $live = $this->egpPerUnitOfCurrency($bal);
+            $live = self::egpPerUnitOfCurrency($bal);
 
             return $live > 0 ? $live : null;
         }
-        $live = $this->egpPerUnitOfCurrency($bal);
+        $live = self::egpPerUnitOfCurrency($bal);
 
         return $live > 0 ? $live : null;
     }
@@ -915,7 +915,7 @@ class FlightBookingService
     /**
      * سعر الصرف المحفوظ على الحجز إن طابقت عملة كيان الإرجاع لقطة الرصيد.
      */
-    private function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
+    public function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
     {
         $entity = strtoupper(trim($entityBalanceCurrency));
         $snap = strtoupper(trim((string) ($booking->balance_currency_used ?? '')));
@@ -937,7 +937,7 @@ class FlightBookingService
      * @param  string  $bookingCurrency  عملة تسعير المورد في الحجز (EGP أو نفس عملة الرصيد)
      * @param  float|null  $lockedEgpPerBalanceUnit  لقطة وقت الحجز (جنيه/وحدة رصيد) — يُفضّل عند الإلغاء
      */
-    private function purchaseAmountInBalanceCurrency(
+    public static function purchaseAmountInBalanceCurrency(
         string $balanceCurrency,
         string $bookingCurrency,
         float $purchasePriceEGP,
@@ -958,7 +958,7 @@ class FlightBookingService
         if ($book === 'EGP') {
             $rate = ($lockedEgpPerBalanceUnit !== null && $lockedEgpPerBalanceUnit > 0)
                 ? $lockedEgpPerBalanceUnit
-                : $this->egpPerUnitOfCurrency($bal);
+                : self::egpPerUnitOfCurrency($bal);
             if ($rate <= 0) {
                 throw new \Exception(
                     "لا يوجد سعر صرف فعّال في جدول العملات للعملة {$bal} (جنيه لكل 1 {$bal}). حدّث سعر الصرف في الإدارة أو طابق عملة الشركة مع التسعير."
@@ -1465,10 +1465,27 @@ class FlightBookingService
      *
      * @param  array  $data  Validated data
      *
+     * @throws \LogicException INCIDENT-2026-08-17 — Tourism no-edit contract.
+     *         Flight bookings cannot be edited after creation. Use the
+     *         refund flow (`FlightRefundService`) for monetary corrections;
+     *         all other edits are HARD-BLOCKED at route, controller, and
+     *         service layers (3-of-3 invariant).
+     *
      * @throws \Exception
      */
     public function updateBooking(FlightBooking $booking, array $data): FlightBooking
     {
+        // INCIDENT-2026-08-17 (Tourism no-edit contract): UPDATE operations on
+        // existing flight bookings are forbidden. See TourismNoEditContractTest
+        // for the regression that locks this guarantee in place.
+        throw new \LogicException(
+            'Tourism no-edit contract INCIDENT-2026-08-17: '
+            .'FlightBookingService::updateBooking() is disabled. '
+            .'Use the refund flow for monetary corrections; all other edits '
+            .'must go through delete-and-recreate.'
+        );
+
+        // ── Code below is unreachable and remains for reference only ──
         try {
             return DB::transaction(function () use ($booking, $data) {
                 unset($data['payment'], $data['initial_payment']);
@@ -1675,10 +1692,23 @@ class FlightBookingService
      * Only allowed if booking status is pending.
      * Recomputes profit.
      *
-     * @throws \Exception
+     * INCIDENT-2026-08-17 (Tourism no-edit contract): price updates on
+     * existing flight bookings are HARD-BLOCKED. Use the refund flow for
+     * monetary corrections; all other edits must go through delete-and-recreate.
+     *
+     * @throws \LogicException
      */
     public function updatePrices(FlightBooking $booking, float $purchasePrice, float $sellingPrice): FlightBooking
     {
+        // INCIDENT-2026-08-17 (Tourism no-edit contract): see TourismNoEditContractTest.
+        throw new \LogicException(
+            'Tourism no-edit contract INCIDENT-2026-08-17: '
+            .'FlightBookingService::updatePrices() is disabled. '
+            .'Use the refund flow for monetary corrections; all other edits '
+            .'must go through delete-and-recreate.'
+        );
+
+        // ── Code below is unreachable and remains for reference only ──
         if ($booking->status !== FlightBookingStatus::PENDING) {
             throw new \Exception('Only pending bookings can have prices updated.');
         }

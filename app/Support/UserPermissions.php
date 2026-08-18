@@ -16,6 +16,8 @@ class UserPermissions
 
     public const MANAGE_TREASURY = 'manage_treasury';
 
+    public const MANAGE_REFUNDS = 'manage_refunds';
+
     public const MANAGE_FINANCE = 'manage_finance';
 
     public const MANAGE_EMPLOYEES = 'manage_employees';
@@ -58,6 +60,12 @@ class UserPermissions
                 'id' => self::MANAGE_TREASURY,
                 'name' => 'فوري والمحافظ',
                 'desc' => 'معاملات فوري والمحافظ والتحويلات',
+                'group' => 'modules',
+            ],
+            [
+                'id' => self::MANAGE_REFUNDS,
+                'name' => 'الاسترداد المالي',
+                'desc' => 'تنفيذ طلبات الاسترداد على الحجوزات (طيران، حج وعمرة، تأشيرات)',
                 'group' => 'modules',
             ],
             [
@@ -116,6 +124,7 @@ class UserPermissions
             self::MANAGE_HAJJ,
             self::MANAGE_ONLINE,
             self::MANAGE_TREASURY,
+            self::MANAGE_REFUNDS,
         ];
     }
 

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Phase 25 Stress Test PHPUnit Config.
+    Usage:
+        vendor/bin/phpunit -c phpunit.stress.xml
+        vendor/bin/phpunit -c phpunit.stress.xml testsuite stress-functional
+        vendor/bin/phpunit -c phpunit.stress.xml filter DataVolumeStressTest
+
+    IMPORTANT: This file does NOT modify the existing phpunit.xml.
+    It runs only the tests/Stress/ tree against the stress SQLite DB
+    (storage/app/stress.sqlite), so the regular tests/Feature suite
+    is unaffected.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.stress.cache"
+         backupGlobals="false"
+         backupStaticProperties="false"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         failOnRisky="false"
+         failOnWarning="false">
+
+    <testsuites>
+        <testsuite name="stress-functional">
+            <directory>tests/Stress</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>tests/Stress</directory>
+        </include>
+    </source>
+
+    <php>
+        <env name="APP_ENV" value="stress" force="true"/>
+        <env name="APP_DEBUG" value="true" force="true"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" force="true"/>
+
+        <!-- Default tier for PHPUnit stress is SQLite WAL.
+             The mysql tier runs through standalone PHP scripts
+             under tests/scripts/stress_*.php. -->
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="LOG_CHANNEL" value="stack" force="true"/>
+        <env name="LOG_LEVEL" value="error" force="true"/>
+    </php>
+</phpunit>

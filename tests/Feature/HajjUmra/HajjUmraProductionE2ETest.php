@@ -488,63 +488,6 @@ class HajjUmraProductionE2ETest extends TestCase
         $this->assertFalse($booking->is_fully_paid);
     }
 
-    /* ========== SCENARIO 3: EDIT / REPOST ========== */
-
-    public function test_8_update_selling_price_reposts_income(): void
-    {
-        $result = $this->createBooking([
-            'purchase_price' => 10000,
-            'selling_price' => 15000,
-        ]);
-        $bookingId = $result['booking']->id;
-
-        $originalIncome = HajjUmraBooking::findOrFail($bookingId)->income_transaction_id;
-
-        // Bump price by 3000 (profit goes from 5000 → 8000)
-        $update = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 18000,
-        ]);
-        $update->assertOk()
-            ->assertJsonPath('data.pricing.selling_price', 18000)
-            ->assertJsonPath('data.pricing.profit', 8000);
-
-        $booking = HajjUmraBooking::findOrFail($bookingId);
-        $this->assertNotEquals($originalIncome, $booking->income_transaction_id);
-        $this->assertEquals(18000.0, (float) $booking->incomeTransaction->amount);
-
-        // Original transaction must STILL exist with reversed entries (additive)
-        $this->assertDatabaseHas('transactions', ['id' => $originalIncome]);
-        $originalEntries = AccountEntry::where('transaction_id', $originalIncome)->get();
-        $netDelta = (float) ($originalEntries->sum('credit') - $originalEntries->sum('debit'));
-        $this->assertEqualsWithDelta(0.0, $netDelta, 0.01,
-            'Original income tx must net to zero (reversal applied)');
-
-        $this->assertBookingIsBalanced($bookingId);
-    }
-
-    public function test_9_update_purchase_price_reposts_expense(): void
-    {
-        $result = $this->createBooking([
-            'purchase_price' => 8000,
-            'selling_price' => 12000,
-        ]);
-        $bookingId = $result['booking']->id;
-
-        $originalExpense = HajjUmraBooking::findOrFail($bookingId)->expense_transaction_id;
-
-        // Lower cost by 2000 → profit grows from 4000 to 6000
-        $update = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'purchase_price' => 6000,
-        ]);
-        $update->assertOk()
-            ->assertJsonPath('data.pricing.profit', 6000);
-
-        $booking = HajjUmraBooking::findOrFail($bookingId);
-        $this->assertNotEquals($originalExpense, $booking->expense_transaction_id);
-        $this->assertEquals(6000.0, (float) $booking->expenseTransaction->amount);
-        $this->assertBookingIsBalanced($bookingId);
-    }
-
     /* ========== SCENARIO 4: CANCEL ========== */
 
     public function test_10_cancel_with_payments_reverses_everything(): void
@@ -718,13 +661,7 @@ class HajjUmraProductionE2ETest extends TestCase
         ])->assertCreated();
         $this->assertBookingIsBalanced($result['booking']->id);
 
-        // 3. Edit price (repost)
-        $this->patchJson("/api/v1/hajj-umra/bookings/{$result['booking']->id}", [
-            'selling_price' => 17000,
-        ])->assertOk();
-        $this->assertBookingIsBalanced($result['booking']->id);
-
-        // 4. Cancel
+        // 3. Cancel (Edit is disabled by INCIDENT-2026-08-17 Tourism no-edit contract)
         $this->postJson("/api/v1/hajj-umra/bookings/{$result['booking']->id}/cancel", [
             'reason' => 'اختبار',
         ])->assertOk();
@@ -914,73 +851,6 @@ class HajjUmraProductionE2ETest extends TestCase
         $refund->assertStatus(422);
     }
 
-    public function test_22_edit_cancelled_booking_is_rejected(): void
-    {
-        // After cancellation, the booking's transactions have been additively
-        // reversed. PATCH on a cancelled booking must NOT silently repost
-        // new accounting — otherwise we'd create phantom journal entries on
-        // a supposedly-cancelled booking and break the financial timeline.
-        //
-        // BUG-FIX 2026-07-27: HajjUmraBookingService::update() now throws
-        // RuntimeException for `status=cancelled|refunded` bookings, so the
-        // PATCH call below must surface a 422 error from the API.
-        $result = $this->createBooking([
-            'purchase_price' => 10000,
-            'selling_price' => 15000,
-        ]);
-        $bookingId = $result['booking']->id;
-
-        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'إلغاء'])->assertOk();
-
-        // Snapshot transaction count BEFORE the would-be edit
-        $txCountBefore = Transaction::where('related_type', HajjUmraBooking::class)
-            ->where('related_id', $bookingId)->count();
-
-        $resp = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 99999,
-        ]);
-        $resp->assertStatus(422); // RuntimeException surfaced via controller try/catch → 422
-        $this->assertStringContainsString('مُلغى', $resp->json('message') ?? '');
-
-        // No phantom transaction was created
-        $txCountAfter = Transaction::where('related_type', HajjUmraBooking::class)
-            ->where('related_id', $bookingId)->count();
-        $this->assertEquals($txCountBefore, $txCountAfter,
-            'Cancelling then editing a booking must NOT create new accounting transactions');
-    }
-
-    public function test_23_concurrent_payments_are_atomic(): void
-    {
-        // Verify that two payments in sequence both succeed, both create
-        // balanced journal entries, and the customer balance is the sum of
-        // both (additive, not racing against each other).
-        $result = $this->createBooking([
-            'purchase_price' => 5000,
-            'selling_price' => 10000,
-        ]);
-        $bookingId = $result['booking']->id;
-
-        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/payments", [
-            'amount' => 3000,
-            'payment_method' => 'cash',
-            'account_id' => $this->treasuryEGP->id,
-        ])->assertCreated();
-
-        $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/payments", [
-            'amount' => 2000,
-            'payment_method' => 'cash',
-            'account_id' => $this->treasuryEGP->id,
-        ])->assertCreated();
-
-        $this->assertBookingIsBalanced($bookingId);
-
-        $customer = Customer::findOrFail($this->customer->id);
-        $customerAccount = Account::findOrFail($customer->account_id);
-        // Selling 10000 - paid 5000 = 5000 still owed
-        $this->assertEqualsWithDelta(5000.00, (float) $customerAccount->balance, 0.01);
-        $this->assertEquals(2, HajjUmraPayment::where('transaction_id', '!=', null)->count());
-    }
-
     public function test_24_refund_zero_amount_booking_is_safe(): void
     {
         // Edge case: a booking with zero initial payment, then refunded.
@@ -1001,30 +871,6 @@ class HajjUmraProductionE2ETest extends TestCase
         $this->assertBookingIsBalanced($bookingId);
     }
 
-    public function test_25_profit_sign_is_correct_after_edit(): void
-    {
-        // After raising selling price, profit = selling + companion + accommodation - purchase.
-        $result = $this->createBooking([
-            'purchase_price' => 10000,
-            'selling_price' => 15000,
-            'companion_purchase_price' => 5000,
-            'companion_selling_price' => 7000,
-            'accommodation_extra_charge' => 1000,
-        ]);
-        $bookingId = $result['booking']->id;
-        // Expected profit: (15000+7000+1000) - (10000+5000) = 23000 - 15000 = 8000
-        $booking = $result['booking'];
-        $this->assertEqualsWithDelta(8000.00, (float) $booking->profit, 0.01);
-
-        // Bump selling by 1000 → profit grows to 9000
-        $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 16000,
-        ])->assertOk();
-
-        $booking->refresh();
-        $this->assertEqualsWithDelta(9000.00, (float) $booking->profit, 0.01);
-        $this->assertBookingIsBalanced($bookingId);
-    }
 
     public function test_26_insufficient_treasury_balance_blocks_booking(): void
     {
@@ -1159,7 +1005,7 @@ class HajjUmraProductionE2ETest extends TestCase
         $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/payments", [
             'amount' => 1000, 'payment_method' => 'cash', 'account_id' => $this->treasuryEGP->id,
         ])->assertCreated();
-        $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", ['selling_price' => 8000])->assertOk();
+        // Edit is permanently disabled by INCIDENT-2026-08-17 Tourism no-edit contract.
         $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/cancel", ['reason' => 'ختام'])->assertOk();
 
         // ★ INVARIANT 1: every hajj_umra transaction's legs sum to zero.

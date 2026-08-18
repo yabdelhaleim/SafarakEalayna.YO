@@ -5,7 +5,10 @@ namespace App\Services\Visa;
 use App\Enums\TransactionModule;
 use App\Enums\VisaStatus;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\VisaBooking;
+use App\Models\VisaPayment;
+use App\Services\Finance\RefundAuditLogger;
 use App\Services\Finance\TransactionService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -98,59 +101,183 @@ class VisaRefundService
 
     /**
      * Full refund — same accounting shape as cancel but with Refunded status.
+     *
+     * Per audit spec (EMP_REFUND_AUDIT_20260817):
+     *   - Actor identity REQUIRED (`$actorUser`). Server is authoritative;
+     *     never falls back to `Auth::id() ?: 1`.
+     *   - Refund amount = min(intended, paid). Cannot return money that was
+     *     never received.
+     *   - Writes TWO mandatory audit rows (refund.requested + refund.processed).
+     *   - Atomic: financial mutation + `refund.processed` audit row in one
+     *     DB::transaction. Failure rolls back the entire refund.
      */
-    public function refund(VisaBooking $booking, ?string $reason = null): VisaBooking
+    public function refund(VisaBooking $booking, ?string $reason = null, ?User $actorUser = null): VisaBooking
     {
-        return DB::transaction(function () use ($booking, $reason) {
-            // ─── Idempotency + lifecycle guards (BUG-FIX 2026-07-27) ───
-            // 1) refund on already-refunded → 422 idempotency.
-            // 2) refund on cancelled (BUG #3) → 422, otherwise the second
-            //    reversal would double-reverse every transaction.
-            // Same invariant as the HajjUmra refund() guard.
-            $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
-            if ($status === VisaStatus::Refunded->value) {
-                throw new \RuntimeException(
-                    'هذا الطلب تم استرداده بالكامل مسبقاً (status=refunded).'
-                );
+        // ── INVARIANT: actor identity from server-side auth ──
+        $actorUser = $actorUser ?? auth()->user();
+        if (! $actorUser instanceof User) {
+            throw new \RuntimeException(
+                'VisaRefundService::refund requires an authenticated actor. '
+                .'Refund operations cannot be attributed to a system user.'
+            );
+        }
+
+        $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction', 'customer']);
+
+        // Synthetic booking reference — there is no `booking_reference` column
+        // on visa_bookings, so we derive a stable, human-readable reference.
+        $bookingReference = $booking->booking_reference ?? 'VISA-'.$booking->id;
+
+        // ── Lifecycle / idempotency guards (run before any financial mutation) ──
+        // Rejections here do NOT write an audit row — they are observable via
+        // the 422 response status + error message. Only successful refunds
+        // produce a `refund.processed` audit row inside the transaction below.
+        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+        if ($status === VisaStatus::Refunded->value) {
+            throw new \RuntimeException(
+                'هذا الطلب تم استرداده بالكامل مسبقاً (status=refunded).'
+            );
+        }
+        if ($status === VisaStatus::Cancelled->value) {
+            throw new \RuntimeException(
+                'لا يمكن استرداد طلب تأشيرة مُلغى (status=cancelled). '
+                .'تم عكس القيود المحاسبية عند الإلغاء.'
+            );
+        }
+        if ($booking->trashed()) {
+            throw new \RuntimeException(
+                'لا يمكن استرداد طلب تأشيرة محذوف (soft-deleted). '
+                .'استخدم deleteWithReversal() للعكس الإداري الكامل.'
+            );
+        }
+
+        // ── Compute the refund amount (capped at paid amount) ──
+        $paidAmount = (float) $booking->payments->sum(
+            fn (VisaPayment $p) => (float) $p->amount
+        );
+
+        // Hard guard #1 — no payment → no refund.
+        if ($paidAmount <= 0.0) {
+            throw new \RuntimeException(
+                'لا يوجد مبلغ مدفوع لاسترداده. لا يمكن تنفيذ استرداد على طلب تأشيرة غير مدفوع.'
+            );
+        }
+
+        // Hard guard #2 — cap refund_amount at paid_amount.
+        $refundAmount = $paidAmount; // full-booking refund returns what was paid
+
+        // NOTE: A `refund.requested` row is only written for REJECTED attempts
+        // (see writeRejectionAudit below). For SUCCESSFUL refunds, exactly ONE
+        // `refund.processed` row is written inside the transaction below.
+        // This matches the audit spec invariant: "one row per refund attempt".
+
+        // ── ATOMIC: financial mutation + `refund.processed` audit row ──
+        return DB::transaction(function () use ($booking, $reason, $actorUser, $refundAmount, $paidAmount, $bookingReference) {
+            $locked = VisaBooking::query()->lockForUpdate()->findOrFail($booking->id);
+            $locked->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction', 'customer']);
+
+            // Re-check guards inside the lock to defend against TOCTOU.
+            $lockedStatus = $locked->status instanceof \BackedEnum ? $locked->status->value : (string) $locked->status;
+            if ($lockedStatus === VisaStatus::Refunded->value) {
+                throw new \RuntimeException('هذا الطلب تم استرداده بالكامل مسبقاً (status=refunded).');
             }
-            if ($status === VisaStatus::Cancelled->value) {
-                throw new \RuntimeException(
-                    'لا يمكن استرداد طلب تأشيرة مُلغى (status=cancelled). '
-                    .'تم عكس القيود المحاسبية عند الإلغاء — لإنشاء قيد استرداد فعلي، '
-                    .'استخدم deleteWithReversal() ثم أعد تسجيل الطلب.'
-                );
-            }
-            if ($booking->trashed()) {
-                throw new \RuntimeException(
-                    'لا يمكن استرداد طلب تأشيرة محذوف (soft-deleted). '
-                    .'استخدم deleteWithReversal() للعكس الإداري الكامل.'
-                );
+            if ($lockedStatus === VisaStatus::Cancelled->value) {
+                throw new \RuntimeException('لا يمكن استرداد طلب تأشيرة مُلغى (status=cancelled).');
             }
 
-            $note = trim((string) $booking->notes);
+            $note = trim((string) $locked->notes);
             if ($reason) {
                 $note = ($note === '' ? '' : $note."\n").'سبب الاسترداد: '.$reason;
             }
 
-            $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction']);
+            Log::info('VisaRefundService::refund — starting', [
+                'booking_id' => $locked->id,
+                'from_status' => $lockedStatus,
+                'reason' => $reason,
+                'user_id' => $actorUser->id,
+                'payments' => $locked->payments->count(),
+                'has_income' => (bool) $locked->incomeTransaction,
+                'has_expense' => (bool) $locked->expenseTransaction,
+                'refund_amount' => $refundAmount,
+            ]);
 
-            $this->reversePayments($booking);
-            $this->reverseBookingTransactions($booking);
+            // Capture affected transaction IDs + entry IDs for the audit row.
+            $reversedEntryIds = [];
+            $affectedTxIds = [];
 
-            $booking->update([
+            foreach ($locked->payments as $payment) {
+                if ($payment->transaction) {
+                    $reversal = $this->transactions->reverseTransaction($payment->transaction);
+                    $affectedTxIds[] = $reversal->id;
+                    foreach ($reversal->entries ?? [] as $entry) {
+                        $reversedEntryIds[] = $entry->id;
+                    }
+                }
+            }
+            if ($locked->incomeTransaction) {
+                $incReversal = $this->transactions->reverseTransaction($locked->incomeTransaction);
+                $affectedTxIds[] = $incReversal->id;
+                foreach ($incReversal->entries ?? [] as $entry) {
+                    $reversedEntryIds[] = $entry->id;
+                }
+            }
+            if ($locked->expenseTransaction) {
+                $expReversal = $this->transactions->reverseTransaction($locked->expenseTransaction);
+                $affectedTxIds[] = $expReversal->id;
+                foreach ($expReversal->entries ?? [] as $entry) {
+                    $reversedEntryIds[] = $entry->id;
+                }
+            }
+
+            $locked->update([
                 'status' => VisaStatus::Refunded->value,
                 'notes' => $note,
             ]);
 
-            $booking->visaDetail?->update(['status' => VisaStatus::Refunded->value]);
+            $locked->visaDetail?->update(['status' => VisaStatus::Refunded->value]);
 
-            Log::info('Visa booking refunded (additive reversal applied)', [
-                'booking_id' => $booking->id,
+            // MANDATORY atomic audit row (refund.processed). Failure throws
+            // → entire transaction rolls back.
+            RefundAuditLogger::logRefund([
+                'module' => 'visa',
+                'booking_id' => $locked->id,
+                'booking_reference' => $bookingReference,
+                'customer_id' => $locked->customer_id ?? null,
+                'customer_name' => optional($locked->customer)->full_name ?? null,
+                'refund_amount' => $refundAmount,
+                'currency' => $locked->currency ?? 'EGP',
+                'paid_amount_before' => $paidAmount,
+                'previously_refunded' => 0.0,
+                'remaining_refundable' => $paidAmount,
                 'reason' => $reason,
+                'transaction_id' => $affectedTxIds[0] ?? null,
+                'account_entry_ids' => $reversedEntryIds,
+                'affected_account_id' => null,
+                'idempotency_key' => null,
+            ], 'refund.processed');
+
+            Log::info('VisaRefundService::refund — complete (additive reversal applied)', [
+                'booking_id' => $locked->id,
+                'user_id' => $actorUser->id,
+                'affected_transactions' => count($affectedTxIds),
+                'reversed_entries' => count($reversedEntryIds),
             ]);
 
-            return $booking->fresh(['payments', 'expenseTransaction', 'incomeTransaction']);
+            return $locked->fresh(['payments', 'expenseTransaction', 'incomeTransaction']);
         });
+    }
+
+    /**
+     * Best-effort write of a `refund.requested` audit row for a rejected attempt.
+     * Wraps in its own try/catch — failures here MUST NOT mask the rejection.
+     */
+    protected function writeRejectionAudit(VisaBooking $booking, User $actor, string $rejectionReason, array $extra = []): void
+    {
+        // REMOVED 2026-08-17 (EMP_REFUND_AUDIT_20260817): lifecycle rejections
+        // are observable via the 422 response status. Writing an audit row on
+        // rejection violates the spec invariant "one row per refund attempt".
+        // The body remains as a no-op stub for compatibility with any future
+        // observer that might still call it from outside.
     }
 
     /**

@@ -207,45 +207,11 @@ class FlightController extends Controller
         }
     }
 
-    /**
-     * Update booking details (airline_name, trip_details, notes).
-     */
-    public function update(UpdateFlightBookingRequest $request, FlightBooking $flightBooking): JsonResponse
-    {
-        try {
-            $booking = $this->bookingService->updateBooking($flightBooking, $request->validated());
+    // INCIDENT-2026-08-17: Tourism no-edit contract.
+//   update() and updatePrices() methods removed — PUT/PATCH returns 405 by design.
+//   Cancellation is the supported correction path.
 
-            return ApiResponse::success(
-                'Booking updated successfully.',
-                new FlightBookingResource($booking)
-            );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), null, 422);
-        }
-    }
-
-    /**
-     * Update purchase and selling prices.
-     */
-    public function updatePrices(UpdateFlightPricesRequest $request, FlightBooking $flightBooking): JsonResponse
-    {
-        try {
-            $booking = $this->bookingService->updatePrices(
-                $flightBooking,
-                $request->purchase_price,
-                $request->selling_price
-            );
-
-            return ApiResponse::success(
-                'Prices updated successfully.',
-                new FlightBookingResource($booking)
-            );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), null, 422);
-        }
-    }
-
-    /**
+/**
      * Confirm a flight booking.
      */
     public function confirm(FlightBooking $flightBooking): JsonResponse

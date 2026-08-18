@@ -293,9 +293,22 @@ class AviationService
 
     /**
      * OP-03: Update Booking
+     *
+     * INCIDENT-2026-08-17 (Tourism no-edit contract): UPDATE operations on
+     * existing flight bookings are HARD-BLOCKED.
+     *
+     * @throws \LogicException
      */
     public function updateBooking(int $id, array $data): FlightBooking
     {
+        // INCIDENT-2026-08-17 (Tourism no-edit contract): see TourismNoEditContractTest.
+        throw new \LogicException(
+            'Tourism no-edit contract INCIDENT-2026-08-17: '
+            .'AviationService::updateBooking() is disabled. '
+            .'All edits must go through delete-and-recreate.'
+        );
+
+        // ── Code below is unreachable and remains for reference only ──
         return DB::transaction(function () use ($id, $data) {
             $booking = FlightBooking::findOrFail($id);
 

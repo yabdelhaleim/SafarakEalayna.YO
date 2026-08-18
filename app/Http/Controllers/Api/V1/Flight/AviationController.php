@@ -110,17 +110,10 @@ class AviationController extends Controller
         return ApiResponse::success('Booking retrieved successfully', $booking);
     }
 
-    public function update(Request $request, $id): JsonResponse
-    {
-        try {
-            $booking = $this->aviationService->updateBooking($id, $request->all());
-            return ApiResponse::success('Booking updated successfully', $booking);
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), [['field' => 'general', 'code' => 'UPDATE_FAILED', 'message' => $e->getMessage()]], 422);
-        }
-    }
+    // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
+//   Cancellation is the supported correction path.
 
-    public function cancel(Request $request, $id): JsonResponse
+public function cancel(Request $request, $id): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string',

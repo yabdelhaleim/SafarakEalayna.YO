@@ -220,24 +220,6 @@ class VisaBookingControllerTest extends TestCase
     }
 
     /* =========================================================
-     * UPDATE
-     * ========================================================= */
-
-    public function test_update_modifies_selling_price(): void
-    {
-        $created = $this->postJson('/api/v1/visa/bookings', $this->bookingPayload());
-        $id = $created->json('data.id');
-
-        $response = $this->putJson("/api/v1/visa/bookings/{$id}", [
-            'selling_price' => 8000,
-        ]);
-
-        $response->assertOk();
-        $booking = VisaBooking::query()->findOrFail($id);
-        $this->assertEqualsWithDelta(8000.0, (float) $booking->selling_price, 0.01);
-    }
-
-    /* =========================================================
      * ADD PAYMENT
      * ========================================================= */
 

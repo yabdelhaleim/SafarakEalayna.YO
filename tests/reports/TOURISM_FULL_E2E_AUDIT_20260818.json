@@ -1,0 +1,3889 @@
+{
+    "audit_id": "TOURISM_FULL_E2E_AUDIT_20260818",
+    "scope": "flight+hajj_umra+visa (Bus strictly out of scope)",
+    "mode": "report-only",
+    "verdict": "NO-GO",
+    "generated_at": "2026-08-18T14:53:55+00:00",
+    "counts": {
+        "executed": 1040,
+        "passed": 689,
+        "failed": 316,
+        "blocked": 18,
+        "skipped": 0,
+        "no_go_findings": 175
+    },
+    "phases": [
+        {
+            "phase_name": "PHASE 0 — Safety",
+            "tests_executed": 11,
+            "tests_passed": 7,
+            "tests_failed": 4,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:41+00:00",
+            "finished_at": "2026-08-18T14:53:41+00:00",
+            "fatal_error": null,
+            "no_go_count": 4,
+            "findings": [
+                {
+                    "phase": "PHASE 0 — Safety",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Baseline counts",
+                    "expected": "{\"customers\":570,\"flight_bookings\":0,\"hajj_umra_bookings\":0,\"visa_bookings\":2,\"transactions\":2009,\"accounts\":773,\"users\":24,\"employees\":2}",
+                    "actual": "{\"customers\":570,\"flight_bookings\":0,\"hajj_umra_bookings\":0,\"visa_bookings\":2,\"transactions\":2009,\"accounts\":773,\"users\":24,\"employees\":2}",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 0 — Safety",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Prerequisite: tourism vault account (module_type=tourism, is_module_vault=1)",
+                    "expected": "At least 1 active tourism cashbox vault per AccountModuleContract",
+                    "actual": "0 accounts match — no tourism cashbox vault exists in DB",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "AccountModuleContract mandates `module_type=\"tourism\"` for tourism cashbox vaults; Account::getModuleVault() returns null for flights\/hajj_umra\/visas. ALL payment flows that omit `account_id` will throw RuntimeException.",
+                    "context": {
+                        "module": "cross",
+                        "root_cause": "AccountModuleContract mandates `module_type=\"tourism\"` for tourism cashbox vaults; Account::getModuleVault() returns null for flights\/hajj_umra\/visas. ALL payment flows that omit `account_id` will throw RuntimeException."
+                    }
+                },
+                {
+                    "phase": "PHASE 0 — Safety",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Prerequisite: employees.email column",
+                    "expected": "employees.email exists (model declares it in #[Fillable])",
+                    "actual": "employees.email column MISSING — Employee::firstOrCreate([email=>...]) would fail",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "Employee model declares `email` in its Fillable attribute (Employee.php L23) but the local MySQL employees table does not have an `email` column. Audit cannot create Employees safely.",
+                    "context": {
+                        "module": "cross",
+                        "root_cause": "Employee model declares `email` in its Fillable attribute (Employee.php L23) but the local MySQL employees table does not have an `email` column. Audit cannot create Employees safely."
+                    }
+                },
+                {
+                    "phase": "PHASE 0 — Safety",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Prerequisite: users.employee_id column",
+                    "expected": "users.employee_id exists (or no expectation of User↔Employee link)",
+                    "actual": "users.employee_id column MISSING — User cannot link to Employee",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "User model declares `employee_id` not in fillable, but the Employee model has user_id (FK) — relationship is Employee→User not User→Employee.",
+                    "context": {
+                        "module": "cross",
+                        "root_cause": "User model declares `employee_id` not in fillable, but the Employee model has user_id (FK) — relationship is Employee→User not User→Employee."
+                    }
+                },
+                {
+                    "phase": "PHASE 0 — Safety",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Prerequisite: audit_logs expected columns",
+                    "expected": "audit_logs.actor_name + audit_logs.description exist",
+                    "actual": "Missing columns: actor_name, description",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "Local audit_logs schema lacks actor_name\/description. Cleanup and queries that depend on them fail.",
+                    "context": {
+                        "module": "cross",
+                        "root_cause": "Local audit_logs schema lacks actor_name\/description. Cleanup and queries that depend on them fail."
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 1 — Inventory",
+            "tests_executed": 45,
+            "tests_passed": 44,
+            "tests_failed": 1,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:41+00:00",
+            "finished_at": "2026-08-18T14:53:41+00:00",
+            "fatal_error": null,
+            "no_go_count": 0,
+            "findings": [
+                {
+                    "phase": "PHASE 1 — Inventory",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Flight \/prices route present",
+                    "expected": "Admin-only via middleware; service stub throws LogicException",
+                    "actual": "Admin-only via middleware; service stub throws LogicException",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 1 — Inventory",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "low",
+                    "scenario": "Vue router: \/visa root",
+                    "expected": "Route present",
+                    "actual": "Route not found in router\/index.js",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "cross"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 2 — Employee Journey",
+            "tests_executed": 97,
+            "tests_passed": 49,
+            "tests_failed": 48,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:41+00:00",
+            "finished_at": "2026-08-18T14:53:43+00:00",
+            "fatal_error": null,
+            "no_go_count": 48,
+            "findings": [
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 100 cust after 60%",
+                    "expected": "balance=40.00, computed=0.00, diff<0.005",
+                    "actual": "drift=40.0000 EGP",
+                    "diff_egp": 40,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        930
+                    ],
+                    "root_cause": "Account #930 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            930
+                        ],
+                        "diff_egp": 40,
+                        "root_cause": "Account #930 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 100 cashbox after 60%",
+                    "expected": "balance=44,360.00, computed=0.00, diff<0.005",
+                    "actual": "drift=44,360.0000 EGP",
+                    "diff_egp": 44360,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44360,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 100 cashbox after 100%",
+                    "expected": "balance=44,400.00, computed=0.00, diff<0.005",
+                    "actual": "drift=44,400.0000 EGP",
+                    "diff_egp": 44400,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44400,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 100 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-100.00, drift=100.0000",
+                    "diff_egp": 100,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        930
+                    ],
+                    "root_cause": "Account #930 expected delta of 0 but got -100",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            930
+                        ],
+                        "diff_egp": 100,
+                        "root_cause": "Account #930 expected delta of 0 but got -100"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 500 cust after 60%",
+                    "expected": "balance=200.00, computed=0.00, diff<0.005",
+                    "actual": "drift=200.0000 EGP",
+                    "diff_egp": 200,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        931
+                    ],
+                    "root_cause": "Account #931 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            931
+                        ],
+                        "diff_egp": 200,
+                        "root_cause": "Account #931 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 500 cashbox after 60%",
+                    "expected": "balance=44,600.00, computed=0.00, diff<0.005",
+                    "actual": "drift=44,600.0000 EGP",
+                    "diff_egp": 44600,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44600,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 500 cashbox after 100%",
+                    "expected": "balance=44,800.00, computed=0.00, diff<0.005",
+                    "actual": "drift=44,800.0000 EGP",
+                    "diff_egp": 44800,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44800,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 500 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-500.00, drift=500.0000",
+                    "diff_egp": 500,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        931
+                    ],
+                    "root_cause": "Account #931 expected delta of 0 but got -500",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            931
+                        ],
+                        "diff_egp": 500,
+                        "root_cause": "Account #931 expected delta of 0 but got -500"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 999.99 cust after 60%",
+                    "expected": "balance=400.00, computed=0.00, diff<0.005",
+                    "actual": "drift=400.0000 EGP",
+                    "diff_egp": 400,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        932
+                    ],
+                    "root_cause": "Account #932 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            932
+                        ],
+                        "diff_egp": 400,
+                        "root_cause": "Account #932 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 999.99 cashbox after 60%",
+                    "expected": "balance=44,899.99, computed=0.00, diff<0.005",
+                    "actual": "drift=44,899.9900 EGP",
+                    "diff_egp": 44899.99,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44899.99,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 999.99 cashbox after 100%",
+                    "expected": "balance=45,299.99, computed=0.00, diff<0.005",
+                    "actual": "drift=45,299.9900 EGP",
+                    "diff_egp": 45299.99,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45299.99,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 999.99 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-999.99, drift=999.9900",
+                    "diff_egp": 999.99,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        932
+                    ],
+                    "root_cause": "Account #932 expected delta of 0 but got -999.99",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            932
+                        ],
+                        "diff_egp": 999.99,
+                        "root_cause": "Account #932 expected delta of 0 but got -999.99"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 1000 cust after 60%",
+                    "expected": "balance=400.00, computed=0.00, diff<0.005",
+                    "actual": "drift=400.0000 EGP",
+                    "diff_egp": 400,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        933
+                    ],
+                    "root_cause": "Account #933 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            933
+                        ],
+                        "diff_egp": 400,
+                        "root_cause": "Account #933 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 1000 cashbox after 60%",
+                    "expected": "balance=44,900.00, computed=0.00, diff<0.005",
+                    "actual": "drift=44,900.0000 EGP",
+                    "diff_egp": 44900,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 44900,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 1000 cashbox after 100%",
+                    "expected": "balance=45,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=45,300.0000 EGP",
+                    "diff_egp": 45300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 1000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-1,000.00, drift=1,000.0000",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        933
+                    ],
+                    "root_cause": "Account #933 expected delta of 0 but got -1000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            933
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #933 expected delta of 0 but got -1000"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 2500 cust after 60%",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        934
+                    ],
+                    "root_cause": "Account #934 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            934
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #934 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 2500 cashbox after 60%",
+                    "expected": "balance=45,800.00, computed=0.00, diff<0.005",
+                    "actual": "drift=45,800.0000 EGP",
+                    "diff_egp": 45800,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45800,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 2500 cashbox after 100%",
+                    "expected": "balance=46,800.00, computed=0.00, diff<0.005",
+                    "actual": "drift=46,800.0000 EGP",
+                    "diff_egp": 46800,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 46800,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 2500 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-2,500.00, drift=2,500.0000",
+                    "diff_egp": 2500,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        934
+                    ],
+                    "root_cause": "Account #934 expected delta of 0 but got -2500",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            934
+                        ],
+                        "diff_egp": 2500,
+                        "root_cause": "Account #934 expected delta of 0 but got -2500"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 5000 cust after 60%",
+                    "expected": "balance=2,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=2,000.0000 EGP",
+                    "diff_egp": 2000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        935
+                    ],
+                    "root_cause": "Account #935 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            935
+                        ],
+                        "diff_egp": 2000,
+                        "root_cause": "Account #935 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 5000 cashbox after 60%",
+                    "expected": "balance=47,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=47,300.0000 EGP",
+                    "diff_egp": 47300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 47300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 5000 cashbox after 100%",
+                    "expected": "balance=49,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=49,300.0000 EGP",
+                    "diff_egp": 49300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 49300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 5000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-5,000.00, drift=5,000.0000",
+                    "diff_egp": 5000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        935
+                    ],
+                    "root_cause": "Account #935 expected delta of 0 but got -5000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            935
+                        ],
+                        "diff_egp": 5000,
+                        "root_cause": "Account #935 expected delta of 0 but got -5000"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 10000 cust after 60%",
+                    "expected": "balance=4,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=4,000.0000 EGP",
+                    "diff_egp": 4000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        936
+                    ],
+                    "root_cause": "Account #936 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            936
+                        ],
+                        "diff_egp": 4000,
+                        "root_cause": "Account #936 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 10000 cashbox after 60%",
+                    "expected": "balance=50,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=50,300.0000 EGP",
+                    "diff_egp": 50300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 50300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 10000 cashbox after 100%",
+                    "expected": "balance=54,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=54,300.0000 EGP",
+                    "diff_egp": 54300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 54300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 10000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-10,000.00, drift=10,000.0000",
+                    "diff_egp": 10000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        936
+                    ],
+                    "root_cause": "Account #936 expected delta of 0 but got -10000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            936
+                        ],
+                        "diff_egp": 10000,
+                        "root_cause": "Account #936 expected delta of 0 but got -10000"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 25000 cust after 60%",
+                    "expected": "balance=10,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=10,000.0000 EGP",
+                    "diff_egp": 10000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        937
+                    ],
+                    "root_cause": "Account #937 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            937
+                        ],
+                        "diff_egp": 10000,
+                        "root_cause": "Account #937 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 25000 cashbox after 60%",
+                    "expected": "balance=59,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=59,300.0000 EGP",
+                    "diff_egp": 59300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 59300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight emp journey @ 25000 cashbox after 100%",
+                    "expected": "balance=69,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=69,300.0000 EGP",
+                    "diff_egp": 69300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 69300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight emp journey @ 25000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-25,000.00, drift=25,000.0000",
+                    "diff_egp": 25000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        937
+                    ],
+                    "root_cause": "Account #937 expected delta of 0 but got -25000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            937
+                        ],
+                        "diff_egp": 25000,
+                        "root_cause": "Account #937 expected delta of 0 but got -25000"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 100",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 500",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 999.99",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 1000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 2500",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 5000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 10000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj emp journey @ 25000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "hajj employee journey threw",
+                    "context": {
+                        "module": "hajj_umra",
+                        "root_cause": "hajj employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 100",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 500",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 999.99",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 1000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 2500",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 5000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 10000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                },
+                {
+                    "phase": "PHASE 2 — Employee Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa emp journey @ 25000",
+                    "expected": "employee workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:43, 2026-08-18 14:53:43))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "visa employee journey threw",
+                    "context": {
+                        "module": "visa",
+                        "root_cause": "visa employee journey threw"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 3 — Admin Journey",
+            "tests_executed": 34,
+            "tests_passed": 14,
+            "tests_failed": 20,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:43+00:00",
+            "finished_at": "2026-08-18T14:53:44+00:00",
+            "fatal_error": null,
+            "no_go_count": 20,
+            "findings": [
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 1000 cashbox paid",
+                    "expected": "balance=45,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=45,300.0000 EGP",
+                    "diff_egp": 45300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight admin @ 1000 cancel",
+                    "expected": "admin can cancel",
+                    "actual": "exception: فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 1000 cashbox post-cancel",
+                    "expected": "balance=45,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=45,300.0000 EGP",
+                    "diff_egp": 45300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight admin @ 1000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-1,000.00, drift=1,000.0000",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        954
+                    ],
+                    "root_cause": "Account #954 expected delta of 0 but got -1000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            954
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #954 expected delta of 0 but got -1000"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 5000 cashbox paid",
+                    "expected": "balance=49,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=49,300.0000 EGP",
+                    "diff_egp": 49300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 49300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight admin @ 5000 cancel",
+                    "expected": "admin can cancel",
+                    "actual": "exception: فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 5000 cashbox post-cancel",
+                    "expected": "balance=49,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=49,300.0000 EGP",
+                    "diff_egp": 49300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 49300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight admin @ 5000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-5,000.00, drift=5,000.0000",
+                    "diff_egp": 5000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        955
+                    ],
+                    "root_cause": "Account #955 expected delta of 0 but got -5000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            955
+                        ],
+                        "diff_egp": 5000,
+                        "root_cause": "Account #955 expected delta of 0 but got -5000"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 10000 cashbox paid",
+                    "expected": "balance=54,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=54,300.0000 EGP",
+                    "diff_egp": 54300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 54300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight admin @ 10000 cancel",
+                    "expected": "admin can cancel",
+                    "actual": "exception: فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight admin @ 10000 cashbox post-cancel",
+                    "expected": "balance=54,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=54,300.0000 EGP",
+                    "diff_egp": 54300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 54300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight admin @ 10000 cust post-delete",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-10,000.00, drift=10,000.0000",
+                    "diff_egp": 10000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        956
+                    ],
+                    "root_cause": "Account #956 expected delta of 0 but got -10000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            956
+                        ],
+                        "diff_egp": 10000,
+                        "root_cause": "Account #956 expected delta of 0 but got -10000"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "hajj_umra",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "hajj admin @ 1000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "hajj_umra",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "hajj admin @ 5000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "hajj_umra",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "hajj admin @ 10000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "visa",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "visa admin @ 1000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:44, 2026-08-18 14:53:44))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "visa",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "visa admin @ 5000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:44, 2026-08-18 14:53:44))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "visa",
+                    "role": "admin",
+                    "severity": "high",
+                    "scenario": "visa admin @ 10000",
+                    "expected": "admin workflow navigable end-to-end",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:44, 2026-08-18 14:53:44))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa",
+                        "role": "admin"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "No-Edit contract: Hajj LOCKED_FIELDS via HTTP",
+                    "expected": "request dispatched",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 3 — Admin Journey",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "No-Edit contract: Visa update setup",
+                    "expected": "scenario constructible",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:44, 2026-08-18 14:53:44))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 4 — Payment Matrix",
+            "tests_executed": 17,
+            "tests_passed": 4,
+            "tests_failed": 13,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:44+00:00",
+            "finished_at": "2026-08-18T14:53:45+00:00",
+            "fatal_error": null,
+            "no_go_count": 13,
+            "findings": [
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight matrix A cashbox invariant",
+                    "expected": "balance=45,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=45,300.0000 EGP",
+                    "diff_egp": 45300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 45300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight matrix A wallet invariant",
+                    "expected": "balance=3,126.25, computed=0.00, diff<0.005",
+                    "actual": "drift=3,126.2500 EGP",
+                    "diff_egp": 3126.25,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        156
+                    ],
+                    "root_cause": "Account #156 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            156
+                        ],
+                        "diff_egp": 3126.25,
+                        "root_cause": "Account #156 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight matrix B",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[01000]: Warning: 1265 Data truncated for column 'payment_method' at row 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `flight_payments` (`flight_booking_id`, `amount`, `original_amount`, `payment_method`, `currency`, `treasury_account`, `account_id`, `idempotency_key`, `transaction_id`, `payment_date`, `paid_by`, `created_by`, `notes`, `updated_at`, `created_at`) values (65, 1000, 1000, wallet, EGP, 156|WL_EGP_Vodafone, 156, ?, ?, 2026-08-18 14:53:45, TOURISM_FULL_AUDIT_20260818_employee, 27, ?, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight matrix C",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[01000]: Warning: 1265 Data truncated for column 'payment_method' at row 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `flight_payments` (`flight_booking_id`, `amount`, `original_amount`, `payment_method`, `currency`, `treasury_account`, `account_id`, `idempotency_key`, `transaction_id`, `payment_date`, `paid_by`, `created_by`, `notes`, `updated_at`, `created_at`) values (66, 400, 400, wallet, EGP, 156|WL_EGP_Vodafone, 156, ?, ?, 2026-08-18 14:53:45, TOURISM_FULL_AUDIT_20260818_employee, 27, ?, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight matrix D",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[01000]: Warning: 1265 Data truncated for column 'payment_method' at row 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `flight_payments` (`flight_booking_id`, `amount`, `original_amount`, `payment_method`, `currency`, `treasury_account`, `account_id`, `idempotency_key`, `transaction_id`, `payment_date`, `paid_by`, `created_by`, `notes`, `updated_at`, `created_at`) values (68, 750, 750, wallet, EGP, 156|WL_EGP_Vodafone, 156, ?, ?, 2026-08-18 14:53:45, TOURISM_FULL_AUDIT_20260818_employee, 27, ?, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj matrix A",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj matrix B",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj matrix C",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj matrix D",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa matrix A",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa matrix B",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa matrix C",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                },
+                {
+                    "phase": "PHASE 4 — Payment Matrix",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa matrix D",
+                    "expected": "payment matrix scenario completes",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:45, 2026-08-18 14:53:45))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 5 — Debt",
+            "tests_executed": 10,
+            "tests_passed": 4,
+            "tests_failed": 6,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:45+00:00",
+            "finished_at": "2026-08-18T14:53:46+00:00",
+            "fatal_error": null,
+            "no_go_count": 6,
+            "findings": [
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Zero EGP diff: flight debt step 1 (cash 2000) debt = total - paid",
+                    "expected": "value=3,000.0000",
+                    "actual": "value=-2,000.0000, diff=5,000.0000",
+                    "diff_egp": 5000,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "diff_egp": 5000
+                    }
+                },
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight debt step 1 (cash 2000) cust invariant",
+                    "expected": "balance=3,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=3,000.0000 EGP",
+                    "diff_egp": 3000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        979
+                    ],
+                    "root_cause": "Account #979 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            979
+                        ],
+                        "diff_egp": 3000,
+                        "root_cause": "Account #979 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: flight debt step 1 (cash 2000) treasury invariant",
+                    "expected": "balance=48,300.00, computed=0.00, diff<0.005",
+                    "actual": "drift=48,300.0000 EGP",
+                    "diff_egp": 48300,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 48300,
+                        "root_cause": "Account #6 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight debt",
+                    "expected": "debt lifecycle completes",
+                    "actual": "exception: SQLSTATE[01000]: Warning: 1265 Data truncated for column 'payment_method' at row 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `flight_payments` (`flight_booking_id`, `amount`, `original_amount`, `payment_method`, `currency`, `treasury_account`, `account_id`, `idempotency_key`, `transaction_id`, `payment_date`, `paid_by`, `created_by`, `notes`, `updated_at`, `created_at`) values (69, 1000, 1000, wallet, EGP, 156|WL_EGP_Vodafone, 156, ?, ?, 2026-08-18 14:53:46, TOURISM_FULL_AUDIT_20260818_employee, 28, ?, 2026-08-18 14:53:46, 2026-08-18 14:53:46))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "hajj debt",
+                    "expected": "debt lifecycle completes",
+                    "actual": "exception: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 5 — Debt",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "visa debt",
+                    "expected": "debt lifecycle completes",
+                    "actual": "exception: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:46, 2026-08-18 14:53:46))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 6 — Invalid payment rejection",
+            "tests_executed": 11,
+            "tests_passed": 10,
+            "tests_failed": 1,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:46+00:00",
+            "finished_at": "2026-08-18T14:53:47+00:00",
+            "fatal_error": "Phase6 fatal: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+            "no_go_count": 1,
+            "findings": [
+                {
+                    "phase": "PHASE 6 — Invalid payment rejection",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: payment against another customer's booking",
+                    "expected": "Rejection (exception or validation error)",
+                    "actual": "Payment accepted — money mutated",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "Payment slip-through detected",
+                    "context": {
+                        "module": "flight",
+                        "root_cause": "Payment slip-through detected"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 7 — Refund happy path",
+            "tests_executed": 5,
+            "tests_passed": 0,
+            "tests_failed": 5,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:47+00:00",
+            "finished_at": "2026-08-18T14:53:48+00:00",
+            "fatal_error": null,
+            "no_go_count": 5,
+            "findings": [
+                {
+                    "phase": "PHASE 7 — Refund happy path",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "flight: RefundAuditLog row created for full refund",
+                    "expected": "refund_audit_logs row exists",
+                    "actual": "Not found",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 7 — Refund happy path",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: full refund happy path",
+                    "expected": "Refund + audit rows created",
+                    "actual": "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'related_id' in 'where clause' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select exists(select * from `audit_logs` where `action` like refund.% and `related_id` = 82) as `exists`)",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 7 — Refund happy path",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: partial refund cumulative path",
+                    "expected": "Two sequential refunds succeed",
+                    "actual": "هذا الحجز تم استرداده بالكامل مسبقاً ولا يمكن إصدار طلب استرجاع جديد له.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 7 — Refund happy path",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "hajj_umra: full refund happy path",
+                    "expected": "Refund + audit rows created",
+                    "actual": "لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 7 — Refund happy path",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "visa: full refund happy path",
+                    "expected": "Refund + audit rows created",
+                    "actual": "SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:48, 2026-08-18 14:53:48))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 8 — Refund attack surface",
+            "tests_executed": 4,
+            "tests_passed": 4,
+            "tests_failed": 0,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:48+00:00",
+            "finished_at": "2026-08-18T14:53:48+00:00",
+            "fatal_error": "Phase8 fatal: هذا الحجز تم استرداده بالكامل مسبقاً ولا يمكن إصدار طلب استرجاع جديد له.",
+            "no_go_count": 0,
+            "findings": []
+        },
+        {
+            "phase_name": "PHASE 9 — Cancellation paths",
+            "tests_executed": 4,
+            "tests_passed": 1,
+            "tests_failed": 3,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:48+00:00",
+            "finished_at": "2026-08-18T14:53:49+00:00",
+            "fatal_error": "Phase9 fatal: فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+            "no_go_count": 3,
+            "findings": [
+                {
+                    "phase": "PHASE 9 — Cancellation paths",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: Create→Pay→Cancel happy path",
+                    "expected": "Reconciled",
+                    "actual": "فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 9 — Cancellation paths",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: Create→Partial→Cancel happy path",
+                    "expected": "Reconciled",
+                    "actual": "فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 9 — Cancellation paths",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: Create→Debt→Cancel — duplicate transactions",
+                    "expected": "No duplicate (type,amount,currency) tuples",
+                    "actual": "Duplicates found: [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"cnt\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 10 — Soft-delete & balance restoration",
+            "tests_executed": 10,
+            "tests_passed": 8,
+            "tests_failed": 2,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:49+00:00",
+            "finished_at": "2026-08-18T14:53:50+00:00",
+            "fatal_error": "Phase10 fatal: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+            "no_go_count": 2,
+            "findings": [
+                {
+                    "phase": "PHASE 10 — Soft-delete & balance restoration",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Balance delta: flight delete-after-pay restores cashbox",
+                    "expected": "delta=0.00",
+                    "actual": "actual_delta=-1,000.00, drift=1,000.0000",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        6
+                    ],
+                    "root_cause": "Account #6 expected delta of 0 but got -1000",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            6
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #6 expected delta of 0 but got -1000"
+                    }
+                },
+                {
+                    "phase": "PHASE 10 — Soft-delete & balance restoration",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "flight: cancel after delete",
+                    "expected": "Rejection",
+                    "actual": "Operation accepted",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 11 — Post-save Edit Lock",
+            "tests_executed": 0,
+            "tests_passed": 0,
+            "tests_failed": 0,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:50+00:00",
+            "finished_at": "2026-08-18T14:53:50+00:00",
+            "fatal_error": "Phase11 fatal: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+            "no_go_count": 0,
+            "findings": []
+        },
+        {
+            "phase_name": "PHASE 12 — Pre-Completion Edit Lock",
+            "tests_executed": 9,
+            "tests_passed": 7,
+            "tests_failed": 0,
+            "tests_blocked": 2,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:50+00:00",
+            "finished_at": "2026-08-18T14:53:51+00:00",
+            "fatal_error": null,
+            "no_go_count": 2,
+            "findings": [
+                {
+                    "phase": "PHASE 12 — Pre-Completion Edit Lock",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Hajj edit lock",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: Could not seed Hajj booking: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 12 — Pre-Completion Edit Lock",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Visa edit lock",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: Could not seed Visa booking: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:51, 2026-08-18 14:53:51))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 13 — Concurrency & Idempotency",
+            "tests_executed": 16,
+            "tests_passed": 2,
+            "tests_failed": 0,
+            "tests_blocked": 14,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:51+00:00",
+            "finished_at": "2026-08-18T14:53:53+00:00",
+            "fatal_error": null,
+            "no_go_count": 14,
+            "findings": [
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "flight double-click refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لا يمكن إصدار طلب استرجاع لحجز بحالة 'PENDING'. يجب أن يكون الحجز مؤكداً على الأقل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "flight refund-then-cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لا يمكن إصدار طلب استرجاع لحجز بحالة 'PENDING'. يجب أن يكون الحجز مؤكداً على الأقل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "flight payment+refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لا يمكن إصدار طلب استرجاع لحجز بحالة 'PENDING'. يجب أن يكون الحجز مؤكداً على الأقل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "flight payment+cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "hajj_umra double-click payment",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "hajj_umra double-click refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "hajj_umra refund-then-cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "hajj_umra payment+refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "hajj_umra payment+cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "visa double-click payment",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:52, 2026-08-18 14:53:52))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "visa double-click refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:52, 2026-08-18 14:53:52))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "visa refund-then-cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:53, 2026-08-18 14:53:53))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "visa payment+refund",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:53, 2026-08-18 14:53:53))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 13 — Concurrency & Idempotency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "visa payment+cancel",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:53, 2026-08-18 14:53:53))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 14 — Cross-Module Attack",
+            "tests_executed": 9,
+            "tests_passed": 7,
+            "tests_failed": 0,
+            "tests_blocked": 2,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:53+00:00",
+            "finished_at": "2026-08-18T14:53:53+00:00",
+            "fatal_error": null,
+            "no_go_count": 2,
+            "findings": [
+                {
+                    "phase": "PHASE 14 — Cross-Module Attack",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Cross-attack suite (hajj_umra)",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 14 — Cross-Module Attack",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "medium",
+                    "scenario": "Cross-attack suite (visa)",
+                    "expected": "Test should run",
+                    "actual": "BLOCKED: SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:53, 2026-08-18 14:53:53))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 15 — Reconciliation Sweep",
+            "tests_executed": 4,
+            "tests_passed": 2,
+            "tests_failed": 2,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:53+00:00",
+            "finished_at": "2026-08-18T14:53:53+00:00",
+            "fatal_error": "Phase 15 exception: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'paid_amount' in 'field list' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select `paid_amount` from `flight_bookings` where `id` = 52 limit 1)",
+            "no_go_count": 2,
+            "findings": [
+                {
+                    "phase": "PHASE 15 — Reconciliation Sweep",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Baseline bookings present",
+                    "expected": "Flight=49 Hajj=0 Visa=0",
+                    "actual": "Flight=49 Hajj=0 Visa=0",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 15 — Reconciliation Sweep",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Recon: Booking #52 (flight) — no duplicate transactions",
+                    "expected": "No (type, amount, currency) duplicates",
+                    "actual": "1 duplicate group(s) detected",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "Duplicate transactions on flight booking #52",
+                    "context": {
+                        "module": "flight",
+                        "root_cause": "Duplicate transactions on flight booking #52"
+                    }
+                },
+                {
+                    "phase": "PHASE 15 — Reconciliation Sweep",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: Booking #52 (flight) — account #818",
+                    "expected": "balance=-77,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=77,000.0000 EGP",
+                    "diff_egp": 77000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        818
+                    ],
+                    "root_cause": "Account #818 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            818
+                        ],
+                        "diff_egp": 77000,
+                        "root_cause": "Account #818 balance does not match entries SUM"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 16 — Profit Recognition",
+            "tests_executed": 10,
+            "tests_passed": 6,
+            "tests_failed": 4,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:53+00:00",
+            "finished_at": "2026-08-18T14:53:54+00:00",
+            "fatal_error": null,
+            "no_go_count": 4,
+            "findings": [
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Profit: flight booking #101 after_full_payment",
+                    "expected": "profit=200.0000",
+                    "actual": "profit=0.0000 diff=200.0000",
+                    "diff_egp": 200,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "tx-derived profit diverges from booking-paid-purchase by > 1 EGP",
+                    "context": {
+                        "module": "flight",
+                        "diff_egp": 200,
+                        "root_cause": "tx-derived profit diverges from booking-paid-purchase by > 1 EGP"
+                    }
+                },
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Phase16 flight refund step skipped",
+                    "expected": "خزينة الوجهة المحددة غير موجودة.",
+                    "actual": "خزينة الوجهة المحددة غير موجودة.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Profit: flight booking #101 after_partial_refund",
+                    "expected": "profit=-300.0000",
+                    "actual": "profit=0.0000 diff=300.0000",
+                    "diff_egp": 300,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": "tx-derived profit diverges from booking-paid-purchase by > 1 EGP",
+                    "context": {
+                        "module": "flight",
+                        "diff_egp": 300,
+                        "root_cause": "tx-derived profit diverges from booking-paid-purchase by > 1 EGP"
+                    }
+                },
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Phase16 flight cancel step",
+                    "expected": "فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "actual": "فشل إلغاء الحجز: يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "Phase16 hajj_umra lifecycle exception",
+                    "expected": "Clean lifecycle",
+                    "actual": "لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 16 — Profit Recognition",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "Phase16 visa lifecycle exception",
+                    "expected": "Clean lifecycle",
+                    "actual": "SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:54, 2026-08-18 14:53:54))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 17 — Transaction Duplication",
+            "tests_executed": 101,
+            "tests_passed": 81,
+            "tests_failed": 20,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:54+00:00",
+            "finished_at": "2026-08-18T14:53:54+00:00",
+            "fatal_error": null,
+            "no_go_count": 20,
+            "findings": [
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #52",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"100.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #53",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"500.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #54",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"999.99\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #55",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #56",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"2500.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #57",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"5000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #58",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"10000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #59",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"25000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #60",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #61",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"5000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #62",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"10000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #63",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1500.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #82",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #83",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #84",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #86",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #89",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #90",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #92",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Duplicate transactions: flight booking #101",
+                    "expected": "Each (type, amount, currency) tuple appears at most once",
+                    "actual": "1 duplicate group(s): [{\"type\":\"transfer\",\"amount\":\"1000.00\",\"currency\":\"EGP\",\"count\":2}]",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight",
+                        "role": "system",
+                        "diff_egp": 0,
+                        "tx_ids": []
+                    }
+                },
+                {
+                    "phase": "PHASE 17 — Transaction Duplication",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Phase 17 sweep summary",
+                    "expected": "swept=50 bookings across 3 modules",
+                    "actual": "swept=50 bookings across 3 modules",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 18 — Report Consistency",
+            "tests_executed": 112,
+            "tests_passed": 86,
+            "tests_failed": 26,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:54+00:00",
+            "finished_at": "2026-08-18T14:53:54+00:00",
+            "fatal_error": "Phase 18 exception: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'amount' in 'field list' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select sum(`amount`) as aggregate from `account_entries` where `transaction_id` in (4364, 4369, 4370, 4375, 4376, 4381, 4382, 4387, 4388, 4393, 4394, 4399, 4400, 4405, 4406, 4411, 4412, 4416, 4417, 4421, 4422, 4426, 4427, 4428, 4429, 4431, 4432, 4433, 4434, 4436, 4438, 4439, 4440, 4441, 4442, 4443, 4444, 4445, 4447, 4448, 4449, 4450, 4452, 4454, 4456, 4458, 4460, 4462, 4464, 4465, 4467, 4469, 4472, 4475, 4476, 4477, 4479, 4481, 4484, 4487, 4488, 4489, 4490, 4492, 4494, 4496, 4498, 4501, 4502, 4506, 4398, 4403, 4404, 4409, 4410, 4415, 4420, 4425, 4486, 4505, 4396, 4401, 4402, 4407, 4408, 4413, 4418, 4423, 4430, 4435, 4437, 4446, 4451, 4453, 4457, 4461, 4466, 4470, 4473, 4478, 4482, 4485, 4491, 4493, 4495, 4497, 4499, 4503) and `account_id` = 6 and `type` = credit)",
+            "no_go_count": 26,
+            "findings": [
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #769 account #967",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        967
+                    ],
+                    "root_cause": "Account #967 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            967
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #967 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #770 account #968",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        968
+                    ],
+                    "root_cause": "Account #968 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            968
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #968 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #771 account #969",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        969
+                    ],
+                    "root_cause": "Account #969 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            969
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #969 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #772 account #970",
+                    "expected": "balance=4,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=4,000.0000 EGP",
+                    "diff_egp": 4000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        970
+                    ],
+                    "root_cause": "Account #970 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            970
+                        ],
+                        "diff_egp": 4000,
+                        "root_cause": "Account #970 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #781 account #979",
+                    "expected": "balance=3,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=3,000.0000 EGP",
+                    "diff_egp": 3000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        979
+                    ],
+                    "root_cause": "Account #979 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            979
+                        ],
+                        "diff_egp": 3000,
+                        "root_cause": "Account #979 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #784 account #982",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        982
+                    ],
+                    "root_cause": "Account #982 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            982
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #982 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #785 account #983",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        983
+                    ],
+                    "root_cause": "Account #983 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            983
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #983 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #786 account #984",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        984
+                    ],
+                    "root_cause": "Account #984 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            984
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #984 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #787 account #985",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        985
+                    ],
+                    "root_cause": "Account #985 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            985
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #985 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #788 account #986",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        986
+                    ],
+                    "root_cause": "Account #986 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            986
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #986 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #789 account #987",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        987
+                    ],
+                    "root_cause": "Account #987 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            987
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #987 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #790 account #988",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        988
+                    ],
+                    "root_cause": "Account #988 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            988
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #988 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #791 account #989",
+                    "expected": "balance=800.00, computed=0.00, diff<0.005",
+                    "actual": "drift=800.0000 EGP",
+                    "diff_egp": 800,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        989
+                    ],
+                    "root_cause": "Account #989 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            989
+                        ],
+                        "diff_egp": 800,
+                        "root_cause": "Account #989 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #792 account #990",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        990
+                    ],
+                    "root_cause": "Account #990 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            990
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #990 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #793 account #991",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        991
+                    ],
+                    "root_cause": "Account #991 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            991
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #991 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #794 account #992",
+                    "expected": "balance=900.00, computed=0.00, diff<0.005",
+                    "actual": "drift=900.0000 EGP",
+                    "diff_egp": 900,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        992
+                    ],
+                    "root_cause": "Account #992 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            992
+                        ],
+                        "diff_egp": 900,
+                        "root_cause": "Account #992 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #795 account #993",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        993
+                    ],
+                    "root_cause": "Account #993 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            993
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #993 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #802 account #1000",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1000
+                    ],
+                    "root_cause": "Account #1000 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1000
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #1000 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #805 account #1003",
+                    "expected": "balance=600.00, computed=0.00, diff<0.005",
+                    "actual": "drift=600.0000 EGP",
+                    "diff_egp": 600,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1003
+                    ],
+                    "root_cause": "Account #1003 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1003
+                        ],
+                        "diff_egp": 600,
+                        "root_cause": "Account #1003 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #811 account #1009",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1009
+                    ],
+                    "root_cause": "Account #1009 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1009
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #1009 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #813 account #1011",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1011
+                    ],
+                    "root_cause": "Account #1011 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1011
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #1011 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #819 account #1017",
+                    "expected": "balance=500.00, computed=0.00, diff<0.005",
+                    "actual": "drift=500.0000 EGP",
+                    "diff_egp": 500,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1017
+                    ],
+                    "root_cause": "Account #1017 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1017
+                        ],
+                        "diff_egp": 500,
+                        "root_cause": "Account #1017 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #820 account #1018",
+                    "expected": "balance=500.00, computed=0.00, diff<0.005",
+                    "actual": "drift=500.0000 EGP",
+                    "diff_egp": 500,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1018
+                    ],
+                    "root_cause": "Account #1018 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1018
+                        ],
+                        "diff_egp": 500,
+                        "root_cause": "Account #1018 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #821 account #1019",
+                    "expected": "balance=750.00, computed=0.00, diff<0.005",
+                    "actual": "drift=750.0000 EGP",
+                    "diff_egp": 750,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1019
+                    ],
+                    "root_cause": "Account #1019 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1019
+                        ],
+                        "diff_egp": 750,
+                        "root_cause": "Account #1019 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #822 account #1020",
+                    "expected": "balance=700.00, computed=0.00, diff<0.005",
+                    "actual": "drift=700.0000 EGP",
+                    "diff_egp": 700,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1020
+                    ],
+                    "root_cause": "Account #1020 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1020
+                        ],
+                        "diff_egp": 700,
+                        "root_cause": "Account #1020 balance does not match entries SUM"
+                    }
+                },
+                {
+                    "phase": "PHASE 18 — Report Consistency",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "critical",
+                    "scenario": "Account invariant: customer #833 account #1031",
+                    "expected": "balance=1,000.00, computed=0.00, diff<0.005",
+                    "actual": "drift=1,000.0000 EGP",
+                    "diff_egp": 1000,
+                    "transaction_ids": [],
+                    "account_ids": [
+                        1031
+                    ],
+                    "root_cause": "Account #1031 balance does not match entries SUM",
+                    "context": {
+                        "module": "cross",
+                        "account_ids": [
+                            1031
+                        ],
+                        "diff_egp": 1000,
+                        "root_cause": "Account #1031 balance does not match entries SUM"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 19 — Failure Injection & Atomicity",
+            "tests_executed": 3,
+            "tests_passed": 0,
+            "tests_failed": 3,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:54+00:00",
+            "finished_at": "2026-08-18T14:53:55+00:00",
+            "fatal_error": null,
+            "no_go_count": 3,
+            "findings": [
+                {
+                    "phase": "PHASE 19 — Failure Injection & Atomicity",
+                    "module": "flight",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "Phase 19 flight exercise — uncaught exception",
+                    "expected": "all sub-tests to run",
+                    "actual": "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'type' in 'field list' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: select sum(CASE WHEN type = \"credit\" THEN amount WHEN type = \"debit\" THEN -amount ELSE 0 END) as aggregate from `account_entries` where `transaction_id` in (4507))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "flight"
+                    }
+                },
+                {
+                    "phase": "PHASE 19 — Failure Injection & Atomicity",
+                    "module": "hajj_umra",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "Phase 19 hajj exercise — uncaught exception",
+                    "expected": "all sub-tests to run",
+                    "actual": "لم يتم العثور على الخزينة الرسمية لموديول الحج والعمرة. يرجى اختيار حساب أو ضبط الخزينة الرسمية.",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "hajj_umra"
+                    }
+                },
+                {
+                    "phase": "PHASE 19 — Failure Injection & Atomicity",
+                    "module": "visa",
+                    "role": "system",
+                    "severity": "high",
+                    "scenario": "Phase 19 visa exercise — uncaught exception",
+                    "expected": "all sub-tests to run",
+                    "actual": "SQLSTATE[HY000]: General error: 1364 Field 'label_ar' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_durations` (`code`, `is_active`, `updated_at`, `created_at`) values (TOURISM_FULL_AUDIT_20260818_DUR, 1, 2026-08-18 14:53:55, 2026-08-18 14:53:55))",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": {
+                        "module": "visa"
+                    }
+                }
+            ]
+        },
+        {
+            "phase_name": "PHASE 20 — Final Verdict",
+            "tests_executed": 528,
+            "tests_passed": 353,
+            "tests_failed": 158,
+            "tests_blocked": 0,
+            "tests_skipped": 0,
+            "started_at": "2026-08-18T14:53:55+00:00",
+            "finished_at": "2026-08-18T14:53:55+00:00",
+            "fatal_error": null,
+            "no_go_count": 0,
+            "findings": [
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Verdict",
+                    "expected": "NO-GO ❌",
+                    "actual": "NO-GO ❌",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Critical findings",
+                    "expected": "107",
+                    "actual": "107",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "High findings",
+                    "expected": "45",
+                    "actual": "45",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Medium findings",
+                    "expected": "23",
+                    "actual": "23",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Edit Lock failures",
+                    "expected": "0",
+                    "actual": "0",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Reconciliation failures",
+                    "expected": "73",
+                    "actual": "73",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Duplicate tx failures",
+                    "expected": "22",
+                    "actual": "22",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                },
+                {
+                    "phase": "PHASE 20 — Final Verdict",
+                    "module": "cross",
+                    "role": "system",
+                    "severity": "info",
+                    "scenario": "Refund failures",
+                    "expected": "5",
+                    "actual": "5",
+                    "diff_egp": 0,
+                    "transaction_ids": [],
+                    "account_ids": [],
+                    "root_cause": null,
+                    "context": []
+                }
+            ]
+        }
+    ]
+}

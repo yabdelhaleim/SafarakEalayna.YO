@@ -168,8 +168,22 @@ Route::prefix('v1')->middleware([
         Route::get('booking-form/employees', [FlightController::class, 'employeesForBooking']);
         Route::apiResource('bookings', FlightController::class)
             ->parameters(['bookings' => 'flightBooking'])
-            ->names('flight_bookings');
-        Route::apiResource('aviation', AviationController::class);
+            ->names('flight_bookings')
+            // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH disabled.
+            // Destructive ops (destroy, cancel, confirm) are admin-only —
+            // mirrors the Hajj/Visa pattern at routes/api.php L550-554.
+            ->only(['index', 'show', 'store']);
+        Route::middleware('admin')->group(function () {
+            Route::delete('bookings/{flightBooking}', [FlightController::class, 'destroy']);
+            Route::post('bookings/{flightBooking}/cancel', [FlightController::class, 'cancel']);
+            Route::post('bookings/{flightBooking}/confirm', [FlightController::class, 'confirm']);
+            Route::post('bookings/{flightBooking}/prices', [FlightController::class, 'updatePrices']);
+        });
+        Route::apiResource('aviation', AviationController::class)
+            // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH disabled.
+            // Aviation is admin-only for destructive ops; index/show/store are open.
+            ->only(['index', 'show', 'store']);
+        Route::middleware('admin')->delete('aviation/{id}', [AviationController::class, 'destroy']);
 
         // System types endpoint
         Route::get('system-types', [FlightController::class, 'systemTypes']);
@@ -181,7 +195,11 @@ Route::prefix('v1')->middleware([
             Route::get('overview', [FlightTreasuryController::class, 'overview']);
             Route::get('systems/{system}/transactions', [FlightTreasuryController::class, 'systemTransactions']);
             Route::get('carriers/{carrier}/transactions', [FlightTreasuryController::class, 'carrierTransactions']);
-            Route::post('systems/{system}/recharge', [FlightTreasuryController::class, 'rechargeSystem']);
+            // Recharge operations are admin-only (move money between accounts).
+            Route::middleware('admin')->group(function () {
+                Route::post('systems/{system}/recharge', [FlightTreasuryController::class, 'rechargeSystem']);
+                Route::post('carriers/{carrier}/recharge', [FlightTreasuryController::class, 'rechargeCarrier']);
+            });
             Route::get('accounts/{account}/flight-transactions', [FlightTreasuryController::class, 'accountFlightTransactions']);
         });
 
@@ -189,7 +207,9 @@ Route::prefix('v1')->middleware([
         Route::apiResource('systems', FlightSystemController::class)->names('flight_systems');
         Route::apiResource('carriers', FlightCarrierController::class)->names('flight_carriers');
         Route::get('carriers/{carrier}/balance', [FlightCarrierController::class, 'balance']);
-        Route::post('carriers/{carrier}/recharge', [FlightCarrierController::class, 'recharge']);
+        // Carrier recharge is admin-only (moves money between accounts).
+        Route::middleware('admin')
+            ->post('carriers/{carrier}/recharge', [FlightCarrierController::class, 'recharge']);
         Route::get('carriers/{carrier}/groups', [FlightGroupController::class, 'getByCarrier']);
         // Part B: literal routes MUST come before parameterized routes to avoid
         // Laravel binding "threshold-summary" as a {group} value.
@@ -209,7 +229,7 @@ Route::prefix('v1')->middleware([
         });
 
         // Flight booking specific routes
-        Route::post('bookings/{flightBooking}/prices', [FlightController::class, 'updatePrices']);
+        // INCIDENT-2026-08-17: Tourism no-edit contract. POST /prices route removed.
         Route::post('bookings/{flightBooking}/confirm', [FlightController::class, 'confirm']);
         Route::post('bookings/{flightBooking}/payments', [FlightController::class, 'addPayment']);
         Route::post('bookings/{flightBooking}/send-ticket-email', [FlightController::class, 'sendTicketEmail']);
@@ -226,13 +246,18 @@ Route::prefix('v1')->middleware([
         });
 
         // Ticket Refund System (Multi-Currency) API
+        // EMP_REFUND_AUDIT_20260817 — mutations gated by `manage_refunds`;
+        // reads (treasuries / airline-credits / show) remain open to authenticated
+        // module users.
         Route::prefix('refunds')->group(function () {
             Route::get('/treasuries', [RefundController::class, 'treasuries']);
             Route::get('/airline-credits', [RefundController::class, 'airlineCredits']);
-            Route::post('/', [RefundController::class, 'store']);
-            Route::get('/{id}', [RefundController::class, 'show']);
-            Route::post('/{id}/process', [RefundController::class, 'process']);
-            Route::delete('/{id}', [RefundController::class, 'destroy']);
+            Route::middleware('permission:manage_refunds')->group(function () {
+                Route::post('/', [RefundController::class, 'store']);
+                Route::get('/{id}', [RefundController::class, 'show']);
+                Route::post('/{id}/process', [RefundController::class, 'process']);
+                Route::delete('/{id}', [RefundController::class, 'destroy']);
+            });
         });
 
         // Ticket Modification System API
@@ -540,19 +565,24 @@ Route::prefix('v1')->middleware([
         Route::get('customer-statement', [HajjUmraController::class, 'customerStatement']);
 
         // Destructive booking operations: destroy (soft-delete with reversal),
-        // cancel (additive reversal), refund (full refund) — admin only.
-        // Read (index/show) and create/update/payment are open to authenticated
-        // users (employees record bookings, managers edit them).
+        // cancel (additive reversal) — admin only. Refund is financial reversal
+        // gated by `manage_refunds` so employees with explicit grant can execute.
+        // Read (index/show) and create/payment are open to authenticated
+        // users (employees record bookings).
         Route::middleware('admin')->group(function () {
             Route::delete('bookings/{hajjUmra}', [HajjUmraController::class, 'destroy']);
             Route::post('bookings/{hajjUmra}/cancel', [HajjUmraController::class, 'cancel']);
-            Route::post('bookings/{hajjUmra}/refund', [HajjUmraController::class, 'refund']);
         });
+
+        // EMP_REFUND_AUDIT_20260817 — refund gated by `manage_refunds` permission.
+        // Employees with the permission can refund; employees without it get 403.
+        Route::middleware('permission:manage_refunds')
+            ->post('bookings/{hajjUmra}/refund', [HajjUmraController::class, 'refund']);
 
         Route::get('bookings', [HajjUmraController::class, 'index']);
         Route::post('bookings', [HajjUmraController::class, 'store']);
         Route::get('bookings/{hajjUmra}', [HajjUmraController::class, 'show']);
-        Route::match(['put', 'patch'], 'bookings/{hajjUmra}', [HajjUmraController::class, 'update']);
+        // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
         Route::post('bookings/{hajjUmra}/payments', [HajjUmraController::class, 'addPayment']);
     });
 
@@ -576,13 +606,16 @@ Route::prefix('v1')->middleware([
         Route::middleware('admin')->group(function () {
             Route::delete('bookings/{visa}', [VisaBookingController::class, 'destroy']);
             Route::post('bookings/{visa}/cancel', [VisaBookingController::class, 'cancel']);
-            Route::post('bookings/{visa}/refund', [VisaBookingController::class, 'refund']);
         });
+
+        // EMP_REFUND_AUDIT_20260817 — refund gated by `manage_refunds` permission.
+        Route::middleware('permission:manage_refunds')
+            ->post('bookings/{visa}/refund', [VisaBookingController::class, 'refund']);
 
         Route::get('bookings', [VisaBookingController::class, 'index']);
         Route::post('bookings', [VisaBookingController::class, 'store']);
         Route::get('bookings/{visa}', [VisaBookingController::class, 'show']);
-        Route::match(['put', 'patch'], 'bookings/{visa}', [VisaBookingController::class, 'update']);
+        // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
         Route::post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
         Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications']);
 

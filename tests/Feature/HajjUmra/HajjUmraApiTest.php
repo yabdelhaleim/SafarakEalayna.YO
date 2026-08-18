@@ -304,46 +304,6 @@ class HajjUmraApiTest extends TestCase
             ->assertJsonPath('data.booking_status', 'closed');
     }
 
-    public function test_update_selling_price_reposts_income_transaction(): void
-    {
-        $program = $this->createProgram();
-        $customer = Customer::query()->create([
-            'full_name' => 'عميل التعديل',
-            'phone' => '01056565656',
-        ]);
-
-        $createResponse = $this->postJson('/api/v1/hajj-umra/bookings', [
-            'customer_id' => $customer->id,
-            'program_id' => $program->id,
-            'purchase_price' => 5000,
-            'selling_price' => 8000,
-            'account_id' => $this->treasury->id,
-            'status' => 'confirmed',
-        ]);
-
-        $bookingId = $createResponse->json('data.id');
-        $originalIncomeTxId = HajjUmraBooking::find($bookingId)->income_transaction_id;
-
-        $updateResponse = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 9500,
-        ]);
-
-        $updateResponse->assertOk()
-            ->assertJsonPath('data.pricing.selling_price', 9500);
-
-        $booking = HajjUmraBooking::find($bookingId);
-        $this->assertNotEquals($originalIncomeTxId, $booking->income_transaction_id);
-        $this->assertEquals(9500.0, (float) $booking->incomeTransaction->amount);
-
-        // Reversal is ADDITIVE — القيود القديمة موجودة مع عكسها.
-        // نتحقق أن الصافي = صفر (reversed) وأن الـ transaction الجديد بالمبلغ الصحيح.
-        $oldEntries = AccountEntry::query()
-            ->where('transaction_id', $originalIncomeTxId)
-            ->get();
-        $netOld = (float) ($oldEntries->sum('debit') - $oldEntries->sum('credit'));
-        $this->assertEqualsWithDelta(0.0, $netOld, 0.01,
-            'Old income transaction entries should net to zero after reversal (additive)');
-    }
 
     protected function createProgram(): Program
     {

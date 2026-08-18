@@ -1,0 +1,166 @@
+{
+  "audit_fix_id": "EMP_REFUND_ATOMICITY_FIX_20260817",
+  "date": "2026-08-17",
+  "builds_on": "EMP_REFUND_ATOMICITY_CHECK_20260817",
+  "scope": {
+    "in_scope": ["flight", "hajj_umra", "visa", "refund_audit_logs", "audit_logs"],
+    "out_of_scope": ["bus", "wallet", "fawry", "online", "treasury", "office"]
+  },
+  "environment": {
+    "app_env": "testing",
+    "db_connection": "sqlite",
+    "db_database": ":memory:",
+    "production_touched": false
+  },
+  "verdict": "GO",
+  "verdict_rationale": [
+    "Mandatory audit failure ALWAYS rolls back refund (K01, K02 prove it)",
+    "refund_audit_logs is atomic",
+    "audit_logs is atomic (orphan rollback also verified)",
+    "No silent mandatory audit failure remains",
+    "Failure injection tests use real production flow with Schema::drop",
+    "All 137 pre-existing tests still pass",
+    "Authorization correct (manage_refunds enforced, admin-only preserved)",
+    "IDOR clean (K04 proves payload spoofing is impossible)",
+    "Actor attribution from Auth::id() only",
+    "Financial variance = 0.00 EGP",
+    "Idempotency correct",
+    "Tourism isolation clean (Office accounts untouched)",
+    "No production data touched",
+    "No unrelated modules modified"
+  ],
+  "previous_vulnerability": {
+    "files": [
+      {"file": "app/Services/Finance/RefundAuditLogger.php", "lines": "59-131", "issue": "outer try/catch swallows RefundAuditLog::create() failure, returns null"},
+      {"file": "app/Services/Finance/RefundAuditLogger.php", "lines": "96-121", "issue": "inner try/catch swallows AuditLog::create() failure, continues silently"},
+      {"file": "app/Services/HajjUmra/HajjUmraRefundService.php", "lines": 147, "issue": "caller discards return value"},
+      {"file": "app/Services/Visa/VisaRefundService.php", "lines": 171, "issue": "caller discards return value"},
+      {"file": "app/Services/Flight/RefundService.php", "lines": "536, 780", "issue": "caller discards return value"}
+    ],
+    "consequence": "Financial refund could commit while refund_audit_logs was silently lost"
+  },
+  "root_cause": "RefundAuditLogger had a FAILURE POLICY docblock declaring it should NEVER throw to the caller. This conflicted with the audit requirement that refund MUST NOT commit unless mandatory audit row is persisted. The two policies were mutually exclusive; this fix adopts the strict requirement.",
+  "code_changes": {
+    "modified_files": [
+      {
+        "file": "app/Services/Finance/RefundAuditLogger.php",
+        "lines": 165,
+        "changes": [
+          "Removed both try/catch blocks (outer at L59-131, inner at L96-121)",
+          "Removed Log facade import",
+          "Changed return type from ?RefundAuditLog to RefundAuditLog",
+          "Actor identity from Auth::id() ONLY — $params['user_id'] ignored",
+          "Throws RuntimeException if Auth::id() returns 0/null",
+          "Updated docblock with atomicity invariant and caller contract"
+        ]
+      },
+      {
+        "file": "tests/Feature/TourismEmployeeE2E/EmployeeRefundAuditTest.php",
+        "lines": 1306,
+        "changes": [
+          "Added Section K with 4 failure-injection tests",
+          "K01: refund_audit_logs drop → full rollback for Hajj",
+          "K02: audit_logs drop → full rollback including orphan refund_audit_logs row",
+          "K03: refund_audit_logs drop → full rollback for Visa",
+          "K04: actor spoofing via payload fields is ignored"
+        ]
+      }
+    ],
+    "files_not_modified": [
+      "app/Services/HajjUmra/HajjUmraRefundService.php (already in DB::transaction)",
+      "app/Services/Visa/VisaRefundService.php (already in DB::transaction)",
+      "app/Services/Flight/RefundService.php (already in DB::transaction)",
+      "app/Http/Controllers/Api/V1/HajjUmraController.php (controller try/catch is AFTER DB rollback)",
+      "app/Http/Controllers/Api/V1/Visa/VisaBookingController.php",
+      "app/Http/Controllers/Api/V1/Flight/RefundController.php",
+      "app/Support/UserPermissions.php",
+      "routes/api.php",
+      "resources/js/router/index.js",
+      "resources/js/views/hajjUmra/HajjUmraShow.vue",
+      "resources/js/views/visa/VisaShow.vue"
+    ]
+  },
+  "transaction_boundary": {
+    "before_fix": "RefundAuditLogger swallowed exceptions → DB::transaction closure returned normally → COMMIT happened even if audit persistence failed",
+    "after_fix": "RefundAuditLogger propagates exceptions → DB::transaction wrapper catches → ROLLBACK undoes all financial mutations"
+  },
+  "failure_injection_tests": {
+    "K01": {
+      "what_was_mocked": "Nothing. Schema::drop('refund_audit_logs') forces real RefundAuditLog::create() to throw QueryException",
+      "where_failure_occurs": "Inside HajjUmraRefundService.php:147 → RefundAuditLogger.php:73 (RefundAuditLog::create)",
+      "why_real_transaction_boundary": "Genuine PDOException from SQLite driver propagates through logRefund() (no catch) and triggers DB::transaction rollback",
+      "assertions_passed": 7,
+      "verified_rollback": ["vault_balance", "hajj_umra_payments_count", "account_entries_count", "booking_status", "refund_audit_logs_table_dropped"]
+    },
+    "K02": {
+      "what_was_mocked": "Nothing. Schema::drop('audit_logs') forces second Eloquent insert to throw",
+      "where_failure_occurs": "Inside HajjUmraRefundService.php:147 → RefundAuditLogger.php:108 (AuditLog::create)",
+      "critical_scenario": "refund_audit_logs succeeds first, then audit_logs fails. Orphan refund_audit_logs row must be rolled back.",
+      "assertions_passed": 6,
+      "verified_orphan_rollback": "refund_audit_logs row count = 0 after failure"
+    },
+    "K03": {
+      "what_was_mocked": "Nothing. Schema::drop('refund_audit_logs') on Visa flow",
+      "verified_rollback": ["vault_balance", "visa_payments_count", "account_entries_count", "booking_status"]
+    },
+    "K04": {
+      "what_was_mocked": "Nothing. Real HTTP POST with spoofed user_id/performed_by/actor_id/refund_audit payload fields",
+      "verified": "audit user_id = Auth::id() (normalEmployee), forged admin ID never appears, forged name 'Forged Admin' never appears"
+    }
+  },
+  "test_metrics": {
+    "pre_existing_tests": 137,
+    "pre_existing_tests_passed": 137,
+    "new_failure_injection_tests": 4,
+    "new_tests_passed": 4,
+    "total_tests": 141,
+    "total_passed": 141,
+    "total_failed": 0,
+    "assertions": 354,
+    "duration_seconds": 29.20,
+    "environment": "APP_ENV=testing, DB_CONNECTION=sqlite, DB_DATABASE=:memory:"
+  },
+  "verification_checklist": {
+    "refund_audit_logs_failure_rolls_back": "YES (K01, K03)",
+    "audit_logs_failure_rolls_back": "YES (K02)",
+    "refund_can_commit_without_refund_audit_logs": "NO",
+    "refund_can_commit_without_audit_logs": "NO",
+    "audit_exceptions_swallowed": "NO",
+    "callers_ignoring_audit_failures": "NO",
+    "actor_identity_server_derived": "YES (Auth::id() only)",
+    "employee_can_spoof_actor": "NO (K04)",
+    "manage_refunds_enforced": "YES",
+    "flight_admin_protections_intact": "YES (cancel/delete/confirm/recharge all admin)",
+    "hajj_admin_protections_intact": "YES (cancel/delete admin-only)",
+    "visa_admin_protections_intact": "YES (cancel/delete admin-only)",
+    "refund_idempotency_intact": "YES (lifecycle guards + Flight unique index)",
+    "refund_audit_records_complete": "YES (D03 verifies all required fields)",
+    "financial_variance_zero": "YES (0.00 EGP)",
+    "tourism_isolation_clean": "YES (H01, H02 — Office accounts untouched)",
+    "production_data_touched": "NO",
+    "unrelated_modules_modified": "NO (only RefundAuditLogger + 1 test file)"
+  },
+  "scope_safety": {
+    "files_modified_in_this_session": [
+      "app/Services/Finance/RefundAuditLogger.php",
+      "tests/Feature/TourismEmployeeE2E/EmployeeRefundAuditTest.php"
+    ],
+    "pre_existing_modifications_NOT_part_of_fix": [
+      "app/Http/Controllers/Api/V1/Bus/*",
+      "app/Services/Bus/*",
+      "tests/Feature/HajjUmra/*",
+      "tests/Feature/Online/*",
+      "tests/Feature/OnlineServicesApiCrudTest.php",
+      "tests/Feature/StandaloneCrudTest.php"
+    ],
+    "note": "Pre-existing Bus modifications were already present at conversation start (visible in initial gitStatus snapshot). They are NOT introduced by this atomicity fix and are explicitly out of scope per the spec."
+  },
+  "run_command": "php artisan test tests/Feature/TourismEmployeeE2E/",
+  "run_result": {
+    "tests": 141,
+    "passed": 141,
+    "failed": 0,
+    "assertions": 354,
+    "duration_seconds": 29.20
+  }
+}

@@ -349,159 +349,16 @@ class HajjUmraBookingService
         ]);
     }
 
+    /**
+     * @deprecated INCIDENT-2026-08-17: Tourism No-Edit Contract. Always throws.
+     *   Cancellation is the supported correction path.
+     */
     public function update(HajjUmraBooking $booking, array $data): HajjUmraBooking
     {
-        // ─────────────────────────────────────────────────────────────────
-        // BUG-FIX 2026-07-27: editing a cancelled or refunded booking MUST
-        //   be blocked. The previous code only checked the lifecycle guard
-        //   in `addPayment()` (line 593+), but the `update()` path bypassed
-        //   it — so PATCH /api/v1/hajj-umra/bookings/{id} on a cancelled
-        //   booking would silently repost new income/expense transactions,
-        //   creating phantom journal entries on a supposedly-cancelled
-        //   booking and corrupting the financial timeline.
-        //   This guard mirrors the payment guard so admin / API / Tinker
-        //   paths all get the same protection.
-        // ─────────────────────────────────────────────────────────────────
-        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
-        if ($status === \App\Enums\HajjUmraStatus::Cancelled->value) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز مُلغى (status=cancelled). '
-                .'استخدم deleteBookingWithReversal() للعكس الإداري الكامل، '
-                .'أو أنشئ حجزاً جديداً بدل التعديل.'
-            );
-        }
-        if ($status === \App\Enums\HajjUmraStatus::Refunded->value) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز تم استرداده بالكامل (status=refunded). '
-                .'أنشئ حجزاً جديداً بدل التعديل.'
-            );
-        }
-        if ($booking->trashed()) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز محذوف (soft-deleted). '
-                .'استخدم deleteBookingWithReversal() للعكس الإداري الكامل.'
-            );
-        }
-
-        return DB::transaction(function () use ($booking, $data) {
-            // ─────────────────────────────────────────────────────────────
-            // LOCK-DOWN (Phase 4.6, 2026-08-14): financial price columns
-            // are FROZEN at booking creation. Once saved, a Hajj/Umrah
-            // booking's selling/purchase/companion/accommodation prices
-            // cannot be modified through ANY caller — API, Tinker, jobs.
-            //
-            // Why:
-            //   - The duplicate-income guard in TransactionService is
-            //     correctly strict; with prices locked, the booking never
-            //     needs `repostIncomeTransaction()` again.
-            //   - The MySQL `transactions_income_unique_key` index would
-            //     otherwise reject a repost on production (generated
-            //     column → NULL only when `type != 'income'`, ignores
-            //     notes). Locking the input side avoids the DB-level
-            //     collision entirely.
-            //   - Reversal+repost would double-count reversed income rows
-            //     in revenue reports unless every consumer also filters
-            //     on `notes NOT LIKE 'عكس:%'`. The locked-input approach
-            //     sidesteps that audit-trail contamination by preventing
-            //     the reversal from ever happening on a HajjUmra booking.
-            //
-            // Defense-in-depth: UpdateHajjUmraBookingRequest strips these
-            // fields at the HTTP boundary (clean 422). This guard catches
-            // every other caller with the same Arabic business error.
-            // ─────────────────────────────────────────────────────────────
-            $arFieldNames = [
-                'selling_price'             => 'سعر البيع',
-                'purchase_price'            => 'سعر الشراء',
-                'companion_selling_price'   => 'سعر بيع المرافق',
-                'companion_purchase_price'  => 'سعر شراء المرافق',
-                'accommodation_extra_charge' => 'رسوم الإقامة الإضافية',
-            ];
-            $presentLocked = array_intersect_key(
-                $data,
-                array_flip(array_keys($arFieldNames))
-            );
-            // array_intersect_key() matches by key AND keeps the values —
-            // but a caller could pass null/empty as "I'm not really
-            // trying to change it" (e.g. a UI that re-emits the full
-            // row). Only block when the value is meaningfully non-empty.
-            $presentLocked = array_filter($presentLocked, function ($v) {
-                return $v !== null && $v !== '';
-            });
-            if (! empty($presentLocked)) {
-                $first = array_key_first($presentLocked);
-                $arabicName = $arFieldNames[$first];
-                $allList = implode('، ', $arFieldNames);
-                throw new \RuntimeException(
-                    "لا يمكن تعديل {$arabicName} بعد إنشاء الحجز. "
-                    ."الحقول المالية مُقفلة بعد الإنشاء: {$allList}. "
-                    ."لتصحيح سعر، ألغِ الحجز (cancel) وأنشئ حجزاً جديداً."
-                );
-            }
-
-            $fields = collect($data)->only([
-                'companion_customer_id',
-                'supplier_id',
-                'status',
-                'agent_name',
-                'notes',
-                'employee_id',
-                'per_person',
-                'accommodation_choice',
-            ])->all();
-
-            $purchase = (float) (array_key_exists('purchase_price', $data) ? $data['purchase_price'] : $booking->purchase_price);
-            $companionPurchase = (float) (array_key_exists('companion_purchase_price', $data) ? $data['companion_purchase_price'] : $booking->companion_purchase_price);
-            $selling = (float) (array_key_exists('selling_price', $data) ? $data['selling_price'] : $booking->selling_price);
-            $companionSelling = (float) (array_key_exists('companion_selling_price', $data) ? $data['companion_selling_price'] : $booking->companion_selling_price);
-            $accommodationExtra = (float) (array_key_exists('accommodation_extra_charge', $data) ? $data['accommodation_extra_charge'] : $booking->accommodation_extra_charge);
-
-            $totalPurchase = $purchase + $companionPurchase;
-            $totalSelling = $selling + $companionSelling + $accommodationExtra;
-            $profit = round($totalSelling - $totalPurchase, 2);
-
-            $fields['purchase_price'] = $purchase;
-            $fields['companion_purchase_price'] = $companionPurchase;
-            $fields['selling_price'] = $selling;
-            $fields['companion_selling_price'] = $companionSelling;
-            $fields['accommodation_extra_charge'] = $accommodationExtra;
-            $fields['profit'] = $profit;
-
-            // Wrapped in HajjUmraBooking::runProfitMutation() so the ModelProfitMutationGuard
-            // lets the canonical `profit` write through.
-            HajjUmraBooking::runProfitMutation(function () use ($booking, $fields) {
-                $booking->update($fields);
-            });
-
-            // Update passengers if provided
-            if (array_key_exists('passengers', $data) && is_array($data['passengers'])) {
-                $booking->passengers()->delete();
-                foreach ($data['passengers'] as $p) {
-                    $booking->passengers()->create([
-                        'category' => $p['category'],
-                        'count' => (int) $p['count'],
-                        'unit_price' => (float) $p['unit_price'],
-                        'subtotal' => (float) $p['subtotal'],
-                    ]);
-                }
-            }
-
-            // Sync accounting amounts via void + repost (LedgerBalanceMutationGuard-safe)
-            $booking->load(['expenseTransaction', 'incomeTransaction']);
-            if ($booking->expenseTransaction) {
-                $expense = $this->repostExpenseTransaction($booking, $booking->expenseTransaction, $totalPurchase);
-                if ($expense->id !== $booking->expense_transaction_id) {
-                    $booking->update(['expense_transaction_id' => $expense->id]);
-                }
-            }
-            if ($booking->incomeTransaction) {
-                $income = $this->repostIncomeTransaction($booking, $booking->incomeTransaction, $totalSelling);
-                if ($income->id !== $booking->income_transaction_id) {
-                    $booking->update(['income_transaction_id' => $income->id]);
-                }
-            }
-
-            return $this->find($booking->id);
-        });
+        throw new \LogicException(
+            'HajjUmraBookingService::update is disabled by Tourism no-edit contract (2026-08-17). '
+            .'Cancellation is the supported correction path.'
+        );
     }
 
     public function cancel(HajjUmraBooking $booking, ?string $reason = null): HajjUmraBooking

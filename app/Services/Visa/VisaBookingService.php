@@ -273,126 +273,16 @@ class VisaBookingService
         });
     }
 
+    /**
+     * @deprecated INCIDENT-2026-08-17: Tourism No-Edit Contract. Always throws.
+     *   Cancellation is the supported correction path.
+     */
     public function update(VisaBooking $booking, array $data): VisaBooking
     {
-        // ─────────────────────────────────────────────────────────────────
-        // BUG-FIX 2026-07-27: editing a cancelled or refunded Visa booking MUST
-        //   be blocked. The previous code only checked the lifecycle guard
-        //   in `addDebtPayment()` (line 354+) but the main update() path bypassed
-        //   it — so PATCH /api/v1/visa/bookings/{id} on a cancelled/refunded
-        //   booking would silently repost new income/expense transactions,
-        //   creating phantom journal entries on a supposedly-finished booking
-        //   and corrupting the financial timeline. Same invariant as the
-        //   HajjUmra fix.
-        // ─────────────────────────────────────────────────────────────────
-        $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
-        if ($status === VisaStatus::Cancelled->value) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز تأشيرة مُلغى (status=cancelled). '
-                .'استخدم VisaRefundService::deleteWithReversal() للعكس الإداري الكامل، '
-                .'أو أنشئ طلب تأشيرة جديداً بدل التعديل.'
-            );
-        }
-        if ($status === VisaStatus::Refunded->value) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز تأشيرة تم استرداده بالكامل (status=refunded). '
-                .'أنشئ طلب تأشيرة جديداً بدل التعديل.'
-            );
-        }
-        if ($booking->trashed()) {
-            throw new \RuntimeException(
-                'لا يمكن تعديل حجز تأشيرة محذوف (soft-deleted). '
-                .'استخدم VisaRefundService::deleteWithReversal() للعكس الإداري الكامل.'
-            );
-        }
-
-        return DB::transaction(function () use ($booking, $data) {
-            $fields = collect($data)->only([
-                'status', 'agent_name', 'notes', 'employee_id',
-            ])->all();
-
-            $hasPriceChange = false;
-            if (array_key_exists('purchase_price', $data) || array_key_exists('selling_price', $data) || array_key_exists('service_fee', $data)) {
-                $purchase = (float) ($data['purchase_price'] ?? $booking->purchase_price);
-                $selling  = (float) ($data['selling_price'] ?? $booking->selling_price);
-                $fee      = (float) ($data['service_fee'] ?? $booking->service_fee ?? 0);
-
-                // ─────────────────────────────────────────────────────────
-                // FIX VISA-D02 (Class-B, 2026-08-15):
-                //   Same invariant as create() — validate BEFORE any financial
-                //   mutation (repostExpenseTransaction / repostIncomeTransaction).
-                // ─────────────────────────────────────────────────────────
-                if ($purchase < 0) {
-                    throw new \InvalidArgumentException('سعر الشراء لا يمكن أن يكون سالباً (purchase_price=' . $purchase . ').');
-                }
-                if ($selling < 0) {
-                    throw new \InvalidArgumentException('سعر البيع لا يمكن أن يكون سالباً (selling_price=' . $selling . ').');
-                }
-                if ($fee < 0) {
-                    throw new \InvalidArgumentException('رسوم الخدمة لا يمكن أن تكون سالبة (service_fee=' . $fee . ').');
-                }
-
-                $fields['purchase_price'] = $purchase;
-                $fields['selling_price']  = $selling;
-                $fields['service_fee']    = $fee;
-                $fields['profit']         = round(($selling + $fee) - $purchase, 2);
-                $hasPriceChange = true;
-            }
-
-            // Wrapped in VisaBooking::runProfitMutation() so the ModelProfitMutationGuard
-            // lets the canonical `profit` write through.
-            VisaBooking::runProfitMutation(function () use ($booking, $fields) {
-                $booking->update($fields);
-            });
-
-            if (! empty($data['visa_details']) && is_array($data['visa_details']) && $booking->visaDetail) {
-                $detailPayload = collect($data['visa_details'])
-                    ->only([
-                        'visa_type', 'country', 'duration', 'visa_duration_id', 'entry_type',
-                        'validity_from', 'validity_to', 'executing_company', 'executing_agent',
-                        'executing_agent_contact', 'visa_agent_id', 'submission_date',
-                        'expected_result_date', 'visa_number',
-                    ])
-                    ->all();
-                if ($detailPayload !== []) {
-                    $booking->visaDetail->update($detailPayload);
-                }
-            }
-
-            // رقم التأشيرة من الحقل المسطح (لتوافق الطلبات القديمة)
-            if (array_key_exists('visa_number', $data) && $data['visa_number'] !== null && $booking->visaDetail) {
-                $booking->visaDetail->update(['visa_number' => $data['visa_number']]);
-            }
-
-            // Sync accounting amounts — additive only (Q2).
-            // Pre-fix `updateTransactionAmount()` mutated the original
-            // Transaction row's `amount` AND each original AccountEntry's
-            // `debit`/`credit` AND Account.balance via raw SQL bypassing
-            // the LedgerBalanceMutationGuard. That was the inverse of the
-            // project rule "originals are never modified".
-            //
-            // The replacement mirrors HajjUmra's `repostExpenseTransaction`
-            // pattern: reverse the original transaction (additive inverse
-            // entries on the same transaction_id), then recordExpense/Income
-            // with the new amount. original row stays.
-            if ($hasPriceChange) {
-                $booking->load(['expenseTransaction.entries', 'incomeTransaction.entries']);
-                if ($booking->expenseTransaction) {
-                    $expense = $this->repostExpenseTransaction($booking, $booking->expenseTransaction, $fields['purchase_price']);
-                    if ($expense->id !== $booking->expense_transaction_id) {
-                        $booking->update(['expense_transaction_id' => $expense->id]);
-                    }
-                }
-                if ($booking->incomeTransaction) {
-                    $income = $this->repostIncomeTransaction($booking, $booking->incomeTransaction, $fields['selling_price'] + $fields['service_fee']);
-                    if ($income->id !== $booking->income_transaction_id) {
-                        $booking->update(['income_transaction_id' => $income->id]);
-                    }
-                }
-            }
-
-            return $this->find($booking->id);
-        });
+        throw new \LogicException(
+            'VisaBookingService::update is disabled by Tourism no-edit contract (2026-08-17). '
+            .'Cancellation is the supported correction path.'
+        );
     }
 
     /**

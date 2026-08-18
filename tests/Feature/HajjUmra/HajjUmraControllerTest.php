@@ -222,27 +222,6 @@ class HajjUmraControllerTest extends TestCase
     }
 
     /* =========================================================
-     * UPDATE
-     * ========================================================= */
-
-    public function test_update_modifies_selling_price(): void
-    {
-        $created = $this->postJson('/api/v1/hajj-umra/bookings', $this->bookingPayload());
-        $bookingId = $created->json('data.id');
-
-        $response = $this->putJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 18000,
-        ]);
-
-        $response->assertOk();
-        $this->assertDatabaseHas('hajj_umra_bookings', [
-            'id' => $bookingId,
-        ]);
-        $booking = HajjUmraBooking::query()->findOrFail($bookingId);
-        $this->assertEqualsWithDelta(18000.0, (float) $booking->selling_price, 0.01);
-    }
-
-    /* =========================================================
      * ADD PAYMENT
      * ========================================================= */
 

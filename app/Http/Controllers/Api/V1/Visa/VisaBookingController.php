@@ -100,18 +100,10 @@ class VisaBookingController extends Controller
      * additive (mirrors HajjUmra's repostExpenseTransaction pattern);
      * delegated here to keep this controller thin.
      */
-    public function update(UpdateVisaBookingRequest $request, VisaBooking $visa): JsonResponse
-    {
-        try {
-            $booking = $this->service->update($visa, $request->validated());
-        } catch (\Throwable $e) {
-            return ApiResponse::error('فشل تحديث طلب التأشيرة: '.$e->getMessage(), null, 422);
-        }
+    // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
+//   Cancellation is the supported correction path.
 
-        return ApiResponse::success('تم تحديث طلب التأشيرة', new VisaBookingResource($booking));
-    }
-
-    /**
+/**
      * DELETE /api/v1/visa/bookings/{visa}
      *
      * Soft delete the booking with full financial reversal.
