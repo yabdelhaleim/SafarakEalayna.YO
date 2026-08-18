@@ -230,9 +230,21 @@ class FlightController extends Controller
 
     /**
      * Add a payment to a flight booking.
+     *
+     * Phase 2 (B-1) fix — IDOR on Flight payment endpoint:
+     *   The customer_id comes from route-model binding (FlightBooking), NEVER
+     *   from the request payload. The policy gates which users may pay which
+     *   bookings (admin/owner OR the booking's owning employee).
+     *
+     * @see \App\Policies\FlightBookingPolicy::pay
      */
     public function addPayment(StoreFlightPaymentRequest $request, FlightBooking $flightBooking): JsonResponse
     {
+        // B-1 fix: authorize via FlightBookingPolicy. The route-model-bound
+        // FlightBooking instance carries the customer_id + employee_id used
+        // by the policy — the request payload has no customer_id field.
+        $this->authorize('pay', $flightBooking);
+
         try {
             $payment = $this->bookingService->addPayment($flightBooking, $request->validated());
 
@@ -279,9 +291,18 @@ class FlightController extends Controller
 
     /**
      * Cancel a flight booking and process refund.
+     *
+     * Phase 2 (B-1) fix — authorization gate aligned with payment policy:
+     *   Only admin/owner OR the booking's owning employee can cancel.
+     *   Mirrors FlightBookingPolicy::pay to keep the rule consistent across
+     *   financial-mutation endpoints.
      */
     public function cancel(StoreFlightRefundRequest $request, FlightBooking $flightBooking): JsonResponse
     {
+        // B-1 fix: same authorization gate as addPayment. Any authenticated
+        // user with `manage_flights` is no longer sufficient.
+        $this->authorize('cancel', $flightBooking);
+
         try {
             $refund = $this->bookingService->cancelBooking($flightBooking, $request->validated());
 
