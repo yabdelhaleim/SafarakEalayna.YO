@@ -608,7 +608,11 @@ Route::prefix('v1')->middleware([
         Route::post('bookings', [HajjUmraController::class, 'store']);
         Route::get('bookings/{hajjUmra}', [HajjUmraController::class, 'show']);
         // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
-        Route::post('bookings/{hajjUmra}/payments', [HajjUmraController::class, 'addPayment']);
+        // Phase 8.5 A2 — payments require `manage_hajj` permission. Cashiers
+        // (no explicit perms) still pass via `defaultEmployeeModules()` which
+        // includes `manage_hajj`. Admin/owner bypass via middleware short-circuit.
+        Route::middleware('permission:manage_hajj')
+            ->post('bookings/{hajjUmra}/payments', [HajjUmraController::class, 'addPayment']);
     });
 
     // Visa API
