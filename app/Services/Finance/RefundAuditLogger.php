@@ -151,11 +151,23 @@ class RefundAuditLogger
         ]);
 
         // (2) Mandatory: generic audit_logs row
+        //
+        // Phase 5 (B-5 fix): write BOTH the legacy polymorphic pair
+        // (model_type, model_id) AND the unified pair (related_type, related_id)
+        // so future cross-table audit queries can use the same WHERE clause as
+        // `transactions.related_type + related_id` without translation. The
+        // values are identical because the project convention is "model_type ==
+        // related_type = fully-qualified Eloquent class name".
+        $resolvedModelType = static::resolveModelType($params['module']);
+        $resolvedBookingId = $params['booking_id'] ?? null;
+
         AuditLog::create([
             'user_id' => $userId,
             'action' => $event,
-            'model_type' => static::resolveModelType($params['module']),
-            'model_id' => $params['booking_id'] ?? null,
+            'model_type' => $resolvedModelType,
+            'model_id' => $resolvedBookingId,
+            'related_type' => $resolvedModelType,
+            'related_id' => $resolvedBookingId,
             'ip_address' => request() ? request()->ip() : null,
             'user_agent' => request() ? substr((string) request()->userAgent(), 0, 500) : null,
             'old_values' => null,
