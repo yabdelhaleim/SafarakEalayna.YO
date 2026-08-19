@@ -4,6 +4,7 @@ namespace App\Services\Bus;
 
 use App\Enums\BusBookingStatus;
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Treasury;
@@ -103,12 +104,13 @@ class BusRefundService
                 return $refundRequest;
             }
 
-            $booking = BusBooking::with(['inventoryWithTrashed.company'])->lockForUpdate()->findOrFail($refundRequest->bus_booking_id);
+            $booking = BusBooking::with(['inventoryWithTrashed.company', 'customer'])->lockForUpdate()->findOrFail($refundRequest->bus_booking_id);
             $inventory = $booking->inventoryWithTrashed;
             if (! $inventory) {
                 throw new \RuntimeException('مخزون الحجز غير موجود ولا يمكن عكس العملية بأمان.');
             }
             $company = $inventory->company;
+            $customer = $booking->customer;
 
             // 1. زيادة عدد التذاكر المتاحة في المخزون
             // ملاحظة: قد يكون الاسترجاع جزئياً في المبلغ ولكن كامل في المقاعد، أو جزئياً في المقاعد.
@@ -138,6 +140,55 @@ class BusRefundService
                         'notes' => 'استرجاع تكلفة حجز باص #'.$booking->id.' من المورد',
                         'allow_from_negative' => true,
                     ]);
+                }
+            }
+
+            // 2.5 (Step 4 fix): عكس قيد العميل (customer AR) — symmetric to Step 2 (supplier).
+            //
+            // The supplier reversal posts (from=clearing, to=company). The symmetric
+            // customer-side reversal must post (from=customer, to=income_clearing) so
+            // the customer AR swings from 0 (post-payment) into a NEGATIVE credit
+            // balance = office owes the customer back.
+            //
+            // Money convention (mirrors `recordSaleToCustomer` with roles swapped):
+            //   recordSaleToCustomer → from=income_clearing (EGP), to=customer (foreign)
+            //                         amount           = EGP-equivalent (clearing debit)
+            //                         converted_amount = foreign       (customer credit)
+            //   processRefundRequest → from=customer (foreign), to=income_clearing (EGP)
+            //                         amount           = foreign       (customer debit — AR goes negative)
+            //                         converted_amount = EGP-equivalent (clearing credit)
+            //
+            // Skip when: no customer linked, no customer account, no income_clearing,
+            //            or refund_amount is 0 (e.g. 100% penalty → no refund → no AR swing).
+            if ($customer && $customer->account_id && (float) $refundRequest->refund_amount > 0) {
+                $incomeClearingAccountId = $this->ledgerClearingAccounts->incomeContraIdForModule(TransactionModule::Bus);
+                if ($incomeClearingAccountId && $incomeClearingAccountId !== $customer->account_id) {
+                    $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+                    $refundArgs = [
+                        'amount' => round((float) $refundRequest->refund_amount, 2),
+                        'from_account_id' => (int) $customer->account_id, // Debit customer → AR goes negative
+                        'to_account_id'   => (int) $incomeClearingAccountId, // Credit income clearing
+                        'module' => TransactionModule::Bus->value,
+                        // Step 4 fix: tag this Transfer as type=Refund so audit
+                        // queries (Transaction::where('type', Refund)) catch the
+                        // event. Mirrors the docblock expectation in
+                        // BusRefundCustomerArReversalTest ("a Refund-type
+                        // transaction must exist for this booking").
+                        'type' => TransactionType::Refund->value,
+                        'related_type' => BusBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'عكس قيد عميل لاسترجاع حجز باص #'.$booking->id,
+                        'allow_from_negative' => true, // customer AR can go negative (office owes customer)
+                    ];
+                    if ($bookingCurrency !== 'EGP') {
+                        $egpEquivalent = round(
+                            (float) $refundRequest->refund_amount * (float) ($booking->exchange_rate_to_egp ?: 1.0),
+                            2
+                        );
+                        $refundArgs['converted_amount'] = $egpEquivalent;
+                        $refundArgs['exchange_rate'] = (float) ($booking->exchange_rate_to_egp ?: 1.0);
+                    }
+                    $this->transactionService->recordJournalTransfer($refundArgs);
                 }
             }
 
