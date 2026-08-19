@@ -237,14 +237,16 @@ Route::prefix('v1')->middleware([
         Route::post('bookings/{flightBooking}/send-ticket-email', [FlightController::class, 'sendTicketEmail']);
         Route::post('bookings/{flightBooking}/cancel', [FlightController::class, 'cancel']);
 
-        // Airline accounts API
+        // Airline accounts API (Phase 8.5 #2 — mutations admin-only; reads open)
         Route::prefix('airline-accounts')->group(function () {
             Route::get('/', [AirlineAccountController::class, 'index']);
-            Route::post('/', [AirlineAccountController::class, 'store']);
-            Route::put('/{id}', [AirlineAccountController::class, 'update']);
-            Route::delete('/{id}', [AirlineAccountController::class, 'destroy']);
-            Route::post('/add-credit', [AirlineAccountController::class, 'addCredit']);
             Route::get('/{accountId}/transactions', [AirlineAccountController::class, 'transactions']);
+            Route::middleware('admin')->group(function () {
+                Route::post('/', [AirlineAccountController::class, 'store']);
+                Route::put('/{id}', [AirlineAccountController::class, 'update']);
+                Route::delete('/{id}', [AirlineAccountController::class, 'destroy']);
+                Route::post('/add-credit', [AirlineAccountController::class, 'addCredit']);
+            });
         });
 
         // Ticket Refund System (Multi-Currency) API
