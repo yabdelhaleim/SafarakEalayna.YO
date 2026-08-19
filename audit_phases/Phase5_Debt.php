@@ -18,8 +18,9 @@ use App\Models\Customer;
  *
  *   - booking.paid_amount equals the SUM of the partial payments recorded
  *     (independent recomputation via AuditReconciliation::totalPaymentsRecorded)
- *   - booking.total_amount - booking.paid_amount equals the expected debt
- *     (assertZeroEGPDiff)
+ *   - booking.selling_price - booking.paid_amount equals the expected debt
+ *     (assertZeroEGPDiff) — `selling_price` is the canonical booking total
+ *     across FlightBooking, HajjUmraBooking, and VisaBooking (C-1 fix 2026-08-19)
  *   - the customer AR balance equals -(paid_amount) (i.e. -SUM(payments))
  *   - the SUM(account_entries) invariant still holds on every account touched
  *
@@ -137,7 +138,12 @@ class Phase5_Debt
                 $this->recon->assertZeroEGPDiff($cumulativePaid, (float) $booking->paid_amount, "{$stepLabel} booking.paid_amount", $r, $module);
 
                 $expectedDebt = $total - $cumulativePaid;
-                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->total_amount - (float) $booking->paid_amount, "{$stepLabel} debt = total - paid", $r, $module);
+                // C-1 fix (2026-08-19): tourism bookings store the booking
+                // total as `selling_price`, not `total_amount` (FlightBooking
+                // has no `total_amount` column at all). Reading the wrong
+                // attribute silently returned `0.0` and made every debt check
+                // pass trivially.
+                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->selling_price - (float) $booking->paid_amount, "{$stepLabel} debt = selling - paid", $r, $module);
 
                 // Customer AR balance must be -(paid) at this point.
                 $this->recon->assertBalanceDelta($customerAccountId, $initialCustomer, -$cumulativePaid, "{$stepLabel} cust balance", $r);
@@ -147,7 +153,7 @@ class Phase5_Debt
             }
 
             // Sanity: debt at the end must be 0.0
-            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->total_amount - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
+            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->selling_price - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
 
             // ── Excessive-payment rejection test (info if rejected) ───────
             try {
@@ -241,14 +247,14 @@ class Phase5_Debt
                 $this->recon->assertZeroEGPDiff($cumulativePaid, (float) $booking->paid_amount, "{$stepLabel} booking.paid_amount", $r, $module);
 
                 $expectedDebt = $total - $cumulativePaid;
-                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->total_amount - (float) $booking->paid_amount, "{$stepLabel} debt = total - paid", $r, $module);
+                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->selling_price - (float) $booking->paid_amount, "{$stepLabel} debt = selling - paid", $r, $module);
 
                 $this->recon->assertBalanceDelta($customerAccountId, $initialCustomer, -$cumulativePaid, "{$stepLabel} cust balance", $r);
                 $this->recon->assertAccountInvariant($customerAccountId, "{$stepLabel} cust invariant", $r);
                 $this->recon->assertAccountInvariant($accountId, "{$stepLabel} treasury invariant", $r);
             }
 
-            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->total_amount - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
+            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->selling_price - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
 
             try {
                 $service->addPayment($booking, [
@@ -343,14 +349,14 @@ class Phase5_Debt
                 $this->recon->assertZeroEGPDiff($cumulativePaid, (float) $booking->paid_amount, "{$stepLabel} booking.paid_amount", $r, $module);
 
                 $expectedDebt = $total - $cumulativePaid;
-                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->total_amount - (float) $booking->paid_amount, "{$stepLabel} debt = total - paid", $r, $module);
+                $this->recon->assertZeroEGPDiff($expectedDebt, (float) $booking->selling_price - (float) $booking->paid_amount, "{$stepLabel} debt = selling - paid", $r, $module);
 
                 $this->recon->assertBalanceDelta($customerAccountId, $initialCustomer, -$cumulativePaid, "{$stepLabel} cust balance", $r);
                 $this->recon->assertAccountInvariant($customerAccountId, "{$stepLabel} cust invariant", $r);
                 $this->recon->assertAccountInvariant($accountId, "{$stepLabel} treasury invariant", $r);
             }
 
-            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->total_amount - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
+            $this->recon->assertZeroEGPDiff(0.0, (float) $booking->selling_price - (float) $booking->paid_amount, "{$scenario} final debt = 0", $r, $module);
 
             try {
                 $service->addPayment($booking, [
