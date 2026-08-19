@@ -288,7 +288,7 @@ class Phase10_SoftDelete
         $cashboxBalanceBefore = $cashbox ? (float) $cashbox->fresh()->balance : 0.0;
 
         try {
-            $bookSvc->deleteBookingWithReversal($booking->id, $this->ctx->currentUser->id);
+            $bookSvc->deleteBookingWithReversal($booking->id, $this->ctx->currentUser);
             $r->recordPass();
         } catch (\Throwable $e) {
             $r->recordFail(
@@ -373,7 +373,7 @@ class Phase10_SoftDelete
         };
 
         $expectReject('delete already-trashed', function () use ($bookSvc, $booking) {
-            $bookSvc->deleteBookingWithReversal($booking->id, $this->ctx->currentUser->id);
+            $bookSvc->deleteBookingWithReversal($booking->id, $this->ctx->currentUser);
         });
         $expectReject('addPayment after delete', function () use ($bookSvc, $booking, $cashbox) {
             $bookSvc->addPayment($booking->fresh(), ['amount' => 100, 'account_id' => $cashbox?->id, 'payment_method' => 'cash']);

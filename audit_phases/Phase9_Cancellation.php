@@ -349,7 +349,7 @@ class Phase9_Cancellation
             $b = $this->ctx->createHajjUmraBooking();
             $bookSvc->addPayment($b->fresh(), ['amount' => 500, 'account_id' => $cashbox?->id, 'payment_method' => 'cash']);
             $bookSvc->cancel($b->fresh(), 'audit');
-            $bookSvc->deleteBookingWithReversal($b->id, $this->ctx->currentUser->id);
+            $bookSvc->deleteBookingWithReversal($b->id, $this->ctx->currentUser);
             $this->assertHajjInvariant($r, $b->id, $module, 'Create→Cancel→Delete');
         } catch (\Throwable $e) {
             $r->recordFail(
@@ -370,7 +370,7 @@ class Phase9_Cancellation
 
         // 8) Cancel after deletion
         $b = $this->ctx->createHajjUmraBooking();
-        $bookSvc->deleteBookingWithReversal($b->id, $this->ctx->currentUser->id);
+        $bookSvc->deleteBookingWithReversal($b->id, $this->ctx->currentUser);
         $expectReject('cancel after deletion', function () use ($bookSvc, $b) {
             $bookSvc->cancel($b->fresh(), 'attack');
         });

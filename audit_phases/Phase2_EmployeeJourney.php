@@ -265,8 +265,8 @@ class Phase2_EmployeeJourney
                 $r->recordPass();
             }
 
-            $actorId = (int) ($this->ctx->currentUser?->id ?? 0);
-            $service->deleteBookingWithReversal($booking->id, $actorId);
+            $actor = $this->ctx->currentUser;
+            $service->deleteBookingWithReversal($booking->id, $actor);
             $r->recordPass();
 
             $this->recon->assertBalanceDelta($cashboxId, $initialCashboxBalance, 0.0, "{$scenario} cashbox post-delete", $r);

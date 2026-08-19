@@ -13,6 +13,7 @@ use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\Program;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
@@ -452,8 +453,22 @@ class HajjUmraBookingService
      *
      * @throws \RuntimeException on duplicates or when the guard is misconfigured
      */
-    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
+    public function deleteBookingWithReversal(int $bookingId, ?User $actor = null): bool
     {
+        // ── INVARIANT: actor identity from server-side auth ──
+        // Phase 8.6 B1 — mirror HajjUmraRefundService::refund() (L65-70):
+        // NEVER trust Auth::id() ?: 1. If no actor is supplied AND no
+        // authenticated user exists, reject — deletion operations cannot
+        // be attributed to a system user.
+        $actor = $actor ?? auth()->user();
+        if (! $actor instanceof User) {
+            throw new \RuntimeException(
+                'HajjUmraBookingService::deleteBookingWithReversal requires an authenticated actor. '
+                .'Deletion operations cannot be attributed to a system user.'
+            );
+        }
+        $userId = $actor->id;
+
         // Wrap in the canonical deletion gate so the model's `deleting` event
         // allows the soft-delete. Same depth-counter shape as
         // LedgerBalanceMutationGuard; per-model isolation comes free from
@@ -477,7 +492,7 @@ class HajjUmraBookingService
                     );
                 }
 
-                $userIdEffective = $userId ?: (int) (Auth::id() ?: 1);
+                $userIdEffective = $userId;
 
                 Log::info('HajjUmraBookingService::deleteBookingWithReversal — starting', [
                     'booking_id' => $booking->id,

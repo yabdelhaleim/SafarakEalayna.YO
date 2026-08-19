@@ -677,7 +677,7 @@ if (abs($booking2After['paid_via_query'] - $booking2Before['paid_via_query']) > 
 // ──────────────────────────────────────────────────────────────────────────────
 echo "─── 9. deleteBookingWithReversal on booking2 ───\n";
 try {
-    app(HajjUmraBookingService::class)->deleteBookingWithReversal((int) $booking2->id, (int) $actor->id);
+    app(HajjUmraBookingService::class)->deleteBookingWithReversal((int) $booking2->id, $actor);
 } catch (\Throwable $e) {
     $defects['delete_with_reversal'][] = "deleteBookingWithReversal threw: " . $e->getMessage();
 }

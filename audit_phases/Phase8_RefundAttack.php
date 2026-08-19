@@ -384,7 +384,7 @@ class Phase8_RefundAttack
 
         // refund after deletion
         $dbook = $this->ctx->createHajjUmraBooking();
-        $bookSvc->deleteBookingWithReversal($dbook->id, $this->ctx->currentUser->id);
+        $bookSvc->deleteBookingWithReversal($dbook->id, $this->ctx->currentUser);
         $expectReject('refund after deletion', function () use ($refSvc, $dbook) {
             $refSvc->refund($dbook->fresh(), 'attack');
         });

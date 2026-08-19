@@ -272,7 +272,7 @@ class HajjUmraBookingLifecycleCancelTest extends TestCase
     {
         $booking = $this->makeBooking();
         app(\App\Services\HajjUmra\HajjUmraBookingService::class)
-            ->deleteBookingWithReversal($booking->id, $this->admin->id);
+            ->deleteBookingWithReversal($booking->id, $this->admin);
 
         // Booking is soft-deleted; route model binding uses default which
         // excludes soft-deleted → 404. The destroy controller uses

@@ -206,7 +206,7 @@ class Phase16_Profit
 
             // Delete-with-reversal
             try {
-                $svc->deleteBookingWithReversal((int) $booking->id, (int) ($this->ctx->currentUser?->id ?? 0));
+                $svc->deleteBookingWithReversal((int) $booking->id, $this->ctx->currentUser);
             } catch (\Throwable $e) {
                 $r->recordInfo('Phase16 hajj delete step', $e->getMessage());
             }

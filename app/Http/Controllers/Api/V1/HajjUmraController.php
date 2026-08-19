@@ -104,8 +104,7 @@ class HajjUmraController extends Controller
                 return ApiResponse::error('هذا الحجز محذوف بالفعل', null, 422);
             }
 
-            $userId = Auth::id() ?: 1;
-            $this->service->deleteBookingWithReversal($booking->id, $userId);
+            $this->service->deleteBookingWithReversal($booking->id, $request->user());
 
             return ApiResponse::success('تم حذف الحجز وعكس كل الآثار المحاسبية بنجاح.');
         } catch (\Exception $e) {
