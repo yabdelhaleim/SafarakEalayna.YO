@@ -73,7 +73,8 @@ class StoreVisaBookingRequest extends FormRequest
             'visa_details.visa_duration_id' => ['nullable', 'integer', 'exists:visa_durations,id'],
             'visa_details.entry_type' => ['nullable', Rule::in(array_column(VisaEntryType::cases(), 'value'))],
             'visa_details.validity_from' => ['nullable', 'date'],
-            'visa_details.validity_to' => ['nullable', 'date'],
+            // Phase 9.11 FIX — enforce validity_to >= validity_from when both are supplied.
+            'visa_details.validity_to' => ['nullable', 'date', 'after_or_equal:visa_details.validity_from'],
             'visa_details.executing_company' => ['nullable', 'string', 'max:150'],
             'visa_details.executing_agent' => ['nullable', 'string', 'max:150'],
             'visa_details.executing_agent_contact' => ['nullable', 'string', 'max:150'],

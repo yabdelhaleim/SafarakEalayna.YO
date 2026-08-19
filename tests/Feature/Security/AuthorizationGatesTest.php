@@ -14,6 +14,7 @@ use App\Models\Program;
 use App\Models\User;
 use App\Models\VisaBooking;
 use App\Models\VisaDetail;
+use App\Support\UserPermissions;
 use App\Enums\VisaEntryType;
 use App\Enums\VisaStatus;
 use App\Enums\VisaType;
@@ -214,11 +215,41 @@ class AuthorizationGatesTest extends TestCase
         ]);
     }
 
-    public function test_hajjumra_booking_refund_requires_admin(): void
+    public function test_hajjumra_booking_refund_requires_manage_refunds_permission(): void
     {
-        $this->assertAdminGate('POST', "/api/v1/hajj-umra/bookings/{$this->hajjBooking->id}/refund", [
+        // POLICY UPDATE (Phase 8.6 Gate, 2026-08-19):
+        //   Previously asserted "refund requires admin role". The production
+        //   route is gated by `permission:manage_refunds` (see routes/api.php
+        //   ~L604), which is granted to employees by default via
+        //   UserPermissions::defaultEmployeeModules(). The current policy is:
+        //
+        //     Admin = ✅  |  Employee (default perms) = ✅  |  Restricted (no manage_refunds) = 403
+        //
+        //   The destroy + cancel routes in this same file ARE admin-only (the
+        //   original "requires admin" expectation is correct for them). Only
+        //   refund is permission-gated.
+
+        // 1) Admin → 200 (success or 422 business-rejection are both fine; 403 is NOT)
+        Sanctum::actingAs($this->admin, ['*']);
+        $response = $this->postJson("/api/v1/hajj-umra/bookings/{$this->hajjBooking->id}/refund", [
             'reason' => 'test',
         ]);
+        $this->assertNotSame(403, $response->status(), "Admin must not be blocked from refund, got {$response->status()}");
+
+        // 2) Restricted employee (explicit perms WITHOUT manage_refunds) → 403
+        $restricted = User::query()->create([
+            'name' => 'Restricted Hajj',
+            'email' => 'restricted-hajj-'.uniqid().'@example.com',
+            'password' => Hash::make('password'),
+            'role' => 'employee',
+            'is_active' => true,
+            'permissions' => [UserPermissions::MANAGE_FLIGHTS], // explicit, no manage_refunds
+        ]);
+        Sanctum::actingAs($restricted, ['*']);
+        $response = $this->postJson("/api/v1/hajj-umra/bookings/{$this->hajjBooking->id}/refund", [
+            'reason' => 'test',
+        ]);
+        $response->assertStatus(403, 'Restricted employee (no manage_refunds) must be blocked from refund');
     }
 
     public function test_hajjumra_booking_create_is_open_to_employees(): void
@@ -252,11 +283,36 @@ class AuthorizationGatesTest extends TestCase
         ]);
     }
 
-    public function test_visa_booking_refund_requires_admin(): void
+    public function test_visa_booking_refund_requires_manage_refunds_permission(): void
     {
-        $this->assertAdminGate('POST', "/api/v1/visa/bookings/{$this->visaBooking->id}/refund", [
+        // POLICY UPDATE (Phase 8.6 Gate, 2026-08-19):
+        //   See test_hajjumra_booking_refund_requires_manage_refunds_permission
+        //   for the policy rationale. Production route is gated by
+        //   `permission:manage_refunds` (routes/api.php ~L642); the
+        //   obsolete admin-only assertion is replaced with the
+        //   current admin✅ / employee✅ / restricted❌ invariant.
+
+        // 1) Admin → not 403
+        Sanctum::actingAs($this->admin, ['*']);
+        $response = $this->postJson("/api/v1/visa/bookings/{$this->visaBooking->id}/refund", [
             'reason' => 'test',
         ]);
+        $this->assertNotSame(403, $response->status(), "Admin must not be blocked from refund, got {$response->status()}");
+
+        // 2) Restricted employee (no manage_refunds) → 403
+        $restricted = User::query()->create([
+            'name' => 'Restricted Visa',
+            'email' => 'restricted-visa-'.uniqid().'@example.com',
+            'password' => Hash::make('password'),
+            'role' => 'employee',
+            'is_active' => true,
+            'permissions' => [UserPermissions::MANAGE_FLIGHTS],
+        ]);
+        Sanctum::actingAs($restricted, ['*']);
+        $response = $this->postJson("/api/v1/visa/bookings/{$this->visaBooking->id}/refund", [
+            'reason' => 'test',
+        ]);
+        $response->assertStatus(403, 'Restricted employee (no manage_refunds) must be blocked from refund');
     }
 
     public function test_visa_customer_pay_debt_requires_admin(): void
@@ -414,9 +470,11 @@ class AuthorizationGatesTest extends TestCase
 
     public function test_employee_can_view_visa_bookings(): void
     {
+        // Phase 9.3a fix: GET /visa/bookings is admin-only per Phase 8.5 A1.5.
+        // The pre-fix assertion was written before the admin-only policy.
         Sanctum::actingAs($this->employee, ['*']);
         $response = $this->getJson('/api/v1/visa/bookings');
-        $this->assertNotSame(403, $response->status());
+        $this->assertSame(403, $response->status());
     }
 
     public function test_employee_can_view_hajjumra_dashboard(): void
@@ -428,9 +486,11 @@ class AuthorizationGatesTest extends TestCase
 
     public function test_employee_can_view_visa_treasury_overview(): void
     {
+        // Phase 9.3a fix: GET /visa/treasury/overview is admin-only per Phase 8.5 A1.6.
+        // The pre-fix assertion was written before the admin-only policy.
         Sanctum::actingAs($this->employee, ['*']);
         $response = $this->getJson('/api/v1/visa/treasury/overview');
-        $this->assertNotSame(403, $response->status());
+        $this->assertSame(403, $response->status());
     }
 
     /* =========================================================
