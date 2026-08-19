@@ -8,13 +8,18 @@ use App\Models\VisaBooking;
  * Visa Employee E2E — exercises the full /api/v1/visa/* surface
  * as different employee personas.
  *
- * Per-route expected outcomes (from routes/api.php L584-619):
+ * Per-route expected outcomes (UPDATED Phase 9.3a, 2026-08-19):
+ *
+ * Changes from the original docblock (Phase 8.5 hardening):
+ *   - GET bookings / show        — admin-only (Phase 8.5 A1.5/A1.6 admin-gated reads)
+ *   - GET treasury/overview      — admin-only (same)
+ *   - PUT bookings (update)      — 405 (no-edit contract lockdown — route disabled entirely)
  *
  * | Operation                                | Employee | Restricted | Locked |
  * |------------------------------------------|----------|------------|--------|
- * | GET bookings / show                      | 200      | 200        | 200    |
+ * | GET bookings / show                      | 403      | 403        | 403    |
  * | POST bookings (create)                   | 200/201  | 200/201    | 200/201|
- * | PUT bookings (update)                    | 200      | 200        | 200    |
+ * | PUT bookings (update)                    | 405      | 405        | 405    |  (route disabled by no-edit contract)
  * | POST bookings/{id}/payments              | 200/201  | 200/201    | 200/201|
  * | DELETE bookings                          | 403      | 403        | 403    |
  * | POST bookings/{id}/cancel                | 403      | 403        | 403    |
@@ -22,38 +27,38 @@ use App\Models\VisaBooking;
  * | POST agents/{id}/withdraw                | 403      | 403        | 403    |
  * | POST agents/{id}/repay                   | 403      | 403        | 403    |
  * | POST customers/{id}/pay-debt             | 403      | 403        | 403    |
- * | GET treasury/overview                    | 200      | 200        | 200    |
+ * | GET treasury/overview                    | 403      | 403        | 403    |
  */
 class EmployeeVisaE2ETest extends EmployeeTestCase
 {
     /* ============================================================
-     *  READ paths
+     *  READ paths — admin-only per Phase 8.5 A1.5/A1.6
      * ============================================================ */
 
-    public function test_employee_can_list_bookings(): void
+    public function test_employee_cannot_list_bookings(): void
     {
+        // Phase 8.5: GET /api/v1/visa/bookings is admin-gated.
         $this->actAs($this->admin);
-        $booking = $this->createVisaBooking();
+        $this->createVisaBooking();
 
         $this->actAs($this->normalEmployee);
         $response = $this->getJson('/api/v1/visa/bookings');
-        $response->assertStatus(200);
-        $this->assertTrue($response->json('success'));
+        $response->assertStatus(403, 'Employee must NOT be able to list visa bookings (admin-only per Phase 8.5)');
     }
 
-    public function test_employee_can_show_booking(): void
+    public function test_employee_cannot_show_booking(): void
     {
+        // Phase 8.5: GET /api/v1/visa/bookings/{id} is admin-gated.
         $this->actAs($this->admin);
         $booking = $this->createVisaBooking();
 
         $this->actAs($this->normalEmployee);
         $response = $this->getJson("/api/v1/visa/bookings/{$booking->id}");
-        $response->assertStatus(200);
-        $this->assertSame($booking->id, $response->json('data.id'));
+        $response->assertStatus(403, 'Employee must NOT be able to show a visa booking (admin-only per Phase 8.5)');
     }
 
     /* ============================================================
-     *  CREATE / UPDATE — employee allowed (correct)
+     *  CREATE — employee allowed (correct)
      * ============================================================ */
 
     public function test_employee_can_create_booking(): void
@@ -78,17 +83,18 @@ class EmployeeVisaE2ETest extends EmployeeTestCase
         $response->assertStatus(201);
     }
 
-    public function test_employee_can_update_booking(): void
-    {
-        $this->actAs($this->admin);
-        $booking = $this->createVisaBooking();
-
-        $this->actAs($this->normalEmployee);
-        $response = $this->putJson("/api/v1/visa/bookings/{$booking->id}", [
-            'notes' => 'Updated by employee',
-        ]);
-        $response->assertStatus(200);
-    }
+    /* ============================================================
+     *  UPDATE — DISABLED by no-edit contract (Phase 8.5 B1)
+     *
+     *  The PUT /api/v1/visa/bookings/{id} route was removed entirely by
+     *  the no-edit contract (see Phase 8.5 B1 and Phase 11 audit phase).
+     *  An employee (or anyone) attempting a PUT now receives 405 Method
+     *  Not Allowed because the route does not exist for any role.
+     *
+     *  This is the correct, intentional behavior. The previous test
+     *  asserting 200 was a test-harness defect (it pre-dated the
+     *  no-edit contract lockdown). Removed in Phase 9.3a.
+     * ============================================================ */
 
     /* ============================================================
      *  PAYMENTS — employee allowed (correct)
@@ -207,11 +213,12 @@ class EmployeeVisaE2ETest extends EmployeeTestCase
         );
     }
 
-    public function test_employee_can_view_treasury_overview(): void
+    public function test_employee_cannot_view_treasury_overview(): void
     {
+        // Phase 8.5: GET /api/v1/visa/treasury/overview is admin-gated.
         $this->actAs($this->normalEmployee);
         $response = $this->getJson('/api/v1/visa/treasury/overview');
-        $response->assertStatus(200);
+        $response->assertStatus(403, 'Employee must NOT be able to view visa treasury overview (admin-only per Phase 8.5)');
     }
 
     /* ============================================================
