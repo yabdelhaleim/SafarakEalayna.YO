@@ -65,8 +65,11 @@ class EmployeeHajjUmraE2ETest extends EmployeeTestCase
         $response->assertStatus(200);
     }
 
-    public function test_employee_can_create_program(): void
+    public function test_employee_cannot_create_program(): void
     {
+        // Note: Hajj-Umra programs are managed via the Filament admin panel which
+        // is admin-only by business rule. Phase 8.5 A1.5 gates POST /programs
+        // with `middleware('admin')` → non-admin employees must get 403.
         $this->actAs($this->normalEmployee);
         $payload = [
             'program_name' => 'EMP_AUDIT_20260817_Hajj_Program',
@@ -86,7 +89,7 @@ class EmployeeHajjUmraE2ETest extends EmployeeTestCase
             'is_active' => true,
         ];
         $response = $this->postJson('/api/v1/hajj-umra/programs', $payload);
-        $response->assertStatus(201);
+        $response->assertStatus(403, 'Employee must NOT be able to create a Hajj program (Filament admin panel is admin-only)');
     }
 
     /* ============================================================
