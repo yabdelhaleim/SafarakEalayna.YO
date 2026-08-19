@@ -561,8 +561,8 @@ Route::prefix('v1')->middleware([
         Route::get('settings/accommodation-types', [HajjUmraReferenceController::class, 'accommodationTypes']);
         Route::get('settings/statuses', [HajjUmraReferenceController::class, 'statuses']);
 
-        Route::get('customer-balances', [HajjUmraController::class, 'customerBalances']);
-        Route::get('customer-statement', [HajjUmraController::class, 'customerStatement']);
+        Route::get('customer-balances', [HajjUmraController::class, 'customerBalances'])->middleware('admin');
+        Route::get('customer-statement', [HajjUmraController::class, 'customerStatement'])->middleware('admin');
 
         // Destructive booking operations: destroy (soft-delete with reversal),
         // cancel (additive reversal) — admin only. Refund is financial reversal
@@ -592,10 +592,10 @@ Route::prefix('v1')->middleware([
         Route::get('settings/durations', [HajjUmraReferenceController::class, 'visaDurations']);
         Route::get('settings/statuses', [HajjUmraReferenceController::class, 'statuses']);
 
-        Route::get('treasury/overview', [VisaTreasuryController::class, 'overview']);
-        Route::get('treasury/accounts/{account}/transactions', [VisaTreasuryController::class, 'accountVisaTransactions']);
+        Route::get('treasury/overview', [VisaTreasuryController::class, 'overview'])->middleware('admin');
+        Route::get('treasury/accounts/{account}/transactions', [VisaTreasuryController::class, 'accountVisaTransactions'])->middleware('admin');
 
-        Route::get('agents/dues', [VisaAgentFinanceController::class, 'dues']);
+        Route::get('agents/dues', [VisaAgentFinanceController::class, 'dues'])->middleware('admin');
         // Financial transfers (withdraw/repay) — admin only
         Route::middleware('admin')->group(function () {
             Route::post('agents/{agent}/withdraw', [VisaAgentFinanceController::class, 'withdraw']);
@@ -612,16 +612,16 @@ Route::prefix('v1')->middleware([
         Route::middleware('permission:manage_refunds')
             ->post('bookings/{visa}/refund', [VisaBookingController::class, 'refund']);
 
-        Route::get('bookings', [VisaBookingController::class, 'index']);
+        Route::get('bookings', [VisaBookingController::class, 'index'])->middleware('admin');
         Route::post('bookings', [VisaBookingController::class, 'store']);
-        Route::get('bookings/{visa}', [VisaBookingController::class, 'show']);
+        Route::get('bookings/{visa}', [VisaBookingController::class, 'show'])->middleware('admin');
         // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
         Route::post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
-        Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications']);
+        Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications'])->middleware('admin');
 
         // مديونيات عملاء التأشيرات
-        Route::get('customer-balances', [VisaController::class, 'customerBalances']);
-        Route::get('customer-statement', [VisaController::class, 'customerStatement']);
+        Route::get('customer-balances', [VisaController::class, 'customerBalances'])->middleware('admin');
+        Route::get('customer-statement', [VisaController::class, 'customerStatement'])->middleware('admin');
         // Cashbook-side debt payment moves money between accounts — admin only
         Route::middleware('admin')->post('customers/{customer}/pay-debt', [VisaController::class, 'payCustomerDebt']);
     });
@@ -653,15 +653,4 @@ Route::prefix('v1')->middleware([
     Route::get('visa-agents/{id}/cost-price', [VisaAgentApiController::class, 'costPrice']);
     Route::get('umrah-suppliers', [UmrahSupplierApiController::class, 'index']);
     Route::get('clients', [CustomerController::class, 'search']);
-});
-
-// Global API aliases without v1 prefix for backward compatibility and specific tool queries
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('visa-agents', [VisaAgentApiController::class, 'index']);
-    Route::post('visa-agents', [VisaAgentApiController::class, 'store']);
-    Route::get('visa-agents/{id}/cost-price', [VisaAgentApiController::class, 'costPrice']);
-    Route::get('umrah-suppliers', [UmrahSupplierApiController::class, 'index']);
-    Route::post('umrah-suppliers', [UmrahSupplierApiController::class, 'store']);
-    Route::get('clients', [CustomerController::class, 'search']);
-    Route::get('accounts', [AccountController::class, 'index']);
 });

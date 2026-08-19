@@ -149,24 +149,24 @@ class VisaPermissionTest extends VisaTestCase
         $this->assertContains($response->status(), [403, 401]);
     }
 
-    // ─── Employee CAN read ────────────────────────────────────────────────
+    // ─── Employee CANNOT read (B-1 fix 2026-08-19 — admin-gated) ────────────
 
-    public function test_employee_can_list_bookings(): void
+    public function test_employee_cannot_list_bookings(): void
     {
         $this->makeBooking();
         $this->actingAsUser($this->employeeUser);
 
         $response = $this->getJson('/api/v1/visa/bookings');
-        $response->assertOk();
+        $response->assertForbidden();
     }
 
-    public function test_employee_can_show_booking(): void
+    public function test_employee_cannot_show_booking(): void
     {
         $booking = $this->makeBooking();
         $this->actingAsUser($this->employeeUser);
 
         $response = $this->getJson("/api/v1/visa/bookings/{$booking->id}");
-        $response->assertOk();
+        $response->assertForbidden();
     }
 
     public function test_employee_can_add_payment(): void
