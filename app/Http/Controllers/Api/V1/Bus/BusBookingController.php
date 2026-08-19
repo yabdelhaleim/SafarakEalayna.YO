@@ -153,12 +153,21 @@ class BusBookingController extends Controller
     {
         try {
             $bookingModel = BusBooking::findOrFail($busBooking);
+
+            // Step 2 fix (IDOR): enforce BusBookingPolicy::pay before any
+            // financial movement. Admin/owner OR the booking's owning
+            // employee can pay; everyone else → 403. The policy was defined
+            // but never invoked (audit Step 2 finding).
+            $this->authorize('pay', $bookingModel);
+
             $booking = $this->bookingService->payBooking($bookingModel, $request->validated());
 
             return ApiResponse::success(
                 'Payment recorded successfully.',
                 new BusBookingResource($booking)
             );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('ليس لديك صلاحية دفع هذا الحجز.', null, 403);
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
