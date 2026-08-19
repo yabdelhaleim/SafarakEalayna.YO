@@ -2010,23 +2010,22 @@ class FlightBookingService
                 // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
                 // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
                 //
-                // D3 FIX (2026-08-15): rekey the duplicate-income guard.
-                // Previously this called recordIncome with related_type=FlightBooking
-                // + related_id=$booking->id, which caused the duplicate-income guard
-                // (TransactionService::recordJournalTransfer line ~650) to reject
-                // the SECOND and subsequent payment for the same booking. The guard
-                // treats each (related_type, related_id) as a unique income slot, but
-                // the booking has only ONE slot — so partial payments were blocked.
+                // Phase 3 (B-2 fix, 2026-08-18): replace the old recordIncome() call
+                // with recordJournalTransfer() and type=Transfer. This is the TRUE
+                // B-2 fix — the payment is semantically a NEUTRAL transfer
+                // (customer AR → cashbox), not a new income.
                 //
-                // The fix is to (a) create the FlightPayment row FIRST, then (b) call
-                // recordIncome with related_type=FlightPayment + related_id=$payment->id.
-                // Each payment now gets its own slot. The duplicate-income guard
-                // still prevents the SAME FlightPayment row from generating two income
-                // transactions (i.e. a true retry that bypasses the lockForUpdate).
+                // Mirrors the FC-AUDIT-20260814 fix already shipped on the HajjUmra
+                // module (see HajjUmraBookingService.php:635-645). The single-active-
+                // income guard at TransactionService::recordJournalTransfer line 650
+                // guards only type=Income, so a type=Transfer here is naturally
+                // allowed regardless of (related_type, related_id) — NO rekey trick
+                // required. The booking has exactly ONE income (recorded at
+                // recordSaleToCustomer during createBooking) plus N transfers.
                 //
                 // Order of operations:
                 //   1. FlightPayment::create (no transaction_id yet)
-                //   2. recordIncome with FlightPayment as related
+                //   2. recordJournalTransfer type=Transfer (customer → cashbox)
                 //   3. FlightPayment::update with the transaction_id
                 //   4. TreasuryLedgerMirror (depends on $transaction->id)
                 //
@@ -2076,19 +2075,23 @@ class FlightBookingService
                 }
 
                 try {
-                    $transaction = $this->transactionService->recordIncome([
+                    // Phase 3 (B-2 fix): type=Transfer (not Income). The booking's
+                    // sale income was already recorded at recordSaleToCustomer; each
+                    // payment is a NEUTRAL cash movement against existing debt.
+                    $transaction = $this->transactionService->recordJournalTransfer([
                         'amount' => $transferAmount,
                         'converted_amount' => $convertedAmount,
                         'exchange_rate' => $booking->exchange_rate ?? null,
+                        'from_account_id' => $customerAccount->id,
                         'to_account_id' => $accountId,
-                        'contra_account_id' => $customerAccount->id,
                         'module' => TransactionModule::Flight->value,
+                        'type' => \App\Enums\TransactionType::Transfer->value,
                         'related_type' => FlightPayment::class,
                         'related_id' => $payment->id,
                         'notes' => $paymentNotes,
                     ]);
                 } catch (\Throwable $t) {
-                    // If recordIncome fails, the payment row exists with
+                    // If the GL transfer fails, the payment row exists with
                     // transaction_id=NULL — soft-delete it to keep the ledger
                     // consistent (no orphan payment without a transaction).
                     $payment->delete();
