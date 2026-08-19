@@ -323,12 +323,17 @@ Route::prefix('v1')->middleware([
             Route::post('companies/{company}/pay-debt', [BusCompanyController::class, 'payDebt']);
             Route::post('inventories/{busInventory}/pay-debt', [BusInventoryController::class, 'payDebt']);
             Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [BusBookingController::class, 'cancel']);
+            // Destructive CRUD — admin only (fix Step 1).
+            // Booking creation stays accessible to cashiers via the apiResource below.
+            Route::apiResource('companies', BusCompanyController::class);
+            Route::apiResource('inventories', BusInventoryController::class)
+                ->parameters(['inventories' => 'busInventory']);
+            Route::delete('bookings/{busBooking}', [BusBookingController::class, 'destroy']);
         });
-        Route::apiResource('companies', BusCompanyController::class);
-        Route::apiResource('inventories', BusInventoryController::class)
-            ->parameters(['inventories' => 'busInventory']);
+        // Booking read + create remain open to all authenticated users
+        // (cashiers need to record bookings during the day).
         Route::apiResource('bookings', BusBookingController::class)
-            ->except(['update'])
+            ->except(['update', 'destroy'])
             ->parameters(['bookings' => 'busBooking'])
             ->names('bus_bookings');
 
@@ -561,10 +566,13 @@ Route::prefix('v1')->middleware([
             Route::post('executing-companies/{company}/repay', [HajjUmraExecutingCompanyFinanceController::class, 'repay']);
         });
 
+        // Hajj-Umra programs: read (index/show) open; mutations (store/update/destroy) admin-only (Phase 8.5 #5/#6)
         Route::get('programs', [HajjUmraProgramController::class, 'index']);
-        Route::post('programs', [HajjUmraProgramController::class, 'store']);
         Route::get('programs/{program}', [HajjUmraProgramController::class, 'show']);
-        Route::match(['put', 'patch'], 'programs/{program}', [HajjUmraProgramController::class, 'update']);
+        Route::middleware('admin')->group(function () {
+            Route::post('programs', [HajjUmraProgramController::class, 'store']);
+            Route::match(['put', 'patch'], 'programs/{program}', [HajjUmraProgramController::class, 'update']);
+        });
 
         // Destructive: deleting a program is admin-only and refused when bookings exist.
         Route::middleware('admin')->group(function () {
