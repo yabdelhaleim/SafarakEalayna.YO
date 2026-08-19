@@ -215,7 +215,9 @@ Route::prefix('v1')->middleware([
         // Laravel binding "threshold-summary" as a {group} value.
         Route::get('groups/threshold-summary', [FlightGroupController::class, 'thresholdSummary']);
         Route::get('groups/{group}/statement', [FlightGroupController::class, 'statement']);
-        Route::post('groups/{group}/pay-debt', [FlightGroupController::class, 'payDebt']);
+        // pay-debt moves money between accounts — admin only (Phase 8.5 #1)
+        Route::middleware('admin')
+            ->post('groups/{group}/pay-debt', [FlightGroupController::class, 'payDebt']);
         Route::put('groups/{group}/notifications', [FlightGroupController::class, 'updateNotifications']);
         Route::apiResource('groups', FlightGroupController::class)->names('flight_groups')->only(['index', 'show']);
 
