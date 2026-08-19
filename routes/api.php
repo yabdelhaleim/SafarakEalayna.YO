@@ -204,8 +204,21 @@ Route::prefix('v1')->middleware([
         });
 
         // Flight Systems & Carriers endpoints
-        Route::apiResource('systems', FlightSystemController::class)->names('flight_systems');
-        Route::apiResource('carriers', FlightCarrierController::class)->names('flight_carriers');
+        // Read (index/show) open; mutations (store/update/destroy) admin-only (Phase 8.5 #3/#4)
+        Route::get('systems', [FlightSystemController::class, 'index'])->name('flight_systems.index');
+        Route::get('systems/{system}', [FlightSystemController::class, 'show'])->name('flight_systems.show');
+        Route::middleware('admin')->group(function () {
+            Route::post('systems', [FlightSystemController::class, 'store'])->name('flight_systems.store');
+            Route::match(['put', 'patch'], 'systems/{system}', [FlightSystemController::class, 'update'])->name('flight_systems.update');
+            Route::delete('systems/{system}', [FlightSystemController::class, 'destroy'])->name('flight_systems.destroy');
+        });
+        Route::get('carriers', [FlightCarrierController::class, 'index'])->name('flight_carriers.index');
+        Route::get('carriers/{carrier}', [FlightCarrierController::class, 'show'])->name('flight_carriers.show');
+        Route::middleware('admin')->group(function () {
+            Route::post('carriers', [FlightCarrierController::class, 'store'])->name('flight_carriers.store');
+            Route::match(['put', 'patch'], 'carriers/{carrier}', [FlightCarrierController::class, 'update'])->name('flight_carriers.update');
+            Route::delete('carriers/{carrier}', [FlightCarrierController::class, 'destroy'])->name('flight_carriers.destroy');
+        });
         Route::get('carriers/{carrier}/balance', [FlightCarrierController::class, 'balance']);
         // Carrier recharge is admin-only (moves money between accounts).
         Route::middleware('admin')
