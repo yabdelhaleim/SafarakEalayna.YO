@@ -180,7 +180,10 @@ class VisaPermissionTest extends VisaTestCase
             'account_id' => $this->vaultEgp->id,
         ]);
 
-        // Payment is NOT marked admin-only in routes
+        // Payment IS gated by `permission:manage_online` in routes (Phase 8.5 A3).
+        // The default employee (role: 'employee', no explicit perms) still passes
+        // because `UserPermissions::effectiveFor()` returns `defaultEmployeeModules()`
+        // which includes `manage_online`. Admin/owner bypasses via middleware short-circuit.
         $response->assertCreated();
     }
 
