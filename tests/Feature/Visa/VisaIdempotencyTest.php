@@ -26,6 +26,8 @@ class VisaIdempotencyTest extends VisaTestCase
 {
     public function test_double_payment_post_creates_only_one_record(): void
     {
+        // Phase 9.8 fix: same booking + same reference = idempotent (only 1 payment row).
+        // Pre-fix behavior: 2 rows + double credit to vault (the known defect).
         $booking = $this->makeBooking([
             'purchase_price' => 1000.0,
             'selling_price' => 5000.0,
@@ -39,20 +41,18 @@ class VisaIdempotencyTest extends VisaTestCase
             'reference' => 'AUDIT-IDEMP-PAY',
         ];
 
-        $r1 = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", $payload);
+        $r1 = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", $payload)->assertCreated();
         $r2 = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", $payload);
 
-        // Both might return 201 (the API does not have an idempotency key in this audit)
-        // BUT only ONE payment record should exist for this booking+reference
-        $paymentCount = VisaPayment::where('visa_booking_id', $booking->id)->count();
+        // Phase 9.8: idempotent — both calls return the SAME payment id.
+        $this->assertContains($r2->status(), [200, 201],
+            'idempotent replay must return 200 or 201');
+        $this->assertSame($r1->json('data.id'), $r2->json('data.id'),
+            'second call must return the existing payment id');
 
-        // If both succeeded without guard, the booking shows paid=2000 and remaining=3000.
-        // That is "expected" for sequential duplicate submission IF the API has no idempotency key.
-        // We document this behavior here (the audit's purpose is verification, not
-        // architectural change unless we find a bug).
-        $booking->refresh();
-        $this->assertSame(2, $paymentCount,
-            'NOTE: API allows duplicate payment submissions without idempotency key. paid='.$booking->paid_amount);
+        $paymentCount = VisaPayment::where('visa_booking_id', $booking->id)->count();
+        $this->assertSame(1, $paymentCount,
+            'Phase 9.8 fix: same booking + same reference must create exactly 1 payment (was 2 pre-fix)');
     }
 
     public function test_double_cancel_does_not_double_reversal(): void
@@ -161,8 +161,10 @@ class VisaIdempotencyTest extends VisaTestCase
         $this->assertSame(2, \App\Models\VisaBooking::count());
     }
 
-    public function test_payment_with_same_reference_twice_still_creates_two_payments(): void
+    public function test_payment_with_same_reference_twice_creates_only_one_payment(): void
     {
+        // Phase 9.8 fix: (booking_id, transaction_reference) UNIQUE constraint +
+        // service pre-check + DB unique backstop all enforce idempotency.
         $booking = $this->makeBooking([
             'purchase_price' => 100.0,
             'selling_price' => 1000.0,
@@ -176,6 +178,7 @@ class VisaIdempotencyTest extends VisaTestCase
             'reference' => 'AUDIT-REF-SAME',
         ]);
 
+        // Second call returns the same payment (idempotent replay)
         $p2 = $service->addPayment($booking->fresh(), [
             'amount' => 100.0,
             'payment_method' => 'cash',
@@ -183,9 +186,9 @@ class VisaIdempotencyTest extends VisaTestCase
             'reference' => 'AUDIT-REF-SAME',
         ]);
 
-        $this->assertNotSame($p1->id, $p2->id);
-        // Document: there is no DB-level unique constraint on (booking_id, reference)
-        $this->assertSame(2, VisaPayment::where('visa_booking_id', $booking->id)->count(),
-            'NOTE: no unique key on (booking_id, reference) — duplicates allowed');
+        $this->assertSame($p1->id, $p2->id,
+            'Phase 9.8 fix: same reference MUST return same payment id (idempotent)');
+        $this->assertSame(1, VisaPayment::where('visa_booking_id', $booking->id)->count(),
+            'Phase 9.8 fix: same booking + same reference creates exactly 1 payment (was 2 pre-fix)');
     }
 }

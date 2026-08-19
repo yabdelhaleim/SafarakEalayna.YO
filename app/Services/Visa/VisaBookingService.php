@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Customer;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\VisaBooking;
 use App\Models\VisaDetail;
 use App\Models\VisaPayment;
@@ -46,9 +47,9 @@ class VisaBookingService
     /**
      * @deprecated Use App\Services\Visa\VisaRefundService::deleteWithReversal().
      */
-    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
+    public function deleteBookingWithReversal(int $bookingId, ?User $actor = null): bool
     {
-        return app(VisaRefundService::class)->deleteWithReversal($bookingId, $userId);
+        return app(VisaRefundService::class)->deleteWithReversal($bookingId, $actor);
     }
 
     /**
@@ -436,6 +437,25 @@ class VisaBookingService
                     }
                 }
 
+                // ─── Layer 1b — reference pre-check (Phase 9.8) ─────────
+                // Defends against the double-payment defect: caller supplies
+                // the SAME (booking, reference) but a DIFFERENT idempotency_key
+                // (or none). Without this, the DB unique index would still
+                // catch it but only AFTER a transfer tx was posted — leaking
+                // money between accounts. The pre-check returns the existing
+                // row BEFORE any ledger mutation.
+                $reference = $data['reference'] ?? $data['transaction_reference'] ?? null;
+                if ($reference !== null && $reference !== '') {
+                    $existingByRef = VisaPayment::query()
+                        ->where('visa_booking_id', $locked->id)
+                        ->where('transaction_reference', $reference)
+                        ->first();
+                    if ($existingByRef) {
+                        $existingByRef->idempotent_replay = true;
+                        return $existingByRef;
+                    }
+                }
+
                 $amount    = (float) $data['amount'];
                 $accountId = (int) ($data['account_id'] ?? $locked->account_id);
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
@@ -518,14 +538,31 @@ class VisaBookingService
                 } catch (\Illuminate\Database\QueryException $qe) {
                     // Layer 2: if a concurrent request raced past the pre-check
                     // and hit the DB unique index, return the winning row.
-                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
-                        $existing = VisaPayment::query()
-                            ->where('visa_booking_id', $locked->id)
-                            ->where('idempotency_key', $idempotencyKey)
-                            ->first();
-                        if ($existing) {
-                            $existing->idempotent_replay = true;
-                            return $existing;
+                    // Handles both (booking, idempotency_key) AND
+                    // (booking, transaction_reference) unique indexes.
+                    if ($this->isDuplicateKeyError($qe)) {
+                        // Try idempotency_key first (most specific)
+                        if ($idempotencyKey !== null) {
+                            $existing = VisaPayment::query()
+                                ->where('visa_booking_id', $locked->id)
+                                ->where('idempotency_key', $idempotencyKey)
+                                ->first();
+                            if ($existing) {
+                                $existing->idempotent_replay = true;
+                                return $existing;
+                            }
+                        }
+                        // Fall back to reference-based lookup (Phase 9.8)
+                        $reference = $data['reference'] ?? $data['transaction_reference'] ?? null;
+                        if ($reference !== null && $reference !== '') {
+                            $existingByRef = VisaPayment::query()
+                                ->where('visa_booking_id', $locked->id)
+                                ->where('transaction_reference', $reference)
+                                ->first();
+                            if ($existingByRef) {
+                                $existingByRef->idempotent_replay = true;
+                                return $existingByRef;
+                            }
                         }
                     }
                     throw $qe;
@@ -535,14 +572,29 @@ class VisaBookingService
             // Outer catch: DB::transaction re-raised a duplicate-key exception
             // after the inner transaction committed the winning row. Return the
             // existing payment as an idempotent result.
-            if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
-                $existing = VisaPayment::query()
-                    ->where('visa_booking_id', $booking->id)
-                    ->where('idempotency_key', $idempotencyKey)
-                    ->first();
-                if ($existing) {
-                    $existing->idempotent_replay = true;
-                    return $existing;
+            // Handles both (booking, idempotency_key) AND
+            // (booking, transaction_reference) unique indexes.
+            if ($this->isDuplicateKeyError($qe)) {
+                if ($idempotencyKey !== null) {
+                    $existing = VisaPayment::query()
+                        ->where('visa_booking_id', $booking->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+                        return $existing;
+                    }
+                }
+                $reference = $data['reference'] ?? $data['transaction_reference'] ?? null;
+                if ($reference !== null && $reference !== '') {
+                    $existingByRef = VisaPayment::query()
+                        ->where('visa_booking_id', $booking->id)
+                        ->where('transaction_reference', $reference)
+                        ->first();
+                    if ($existingByRef) {
+                        $existingByRef->idempotent_replay = true;
+                        return $existingByRef;
+                    }
                 }
             }
             throw $qe;
