@@ -124,27 +124,34 @@ if ($execute) {
     @mkdir(dirname($dumpFile), 0755, true);
 
     echo "\n💾 Creating mysqldump → {$dumpFile}\n";
-    $mysqldumpCmd = sprintf(
-        'mysqldump -h %s -u %s %s %s > %s 2>&1',
-        escapeshellarg($dbHost),
-        escapeshellarg(config('database.connections.mysql.username')),
-        escapeshellarg($dbName),
-        escapeshellarg('--single-transaction --quick --routines --triggers --events'),
-        escapeshellarg($dumpFile)
-    );
+
+    // Build mysqldump command as an array (avoids shell-escaping issues on Windows)
+    $dumpCmd = ['mysqldump', '-h', $dbHost, '-u', config('database.connections.mysql.username')];
     $password = config('database.connections.mysql.password');
-    if ($password) {
-        $mysqldumpCmd = str_replace(
-            '-u '.escapeshellarg(config('database.connections.mysql.username')),
-            '-u '.escapeshellarg(config('database.connections.mysql.username')).' -p'.escapeshellarg($password),
-            $mysqldumpCmd
-        );
+    if (! empty($password)) {
+        // MYSQL_PWD env var is the safest way to pass a password non-interactively
+        // (avoids leaking via process listings, which -p<password> would).
+        $dumpCmd = array_merge(['env', 'MYSQL_PWD='.$password], $dumpCmd);
     }
-    exec($mysqldumpCmd, $out, $rc);
-    if ($rc !== 0) {
-        fwrite(STDERR, "🛑 mysqldump failed (rc={$rc}). Output:\n".implode("\n", $out)."\n");
+    $dumpCmd = array_merge($dumpCmd, [
+        '--single-transaction', '--quick', '--routines', '--triggers', '--events',
+        $dbName,
+    ]);
+
+    $dumpProcess = new \Symfony\Component\Process\Process($dumpCmd);
+    $dumpProcess->setWorkingDirectory(__DIR__);
+    $dumpProcess->setTimeout(300);
+    $dumpProcess->run();
+
+    if (! $dumpProcess->isSuccessful()) {
+        fwrite(STDERR, "🛑 mysqldump failed (exit={$dumpProcess->getExitCode()}).\n");
+        fwrite(STDERR, "   STDOUT: ".$dumpProcess->getOutput()."\n");
+        fwrite(STDERR, "   STDERR: ".$dumpProcess->getErrorOutput()."\n");
         exit(1);
     }
+
+    // Write the captured stdout to the dump file
+    file_put_contents($dumpFile, $dumpProcess->getOutput());
     $size = filesize($dumpFile);
     echo "   ✅ Dump created (".number_format($size / 1024, 1)." KB)\n";
 

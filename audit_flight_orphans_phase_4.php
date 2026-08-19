@@ -318,9 +318,29 @@ foreach ($incomeOrphans as $inc) {
 $md .= "\n";
 
 // ── 10. Section G — Summary & recommended next step ─────────────────────────
+
+// ACTIVE orphan Income = orphan Income rows that do NOT yet have `عكس:` prefix
+// (i.e., NOT yet soft-reversed). This is the actual "over-counted" set.
+$activeOrphanIncome = DB::table('transactions as t')
+    ->leftJoin('flight_payments as fp', function ($j) {
+        $j->where('t.related_type', 'App\\Models\\Flight\\FlightPayment')
+          ->whereColumn('t.related_id', 'fp.id');
+    })
+    ->where('t.related_type', 'App\\Models\\Flight\\FlightPayment')
+    ->where('t.type', 'income')
+    ->whereNull('fp.id')
+    ->where(function ($q) {
+        $q->whereNull('t.notes')->orWhere(function ($q2) {
+            $q2->where('t.notes', 'not like', 'عكس:%')->where('t.notes', 'not like', 'عكس %');
+        });
+    })
+    ->select('t.id', 't.amount')
+    ->get();
+
 $md .= "## G. Summary\n\n";
 $md .= "- **".$orphans->count()."** orphan Flight transactions in `transactions` table.\n";
-$md .= "- **".$incomeOrphans->count()."** of them are ACTIVE Income (no `عكس:` prefix) → these inflate income reports by **".number_format((float) $incomeOrphans->sum('amount'), 2)." EGP**.\n";
+$md .= "- **".$activeOrphanIncome->count()."** of them are ACTIVE orphan Income (no `عكس:` prefix) → these inflate income reports by **".number_format((float) $activeOrphanIncome->sum('amount'), 2)." EGP**.\n";
+$md .= "- **".($incomeOrphans->count() - $activeOrphanIncome->count())."** orphan Income rows have already been soft-reversed (carry `عكس:` prefix).\n";
 $md .= "- Each orphan Income has a companion orphan Transfer with `عكس:` prefix → **net cashbox impact = 0**.\n";
 $md .= "- flight_bookings and flight_payments tables are **EMPTY** (hard-deleted at some prior point).\n\n";
 
@@ -336,5 +356,6 @@ echo "  MD:  {$mdFile}\n";
 echo "\n";
 echo "Summary:\n";
 echo "  - Orphan Flight transactions: {$orphans->count()}\n";
-echo "  - ACTIVE orphan Income (over-counted): {$incomeOrphans->count()}\n";
-echo "  - Sum of over-counted income: ".number_format((float) $incomeOrphans->sum('amount'), 2)." EGP\n";
+echo "  - ACTIVE orphan Income (over-counted): {$activeOrphanIncome->count()}\n";
+echo "  - Already-reversed orphan Income: ".($incomeOrphans->count() - $activeOrphanIncome->count())."\n";
+echo "  - Sum of over-counted income: ".number_format((float) $activeOrphanIncome->sum('amount'), 2)." EGP\n";

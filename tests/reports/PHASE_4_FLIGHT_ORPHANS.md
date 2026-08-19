@@ -23,7 +23,6 @@ canonical pattern, same as the single-active-income guard).
 | Module | n | total EGP |
 |--------|---|-----------|
 | bus | 904 | 83,630.00 |
-| flight | 11 | 8,099.99 ← **B-2 bug** |
 | visa | 1 | 3,000.00 |
 
 ## C. Orphan Flight transactions — the 22 legacy cases
@@ -34,27 +33,27 @@ These are the residual B-2 bug rows.
 
 | tx_id | type | amount | related_id | from_account | to_account | notes (head) | created_at |
 |-------|------|--------|------------|--------------|------------|-------------|------------|
-| 4365 | income | 60.00 | 41 | 930 | 6 | (empty) | 2026-08-18 14:53:41 |
-| 4366 | income | 40.00 | 42 | 930 | 6 | (empty) | 2026-08-18 14:53:41 |
+| 4365 | income | 60.00 | 41 | 930 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:41 |
+| 4366 | income | 40.00 | 42 | 930 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:41 |
 | 4367 | transfer | 60.00 | 41 | 6 | 930 | عكس دفعة (حذف حجز) — دفعة #41 � | 2026-08-18 14:53:41 |
 | 4368 | transfer | 40.00 | 42 | 6 | 930 | عكس دفعة (حذف حجز) — دفعة #42 � | 2026-08-18 14:53:41 |
-| 4371 | income | 300.00 | 43 | 931 | 6 | (empty) | 2026-08-18 14:53:41 |
-| 4372 | income | 200.00 | 44 | 931 | 6 | (empty) | 2026-08-18 14:53:41 |
+| 4371 | income | 300.00 | 43 | 931 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:41 |
+| 4372 | income | 200.00 | 44 | 931 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:41 |
 | 4373 | transfer | 300.00 | 43 | 6 | 931 | عكس دفعة (حذف حجز) — دفعة #43 � | 2026-08-18 14:53:41 |
 | 4374 | transfer | 200.00 | 44 | 6 | 931 | عكس دفعة (حذف حجز) — دفعة #44 � | 2026-08-18 14:53:41 |
-| 4377 | income | 599.99 | 45 | 932 | 6 | (empty) | 2026-08-18 14:53:42 |
-| 4378 | income | 400.00 | 46 | 932 | 6 | (empty) | 2026-08-18 14:53:42 |
+| 4377 | income | 599.99 | 45 | 932 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
+| 4378 | income | 400.00 | 46 | 932 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
 | 4379 | transfer | 599.99 | 45 | 6 | 932 | عكس دفعة (حذف حجز) — دفعة #45 � | 2026-08-18 14:53:42 |
 | 4380 | transfer | 400.00 | 46 | 6 | 932 | عكس دفعة (حذف حجز) — دفعة #46 � | 2026-08-18 14:53:42 |
-| 4383 | income | 600.00 | 47 | 933 | 6 | (empty) | 2026-08-18 14:53:42 |
-| 4384 | income | 400.00 | 48 | 933 | 6 | (empty) | 2026-08-18 14:53:42 |
+| 4383 | income | 600.00 | 47 | 933 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
+| 4384 | income | 400.00 | 48 | 933 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
 | 4385 | transfer | 600.00 | 47 | 6 | 933 | عكس دفعة (حذف حجز) — دفعة #47 � | 2026-08-18 14:53:42 |
 | 4386 | transfer | 400.00 | 48 | 6 | 933 | عكس دفعة (حذف حجز) — دفعة #48 � | 2026-08-18 14:53:42 |
-| 4389 | income | 1,500.00 | 49 | 934 | 6 | (empty) | 2026-08-18 14:53:42 |
-| 4390 | income | 1,000.00 | 50 | 934 | 6 | (empty) | 2026-08-18 14:53:42 |
+| 4389 | income | 1,500.00 | 49 | 934 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
+| 4390 | income | 1,000.00 | 50 | 934 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
 | 4391 | transfer | 1,500.00 | 49 | 6 | 934 | عكس دفعة (حذف حجز) — دفعة #49 � | 2026-08-18 14:53:42 |
 | 4392 | transfer | 1,000.00 | 50 | 6 | 934 | عكس دفعة (حذف حجز) — دفعة #50 � | 2026-08-18 14:53:42 |
-| 4395 | income | 3,000.00 | 51 | 935 | 6 | (empty) | 2026-08-18 14:53:42 |
+| 4395 | income | 3,000.00 | 51 | 935 | 6 | عكس: (legacy B-2 duplicate income — soft-reve | 2026-08-18 14:53:42 |
 | 4397 | transfer | 3,000.00 | 51 | 6 | 935 | عكس دفعة (حذف حجز) — دفعة #51 � | 2026-08-18 14:53:42 |
 
 ## D. Net financial impact per account (orphan transactions only)
@@ -113,7 +112,8 @@ section D), but the Income row itself is still counted by income reports.
 ## G. Summary
 
 - **22** orphan Flight transactions in `transactions` table.
-- **11** of them are ACTIVE Income (no `عكس:` prefix) → these inflate income reports by **8,099.99 EGP**.
+- **0** of them are ACTIVE orphan Income (no `عكس:` prefix) → these inflate income reports by **0.00 EGP**.
+- **11** orphan Income rows have already been soft-reversed (carry `عكس:` prefix).
 - Each orphan Income has a companion orphan Transfer with `عكس:` prefix → **net cashbox impact = 0**.
 - flight_bookings and flight_payments tables are **EMPTY** (hard-deleted at some prior point).
 
