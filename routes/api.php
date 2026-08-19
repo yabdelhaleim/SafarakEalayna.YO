@@ -645,7 +645,11 @@ Route::prefix('v1')->middleware([
         Route::post('bookings', [VisaBookingController::class, 'store']);
         Route::get('bookings/{visa}', [VisaBookingController::class, 'show'])->middleware('admin');
         // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
-        Route::post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
+        // Phase 8.5 A3 — payments require `manage_online` permission. Cashiers
+        // (no explicit perms) still pass via `defaultEmployeeModules()` which
+        // includes `manage_online`. Admin/owner bypass via middleware short-circuit.
+        Route::middleware('permission:manage_online')
+            ->post('bookings/{visa}/payments', [VisaBookingController::class, 'addPayment']);
         Route::get('bookings/{visa}/modifications', [VisaBookingController::class, 'modifications'])->middleware('admin');
 
         // مديونيات عملاء التأشيرات
