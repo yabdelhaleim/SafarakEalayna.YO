@@ -222,6 +222,255 @@ class EmployeeVisaE2ETest extends EmployeeTestCase
     }
 
     /* ============================================================
+     *  PHASE 9.3b — DEEP EMPLOYEE SCENARIOS
+     *  Beyond the basic CRUD/permission matrix, this section exercises
+     *  cross-cutting concerns: state-machine interaction, validation,
+     *  audit-trail integrity, cross-employee visibility, and the
+     *  locked/inactive employee gates.
+     * ============================================================ */
+
+    public function test_restricted_employee_cannot_record_payment_without_manage_online(): void
+    {
+        // restrictedEmployee has ONLY manage_flights → no manage_online → 403
+        $this->actAs($this->admin);
+        $booking = $this->createVisaBooking();
+
+        $this->actAs($this->restrictedEmployee);
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 500.0,
+            'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_RESTR_PAY_'.uniqid(),
+        ]);
+        $response->assertStatus(403,
+            'Restricted employee (no manage_online) must NOT be able to record payment');
+    }
+
+    public function test_inactive_employee_rejected_by_middleware_on_every_endpoint(): void
+    {
+        // EnsureIsActive middleware returns 401 for inactive users
+        $this->actAs($this->inactiveEmployee);
+
+        // Read endpoints
+        $this->getJson('/api/v1/visa/bookings')->assertStatus(401);
+
+        // Write endpoints (admin would normally be able to do these)
+        $this->actAs($this->admin);
+        $booking = $this->createVisaBooking();
+
+        $this->actAs($this->inactiveEmployee);
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 100.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_INACT_PAY_'.uniqid(),
+        ])->assertStatus(401, 'Inactive employee must be rejected by EnsureIsActive middleware');
+    }
+
+    public function test_employee_with_manage_refunds_can_refund_visa_booking(): void
+    {
+        // Positive path — normalEmployee has manage_refunds by default
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1600.0,
+            'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_EMP_REFUND_PAY_'.uniqid(),
+        ])->assertCreated();
+
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/refund", [
+            'reason' => 'Phase 9.3b employee refund positive path',
+        ]);
+        $response->assertStatus(200,
+            'Employee WITH manage_refunds CAN refund a visa booking');
+        $this->assertEquals(\App\Enums\VisaStatus::Refunded,
+            $booking->fresh()->status);
+    }
+
+    public function test_employee_refund_records_acting_user_in_audit_log(): void
+    {
+        // Verify the audit log attributes the refund to the ACTING user (employee),
+        // not the admin who created the booking.
+        $this->actAs($this->admin);
+        $booking = $this->createVisaBooking();
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1600.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_ACT_PAY_'.uniqid(),
+        ])->assertCreated();
+
+        $this->actAs($this->otherEmployee);
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/refund", [
+            'reason' => 'Phase 9.3b audit attribution',
+        ])->assertOk();
+
+        $audit = \App\Models\RefundAuditLog::query()
+            ->where('booking_id', $booking->id)
+            ->where('module', 'visa')
+            ->latest('id')->first();
+        $this->assertNotNull($audit, 'refund_audit_logs row must exist');
+        $this->assertSame(
+            (int) $this->otherEmployee->id,
+            (int) $audit->user_id,
+            'Audit must attribute refund to ACTING user (otherEmployee), not admin creator'
+        );
+    }
+
+    public function test_employee_refund_after_partial_payment_refunds_only_paid(): void
+    {
+        // Employee records partial payment, then employee refunds.
+        // Full refund = sum of payments, not selling+fee.
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1000.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_PART_PAY_'.uniqid(),
+        ])->assertCreated();
+
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/refund", [
+            'reason' => 'Phase 9.3b partial-pay + employee refund',
+        ]);
+        $response->assertStatus(200);
+        $this->assertEquals(\App\Enums\VisaStatus::Refunded,
+            $booking->fresh()->status);
+
+        $audit = \App\Models\RefundAuditLog::query()
+            ->where('booking_id', $booking->id)->latest('id')->first();
+        $this->assertNotNull($audit);
+        $this->assertEquals(1000.0, (float) $audit->refund_amount,
+            'refund_amount must equal sum of payments (1000), not selling+fee (1600)');
+    }
+
+    public function test_employee_can_record_multiple_payments_on_same_booking(): void
+    {
+        // Multi-method payment path — employee-driven
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1000.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_MULTI1_'.uniqid(),
+        ])->assertCreated();
+
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 600.0, 'payment_method' => 'bank_transfer',
+            'account_id' => $this->bankEgp->id,
+            'idempotency_key' => 'P93B_MULTI2_'.uniqid(),
+        ])->assertCreated();
+
+        $this->assertDatabaseCount('visa_payments', 2);
+    }
+
+    public function test_employee_cannot_record_payment_with_currency_mismatched_account(): void
+    {
+        // Booking is EGP, payment account is USD — must reject
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();  // EGP booking
+
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 500.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultUsd->id,  // USD account!
+            'idempotency_key' => 'P93B_CUR_'.uniqid(),
+        ]);
+        $this->assertContains($response->status(), [422, 400, 403],
+            'Currency mismatch between booking and payment account must be rejected');
+    }
+
+    public function test_employee_cannot_record_payment_exceeding_booking_total(): void
+    {
+        // Booking selling+fee = 1600; payment of 2000 = over-pay → 422
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 2000.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_OVERPAY_'.uniqid(),
+        ]);
+        $response->assertStatus(422,
+            'Over-payment beyond booking total must be rejected');
+    }
+
+    public function test_employee_cannot_record_payment_after_admin_refunds(): void
+    {
+        // State machine: status=Refunded rejects new payments
+        $this->actAs($this->admin);
+        $booking = $this->createVisaBooking();
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1600.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_STM_PAY1_'.uniqid(),
+        ])->assertCreated();
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/refund", [
+            'reason' => 'admin pre-cancel',
+        ])->assertOk();
+
+        $this->actAs($this->normalEmployee);
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 100.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_STM_PAY2_'.uniqid(),
+        ]);
+        $response->assertStatus(422,
+            'Payment on Refunded booking must be rejected (terminal state)');
+    }
+
+    public function test_employee_cannot_view_soft_deleted_booking(): void
+    {
+        // Admin soft-deletes the booking; employee GET → 404
+        $this->actAs($this->admin);
+        $booking = $this->createVisaBooking();
+        $this->deleteJson("/api/v1/visa/bookings/{$booking->id}")->assertOk();
+
+        $this->actAs($this->normalEmployee);
+        $response = $this->getJson("/api/v1/visa/bookings/{$booking->id}");
+        $this->assertContains($response->status(), [404, 410],
+            'Soft-deleted booking must NOT be viewable by employee');
+    }
+
+    public function test_other_employee_can_record_payment_on_same_booking(): void
+    {
+        // Cross-employee write: employeeA creates booking, employeeB records payment.
+        // Tourism bookings have NO per-employee ownership — any employee with
+        // manage_online can pay any booking.
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+
+        $this->actAs($this->otherEmployee);
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 500.0,
+            'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_CROSS_PAY_'.uniqid(),
+        ]);
+        $response->assertStatus(201,
+            'Cross-employee payment MUST be allowed (no per-employee ownership)');
+    }
+
+    public function test_other_employee_can_refund_same_booking_with_manage_refunds(): void
+    {
+        // Cross-employee refund: employeeA creates booking, employeeB refunds.
+        $this->actAs($this->normalEmployee);
+        $booking = $this->createVisaBooking();
+        $this->postJson("/api/v1/visa/bookings/{$booking->id}/payments", [
+            'amount' => 1600.0, 'payment_method' => 'cash',
+            'account_id' => $this->vaultEgp->id,
+            'idempotency_key' => 'P93B_CROSS_REF_PAY_'.uniqid(),
+        ])->assertCreated();
+
+        $this->actAs($this->otherEmployee);
+        $response = $this->postJson("/api/v1/visa/bookings/{$booking->id}/refund", [
+            'reason' => 'Phase 9.3b cross-employee refund',
+        ]);
+        $response->assertStatus(200,
+            'Cross-employee refund MUST be allowed (no per-employee ownership)');
+        $this->assertEquals(\App\Enums\VisaStatus::Refunded, $booking->fresh()->status);
+    }
+
+    /* ============================================================
      *  HELPERS
      * ============================================================ */
 
