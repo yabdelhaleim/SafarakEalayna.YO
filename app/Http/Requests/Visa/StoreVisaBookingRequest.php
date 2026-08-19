@@ -82,8 +82,8 @@ class StoreVisaBookingRequest extends FormRequest
             'visa_details.expected_result_date' => ['nullable', 'date'],
             'visa_details.visa_number' => ['nullable', 'string', 'max:100'],
 
-            'purchase_price' => ['required', 'numeric', 'min:0'],
-            'selling_price' => ['required', 'numeric', 'min:0'],
+            'purchase_price' => ['required', 'numeric', 'gt:0'],
+            'selling_price' => ['required', 'numeric', 'min:0', 'gte:purchase_price'],
             'service_fee' => ['nullable', 'numeric', 'min:0'],
             'currency' => ['nullable', 'string', 'max:3'],
 
