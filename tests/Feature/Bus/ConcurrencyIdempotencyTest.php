@@ -11,6 +11,7 @@ use App\Models\ExchangeRate;
 use App\Services\Bus\BusBookingService;
 use App\Services\Finance\CurrencyService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use Illuminate\Support\Str;
 
 /**
  * Concurrency / idempotency contract tests for the Bus module.
@@ -38,11 +39,26 @@ class ConcurrencyIdempotencyTest extends BusTestCase
     // 1 — Payment idempotency: double-clicking "Pay" with the SAME amount
     // ─────────────────────────────────────────────────────────────────────
 
-    public function test_double_submit_payment_with_same_amount_returns_already_paid_error(): void
+    /**
+     * Decision (per Level 2 / Problem 4): this test was originally named
+     * `test_double_submit_payment_with_same_amount_returns_already_paid_error`
+     * and pinned the "already fully paid" rejection path for a double-click
+     * on the Pay button.
+     *
+     * After the idempotency fix the SAME original intent (prevent a
+     * double-charge when the cashier double-clicks) is now expressed as:
+     * the 2nd call carries the SAME `idempotency_key` as the 1st (because
+     * it's literally the same logical attempt — the cashier's first request
+     * succeeded server-side but the response was lost in the network), so
+     * the server returns the ORIGINAL payment as a replay — no exception,
+     * no second BusPayment row, no double-charge.
+     *
+     * This matches Option (a) of the Level 2 prompt. The HTTP equivalent
+     * of this replay path is covered separately by
+     * `BusPaymentIdempotencyTest::test_same_idempotency_key_twice_creates_only_one_payment`.
+     */
+    public function test_double_submit_payment_with_same_idempotency_key_replays_original(): void
     {
-        // Scenario: customer clicks "Pay 120" twice. The first call must
-        // succeed; the second call must be rejected with "already fully paid"
-        // rather than silently double-posting.
         $company = $this->makeBusCompany([], 0);
         $this->seedCashboxBalance(1000.0);
         $inventory = $this->makeInventory([
@@ -64,33 +80,41 @@ class ConcurrencyIdempotencyTest extends BusTestCase
             'quantity' => 1,
         ]);
 
-        // First pay — succeeds.
-        $service->payBooking($booking, [
+        // Same logical operation → SAME idempotency_key for both calls.
+        $idempotencyKey = (string) Str::uuid();
+
+        // First pay — succeeds, returns updated booking.
+        $firstBooking = $service->payBooking($booking, [
             'amount' => 120.0,
             'payment_method' => 'cash',
             'account_id' => $this->cashboxEgp->id,
+            'idempotency_key' => $idempotencyKey,
         ]);
-        $this->assertEquals(120.0, (float) $booking->fresh()->paid_amount);
+        $this->assertEquals(120.0, (float) $firstBooking->paid_amount);
 
-        // Second pay with the same amount — must throw "already fully paid".
-        $this->expectExceptionMessageMatches('/already fully paid|تم السداد بالكامل/');
+        $firstPaymentId = BusPayment::query()->where('booking_id', $booking->id)->value('id');
+        $this->assertNotNull($firstPaymentId, 'first call must persist exactly one BusPayment row');
 
-        try {
-            $service->payBooking($booking->fresh(), [
-                'amount' => 120.0,
-                'payment_method' => 'cash',
-                'account_id' => $this->cashboxEgp->id,
-            ]);
-        } catch (\Throwable $e) {
-            // Pin the post-condition: only ONE BusPayment row exists.
-            $this->assertEquals(1, BusPayment::query()->where('booking_id', $booking->id)->count());
-            $this->assertEquals(120.0, (float) $booking->fresh()->paid_amount, 'Paid amount must NOT change on rejection');
-            // The cashbox is the DESTINATION of an EGP payment (recordIncome
-            // debits the cashbox). After one 120 EGP payment, it gained 120
-            // (1000 → 1120). The rejected second pay must NOT increment again.
-            $this->assertEquals(1120.0, (float) $this->cashboxEgp->fresh()->balance, 'Cashbox must NOT receive the second payment');
-            throw $e;
-        }
+        // Second pay — same key, same payload. Server MUST replay the
+        // original (no exception, no new BusPayment row, paid_amount
+        // unchanged). This is the canonical "double-click / network
+        // retry" idempotent path.
+        $replayBooking = $service->payBooking($booking->fresh(), [
+            'amount' => 120.0,
+            'payment_method' => 'cash',
+            'account_id' => $this->cashboxEgp->id,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        // Pin the post-conditions of a successful idempotent replay:
+        $this->assertEquals(1, BusPayment::query()->where('booking_id', $booking->id)->count(),
+            'same idempotency_key must NOT create a second BusPayment row');
+        $this->assertEquals(120.0, (float) $replayBooking->paid_amount,
+            'paid_amount must reflect exactly ONE payment, not two');
+        // Cashbox gained exactly 120 (1000 → 1120) — no double credit.
+        $this->assertEquals(1120.0, (float) $this->cashboxEgp->fresh()->balance,
+            'cashbox must NOT receive the replayed second payment');
+        $this->assertEquals(\App\Enums\BusPaymentStatus::Paid, $replayBooking->payment_status);
     }
 
     // ─────────────────────────────────────────────────────────────────────

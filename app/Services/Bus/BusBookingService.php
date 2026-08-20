@@ -30,6 +30,17 @@ use Illuminate\Support\Facades\Log;
 
 class BusBookingService
 {
+    /**
+     * Level 2 / Problem 4 — safety-net window for the no-header path.
+     *
+     * When the client does not send an `Idempotency-Key` header, we reject
+     * a second payment with the same (booking_id, amount, account_id,
+     * payment_method) tuple that arrives within this many seconds of the
+     * previous one. Tunable per deployment via env if needed (kept constant
+     * for simplicity — value matches the audit-suggested 5s).
+     */
+    public const IDEMPOTENCY_WINDOW_SECONDS = 5;
+
     protected TransactionService $transactionService;
 
     protected LedgerClearingAccounts $ledgerClearingAccounts;
@@ -460,8 +471,66 @@ class BusBookingService
      */
     public function payBooking(BusBooking $booking, array $data): BusBooking
     {
+        // Level 2 / Problem 4 — Idempotency on payment.
+        //
+        // Two-layer protection against double-submit:
+        //
+        //  (a) EXPLICIT Idempotency-Key header (preferred path):
+        //      Client sends a UUID per logical payment. We look up an
+        //      existing BusPayment on this booking with that key; if found,
+        //      we return the SAME result — no second debit, no second
+        //      financial movement, no second notification. The retry becomes
+        //      a true no-op.
+        //
+        //  (b) SAFETY-NET time window (defensive path):
+        //      When no header is sent (legacy client, direct curl, hostile
+        //      request), we reject a second payment matching the same
+        //      (booking_id, amount, account_id, payment_method) tuple within
+        //      IDEMPOTENCY_WINDOW_SECONDS (default 5). After the window
+        //      expires, intentional repeat payments are allowed.
+        //
+        // Both checks live OUTSIDE the DB transaction so they short-circuit
+        // before any lock is taken and any financial movement starts.
+
+        $idempotencyKey = $data['idempotency_key'] ?? null;
+
+        if ($idempotencyKey !== null && $idempotencyKey !== '') {
+            // (a) Replay path — exact same key on same booking → return existing.
+            $existing = BusPayment::query()
+                ->where('booking_id', $booking->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+            if ($existing) {
+                Log::info('BusBookingService::payBooking idempotent replay', [
+                    'booking_id' => $booking->id,
+                    'idempotency_key' => $idempotencyKey,
+                    'replayed_payment_id' => $existing->id,
+                ]);
+                return $booking->fresh([
+                    'inventory.company', 'customer', 'employee.user',
+                    'account', 'payments', 'transaction', 'createdBy',
+                ]);
+            }
+        } else {
+            // (b) Safety-net path — same tuple within the window → reject.
+            $recentDuplicate = BusPayment::query()
+                ->where('booking_id', $booking->id)
+                ->where('amount', (float) ($data['amount'] ?? 0))
+                ->where('account_id', $data['account_id'] ?? null)
+                ->where('payment_method', $data['payment_method'] ?? null)
+                ->where('created_at', '>=', now()->subSeconds(self::IDEMPOTENCY_WINDOW_SECONDS))
+                ->exists();
+            if ($recentDuplicate) {
+                throw new \Exception(
+                    'تم رفض عملية دفع بنفس المبلغ والحساب خلال آخر '.
+                    self::IDEMPOTENCY_WINDOW_SECONDS.
+                    ' ثوانٍ. انتظر قليلاً قبل المحاولة مرة أخرى، أو أضف Idempotency-Key header.'
+                );
+            }
+        }
+
         try {
-            return DB::transaction(function () use ($booking, $data) {
+            return DB::transaction(function () use ($booking, $data, $idempotencyKey) {
                 $booking = BusBooking::query()
                     ->lockForUpdate()
                     ->findOrFail($booking->id);
@@ -529,6 +598,9 @@ class BusBookingService
                     'payment_method' => $paymentMethod,
                     'account_id' => $accountId,
                     'notes' => $data['notes'] ?? null,
+                    // Level 2 / Problem 4: persist the Idempotency-Key so
+                    // future retries with the same key replay the original.
+                    'idempotency_key' => $idempotencyKey,
                     'created_by' => Auth::id(),
                 ]);
 

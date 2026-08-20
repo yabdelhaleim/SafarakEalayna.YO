@@ -160,7 +160,14 @@ class BusBookingController extends Controller
             // but never invoked (audit Step 2 finding).
             $this->authorize('pay', $bookingModel);
 
-            $booking = $this->bookingService->payBooking($bookingModel, $request->validated());
+            // Level 2 / Problem 4: forward the Idempotency-Key header so
+            // the service can detect double-submits (same key → replay the
+            // original result instead of charging twice). Header is NOT in
+            // $request->validated() because it's a header, not a body field.
+            $payload = $request->validated();
+            $payload['idempotency_key'] = $request->header('Idempotency-Key');
+
+            $booking = $this->bookingService->payBooking($bookingModel, $payload);
 
             return ApiResponse::success(
                 'Payment recorded successfully.',
