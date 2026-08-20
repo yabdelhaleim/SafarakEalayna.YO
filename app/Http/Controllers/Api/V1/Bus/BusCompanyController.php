@@ -12,6 +12,7 @@ use App\Http\Resources\Bus\BusCompanyResource;
 use App\Http\Resources\Bus\PublicBusCompanyResource;
 use App\Models\Bus\BusCompany;
 use App\Services\Bus\BusCompanyService;
+use App\Support\LikeWildcardEscaper;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -220,7 +221,9 @@ public function statement(Request $request, BusCompany $company): JsonResponse
 
     // Free-text search in notes / id (limit length to avoid pathological queries)
     if ($search !== null && $search !== '') {
-        $search = mb_substr((string) $search, 0, 100);
+        // Level 2 / S-04 fix: escape LIKE wildcards so `notes`/`id` searches
+        // with `%` / `_` / `\` do not degenerate into full-table wildcards.
+        $search = mb_substr(LikeWildcardEscaper::escape((string) $search), 0, 100);
         $query->where(function ($q) use ($search) {
             $q->where('notes', 'like', '%' . $search . '%')
               ->orWhere('id', 'like', '%' . $search . '%');

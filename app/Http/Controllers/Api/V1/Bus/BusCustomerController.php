@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Bus;
 use App\Http\Controllers\Controller;
 use App\Helpers\ApiResponse;
 use App\Models\Customer;
+use App\Support\LikeWildcardEscaper;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -26,9 +27,12 @@ class BusCustomerController extends Controller
             });
 
         if ($search) {
-            $baseQuery->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+            // Level 2 / S-04 fix: escape LIKE wildcards (`%`, `_`, `\`) so a
+            // search like `%` does not match every customer.
+            $escaped = LikeWildcardEscaper::escape((string) $search);
+            $baseQuery->where(function ($q) use ($escaped) {
+                $q->where('full_name', 'like', "%{$escaped}%")
+                  ->orWhere('phone', 'like', "%{$escaped}%");
             });
         }
 

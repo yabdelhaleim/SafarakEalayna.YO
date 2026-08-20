@@ -20,6 +20,7 @@ use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use App\Support\LikeWildcardEscaper;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -73,19 +74,22 @@ class BusBookingService
         }
 
         if (isset($filters['search']) && ($term = trim((string) $filters['search'])) !== '') {
-            $query->where(function ($q) use ($term) {
+            // Level 2 / S-04 fix: escape LIKE wildcards (`%`, `_`, `\`) from the
+            // user-supplied term so a search like `%` doesn't match every row.
+            $escaped = LikeWildcardEscaper::escape($term);
+            $query->where(function ($q) use ($term, $escaped) {
                 if (ctype_digit($term)) {
                     $q->where('id', (int) $term)
-                        ->orWhereHas('customer', function ($c) use ($term) {
-                            $c->where('full_name', 'like', '%'.$term.'%')
-                                ->orWhere('phone', 'like', '%'.$term.'%');
+                        ->orWhereHas('customer', function ($c) use ($escaped) {
+                            $c->where('full_name', 'like', '%'.$escaped.'%')
+                                ->orWhere('phone', 'like', '%'.$escaped.'%');
                         });
 
                     return;
                 }
-                $q->whereHas('customer', function ($c) use ($term) {
-                    $c->where('full_name', 'like', '%'.$term.'%')
-                        ->orWhere('phone', 'like', '%'.$term.'%');
+                $q->whereHas('customer', function ($c) use ($escaped) {
+                    $c->where('full_name', 'like', '%'.$escaped.'%')
+                        ->orWhere('phone', 'like', '%'.$escaped.'%');
                 });
             });
         }
@@ -104,21 +108,23 @@ class BusBookingService
         // unfiltered results. We now split the inventory route on the common
         // ' - ' / ' ← ' / ' → ' separators and apply a LIKE match on each side.
         if (isset($filters['route_from']) && ($rf = trim((string) $filters['route_from'])) !== '') {
-            $query->whereHas('inventory', function ($q) use ($rf) {
-                // Match either a literal prefix or any route column starting with this token.
-                $q->where('route', 'like', $rf.'%')
-                    ->orWhere('route', 'like', $rf.' -%')
-                    ->orWhere('route', 'like', $rf.' ←%')
-                    ->orWhere('route', 'like', $rf.' →%');
+            // Level 2 / S-04 fix: escape `%` / `_` / `\` in the prefix token so
+            // `route_from=%` does not match every inventory route.
+            $rfEsc = LikeWildcardEscaper::escape($rf);
+            $query->whereHas('inventory', function ($q) use ($rfEsc) {
+                $q->where('route', 'like', $rfEsc.'%')
+                    ->orWhere('route', 'like', $rfEsc.' -%')
+                    ->orWhere('route', 'like', $rfEsc.' ←%')
+                    ->orWhere('route', 'like', $rfEsc.' →%');
             });
         }
         if (isset($filters['route_to']) && ($rt = trim((string) $filters['route_to'])) !== '') {
-            $query->whereHas('inventory', function ($q) use ($rt) {
-                // Match either a literal suffix or any route column ending with this token.
-                $q->where('route', 'like', '%- '.$rt)
-                    ->orWhere('route', 'like', '%← '.$rt)
-                    ->orWhere('route', 'like', '%→ '.$rt)
-                    ->orWhere('route', 'like', '%'.$rt);
+            $rtEsc = LikeWildcardEscaper::escape($rt);
+            $query->whereHas('inventory', function ($q) use ($rtEsc) {
+                $q->where('route', 'like', '%- '.$rtEsc)
+                    ->orWhere('route', 'like', '%← '.$rtEsc)
+                    ->orWhere('route', 'like', '%→ '.$rtEsc)
+                    ->orWhere('route', 'like', '%'.$rtEsc);
             });
         }
 
