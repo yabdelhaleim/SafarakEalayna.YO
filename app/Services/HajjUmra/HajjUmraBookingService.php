@@ -369,6 +369,19 @@ class HajjUmraBookingService
             if ($status === HajjUmraStatus::Cancelled->value) {
                 throw new \RuntimeException('الحجز ملغى مسبقاً.');
             }
+            // Phase 10.5 FIX — close the asymmetric terminal-state gap. The
+            // previous implementation only guarded against double-cancel; a
+            // refunded booking could be cancelled, but a cancelled booking
+            // could not be refunded. The state machine is now symmetric:
+            //   Cancelled ↔ Refunded are both terminal.
+            // The refund() path in HajjUmraRefundService already rejects
+            // status=Cancelled; this adds the mirror rejection.
+            if ($status === HajjUmraStatus::Refunded->value) {
+                throw new \RuntimeException(
+                    'لا يمكن إلغاء حجز تم استرداده بالكامل (status=refunded). '
+                    .'الحالة نهائية.'
+                );
+            }
 
             $booking->load(['payments.transaction', 'expenseTransaction', 'incomeTransaction']);
 
