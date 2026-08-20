@@ -64,6 +64,14 @@ class HajjUmraProgramControllerTest extends TestCase
 
     protected function makeProgram(array $overrides = []): Program
     {
+        // FIX (defect HJ-005 — TEST DEFECT):
+        //   `programs` table columns are `default_selling_price` and
+        //   `default_purchase_price` (NOT `selling_price` / `purchase_price`).
+        //   The previous field names were silently dropped by Program's
+        //   `$fillable` filter, so any price-related assertion in tests using
+        //   this helper saw 0.0 / null instead of the intended value.
+        //   See migrations/2026_05_06_080000_setup_hajj_umra_and_visa_accounting.php
+        //   for the original column introduction.
         return Program::query()->create(array_merge([
             'program_name' => 'برنامج حج تجريبي',
             'program_type' => 'HAJJ',
@@ -76,9 +84,8 @@ class HajjUmraProgramControllerTest extends TestCase
             'airline' => 'Test Air',
             'executing_company' => 'شركة تنفيذ',
             'departure_point' => 'CAI',
-            'selling_price' => 50000,
-            'purchase_price' => 42000,
-            'currency' => 'EGP',
+            'default_selling_price' => 50000,
+            'default_purchase_price' => 42000,
             'is_active' => true,
             'created_by' => $this->admin->id,
         ], $overrides));
@@ -106,9 +113,17 @@ class HajjUmraProgramControllerTest extends TestCase
      */
     public function test_store_program_creates_new_record(): void
     {
+        // FIX (defect HJ-005 — TEST DEFECT):
+        //   - `program_type` is accepted as `hajj` or `umra` (lowercase).
+        //     StoreProgramRequest::prepareForValidation() normalizes 'umrah'
+        //     to 'umra' but does NOT lowercase arbitrary input. 'UMRA' was
+        //     rejected as invalid. Sending 'umra' (the accepted canonical
+        //     value) makes the assertion hold.
+        //   - price columns on programs are `default_selling_price` and
+        //     `default_purchase_price` (NOT `selling_price` / `purchase_price`).
         $payload = [
             'program_name' => 'برنامج جديد',
-            'program_type' => 'UMRA',
+            'program_type' => 'umra',
             'total_nights' => 7,
             'accommodation_type' => 'QUAD',
             'mecca_hotel_name' => 'فندق جديد',
@@ -120,9 +135,8 @@ class HajjUmraProgramControllerTest extends TestCase
             'airline' => 'Saudi Airlines',
             'executing_company' => 'الشركة المنفذة',
             'departure_point' => 'CAI',
-            'selling_price' => 30000,
-            'purchase_price' => 25000,
-            'currency' => 'EGP',
+            'default_selling_price' => 30000,
+            'default_purchase_price' => 25000,
             'is_active' => true,
         ];
 
@@ -156,6 +170,10 @@ class HajjUmraProgramControllerTest extends TestCase
      */
 public function test_update_program_modifies_record(): void
     {
+        // FIX (defect HJ-005 — TEST DEFECT):
+        //   Programs use `default_selling_price`, not `selling_price`. The
+        //   earlier wrong name was silently dropped by $fillable, so the
+        //   update never reached the DB and the assertion saw 0.0.
         $program = $this->makeProgram();
 
         // Phase 10.1 — test was using the non-existent column 'selling_price'.
@@ -192,6 +210,10 @@ public function test_update_program_modifies_record(): void
         ]);
 
         // Create a booking attached to this program
+        // NOTE: HajjUmraBooking DOES have `selling_price` and `purchase_price`
+        // columns (see migration 2026_04_27_124551) — only the `programs` table
+        // uses `default_selling_price` / `default_purchase_price`. This test
+        // correctly uses the booking-level column names.
         HajjUmraBooking::query()->create([
             'customer_id' => $customer->id,
             'program_id' => $program->id,
