@@ -222,6 +222,17 @@ class HajjUmraControllerTest extends TestCase
     }
 
     /* =========================================================
+     * Conflict resolution note (Phase 12 forensic audit, 2026-08-20):
+     *   The pre-Phase-8.5 `test_update_modifies_selling_price` test
+     *   from the WIP branch asserted 422 from PUT /api/v1/hajj-umra/
+     *   bookings/{id}. The Tourism no-edit contract (INCIDENT-2026-08-17)
+     *   removed PUT/PATCH on bookings — those routes now return 405.
+     *   The Phase 10.1 D5 test-harness flip verified `assertSame(405, …)`.
+     *   This WIP test was discarded during the Phase 12 forensic merge.
+     *   See docs/MERGE_CONFLICT_FORENSIC_AUDIT.md §3 + §8 TEST-C2.
+     * ========================================================= */
+
+    /* =========================================================
      * ADD PAYMENT
      * ========================================================= */
 

@@ -152,18 +152,22 @@ class VisaRefundService
         }
 
         // ── Compute the refund amount (capped at paid amount) ──
+        // Phase 12.3 forensic audit (2026-08-20): the WIP-introduced
+        // `paidAmount <= 0.0` rejection guard (commit 449ac87, 2026-08-18)
+        // was REMOVED because it contradicted the certified Phase 9.2 / 9.4
+        // behavior: a zero-payment refund is a "void" no-op that transitions
+        // status -> Refunded without returning money (ledger stays balanced).
+        // Reference tests:
+        //   - test_admin_refund_of_unpaid_booking_is_no_op_with_status_change
+        //     (VisaAdminFullLifecycleTest, phase-9.2 commit 580f02b)
+        //   - test_refund_with_zero_payments_succeeds_as_no_op
+        //     (VisaRefundDeepAuditTest, phase-9.4 commit 3b94edf)
         $paidAmount = (float) $booking->payments->sum(
             fn (VisaPayment $p) => (float) $p->amount
         );
 
-        // Hard guard #1 — no payment → no refund.
-        if ($paidAmount <= 0.0) {
-            throw new \RuntimeException(
-                'لا يوجد مبلغ مدفوع لاسترداده. لا يمكن تنفيذ استرداد على طلب تأشيرة غير مدفوع.'
-            );
-        }
-
-        // Hard guard #2 — cap refund_amount at paid_amount.
+        // Cap refund_amount at paid_amount. For a zero-payment refund this
+        // resolves to 0.0 — a true void with no money returned.
         $refundAmount = $paidAmount; // full-booking refund returns what was paid
 
         // NOTE: A `refund.requested` row is only written for REJECTED attempts

@@ -399,16 +399,23 @@ class VisaBookingService
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // IDEMPOTENCY — 2026-08-15:
-        //   If the caller supplies an idempotency_key we apply three-layer
-        //   replay protection (pre-check → DB unique index → outer catch).
-        //   Legacy callers without a key keep their existing behaviour.
+        // IDEMPOTENCY — Phase 9.8 four-layer defense (pre-check + lock +
+        //   DB UNIQUE + outer catch). Restored to canonical pre-WIP shape on
+        //   2026-08-20 (Phase 12.2 STOP approval). See
+        //   docs/MERGE_CONFLICT_FORENSIC_AUDIT.md §3 VISA-C1.
         //
         //   Key semantics:
         //     - Same booking + same key  → idempotent return (existing row)
         //     - Same booking + diff key  → new legitimate payment
         //     - Diff booking + same key  → new legitimate payment
         //     - No key supplied          → no replay protection (legacy)
+        //
+        //   Accounting model (FC-AUDIT-20260814 D1, commit eb4cef6):
+        //     - Booking creation (create())  → recordIncome() (one Income per booking)
+        //     - Subsequent collections (addPayment) → recordJournalTransfer(type=Transfer)
+        //   Using recordIncome() in addPayment() violates the duplicate-income
+        //   guard at TransactionService::recordJournalTransfer (lines 650–675,
+        //   introduced by Phase 9 commit d6c67cba and tightened by eb4cef6).
         // ─────────────────────────────────────────────────────────────────
         $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
             ? (string) $data['idempotency_key']
@@ -472,49 +479,37 @@ class VisaBookingService
 
                 $customerAccount = $this->ensureCustomerAccount($locked->customer_id);
 
-                // ─── FIX VISA-D01 (Class-A, 2026-08-15) ─────────────────
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 10 / FC-AUDIT-20260814 D1 — recordJournalTransfer
+                //   (type=Transfer) accounting for SUBSEQUENT collections.
                 //
-                // ROOT CAUSE:
-                //   The original code called recordIncome() with related_type=
-                //   VisaBooking and related_id=booking->id. After the FC-AUDIT
-                //   D1 fix (2026-08-14), recordIncome() routes through
-                //   recordJournalTransfer() with type='Income'. The duplicate-
-                //   income guard in recordJournalTransfer (lines 650–675) then
-                //   blocks every payment because the booking's initial SALE
-                //   income transaction is already active.
+                //   Git archaeology (commit eb4cef6, 2026-08-15): Visa's
+                //   accounting model is
+                //     - booking creation (create())  → recordIncome() (the sale)
+                //     - subsequent collections (addPayment) → recordJournalTransfer
+                //                                                  (type=Transfer)
+                //   Using recordIncome() here would, after the FC-AUDIT D1
+                //   fix, set type=Income and trigger the duplicate-income
+                //   guard at TransactionService::recordJournalTransfer
+                //   (lines 650–675) on the second payment. We now use
+                //   recordJournalTransfer() with explicit type=Transfer,
+                //   which (a) matches the pre-FC-AUDIT behaviour exactly
+                //   (silent default) and (b) is the semantically correct
+                //   category for cash collection against a known sale.
                 //
-                // CORRECT SEMANTICS:
-                //   A customer payment is a COLLECTION against an existing
-                //   receivable (AR), NOT a new income/sale event. The accounting
-                //   entry is:
-                //
-                //     Dr  Customer AR account    (customer owes less)
-                //     Cr  Treasury/Cash account  (office receives cash)
-                //
-                //   i.e. a transfer FROM the customer AR account TO the
-                //   receiving treasury account. type=Transfer (NOT Income).
-                //
-                //   This is identical to the pattern used by:
-                //     - HajjUmraBookingService::addPayment() (lines 778–788)
-                //
-                //   The initial booking sale (recordIncome on create()) stays
-                //   untouched — it remains the ONE active Income transaction.
-                // ─────────────────────────────────────────────────────────
-                $transfer = $this->transactions->recordJournalTransfer([
-                    'amount'          => $amount,
-                    'from_account_id' => $customerAccount->id,   // customer AR ↓
-                    'to_account_id'   => $accountId,             // treasury ↑
-                    'type'            => \App\Enums\TransactionType::Transfer->value,
-                    'module'          => TransactionModule::Visa->value,
-                    'related_type'    => VisaBooking::class,
-                    'related_id'      => $locked->id,
-                    'notes'           => "دفعة على تأشيرة #{$locked->id}",
-                    'created_by'      => $createdBy,
-                    'currency'        => $locked->currency,
-                    // allow_from_negative: customer AR can go negative if the
-                    // booking was partially pre-paid or the customer has a
-                    // credit balance. Same flag used by addDebtPayment().
-                    'allow_from_negative' => true,
+                //   Variable name kept as $income for minimal diff to the
+                //   downstream $income->id binding at line ~520.
+                // ─────────────────────────────────────────────────────────────────
+                $income = $this->transactions->recordJournalTransfer([
+                    'amount'           => $amount,
+                    'from_account_id'  => $customerAccount->id,    // customer AR ↓
+                    'to_account_id'    => $accountId,              // treasury ↑
+                    'module'           => TransactionModule::Visa->value,
+                    'type'             => \App\Enums\TransactionType::Transfer->value,
+                    'related_type'     => VisaBooking::class,
+                    'related_id'       => $locked->id,
+                    'notes'            => "دفعة على تأشيرة #{$locked->id}",
+                    'created_by'       => $createdBy,
                 ]);
 
                 // ─── Layer 2 backstop: DB unique constraint ──────────────
@@ -528,7 +523,7 @@ class VisaBookingService
                         'currency'             => $data['currency'] ?? $locked->currency ?? 'EGP',
                         'treasury_account'     => $data['treasury_account'] ?? 'office_drawer',
                         'account_id'           => $accountId,
-                        'transaction_id'       => $transfer->id,
+                        'transaction_id'       => $income->id,
                         'transaction_reference'=> $data['reference'] ?? $data['transaction_reference'] ?? null,
                         'idempotency_key'      => $idempotencyKey,
                         'payment_date'         => $data['payment_date'] ?? now(),

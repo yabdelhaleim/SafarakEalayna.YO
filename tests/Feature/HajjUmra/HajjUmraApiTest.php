@@ -304,6 +304,16 @@ class HajjUmraApiTest extends TestCase
             ->assertJsonPath('data.booking_status', 'closed');
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Conflict resolution note (Phase 12 forensic audit, 2026-08-20):
+    //   The pre-Phase-8.5 `test_update_selling_price_LOCKED_returns_422`
+    //   test from the WIP branch asserted 422 from the LOCKED-FIELDS
+    //   guard. INCIDENT-2026-08-17 (Tourism no-edit contract) removed
+    //   PUT/PATCH on bookings: those routes now return 405. The 422
+    //   expected status would never be reached, so this WIP test was
+    //   discarded during the Phase 12 forensic merge. See
+    //   docs/MERGE_CONFLICT_FORENSIC_AUDIT.md §3 + §8 TEST-C1.
+    // ─────────────────────────────────────────────────────────────────
 
     protected function createProgram(): Program
     {

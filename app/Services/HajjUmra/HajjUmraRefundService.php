@@ -102,6 +102,13 @@ class HajjUmraRefundService
         }
 
         // ── Compute the (full) refund amount + paid_amount_before snapshot ──
+        // Phase 12.3 forensic audit (2026-08-20): the WIP-introduced
+        // `paidAmount <= 0.0` rejection guard (commit 449ac87, 2026-08-18)
+        // was REMOVED because it contradicted the certified Phase 10.4 / 8.6
+        // behavior: a zero-payment refund is a "void" no-op that transitions
+        // status -> Refunded without returning money (ledger stays balanced).
+        // Reference: test_refund_with_no_payments_succeeds_with_status_only
+        // (HajjUmraRefundDeepAuditTest, phase-10.4 commit cc8d198).
         $paidAmount = (float) $booking->payments->sum(
             fn (HajjUmraPayment $p) => (float) $p->amount
         );
@@ -109,16 +116,9 @@ class HajjUmraRefundService
             + (float) ($booking->companion_selling_price ?? 0)
             + (float) ($booking->accommodation_extra_charge ?? 0);
 
-        // Hard guard #1 — no payment → no refund (cannot return money that
-        // was never received).
-        if ($paidAmount <= 0.0) {
-            throw new \RuntimeException(
-                'لا يوجد مبلغ مدفوع لاسترداده. لا يمكن تنفيذ استرداد على حجز غير مدفوع.'
-            );
-        }
-
-        // Hard guard #2 — full-booking refund can NEVER exceed paid amount.
-        // Cap at paid_amount (you cannot refund money the customer did not pay).
+        // Cap refund_amount at paid_amount (you cannot refund money the
+        // customer did not pay). For a zero-payment refund this resolves
+        // to 0.0 — a true void with no money returned.
         $refundAmount = min($intendedRefundAmount, $paidAmount);
 
         // NOTE: A `refund.requested` row is only written for REJECTED attempts

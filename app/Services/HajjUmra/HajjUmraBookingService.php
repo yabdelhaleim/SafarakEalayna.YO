@@ -356,6 +356,22 @@ class HajjUmraBookingService
      */
     public function update(HajjUmraBooking $booking, array $data): HajjUmraBooking
     {
+        // ─────────────────────────────────────────────────────────────────
+        // PHASE 10.5 + INCIDENT-2026-08-17 (Tourism no-edit contract):
+        //   `update()` is intentionally unreachable. Cancellation is the
+        //   supported correction path for any booking. PHASE 10.5 verified
+        //   the contract end-to-end via 12 cancel-deep tests; the route
+        //   layer also returns 405 for PUT/PATCH on Hajj/Umra bookings.
+        //
+        //   Pre-Phase-8.5 code path included BUG-FIX 2026-07-27 (terminal-
+        //   state guards) and the LOCK-DOWN Phase 4.6 price-freeze checks.
+        //   Both are now unreachable from any caller and intentionally not
+        //   preserved here — the contract throws before they would run. If
+        //   a future ticket reintroduces partial corrections (e.g., date
+        //   change), both guards must be lifted into a dedicated
+        //   `HajjUmraBookingUpdateGuard::assertCanUpdate()` helper rather
+        //   than re-inlined into `update()`.
+        // ─────────────────────────────────────────────────────────────────
         throw new \LogicException(
             'HajjUmraBookingService::update is disabled by Tourism no-edit contract (2026-08-17). '
             .'Cancellation is the supported correction path.'
@@ -647,14 +663,21 @@ class HajjUmraBookingService
                 $accountId = (int) ($data['account_id'] ?? $booking->account_id);
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
 
-                // Phase 10.2 FIX — reject cross-currency payment.
-                // Same shape as the Phase 9.12 Visa fix: recordJournalTransfer
-                // falls back to using the source amount as the destination
-                // amount when currencies don't match and no conversion rate is
-                // supplied (TransactionService lines 728-741), silently
-                // corrupting the destination ledger. Hajj/Umra has the same
-                // defect; the fix is the same — reject at the service boundary
-                // with a clear Arabic error.
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 10.2 FIX (Class-B) — reject cross-currency payment.
+                //
+                //   Independent discovery for Hajj/Umra of the Phase 9.12 Visa fix.
+                //   Without this guard, an EGP booking + USD treasury would
+                //   silently corrupt the destination ledger: recordJournalTransfer
+                //   (TransactionService lines 728-741) falls back to treating the
+                //   source amount as the destination amount when no FX rate is
+                //   supplied. The conversion has to happen via the canonical
+                //   CurrencyService path, NOT via silent per-account coercion.
+                //
+                //   Same shape as the Phase 9.12 Visa fix but applied at the
+                //   Hajj/Umra service boundary, since FC-AUDIT-20260814 and the
+                //   Visa module operate independently.
+                // ─────────────────────────────────────────────────────────────────
                 $account = Account::query()->findOrFail($accountId);
                 if (strtoupper((string) $account->currency) !== strtoupper((string) ($locked->currency ?? 'EGP'))) {
                     throw new \RuntimeException(
