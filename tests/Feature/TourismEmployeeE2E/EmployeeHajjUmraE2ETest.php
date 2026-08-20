@@ -121,8 +121,12 @@ class EmployeeHajjUmraE2ETest extends EmployeeTestCase
         $response->assertStatus(201);
     }
 
-    public function test_employee_can_update_booking(): void
+    public function test_employee_cannot_update_booking_via_put(): void
     {
+        // Phase 10.1 / Phase 8.5 No-Edit Contract — Tourism PUT/PATCH was removed
+        // from hajj-umra (and visa) bookings. The OLD test asserted 200; the
+        // NEW contract returns 405 Method Not Allowed. Cancellation is the
+        // supported correction path.
         $program = $this->createHajjProgram();
         $this->actAs($this->admin);
         $booking = $this->createHajjBooking($program);
@@ -131,7 +135,7 @@ class EmployeeHajjUmraE2ETest extends EmployeeTestCase
         $response = $this->putJson("/api/v1/hajj-umra/bookings/{$booking->id}", [
             'notes' => 'Updated by normal employee',
         ]);
-        $response->assertStatus(200);
+        $response->assertStatus(405);
     }
 
     /* ============================================================

@@ -154,20 +154,26 @@ class HajjUmraProgramControllerTest extends TestCase
     /**
      * PUT /v1/hajj-umra/programs/{id} — update program
      */
-    public function test_update_program_modifies_record(): void
+public function test_update_program_modifies_record(): void
     {
         $program = $this->makeProgram();
 
+        // Phase 10.1 — test was using the non-existent column 'selling_price'.
+        // The actual Program schema column is 'default_selling_price' (see
+        // database/migrations/2026_04_27_124250_create_programs_table.php).
+        // The OLD assertion `$program->selling_price` was reading an
+        // undefined property that always returned 0.0, hence the failure
+        // "0.0 != 55000.0". Fix the test to use the real field.
         $response = $this->putJson("/api/v1/hajj-umra/programs/{$program->id}", [
             'program_name' => 'برنامج محدّث',
-            'selling_price' => 55000,
+            'default_selling_price' => 55000,
         ]);
 
         $response->assertOk();
 
         $program->refresh();
         $this->assertSame('برنامج محدّث', $program->program_name);
-        $this->assertEqualsWithDelta(55000.0, (float) $program->selling_price, 0.01);
+        $this->assertEqualsWithDelta(55000.0, (float) $program->default_selling_price, 0.01);
     }
 
     /**
