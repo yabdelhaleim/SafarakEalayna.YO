@@ -337,7 +337,15 @@ Route::prefix('v1')->middleware([
             ->parameters(['bookings' => 'busBooking'])
             ->names('bus_bookings');
 
-        Route::post('bookings/{busBooking}/pay', [BusBookingController::class, 'pay']);
+        // Level 2 / Problem 3: financial-write endpoints get the dedicated
+        // 'bus-write' rate limit (60/min, per user-id). Defined in
+        // AppServiceProvider::boot() and matching the default `api` limit
+        // for consistency. Index/show/stats are intentionally NOT throttled
+        // here (cashiers may browse a lot during a shift).
+        Route::post('bookings', [BusBookingController::class, 'store'])
+            ->middleware('throttle:bus-write');
+        Route::post('bookings/{busBooking}/pay', [BusBookingController::class, 'pay'])
+            ->middleware('throttle:bus-write');
 
         // Bus Refund System — process/store moves money — admin only
         Route::prefix('refunds')->group(function () {

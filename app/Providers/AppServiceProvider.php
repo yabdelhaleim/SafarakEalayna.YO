@@ -81,6 +81,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($request->ip());
         });
 
+        // Level 2 / Problem 3: dedicated limiter for the two financial-write
+        // endpoints of the bus module:
+        //   POST /api/v1/bus/bookings            (store)
+        //   POST /api/v1/bus/bookings/{id}/pay   (pay)
+        // Same limit (60/min) as the default `api` limiter for consistency.
+        // Keyed by user-id when authenticated (so two cashiers don't share a
+        // budget) and falls back to IP for unauthenticated requests.
+        RateLimiter::for('bus-write', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+        });
+
         Customer::observe(CustomerLedgerObserver::class);
         VisaAgent::observe(VisaAgentObserver::class);
         UmrahSupplier::observe(UmrahSupplierObserver::class);

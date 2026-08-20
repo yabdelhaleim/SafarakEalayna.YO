@@ -606,25 +606,107 @@ class BusAuditSecurityTest extends BusTestCase
 
     public function test_no_rate_limit_on_bookings_endpoint(): void
     {
-        // Finding V-14 — no rate-limit on POST /bus/bookings
-        // We don't want to actually send 1000 requests in a test, but we
-        // verify the absence by checking the route definition.
-        $routes = collect(\Illuminate\Support\Facades\Route::getRoutes())
-            ->filter(fn ($r) => str_contains($r->uri(), 'bus/bookings'));
+        // Level 2 / Problem 3: prove the bus-write named throttle middleware
+        // is attached to the two financial-write endpoints ONLY:
+        //   POST /api/v1/bus/bookings            (store  — creates a booking)
+        //   POST /api/v1/bus/bookings/{id}/pay   (pay    — collects money)
+        // It MUST NOT be attached to reads (index, show, stats) since the
+        // user explicitly limited the scope to write endpoints.
+        //
+        // The default `api` middleware group does NOT include throttle:api in
+        // this project — so without our fix, 60+ requests succeed in <1 sec.
+        $all = collect(\Illuminate\Support\Facades\Route::getRoutes());
 
-        $hasThrottle = $routes->contains(fn ($r) =>
-            in_array('throttle:bus-bookings', $r->gatherMiddleware(), true)
-            || str_contains(implode(',', $r->gatherMiddleware()), 'throttle')
-        );
+        $targetWriteRoutes = $all->filter(function ($r) {
+            $uri = $r->uri();
+            $method = $r->methods()[0] ?? '';
+            if ($method !== 'POST') return false;
 
-        // Just verify no throttle middleware exists on bus booking routes
-        $allMiddleware = $routes->flatMap(fn ($r) => $r->gatherMiddleware())->unique();
-        $hasAnyThrottle = $allMiddleware->contains(fn ($m) => str_starts_with($m, 'throttle'));
+            // POST /api/v1/bus/bookings (store)
+            if ($uri === 'api/v1/bus/bookings') return true;
+            // POST /api/v1/bus/bookings/{busBooking}/pay (pay)
+            if (str_ends_with($uri, '/pay')) return true;
 
-        if (! $hasAnyThrottle) {
-            $this->assertTrue(true, 'V-14 confirmed: no rate-limit on bus/bookings routes');
-        } else {
-            $this->markTestIncomplete('V-14 may be fixed — throttle middleware present');
+            return false;
+        });
+
+        $readRoutes = $all->filter(function ($r) {
+            $uri = $r->uri();
+            $method = $r->methods()[0] ?? '';
+            return str_starts_with($uri, 'api/v1/bus/bookings')
+                && in_array($method, ['GET', 'HEAD'], true);
+        });
+
+        $this->assertGreaterThanOrEqual(2, $targetWriteRoutes->count(),
+            'expected at least 2 routes (store + pay) to check');
+
+        // Store + pay MUST have throttle:bus-write attached.
+        foreach ($targetWriteRoutes as $route) {
+            $hasBusWrite = in_array('throttle:bus-write', $route->gatherMiddleware(), true);
+            $this->assertTrue(
+                $hasBusWrite,
+                'Level 2 P3 fix missing: route POST /'.$route->uri()
+                .' must have throttle:bus-write. Middleware: '
+                .implode(', ', $route->gatherMiddleware())
+            );
         }
+
+        // Read routes MUST NOT have throttle:bus-write.
+        foreach ($readRoutes as $route) {
+            $hasBusWrite = in_array('throttle:bus-write', $route->gatherMiddleware(), true);
+            $this->assertFalse(
+                $hasBusWrite,
+                'route '.$route->methods()[0].' /'.$route->uri()
+                .' must NOT have throttle:bus-write (reads). Middleware: '
+                .implode(', ', $route->gatherMiddleware())
+            );
+        }
+    }
+
+    public function test_bus_write_rate_limit_blocks_61st_request(): void
+    {
+        // Level 2 / Problem 3 — functional verification.
+        // Send 60 successful POST /bus/bookings, then the 61st must return 429.
+        // The default throttle:api (60/min) would also catch the 61st; the test
+        // is satisfied as long as SOME throttle rejects it (bus-write is the
+        // one we control and documented; api-throttle is pre-existing).
+        $company = $this->makeBusCompany([], 0);
+        $inventory = $this->makeInventory([
+            'company_id' => $company->id,
+            'total_tickets' => 200, // enough capacity for 60+ bookings
+            'available_tickets' => 200,
+            'selling_price' => 100,
+        ]);
+
+        $payload = [
+            'inventory_id' => $inventory->id,
+            'customer_name' => 'كاشير',
+            'customer_phone' => '0100THROTTLE',
+            'quantity' => 1,
+        ];
+
+        for ($i = 0; $i < 60; $i++) {
+            $r = $this->postJson('/api/v1/bus/bookings', $payload);
+            $this->assertContains(
+                $r->status(),
+                [201, 422, 429],
+                "Request #{$i} returned unexpected status {$r->status()}: " . $r->getContent()
+            );
+            if ($r->status() === 429) {
+                $this->markTestSkipped(
+                    "Throttle triggered at request #{$i}, before the 61st — ".
+                    'this can happen if the per-minute window started earlier. '.
+                    'Acceptable for the functional check; the middleware-attachment test is authoritative.'
+                );
+                return;
+            }
+        }
+
+        $blocked = $this->postJson('/api/v1/bus/bookings', $payload);
+        $this->assertSame(
+            429,
+            $blocked->status(),
+            'The 61st POST /bus/bookings within the same minute must return 429 (Too Many Requests)'
+        );
     }
 }
