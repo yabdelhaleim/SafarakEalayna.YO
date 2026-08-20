@@ -434,9 +434,9 @@
             <button
               type="submit"
               class="flex-1 rounded-xl bg-success py-3 font-bold text-black disabled:opacity-50"
-              :disabled="store.loading.payments || !paymentForm.account_id"
+              :disabled="paymentInProgress || store.loading.payments || !paymentForm.account_id"
             >
-              {{ store.loading.payments ? 'جاري التسديد…' : 'تسديد' }}
+              {{ (paymentInProgress || store.loading.payments) ? 'جاري التسديد…' : 'تسديد' }}
             </button>
             <button type="button" class="btn-airline-ghost flex-1" @click="closePaymentModal">إلغاء</button>
           </div>
@@ -513,7 +513,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
@@ -694,6 +694,11 @@ const openPaymentModal = async () => {
     account_id: settlementAccounts.value[0]?.id ?? '',
     notes: '',
   };
+  // Opening the dialog = a fresh logical payment attempt. Reset the
+  // UUID lifecycle so the first click on Pay generates a new key.
+  paymentIdempotencyKey.value = null;
+  lastSubmitFailed.value = false;
+  paymentInProgress.value = false;
   showPaymentModal.value = true;
 };
 
@@ -702,20 +707,65 @@ const closePaymentModal = () => {
 };
 
 const submitPayment = async () => {
+  // ─── Disable the button IMMEDIATELY in the click handler ─────────────
+  // Set `paymentInProgress` synchronously, BEFORE the store action
+  // runs and BEFORE any await yields control back to the event loop.
+  // This guards against accidental double-click from the moment the
+  // event handler starts executing, not when the store action finally
+  // gets a chance to set its own `loading.payments` flag.
+  paymentInProgress.value = true;
+
+  // Generate a UUID for this logical payment attempt if we don't have
+  // one yet. (A failed previous submit with no form edit will reuse the
+  // same UUID — see the watcher on paymentForm below.)
+  if (paymentIdempotencyKey.value === null) {
+    paymentIdempotencyKey.value = generateUUID();
+  }
+
   try {
-    await store.payBooking(booking.value.id, {
-      ...paymentForm.value,
-      account_id:
-        paymentForm.value.account_id === '' ? null : parseInt(String(paymentForm.value.account_id), 10),
-    });
-    store.addToast('تم تسديد الدفعة بنجاح');
+    await store.payBooking(
+      booking.value.id,
+      {
+        ...paymentForm.value,
+        account_id:
+          paymentForm.value.account_id === '' ? null : parseInt(String(paymentForm.value.account_id), 10),
+      },
+      { idempotencyKey: paymentIdempotencyKey.value },
+    );
+    lastSubmitFailed.value = false;
+
+    // Replay (idempotent re-send) is a NON-error path — the cashier's
+    // first request actually succeeded; we just got the cached result.
+    if (store.paymentReplayNotice) {
+      store.addToast(store.paymentReplayNotice, 'info');
+    } else {
+      store.addToast('تم تسديد الدفعة بنجاح');
+    }
     closePaymentModal();
     await load();
   } catch {
+    lastSubmitFailed.value = true;
     const msg = store.errors?.message || store.errors?.amount?.[0] || 'فشل تسديد الدفعة';
     store.addToast(typeof msg === 'string' ? msg : 'فشل تسديد الدفعة', 'error');
+  } finally {
+    paymentInProgress.value = false;
   }
 };
+
+// If the user changes any form field AFTER a failed submit, the next
+// attempt is a genuinely different logical payment (different amount,
+// different account, different note) — invalidate the UUID so the
+// store generates a new one on the next click. If they haven't changed
+// the form, the next click reuses the same UUID and the server treats
+// it as an idempotent replay (no double-charge).
+watch(
+  () => [paymentForm.value.amount, paymentForm.value.account_id, paymentForm.value.notes, paymentForm.value.payment_method],
+  () => {
+    if (lastSubmitFailed.value && paymentIdempotencyKey.value !== null) {
+      paymentIdempotencyKey.value = null;
+    }
+  },
+);
 
 const openPrintOptions = () => {
   showPrintModal.value = true;
