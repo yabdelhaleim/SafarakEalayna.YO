@@ -634,6 +634,22 @@ class HajjUmraBookingService
                 $accountId = (int) ($data['account_id'] ?? $booking->account_id);
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
 
+                // Phase 10.2 FIX — reject cross-currency payment.
+                // Same shape as the Phase 9.12 Visa fix: recordJournalTransfer
+                // falls back to using the source amount as the destination
+                // amount when currencies don't match and no conversion rate is
+                // supplied (TransactionService lines 728-741), silently
+                // corrupting the destination ledger. Hajj/Umra has the same
+                // defect; the fix is the same — reject at the service boundary
+                // with a clear Arabic error.
+                $account = Account::query()->findOrFail($accountId);
+                if (strtoupper((string) $account->currency) !== strtoupper((string) ($locked->currency ?? 'EGP'))) {
+                    throw new \RuntimeException(
+                        'عملة الحجز ('.($locked->currency ?? 'EGP').') لا تطابق عملة حساب الدفع ('
+                        .$account->currency.'). يجب إجراء تحويل عملات عبر نظام التحويل المعتمد.'
+                    );
+                }
+
                 $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
 
                 // FIX (latent-bug-after-FC-AUDIT-20260814): a payment on an existing
