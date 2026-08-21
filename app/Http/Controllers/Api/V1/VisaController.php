@@ -234,6 +234,42 @@ class VisaController extends Controller
                 $toAccount = Account::findOrFail($v['account_id']); // Treasury/Bank receiving the payment
                 $fromAccount = $customerAccount; // Customer's ledger account
 
+                // ─────────────────────────────────────────────────────────────
+                // SAFE FX GUARD (FIX 2026-08-21): reject cross-currency debt
+                // settlements at the controller boundary. Phase 9.12 pattern.
+                //
+                // The customer account may be in any currency (it gets auto-
+                // created/repointed per-currency by VisaBookingService when
+                // a new booking touches the customer). If the admin selects a
+                // treasury in a different currency, the journal would be a
+                // cross-currency transfer that the safe-FX rule in
+                // TransactionService::recordJournalTransfer rejects unless
+                // `converted_amount` + `exchange_rate` are supplied explicitly.
+                // We do not accept FX data on the wire here (this endpoint
+                // is a single-currency debt receipt), so we reject with 422
+                // and a clear Arabic message.
+                //
+                // Pre-fix: the silent `?? 1.0` fallback coerced a missing
+                // `exchange_rate` to 1.0 and silently applied 1:1 — producing
+                // a nominally-balanced but semantically-wrong ledger entry.
+                // ─────────────────────────────────────────────────────────────
+                $fromCurrency = strtoupper((string) $fromAccount->currency);
+                $toCurrency = strtoupper((string) $toAccount->currency);
+                if ($fromCurrency !== $toCurrency) {
+                    return ApiResponse::error(
+                        'عملة حساب العميل ('.$fromCurrency.') لا تطابق عملة حساب الدفع ('
+                        .$toCurrency.'). يجب إجراء تحويل عملات عبر نظام التحويل المعتمد قبل '
+                        .'تسديد المديونية، أو اختيار حساب بنفس عملة العميل.',
+                        [
+                            'customer_account_id' => $fromAccount->id,
+                            'customer_account_currency' => $fromCurrency,
+                            'to_account_id' => $toAccount->id,
+                            'to_account_currency' => $toCurrency,
+                        ],
+                        422
+                    );
+                }
+
                 $transactionService = app(TransactionService::class);
                 $amount = (float) $v['amount'];
 
@@ -271,7 +307,14 @@ class VisaController extends Controller
                 }
 
                 // Now record the journal transfer for the full amount
-                $transaction = $transactionService->recordJournalTransfer([
+                // SAFE FX RULE (FIX 2026-08-21): cross-currency transfers MUST
+                // carry explicit `converted_amount` + `exchange_rate`. If the
+                // admin selected a non-EGP treasury to settle an EGP customer
+                // debt, the safe-FX rule in TransactionService will REJECT the
+                // operation with HTTP 409 — the legacy silent 1.0 fallback has
+                // been removed. Same-currency transfers continue to work as
+                // before because `converted_amount` is intentionally absent.
+                $journalArgs = [
                     'amount' => $amount,
                     'from_account_id' => $fromAccount->id,
                     'to_account_id' => $toAccount->id,
@@ -279,7 +322,9 @@ class VisaController extends Controller
                     'module' => TransactionModule::Visa->value,
                     'notes' => $v['notes'] ?? ('سند قبض - تسديد مديونية عميل تأشيرة: '.$customer->full_name),
                     'created_by' => Auth::id() ?? 1,
-                ]);
+                ];
+
+                $transaction = $transactionService->recordJournalTransfer($journalArgs);
 
                 // Create a VisaPayment record for each booking portion so
                 // booking.paid_amount reflects the payment.
