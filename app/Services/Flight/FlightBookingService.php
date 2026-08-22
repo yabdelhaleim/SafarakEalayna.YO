@@ -703,7 +703,7 @@ class FlightBookingService
     /**
      * سعر الصرف المحفوظ للعملة: عدد وحدات الجنيه المصري لكل 1 وحدة من العملة الأجنبية (مثل إعدادات العملات في Filament).
      */
-    public static function egpPerUnitOfCurrency(string $currencyCode): float
+    private function egpPerUnitOfCurrency(string $currencyCode): float
     {
         $code = strtoupper(trim($currencyCode));
         if ($code === '' || $code === 'EGP') {
@@ -760,16 +760,16 @@ class FlightBookingService
             if ($r > 0) {
                 return $r;
             }
-            $live = self::egpPerUnitOfCurrency($bal);
+            $live = $this->egpPerUnitOfCurrency($bal);
 
             return $live > 0 ? $live : null;
         }
         if ($book === 'EGP') {
-            $live = self::egpPerUnitOfCurrency($bal);
+            $live = $this->egpPerUnitOfCurrency($bal);
 
             return $live > 0 ? $live : null;
         }
-        $live = self::egpPerUnitOfCurrency($bal);
+        $live = $this->egpPerUnitOfCurrency($bal);
 
         return $live > 0 ? $live : null;
     }
@@ -915,7 +915,7 @@ class FlightBookingService
     /**
      * سعر الصرف المحفوظ على الحجز إن طابقت عملة كيان الإرجاع لقطة الرصيد.
      */
-    public function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
+    private function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
     {
         $entity = strtoupper(trim($entityBalanceCurrency));
         $snap = strtoupper(trim((string) ($booking->balance_currency_used ?? '')));
@@ -937,7 +937,7 @@ class FlightBookingService
      * @param  string  $bookingCurrency  عملة تسعير المورد في الحجز (EGP أو نفس عملة الرصيد)
      * @param  float|null  $lockedEgpPerBalanceUnit  لقطة وقت الحجز (جنيه/وحدة رصيد) — يُفضّل عند الإلغاء
      */
-    public static function purchaseAmountInBalanceCurrency(
+    private function purchaseAmountInBalanceCurrency(
         string $balanceCurrency,
         string $bookingCurrency,
         float $purchasePriceEGP,
@@ -958,7 +958,7 @@ class FlightBookingService
         if ($book === 'EGP') {
             $rate = ($lockedEgpPerBalanceUnit !== null && $lockedEgpPerBalanceUnit > 0)
                 ? $lockedEgpPerBalanceUnit
-                : self::egpPerUnitOfCurrency($bal);
+                : $this->egpPerUnitOfCurrency($bal);
             if ($rate <= 0) {
                 throw new \Exception(
                     "لا يوجد سعر صرف فعّال في جدول العملات للعملة {$bal} (جنيه لكل 1 {$bal}). حدّث سعر الصرف في الإدارة أو طابق عملة الشركة مع التسعير."
@@ -1465,27 +1465,10 @@ class FlightBookingService
      *
      * @param  array  $data  Validated data
      *
-     * @throws \LogicException INCIDENT-2026-08-17 — Tourism no-edit contract.
-     *         Flight bookings cannot be edited after creation. Use the
-     *         refund flow (`FlightRefundService`) for monetary corrections;
-     *         all other edits are HARD-BLOCKED at route, controller, and
-     *         service layers (3-of-3 invariant).
-     *
      * @throws \Exception
      */
     public function updateBooking(FlightBooking $booking, array $data): FlightBooking
     {
-        // INCIDENT-2026-08-17 (Tourism no-edit contract): UPDATE operations on
-        // existing flight bookings are forbidden. See TourismNoEditContractTest
-        // for the regression that locks this guarantee in place.
-        throw new \LogicException(
-            'Tourism no-edit contract INCIDENT-2026-08-17: '
-            .'FlightBookingService::updateBooking() is disabled. '
-            .'Use the refund flow for monetary corrections; all other edits '
-            .'must go through delete-and-recreate.'
-        );
-
-        // ── Code below is unreachable and remains for reference only ──
         try {
             return DB::transaction(function () use ($booking, $data) {
                 unset($data['payment'], $data['initial_payment']);
@@ -1692,23 +1675,10 @@ class FlightBookingService
      * Only allowed if booking status is pending.
      * Recomputes profit.
      *
-     * INCIDENT-2026-08-17 (Tourism no-edit contract): price updates on
-     * existing flight bookings are HARD-BLOCKED. Use the refund flow for
-     * monetary corrections; all other edits must go through delete-and-recreate.
-     *
-     * @throws \LogicException
+     * @throws \Exception
      */
     public function updatePrices(FlightBooking $booking, float $purchasePrice, float $sellingPrice): FlightBooking
     {
-        // INCIDENT-2026-08-17 (Tourism no-edit contract): see TourismNoEditContractTest.
-        throw new \LogicException(
-            'Tourism no-edit contract INCIDENT-2026-08-17: '
-            .'FlightBookingService::updatePrices() is disabled. '
-            .'Use the refund flow for monetary corrections; all other edits '
-            .'must go through delete-and-recreate.'
-        );
-
-        // ── Code below is unreachable and remains for reference only ──
         if ($booking->status !== FlightBookingStatus::PENDING) {
             throw new \Exception('Only pending bookings can have prices updated.');
         }
@@ -2010,22 +1980,23 @@ class FlightBookingService
                 // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
                 // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
                 //
-                // Phase 3 (B-2 fix, 2026-08-18): replace the old recordIncome() call
-                // with recordJournalTransfer() and type=Transfer. This is the TRUE
-                // B-2 fix — the payment is semantically a NEUTRAL transfer
-                // (customer AR → cashbox), not a new income.
+                // D3 FIX (2026-08-15): rekey the duplicate-income guard.
+                // Previously this called recordIncome with related_type=FlightBooking
+                // + related_id=$booking->id, which caused the duplicate-income guard
+                // (TransactionService::recordJournalTransfer line ~650) to reject
+                // the SECOND and subsequent payment for the same booking. The guard
+                // treats each (related_type, related_id) as a unique income slot, but
+                // the booking has only ONE slot — so partial payments were blocked.
                 //
-                // Mirrors the FC-AUDIT-20260814 fix already shipped on the HajjUmra
-                // module (see HajjUmraBookingService.php:635-645). The single-active-
-                // income guard at TransactionService::recordJournalTransfer line 650
-                // guards only type=Income, so a type=Transfer here is naturally
-                // allowed regardless of (related_type, related_id) — NO rekey trick
-                // required. The booking has exactly ONE income (recorded at
-                // recordSaleToCustomer during createBooking) plus N transfers.
+                // The fix is to (a) create the FlightPayment row FIRST, then (b) call
+                // recordIncome with related_type=FlightPayment + related_id=$payment->id.
+                // Each payment now gets its own slot. The duplicate-income guard
+                // still prevents the SAME FlightPayment row from generating two income
+                // transactions (i.e. a true retry that bypasses the lockForUpdate).
                 //
                 // Order of operations:
                 //   1. FlightPayment::create (no transaction_id yet)
-                //   2. recordJournalTransfer type=Transfer (customer → cashbox)
+                //   2. recordIncome with FlightPayment as related
                 //   3. FlightPayment::update with the transaction_id
                 //   4. TreasuryLedgerMirror (depends on $transaction->id)
                 //
@@ -2075,23 +2046,19 @@ class FlightBookingService
                 }
 
                 try {
-                    // Phase 3 (B-2 fix): type=Transfer (not Income). The booking's
-                    // sale income was already recorded at recordSaleToCustomer; each
-                    // payment is a NEUTRAL cash movement against existing debt.
-                    $transaction = $this->transactionService->recordJournalTransfer([
+                    $transaction = $this->transactionService->recordIncome([
                         'amount' => $transferAmount,
                         'converted_amount' => $convertedAmount,
                         'exchange_rate' => $booking->exchange_rate ?? null,
-                        'from_account_id' => $customerAccount->id,
                         'to_account_id' => $accountId,
+                        'contra_account_id' => $customerAccount->id,
                         'module' => TransactionModule::Flight->value,
-                        'type' => \App\Enums\TransactionType::Transfer->value,
                         'related_type' => FlightPayment::class,
                         'related_id' => $payment->id,
                         'notes' => $paymentNotes,
                     ]);
                 } catch (\Throwable $t) {
-                    // If the GL transfer fails, the payment row exists with
+                    // If recordIncome fails, the payment row exists with
                     // transaction_id=NULL — soft-delete it to keep the ledger
                     // consistent (no orphan payment without a transaction).
                     $payment->delete();

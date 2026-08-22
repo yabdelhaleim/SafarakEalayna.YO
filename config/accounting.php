@@ -131,7 +131,16 @@ return [
             'visa' => [
                 'EGP' => env('ACCOUNTING_VISA_INCOME_CLEARING_EGP', 'إقفال إيرادات التأشيرات (EGP)'),
                 'USD' => env('ACCOUNTING_VISA_INCOME_CLEARING_USD', 'إقفال إيرادات التأشيرات (USD)'),
-                'SAR' => env('ACCOUNTING_VISA_INCOME_CLEARING_SAR', 'إقفال إيرادات التأشيرات (SAR)'),
+                'SAR' => env('ACCOUNTING_VISA_INCOME_CLEARING_SAR', 'إقفل إيرادات التأشيرات (SAR)'),
+            ],
+            // FX SAFETY (2026-08-21): add per-currency Hajj/Umra income
+            // clearing buckets — mirror of the expense_per_currency block
+            // above. Without this, USD/SAR HajjUmra bookings route the
+            // income leg to the EGP clearing, hitting the safe-FX rule.
+            'hajj_umra' => [
+                'EGP' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_EGP', 'إقفال إيرادات الحج والعمرة (EGP)'),
+                'USD' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_USD', 'إقفال إيرادات الحج والعمرة (USD)'),
+                'SAR' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_SAR', 'إقفال إيرادات الحج والعمرة (SAR)'),
             ],
         ],
         'expense_per_currency' => [
@@ -139,6 +148,15 @@ return [
                 'EGP' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_EGP', 'إقفال تكاليف التأشيرات (EGP)'),
                 'USD' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_USD', 'إقفال تكاليف التأشيرات (USD)'),
                 'SAR' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_SAR', 'إقفال تكاليف التأشيرات (SAR)'),
+            ],
+            // FX SAFETY (2026-08-21): add per-currency Hajj/Umra clearing
+            // buckets so USD/SAR bookings don't post into the EGP clearing
+            // (cross-currency, would hit the safe-FX rejection in
+            // TransactionService::recordJournalTransfer).
+            'hajj_umra' => [
+                'EGP' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_EGP', 'إقفال تكاليف الحج والعمرة (EGP)'),
+                'USD' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_USD', 'إقفال تكاليف الحج والعمرة (USD)'),
+                'SAR' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_SAR', 'إقفال تكاليف الحج والعمرة (SAR)'),
             ],
         ],
         /*

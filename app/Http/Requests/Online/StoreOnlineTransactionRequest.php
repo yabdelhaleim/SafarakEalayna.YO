@@ -61,6 +61,12 @@ class StoreOnlineTransactionRequest extends FormRequest
             ],
             'reference_number' => ['nullable', 'string', 'max:255'],
 
+            // SEC-4 idempotency. Whitelisted so it flows through
+            // `$request->validated()` into the service layer. The actual
+            // replay detection happens in OnlineTransactionService::create()
+            // — this rule just gates the value shape.
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
+
             'status' => ['nullable', Rule::in(array_column(OnlineTransactionStatus::cases(), 'value'))],
             'failure_reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],

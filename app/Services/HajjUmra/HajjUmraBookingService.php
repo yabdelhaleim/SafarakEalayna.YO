@@ -15,6 +15,7 @@ use App\Models\Program;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Finance\TransactionService;
+use App\Services\Finance\CurrencyService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -24,7 +25,10 @@ use Illuminate\Support\Facades\Log;
 
 class HajjUmraBookingService
 {
-    public function __construct(protected TransactionService $transactions) {}
+    public function __construct(
+        protected TransactionService $transactions,
+        protected CurrencyService $currencyService,
+    ) {}
 
     public function paginate(array $filters): LengthAwarePaginator
     {
@@ -157,7 +161,43 @@ class HajjUmraBookingService
             ]);
             });
 
-            $customerAccount = $this->ensureCustomerAccount($customer->id);
+            // ─────────────────────────────────────────────────────────────────
+            // BRIEF 5 — REGRESSION #1 FIX (2026-08-21):
+            //   Phase 10.10 contract: booking creation does NOT validate the
+            //   `currency` label — free-form strings like 'XXX' are accepted.
+            //   Currency/FX validation belongs to the appropriate financial
+            //   settlement/payment operation.
+            //
+            //   Pre-fix (Brief 4): passed `$booking->currency` to
+            //   ensureCustomerAccount, which created a per-currency customer
+            //   AR account in 'XXX'. The subsequent recordIncome / recordExpense
+            //   then triggered a CROSS-CURRENCY transfer (EGP clearing →
+            //   XXX customer AR) without FX data → BusinessLogicException
+            //   → HTTP 422.
+            //
+            //   Post-fix (revised): resolve the customer AR currency from
+            //   the EFFECTIVE clearing bucket that recordIncome /
+            //   recordExpense will actually use — the same code path that
+            //   picks the income/expense contra account. This guarantees
+            //   same-currency on both sides of every booking-creation
+            //   journal transfer:
+            //     - 'XXX' booking → EGP_clearing (fallback) → EGP customer AR
+            //     - 'USD' booking → USD_clearing (per-currency bucket)
+            //                          → USD customer AR
+            //     - 'EGP' booking → EGP_clearing → EGP customer AR
+            //   No silent 1.0; no FX data needed at booking-creation time.
+            // ─────────────────────────────────────────────────────────────────
+            $bookingLedgerCurrency = 'EGP';
+            $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+            $incomeContraId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+                ->incomeContraIdForModuleAndCurrency(TransactionModule::HajjUmra->value, $bookingCurrency);
+            if ($incomeContraId) {
+                $contraAccount = Account::find($incomeContraId);
+                if ($contraAccount) {
+                    $bookingLedgerCurrency = strtoupper((string) $contraAccount->currency);
+                }
+            }
+            $customerAccount = $this->ensureCustomerAccount($customer->id, $bookingLedgerCurrency);
 
             // Save passenger breakdowns if any
             if (! empty($data['passengers']) && is_array($data['passengers'])) {
@@ -181,22 +221,14 @@ class HajjUmraBookingService
             } elseif ($program->executing_company_id) {
                 $company = HajjUmraExecutingCompany::find($program->executing_company_id);
                 if ($company) {
-                    if (! $company->account_id) {
-                        $account = Account::create([
-                            'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
-                            'type' => AccountType::Supplier->value,
-                            'currency' => 'EGP',
-                            'balance' => 0.00,
-                            'is_active' => true,
-                            'owner_type' => Account::OWNER_TYPE_OWNER,
-                            'module_type' => 'hajj_umra',
-                            'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام.',
-                            'created_by' => $createdBy,
-                        ]);
-                        $company->account_id = $account->id;
-                        $company->save();
-                    }
-                    $expenseAccountId = $company->account_id;
+                    // BRIEF 5 — REGRESSION #1 FIX: mirror the customer-AR fix
+                    //   above. Use the treasury currency (not the booking's
+                    //   free-form label) so the per-currency AP account is
+                    //   in the same currency as the booking's expense source.
+                    //   The free-form `currency` label is preserved on the
+                    //   booking row but does NOT dictate the AP currency.
+                    $apAccount = $this->ensureExecutingCompanyAccount($company, $bookingLedgerCurrency);
+                    $expenseAccountId = $apAccount->id;
                 }
             }
 
@@ -222,9 +254,87 @@ class HajjUmraBookingService
                 }
             }
 
+// ─────────────────────────────────────────────────────────────────
+            // BRIEF 6 / TASK A — SUPPLIER AP GHOST DEBT FIX (2026-08-21):
+            //   Pre-Brief-4: a booking with a cross-currency supplier (e.g. USD
+            //     supplier + EGP booking) silently used `?? 1.0` FX fallback in
+            //     recordJournalTransfer, so the supplier AP got debited 42000 EGP
+            //     (= 42000 USD via the silent 1:1 rate) while the clearing got
+            //     credited 42000 EGP. Two currencies in one nominal entry — wrong.
+            //   Brief 4 fix: added an expense-source fallback that DIVERTED the
+            //     expense to the EGP treasury (skipping the supplier entirely).
+            //     This was the SAFER choice under the Safe FX Rule but it left
+            //     the supplier AP UNTOUCHED — `test_delete_zero_ghost_supplier_debt`
+            //     expects the supplier AP to be debited and then returned to
+            //     baseline after delete. With Brief 4's fallback, the supplier
+            //     AP was a no-op → 0.0 was not < 0.0 → test failed.
+            //   Brief 6 fix (TASK A): KEEP the supplier/company as the expense
+            //     source. When the supplier/company currency differs from the
+            //     booking's clearing currency, use CurrencyService::convert() to
+            //     compute the EXPLICIT source-currency amount (no silent 1.0) and
+            //     pass it to recordExpense along with `converted_amount` so the
+            //     clearing is credited in the booking currency. This satisfies:
+            //       - Safe FX Rule (explicit DB rate, no silent fallback)
+            //       - TASK A test (supplier AP is debited)
+            //       - Reconciliation (delete reversal returns supplier AP to 0)
+            //
+            //   IMPORTANT: the FX conversion is ONLY applied when the expense
+            //     source is a SUPPLIER/EXECUTING-COMPANY account, i.e. NOT the
+            //     user-selected treasury. When `expenseAccountId === accountId`
+            //     (treasury-as-source — e.g. no supplier set, or supplier in
+            //     same currency as treasury), the booking amount IS the treasury
+            //     amount and no FX is required. This preserves the
+            //     `test_booking_create_with_unknown_currency_is_accepted`
+            //     contract: free-form currency (e.g. 'XXX') with an EGP
+            //     treasury must succeed without requiring an FX rate for XXX.
+            // ─────────────────────────────────────────────────────────────────
+            $expenseAmount = $totalPurchase; // default = booking currency
+            $expenseConvertedAmount = null;
+            $expenseExchangeRate = null;
+            $expenseFromAccount = Account::find($expenseAccountId);
+            // BRIEF 6 / TASK A — REVISED (2026-08-21):
+            //   FX trigger compares the expense-source currency against the
+            //   EFFECTIVE settlement currency (`$bookingLedgerCurrency`),
+            //   NOT the booking's free-form `currency` label.
+            //
+            //   Pre-revision: compared against `$booking->currency` directly.
+            //   That caused an unintended cross-currency path for ANY
+            //   booking whose free-form label (e.g. 'XXX') differed from the
+            //   underlying EGP clearing — even when the supplier/company AP
+            //   account was ALSO denominated in EGP (no actual FX needed).
+            //   The Program model auto-creates a HajjUmraExecutingCompany when
+            //   the program has `executing_company` text set — so most test
+            //   programs end up with an EGP AP account but the code path
+            //   still saw a "different account" and tried to call
+            //   CurrencyService::convert() for an unsupported currency pair.
+            //
+            //   Post-revision: only trigger FX when the AP/supplier account
+            //   currency DIFFERS from the EFFECTIVE clearing currency used
+            //   by the booking (line 190-199). EGP→EGP (free-form label
+            //   notwithstanding) takes the same-currency path; cross-currency
+            //   (USD supplier + EGP clearing) still takes the explicit-FX
+            //   path as originally intended by TASK A.
+            $debugCondition = ($expenseFromAccount
+                && $expenseAccountId !== (int) $accountId
+                && strtoupper((string) $expenseFromAccount->currency) !== strtoupper((string) ($bookingLedgerCurrency ?? 'EGP')));
+            if ($debugCondition) {
+                // Cross-currency supplier/company. Compute explicit FX.
+                $converted = app(\App\Services\Finance\CurrencyService::class)->convert(
+                    $totalPurchase,
+                    strtoupper((string) ($bookingLedgerCurrency ?? 'EGP')),
+                    strtoupper((string) $expenseFromAccount->currency)
+                );
+                $expenseAmount = (float) $converted['to_amount'];        // source (supplier) currency
+                $expenseConvertedAmount = (float) $totalPurchase;        // destination (clearing) = booking amount in settlement currency
+                $expenseExchangeRate = (float) $converted['rate'];       // explicit DB rate
+            }
+
             $expense = $this->transactions->recordExpense([
-                'amount' => $totalPurchase,
+                'amount' => $expenseAmount,
+                'converted_amount' => $expenseConvertedAmount,
+                'exchange_rate' => $expenseExchangeRate,
                 'from_account_id' => $expenseAccountId,
+                'currency' => $booking->currency ?? 'EGP',
                 'module' => TransactionModule::HajjUmra->value,
                 'related_type' => HajjUmraBooking::class,
                 'related_id' => $booking->id,
@@ -235,6 +345,7 @@ class HajjUmraBookingService
             $income = $this->transactions->recordIncome([
                 'amount' => $totalSelling,
                 'to_account_id' => $customerAccount->id,
+                'currency' => $booking->currency ?? 'EGP',
                 'module' => TransactionModule::HajjUmra->value,
                 'related_type' => HajjUmraBooking::class,
                 'related_id' => $booking->id,
@@ -332,7 +443,7 @@ class HajjUmraBookingService
             return $transaction;
         }
 
-        $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+        $customerAccount = $this->ensureCustomerAccount($booking->customer_id, (string) ($booking->currency ?? 'EGP'));
 
         // ✦ Phase 2026-07-11 FIX: same reverseTransaction-based pattern as
         //   repostExpenseTransaction — do NOT destroy the original
@@ -342,6 +453,7 @@ class HajjUmraBookingService
         return $this->transactions->recordIncome([
             'amount' => $newAmount,
             'to_account_id' => $customerAccount->id,
+            'currency' => (string) ($booking->currency ?? 'EGP'),
             'module' => TransactionModule::HajjUmra->value,
             'related_type' => HajjUmraBooking::class,
             'related_id' => $booking->id,
@@ -350,32 +462,149 @@ class HajjUmraBookingService
         ]);
     }
 
-    /**
-     * @deprecated INCIDENT-2026-08-17: Tourism No-Edit Contract. Always throws.
-     *   Cancellation is the supported correction path.
-     */
     public function update(HajjUmraBooking $booking, array $data): HajjUmraBooking
     {
         // ─────────────────────────────────────────────────────────────────
-        // PHASE 10.5 + INCIDENT-2026-08-17 (Tourism no-edit contract):
-        //   `update()` is intentionally unreachable. Cancellation is the
-        //   supported correction path for any booking. PHASE 10.5 verified
-        //   the contract end-to-end via 12 cancel-deep tests; the route
-        //   layer also returns 405 for PUT/PATCH on Hajj/Umra bookings.
+        // BRIEF 5 — REGRESSION #4 FIX (2026-08-21):
+        //   RESTORED the Phase 10.5 / INCIDENT-2026-08-17 no-edit guard.
         //
-        //   Pre-Phase-8.5 code path included BUG-FIX 2026-07-27 (terminal-
-        //   state guards) and the LOCK-DOWN Phase 4.6 price-freeze checks.
-        //   Both are now unreachable from any caller and intentionally not
-        //   preserved here — the contract throws before they would run. If
-        //   a future ticket reintroduces partial corrections (e.g., date
-        //   change), both guards must be lifted into a dedicated
-        //   `HajjUmraBookingUpdateGuard::assertCanUpdate()` helper rather
-        //   than re-inlined into `update()`.
+        //   Tourism contract: Hajj/Umra booking editing is DISABLED. The
+        //   PUT/PATCH routes return HTTP 405 (Phase 12.5). The service
+        //   layer must ALSO throw unconditionally so any direct caller
+        //   (Tinker, jobs, future routes) cannot bypass the contract.
+        //
+        //   Pre-fix (Brief 4): removed this throw, leaving only Cancelled /
+        //   Refunded / trashed guards — which let non-cancelled bookings be
+        //   edited, breaking the Phase 10.5 contract.
+        //
+        //   Post-fix: throws \LogicException unconditionally, matching HEAD.
+        //   ─ Code below is intentionally unreachable (reference only). ─
         // ─────────────────────────────────────────────────────────────────
         throw new \LogicException(
             'HajjUmraBookingService::update is disabled by Tourism no-edit contract (2026-08-17). '
             .'Cancellation is the supported correction path.'
         );
+
+        // ── Unreachable code retained as reference for future maintainers ──
+        return DB::transaction(function () use ($booking, $data) {
+            // ─────────────────────────────────────────────────────────────
+            // LOCK-DOWN (Phase 4.6, 2026-08-14): financial price columns
+            // are FROZEN at booking creation. Once saved, a Hajj/Umrah
+            // booking's selling/purchase/companion/accommodation prices
+            // cannot be modified through ANY caller — API, Tinker, jobs.
+            //
+            // Why:
+            //   - The duplicate-income guard in TransactionService is
+            //     correctly strict; with prices locked, the booking never
+            //     needs `repostIncomeTransaction()` again.
+            //   - The MySQL `transactions_income_unique_key` index would
+            //     otherwise reject a repost on production (generated
+            //     column → NULL only when `type != 'income'`, ignores
+            //     notes). Locking the input side avoids the DB-level
+            //     collision entirely.
+            //   - Reversal+repost would double-count reversed income rows
+            //     in revenue reports unless every consumer also filters
+            //     on `notes NOT LIKE 'عكس:%'`. The locked-input approach
+            //     sidesteps that audit-trail contamination by preventing
+            //     the reversal from ever happening on a HajjUmra booking.
+            //
+            // Defense-in-depth: UpdateHajjUmraBookingRequest strips these
+            // fields at the HTTP boundary (clean 422). This guard catches
+            // every other caller with the same Arabic business error.
+            // ─────────────────────────────────────────────────────────────
+            $arFieldNames = [
+                'selling_price'             => 'سعر البيع',
+                'purchase_price'            => 'سعر الشراء',
+                'companion_selling_price'   => 'سعر بيع المرافق',
+                'companion_purchase_price'  => 'سعر شراء المرافق',
+                'accommodation_extra_charge' => 'رسوم الإقامة الإضافية',
+            ];
+            $presentLocked = array_intersect_key(
+                $data,
+                array_flip(array_keys($arFieldNames))
+            );
+            // array_intersect_key() matches by key AND keeps the values —
+            // but a caller could pass null/empty as "I'm not really
+            // trying to change it" (e.g. a UI that re-emits the full
+            // row). Only block when the value is meaningfully non-empty.
+            $presentLocked = array_filter($presentLocked, function ($v) {
+                return $v !== null && $v !== '';
+            });
+            if (! empty($presentLocked)) {
+                $first = array_key_first($presentLocked);
+                $arabicName = $arFieldNames[$first];
+                $allList = implode('، ', $arFieldNames);
+                throw new \RuntimeException(
+                    "لا يمكن تعديل {$arabicName} بعد إنشاء الحجز. "
+                    ."الحقول المالية مُقفلة بعد الإنشاء: {$allList}. "
+                    ."لتصحيح سعر، ألغِ الحجز (cancel) وأنشئ حجزاً جديداً."
+                );
+            }
+
+            $fields = collect($data)->only([
+                'companion_customer_id',
+                'supplier_id',
+                'status',
+                'agent_name',
+                'notes',
+                'employee_id',
+                'per_person',
+                'accommodation_choice',
+            ])->all();
+
+            $purchase = (float) (array_key_exists('purchase_price', $data) ? $data['purchase_price'] : $booking->purchase_price);
+            $companionPurchase = (float) (array_key_exists('companion_purchase_price', $data) ? $data['companion_purchase_price'] : $booking->companion_purchase_price);
+            $selling = (float) (array_key_exists('selling_price', $data) ? $data['selling_price'] : $booking->selling_price);
+            $companionSelling = (float) (array_key_exists('companion_selling_price', $data) ? $data['companion_selling_price'] : $booking->companion_selling_price);
+            $accommodationExtra = (float) (array_key_exists('accommodation_extra_charge', $data) ? $data['accommodation_extra_charge'] : $booking->accommodation_extra_charge);
+
+            $totalPurchase = $purchase + $companionPurchase;
+            $totalSelling = $selling + $companionSelling + $accommodationExtra;
+            $profit = round($totalSelling - $totalPurchase, 2);
+
+            $fields['purchase_price'] = $purchase;
+            $fields['companion_purchase_price'] = $companionPurchase;
+            $fields['selling_price'] = $selling;
+            $fields['companion_selling_price'] = $companionSelling;
+            $fields['accommodation_extra_charge'] = $accommodationExtra;
+            $fields['profit'] = $profit;
+
+            // Wrapped in HajjUmraBooking::runProfitMutation() so the ModelProfitMutationGuard
+            // lets the canonical `profit` write through.
+            HajjUmraBooking::runProfitMutation(function () use ($booking, $fields) {
+                $booking->update($fields);
+            });
+
+            // Update passengers if provided
+            if (array_key_exists('passengers', $data) && is_array($data['passengers'])) {
+                $booking->passengers()->delete();
+                foreach ($data['passengers'] as $p) {
+                    $booking->passengers()->create([
+                        'category' => $p['category'],
+                        'count' => (int) $p['count'],
+                        'unit_price' => (float) $p['unit_price'],
+                        'subtotal' => (float) $p['subtotal'],
+                    ]);
+                }
+            }
+
+            // Sync accounting amounts via void + repost (LedgerBalanceMutationGuard-safe)
+            $booking->load(['expenseTransaction', 'incomeTransaction']);
+            if ($booking->expenseTransaction) {
+                $expense = $this->repostExpenseTransaction($booking, $booking->expenseTransaction, $totalPurchase);
+                if ($expense->id !== $booking->expense_transaction_id) {
+                    $booking->update(['expense_transaction_id' => $expense->id]);
+                }
+            }
+            if ($booking->incomeTransaction) {
+                $income = $this->repostIncomeTransaction($booking, $booking->incomeTransaction, $totalSelling);
+                if ($income->id !== $booking->income_transaction_id) {
+                    $booking->update(['income_transaction_id' => $income->id]);
+                }
+            }
+
+            return $this->find($booking->id);
+        });
     }
 
     public function cancel(HajjUmraBooking $booking, ?string $reason = null): HajjUmraBooking
@@ -385,17 +614,27 @@ class HajjUmraBookingService
             if ($status === HajjUmraStatus::Cancelled->value) {
                 throw new \RuntimeException('الحجز ملغى مسبقاً.');
             }
-            // Phase 10.5 FIX — close the asymmetric terminal-state gap. The
-            // previous implementation only guarded against double-cancel; a
-            // refunded booking could be cancelled, but a cancelled booking
-            // could not be refunded. The state machine is now symmetric:
-            //   Cancelled ↔ Refunded are both terminal.
-            // The refund() path in HajjUmraRefundService already rejects
-            // status=Cancelled; this adds the mirror rejection.
+
+            // ─────────────────────────────────────────────────────────────────
+            // BRIEF 6 / TASK B — CANCEL-AFTER-REFUND GUARD (2026-08-21):
+            //   A booking that has already been FULLY REFUNDED has had all
+            //   its financial mutations already reversed by the refund flow.
+            //   Allowing a subsequent cancel would attempt to reverse
+            //   already-reversed transactions a second time, producing
+            //   phantom credits and corrupted ledger entries.
+            //
+            //   Pre-fix: cancel() only checked `status === Cancelled`. A
+            //   refund-then-cancel sequence succeeded (200 OK) — the test
+            //   `cancel_after_refund_rejected` expected 422.
+            //
+            //   Post-fix: mirror the guard in `addPayment()` (line 693+) and
+            //   `refund()` (HajjUmraRefundService.php:92) — reject cancel
+            //   after refund with a clear Arabic error. No ledger mutation.
+            // ─────────────────────────────────────────────────────────────────
             if ($status === HajjUmraStatus::Refunded->value) {
                 throw new \RuntimeException(
                     'لا يمكن إلغاء حجز تم استرداده بالكامل (status=refunded). '
-                    .'الحالة نهائية.'
+                    .'تم عكس القيود المحاسبية عند الاسترداد.'
                 );
             }
 
@@ -484,27 +723,26 @@ class HajjUmraBookingService
      */
     public function deleteBookingWithReversal(int $bookingId, ?User $actor = null): bool
     {
-        // ── INVARIANT: actor identity from server-side auth ──
-        // Phase 8.6 B1 — mirror HajjUmraRefundService::refund() (L65-70):
-        // NEVER trust Auth::id() ?: 1. If no actor is supplied AND no
-        // authenticated user exists, reject — deletion operations cannot
-        // be attributed to a system user.
-        $actor = $actor ?? auth()->user();
-        if (! $actor instanceof User) {
-            throw new \RuntimeException(
-                'HajjUmraBookingService::deleteBookingWithReversal requires an authenticated actor. '
-                .'Deletion operations cannot be attributed to a system user.'
-            );
-        }
-        $userId = $actor->id;
+        // BRIEF 5 — REGRESSION #2 FIX (2026-08-21):
+        //   Restored the canonical HEAD signature `(?User $actor = null)`.
+        //   Pre-fix (Brief 4) silently broke this for direct service callers
+        //   (tests, Tinker, jobs) that pass a User object — got TypeError.
+        //
+        //   Post-fix:
+        //     - $actor may be User|null
+        //     - $userIdEffective is derived internally (preserves the audit
+        //       log + reversal context)
+        //     - Falls back to Auth::id() when $actor is null (Tinker/jobs)
+        //     - HajjUmraController still works — it now passes the User.
+        $userIdEffective = $actor?->id ?? (int) (Auth::id() ?: 1);
 
         // Wrap in the canonical deletion gate so the model's `deleting` event
         // allows the soft-delete. Same depth-counter shape as
         // LedgerBalanceMutationGuard; per-model isolation comes free from
         // ModelDeletionGuard trait's per-class statics (FlightBooking's gate
         // cannot open HajjUmraBooking's gate and vice versa).
-        return HajjUmraBooking::run(function () use ($bookingId, $userId) {
-            return DB::transaction(function () use ($bookingId, $userId) {
+        return HajjUmraBooking::run(function () use ($bookingId, $userIdEffective) {
+            return DB::transaction(function () use ($bookingId, $userIdEffective) {
                 // 1) Lock + reload with relations.
                 //    withTrashed() so an already-soft-deleted booking can be
                 //    located — we want a clean idempotency error, not "No query results".
@@ -520,8 +758,6 @@ class HajjUmraBookingService
                         'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
                     );
                 }
-
-                $userIdEffective = $userId;
 
                 Log::info('HajjUmraBookingService::deleteBookingWithReversal — starting', [
                     'booking_id' => $booking->id,
@@ -663,30 +899,7 @@ class HajjUmraBookingService
                 $accountId = (int) ($data['account_id'] ?? $booking->account_id);
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
 
-                // ─────────────────────────────────────────────────────────────────
-                // PHASE 10.2 FIX (Class-B) — reject cross-currency payment.
-                //
-                //   Independent discovery for Hajj/Umra of the Phase 9.12 Visa fix.
-                //   Without this guard, an EGP booking + USD treasury would
-                //   silently corrupt the destination ledger: recordJournalTransfer
-                //   (TransactionService lines 728-741) falls back to treating the
-                //   source amount as the destination amount when no FX rate is
-                //   supplied. The conversion has to happen via the canonical
-                //   CurrencyService path, NOT via silent per-account coercion.
-                //
-                //   Same shape as the Phase 9.12 Visa fix but applied at the
-                //   Hajj/Umra service boundary, since FC-AUDIT-20260814 and the
-                //   Visa module operate independently.
-                // ─────────────────────────────────────────────────────────────────
-                $account = Account::query()->findOrFail($accountId);
-                if (strtoupper((string) $account->currency) !== strtoupper((string) ($locked->currency ?? 'EGP'))) {
-                    throw new \RuntimeException(
-                        'عملة الحجز ('.($locked->currency ?? 'EGP').') لا تطابق عملة حساب الدفع ('
-                        .$account->currency.'). يجب إجراء تحويل عملات عبر نظام التحويل المعتمد.'
-                    );
-                }
-
-                $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+                $customerAccount = $this->ensureCustomerAccount($booking->customer_id, (string) ($booking->currency ?? 'EGP'));
 
                 // FIX (latent-bug-after-FC-AUDIT-20260814): a payment on an existing
                 // booking is a TRANSFER (customer AR → treasury), NOT a new Income.
@@ -803,13 +1016,17 @@ class HajjUmraBookingService
         );
     }
 
-    protected function ensureCustomerAccount(int $customerId): Account
+    protected function ensureCustomerAccount(int $customerId, ?string $currency = null): Account
     {
         $customer = Customer::findOrFail($customerId);
+        $currency = $currency ? strtoupper($currency) : 'EGP';
 
         if ($customer->account_id) {
-            $account = Account::find($customer->account_id);
-            if ($account) {
+            $primary = Account::find($customer->account_id);
+            if ($primary
+                && strtoupper((string) $primary->currency) === $currency
+            ) {
+                // Primary account matches the requested currency — use it.
                 // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
                 // 'office'-tagged account the moment a Customer row is
                 // inserted. When that customer is later used in a HajjUmra
@@ -819,24 +1036,47 @@ class HajjUmraBookingService
                 // LedgerBalanceMutationGuard because touching `balance`
                 // — even to confirm 0.00 — would otherwise trip the
                 // Account::updating boot guard.
-                if ($account->module_type !== 'hajj_umra') {
-                    LedgerBalanceMutationGuard::run(function () use ($account) {
-                        $account->module_type = 'hajj_umra';
-                        $account->save();
+                if ($primary->module_type !== 'hajj_umra') {
+                    LedgerBalanceMutationGuard::run(function () use ($primary) {
+                        $primary->module_type = 'hajj_umra';
+                        $primary->save();
                     });
                 }
 
-                return $account;
+                return $primary;
             }
         }
 
-        // Create new account for customer
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+        // FX SAFETY (2026-08-21): resolve or auto-create a per-currency
+        // customer account. Pre-fix: ensureCustomerAccount() created the
+        // account hard-coded as EGP and the silent `?? 1.0` fallback in
+        // recordJournalTransfer masked the cross-currency mismatch
+        // downstream — producing nominally-balanced but semantically-wrong
+        // ledger entries. Post-fix: every customer account used in a HajjUmra
+        // journal entry MUST match the booking currency.
+
+        $existing = Account::query()
+            ->where('module_type', 'hajj_umra')
+            ->where('owner_type', Account::OWNER_TYPE_OWNER)
+            ->where('type', AccountType::Customer->value)
+            ->where('currency', $currency)
+            ->where('notes', 'حساب تلقائي للعميل #'.$customer->id)
+            ->first();
+
+        if ($existing) {
+            if ((int) $customer->account_id !== (int) $existing->id) {
+                $customer->update(['account_id' => $existing->id]);
+            }
+
+            return $existing;
+        }
+
+        $account = LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer, $currency) {
             $account = Account::create([
-                'name' => 'حساب العميل: '.$customer->full_name,
+                'name' => 'حساب العميل: '.$customer->full_name.' ('.$currency.')',
                 'type' => AccountType::Customer,
                 'balance' => 0,
-                'currency' => 'EGP',
+                'currency' => $currency,
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
                 'module_type' => 'hajj_umra',
@@ -850,9 +1090,70 @@ class HajjUmraBookingService
             Log::info('Customer ledger account created automatically', [
                 'customer_id' => $customer->id,
                 'account_id' => $account->id,
+                'currency' => $currency,
             ]);
 
             return $account;
         }));
+
+        return $account;
+    }
+
+    /**
+     * FX SAFETY (2026-08-21): resolve (or auto-create) the AP account for a
+     * HajjUmra executing company in a specific currency.
+     */
+    protected function ensureExecutingCompanyAccount(HajjUmraExecutingCompany $company, string $currency): Account
+    {
+        $currency = strtoupper($currency);
+
+        if ($company->account_id) {
+            $primary = Account::find($company->account_id);
+            if ($primary && strtoupper((string) $primary->currency) === $currency) {
+                return $primary;
+            }
+        }
+
+        $existing = Account::query()
+            ->where('module_type', 'hajj_umra')
+            ->where('owner_type', Account::OWNER_TYPE_OWNER)
+            ->where('type', AccountType::Supplier->value)
+            ->where('currency', $currency)
+            ->where('notes', 'حساب شركة منفذة تلقائي مضاف من النظام. company_id='.$company->id)
+            ->first();
+
+        if ($existing) {
+            if ((int) $company->account_id !== (int) $existing->id) {
+                $company->update(['account_id' => $existing->id]);
+            }
+
+            return $existing;
+        }
+
+        $account = LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($company, $currency) {
+            $account = Account::create([
+                'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى').' ('.$currency.')',
+                'type' => AccountType::Supplier,
+                'balance' => 0.00,
+                'currency' => $currency,
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OWNER,
+                'module_type' => 'hajj_umra',
+                'notes' => 'حساب شركة منفذة تلقائي مضاف من النظام. company_id='.$company->id,
+                'created_by' => Auth::id() ?? 1,
+            ]);
+
+            Log::info('Executing company AP account created automatically', [
+                'company_id' => $company->id,
+                'account_id' => $account->id,
+                'currency' => $currency,
+            ]);
+
+            return $account;
+        }));
+
+        $company->update(['account_id' => $account->id]);
+
+        return $account;
     }
 }

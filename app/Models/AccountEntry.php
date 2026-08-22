@@ -27,12 +27,17 @@ class AccountEntry extends Model
         'credit',
         'balance_after',
         'notes',  // Phase 3b v3 fix: add 'notes' (was missing → caused NULL notes in writeoff entries)
+        // FIN-1 (2026-08-21): opening-balance marker. Auto-set on the
+        // paired AccountEntry created by Account::created when the new
+        // account is created with a non-zero balance.
+        'is_opening',
     ];
 
     protected $casts = [
         'debit' => 'decimal:2',
         'credit' => 'decimal:2',
         'balance_after' => 'decimal:2',
+        'is_opening' => 'boolean',
     ];
 
     public function account(): BelongsTo

@@ -380,6 +380,14 @@ Route::prefix('v1')->middleware([
         // permission (`manage_treasury` / فوري والمحافظ) is allowed to POST.
         // Edits and deletes still move money and reverse ledger entries, so
         // they remain admin-only.
+        // FINDING R1-A REMEDIATED (2026-08-21): the GET index route was
+        // missing. The controller method `index()` existed but was unwired,
+        // returning 405 on GET /api/v1/wallet/transactions. Wired here
+        // behind `wallet.view` permission so the listing endpoint is
+        // available to treasury-permitted users.
+        Route::get('transactions', [WalletTransactionController::class, 'index'])
+            ->middleware('permission:wallet.view')
+            ->name('wallet.transactions.index');
         Route::post('transactions', [WalletTransactionController::class, 'store'])
             ->middleware('permission:wallet.create');
         Route::match(['put', 'patch'], 'transactions/{transaction}', [WalletTransactionController::class, 'update'])
@@ -394,7 +402,7 @@ Route::prefix('v1')->middleware([
     });
 
     // Online Services API
-    Route::prefix('online')->group(function () {
+    Route::prefix('online')->middleware('permission:manage_online')->group(function () {
         // Settings (master data needed for the Vue UI - everything dynamic)
         Route::prefix('settings')->group(function () {
             Route::get('all', [OnlineSettingsController::class, 'all']);

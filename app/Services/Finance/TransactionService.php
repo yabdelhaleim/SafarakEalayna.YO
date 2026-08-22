@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
+use App\Exceptions\BusinessLogicException;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
@@ -84,6 +85,16 @@ class TransactionService
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $data['created_by'] ?? Auth::id() ?? 1,
                 'currency' => $txCurrency,
+                // FIN-3 REMEDIATION (2026-08-21): preserve the expense semantic
+                // when routing through a clearing account. Pre-fix, `recordExpense`
+                // relied on `recordJournalTransfer` defaulting to `type=Transfer`,
+                // which silently re-tagged every clearing-account expense as a
+                // transfer. Reports filtering on `type='expense'` missed them
+                // and treasury dashboards were skewed.
+                //
+                // Post-fix: `recordExpense` is explicit about the intent and
+                // `recordJournalTransfer` honors the caller-supplied type.
+                'type' => TransactionType::Expense->value,
             ]);
         }
 
@@ -716,29 +727,89 @@ class TransactionService
             }
 
             if (! $allowFromNegative && $isFund && (float) $fromAccount->balance < $amount) {
-                throw ValidationException::withMessages([
-                    'amount' => 'رصيد الحساب غير كافٍ: '.$fromAccount->name,
-                ]);
+                // FINDING UX-1 (MED) REMEDIATION (2026-08-21):
+                // Insufficient balance is a BUSINESS RULE violation (the request
+                // is well-formed and authorized, but the server's state conflicts
+                // with it). Throw BusinessLogicException → HTTP 409 Conflict.
+                // 422 is reserved for input-shape errors (ValidationException).
+                throw new BusinessLogicException(
+                    'رصيد الحساب غير كافٍ: '.$fromAccount->name,
+                    [
+                        'account_id' => $fromAccount->id,
+                        'account_name' => $fromAccount->name,
+                        'required' => $amount,
+                        'available' => (float) $fromAccount->balance,
+                    ]
+                );
             }
 
             $fromCurrency = strtoupper((string) $fromAccount->currency);
             $toCurrency = strtoupper((string) $toAccount->currency);
             $sameCurrency = $fromCurrency === $toCurrency;
 
-            $toAmount = $sameCurrency
-                ? $amount
-                : (float) ($data['converted_amount'] ?? 0.0);
+            $toAmount = $amount;
 
-            if (! $sameCurrency && $toAmount <= 0) {
-                $rate = (float) ($data['exchange_rate'] ?? 1.0);
-                if ($rate > 0) {
-                    if ($fromCurrency === 'EGP') {
-                        $toAmount = $amount / $rate;
-                    } else {
-                        $toAmount = $amount * $rate;
-                    }
+            if (! $sameCurrency) {
+                // ─────────────────────────────────────────────────────────────────
+                // SAFE FX RULE (FIX 2026-08-21): cross-currency transfers MUST
+                //   carry EXPLICIT conversion information. The previous
+                //   implementation silently coerced a missing `exchange_rate`
+                //   to `1.0` and a missing `converted_amount` to the raw
+                //   `$amount`, producing incorrect ledger postings when a
+                //   Visa/HajjUmra admin settled an EGP customer debt into a
+                //   non-EGP treasury without supplying a rate.
+                //
+                //   Acceptable inputs (in priority order):
+                //     1. `converted_amount` > 0  — caller already computed the
+                //        destination amount using CurrencyService::convert().
+                //        Preferred path for callers that already have the rate.
+                //     2. `exchange_rate` > 0    — caller supplies the rate;
+                //        service computes the destination amount based on the
+                //        EGP/foreign direction.
+                //
+                //   Anything else (missing, zero, negative, non-numeric) →
+                //   BusinessLogicException → HTTP 409 Conflict. The request
+                //   is well-formed; the server state cannot safely absorb it.
+                //
+                //   Same-currency transfers: unchanged behavior, no FX data
+                //   required.
+                // ─────────────────────────────────────────────────────────────────
+                $rawConvertedAmount = $data['converted_amount'] ?? null;
+                $rawExchangeRate = $data['exchange_rate'] ?? null;
+
+                $hasConvertedAmount = $rawConvertedAmount !== null
+                    && is_numeric($rawConvertedAmount)
+                    && (float) $rawConvertedAmount > 0;
+                $hasExchangeRate = $rawExchangeRate !== null
+                    && is_numeric($rawExchangeRate)
+                    && (float) $rawExchangeRate > 0;
+
+                if ($hasConvertedAmount) {
+                    // Path 1: caller supplied the converted destination amount.
+                    $toAmount = (float) $rawConvertedAmount;
+                } elseif ($hasExchangeRate) {
+                    // Path 2: caller supplied the rate; we compute the amount.
+                    $rate = (float) $rawExchangeRate;
+                    $toAmount = $fromCurrency === 'EGP'
+                        ? $amount / $rate      // EGP → foreign: divide
+                        : $amount * $rate;      // foreign → EGP: multiply
                 } else {
-                    $toAmount = $amount;
+                    // Neither (or invalid) → REJECT. No silent 1.0. No silent
+                    // amount-as-conversion. Caller must use CurrencyService.
+                    throw new BusinessLogicException(
+                        'لا يمكن تنفيذ تحويل عبر عملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. '
+                        .'عملة المصدر: '.$fromCurrency.'، عملة الهدف: '.$toCurrency.'. '
+                        .'يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة.',
+                        [
+                            'from_account_id' => $fromId,
+                            'to_account_id' => $toId,
+                            'from_currency' => $fromCurrency,
+                            'to_currency' => $toCurrency,
+                            'amount' => $amount,
+                            'provided_converted_amount' => $rawConvertedAmount,
+                            'provided_exchange_rate' => $rawExchangeRate,
+                        ]
+                    );
                 }
             }
 

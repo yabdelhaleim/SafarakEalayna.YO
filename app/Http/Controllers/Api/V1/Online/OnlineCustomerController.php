@@ -55,6 +55,7 @@ class OnlineCustomerController extends Controller
                     'email' => $customer->email,
                     'module_type' => 'online',
                 ],
+                201,
             );
         } catch (\Throwable $e) {
             Log::error('OnlineCustomerController::store failed', [

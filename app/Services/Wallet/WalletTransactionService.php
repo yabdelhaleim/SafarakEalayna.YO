@@ -78,14 +78,128 @@ class WalletTransactionService
 
     public function createTransaction(array $data): WalletTransaction
     {
+        // ─────────────────────────────────────────────────────────────────
+        // IDM-1 REMEDIATION (2026-08-20) — replay protection for wallet
+        // transactions. Mirrors the established Hajj/Umra, Flight, Visa,
+        // and Bus idempotency pattern.
+        //
+        //   Identity:    (created_by, idempotency_key)
+        //   Stored on:   wallet_transactions.idempotency_key  (nullable, 100 chars)
+        //   Enforced:    UNIQUE index `wt_idem_uniq` (migration 2026_08_20_120000)
+        //
+        //   Layered protection:
+        //     1. Pre-check inside DB::transaction: SELECT existing WalletTransaction
+        //        with same (created_by, idempotency_key). If found and not
+        //        soft-deleted → return it as idempotent_replay=true. The caller
+        //        (controller) maps this to HTTP 200 + body flag.
+        //     2. DB-level UNIQUE constraint (the migration). Even if two
+        //        callers bypass the pre-check (race, buggy client, raw SQL),
+        //        the INSERT will fail with SQLSTATE 23000 / MySQL code 1062.
+        //        The catch below re-queries and returns the existing row
+        //        idempotently.
+        //     3. Soft-deleted rows are NOT treated as replay blockers.
+        //        A soft-deleted row has a non-null `deleted_at`; the
+        //        pre-check filters them out so a fresh INSERT is allowed.
+        //
+        //   Backward compat: when `idempotency_key` is null/empty, no
+        //   protection is applied. Legacy callers keep their existing
+        //   behavior — no checkpoints, no errors.
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
+        // Resolve the principal (created_by) so the (created_by, key)
+        // scope is consistent with the UNIQUE index. Auth::id() is the
+        // authenticated user; fall back to the request-supplied value
+        // when called from a non-HTTP context (e.g. jobs, tests).
+        $createdByForIdem = (int) (Auth::id() ?? ($data['created_by'] ?? 1));
+
         try {
-            return DB::transaction(function () use ($data) {
+            return DB::transaction(function () use ($data, $idempotencyKey, $createdByForIdem) {
+                // Layer 1 — pre-check. If a non-soft-deleted row with the
+                // same (created_by, idempotency_key) exists, return it
+                // immediately. No new WalletTransaction, no new ledger
+                // entries, no new audit log. The transient `idempotent_replay`
+                // flag is read by the controller to return HTTP 200.
+                if ($idempotencyKey !== null) {
+                    $existing = WalletTransaction::query()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        // Soft-delete-aware: only ACTIVE rows block a replay.
+                        ->whereNull('deleted_at')
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+                        return $existing;
+                    }
+
+                    // Soft-deleted row with the same key: release the key
+                    // so the new INSERT can succeed. The UNIQUE constraint
+                    // (created_by, idempotency_key) does NOT distinguish
+                    // soft-deleted rows from active ones, so a fresh
+                    // INSERT would collide without this NULL-out. The
+                    // soft-deleted row keeps its `deleted_at` for audit;
+                    // only the idempotency_key is cleared.
+                    //
+                    // IMPORTANT: use `withTrashed()` because the default
+                    // SoftDeletes global scope HIDES soft-deleted rows
+                    // from `query()`. Without it, the UPDATE silently
+                    // matches 0 rows and the INSERT collides downstream.
+                    //
+                    // This is safe inside the DB transaction: if the new
+                    // INSERT/INSERT fails for any reason, the
+                    // soft-delete's key-revoke rolls back along with
+                    // everything else.
+                    WalletTransaction::withTrashed()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->whereNotNull('deleted_at')
+                        ->update(['idempotency_key' => null]);
+                }
+
                 $rawType = $data['type'];
                 $type = $rawType instanceof WalletTransactionType
                     ? $rawType
                     : WalletTransactionType::from((string) $rawType);
                 $amount = (float) $data['amount'];
                 $fee = (float) ($data['service_fee'] ?? 0);
+
+                // FINDING CONC-1 (HIGH) REMEDIATED (2026-08-21):
+                // Pre-fix: `WalletTransaction::create()` ran BEFORE any row
+                // lock was acquired. A burst of concurrent sends could each
+                // create their WT row, then queue for the lock inside
+                // `recordIncome/recordExpense`. The lock prevented double-spend
+                // on the balance check, but WT row count could rise above the
+                // count of successful transactions (phantom WT rows on
+                // failed-overdraft attempts).
+                //
+                // Post-fix: acquire `lockForUpdate()` on the wallet_account_id
+                // row BEFORE the WT insert. This is the canonical
+                // serialization point: any concurrent send targeting the same
+                // wallet_account_id will queue here, see the latest balance,
+                // and either succeed or fail cleanly. The lock is held until
+                // the DB::transaction commits, after the journal legs have
+                // also locked the same row (lockForUpdate is re-entrant for
+                // the same connection). On rollback, the lock is released.
+                //
+                // Note: `recordJournalTransfer` ALSO locks the from/to accounts
+                // (lines 691-696) — that's defense in depth, not redundant.
+                // It guards the journal-specific path; this guard protects
+                // the WT insert path.
+                $walletAccountId = (int) $data['wallet_account_id'];
+                $cashAccountId = (int) $data['cash_account_id'];
+                if ($walletAccountId > 0) {
+                    Account::query()
+                        ->where('id', $walletAccountId)
+                        ->lockForUpdate()
+                        ->first();
+                }
+                if ($cashAccountId > 0 && $cashAccountId !== $walletAccountId) {
+                    Account::query()
+                        ->where('id', $cashAccountId)
+                        ->lockForUpdate()
+                        ->first();
+                }
 
                 // total_amount: للИслаرسال العميل يدفع amount+fee، للاستقبال يأخذ amount-fee
                 $totalAmount = match ($type) {
@@ -103,22 +217,52 @@ class WalletTransactionService
                 $walletTypeName = WalletType::find($data['wallet_type_id'])?->name ?? '';
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? 1);
                 $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $totalAmount;
-                $record = WalletTransaction::create([
-                    'wallet_type_id' => $data['wallet_type_id'],
-                    'customer_id' => $data['customer_id'] ?? null,
-                    'customer_name' => $customerName,
-                    'wallet_number' => $data['wallet_number'],
-                    'type' => $type->value,
-                    'amount' => $amount,
-                    'service_fee' => $fee,
-                    'total_amount' => $totalAmount,
-                    'amount_paid' => $amountPaid,
-                    'wallet_account_id' => $data['wallet_account_id'],
-                    'cash_account_id' => $data['cash_account_id'],
-                    'employee_id' => $data['employee_id'] ?? null,
-                    'created_by' => $createdBy,
-                    'notes' => $data['notes'] ?? null,
-                ]);
+
+                // Layer 2 — INSERT. The DB UNIQUE constraint is the final
+                // backstop. If two concurrent calls bypassed the pre-check
+                // (e.g. lock acquisition failed), the second INSERT will
+                // fail with SQLSTATE 23000 / MySQL code 1062. The catch
+                // block below converts that to an idempotent return.
+                try {
+                    $record = WalletTransaction::create([
+                        'wallet_type_id' => $data['wallet_type_id'],
+                        'customer_id' => $data['customer_id'] ?? null,
+                        'customer_name' => $customerName,
+                        'wallet_number' => $data['wallet_number'],
+                        'type' => $type->value,
+                        'amount' => $amount,
+                        'service_fee' => $fee,
+                        'total_amount' => $totalAmount,
+                        'amount_paid' => $amountPaid,
+                        'wallet_account_id' => $data['wallet_account_id'],
+                        'cash_account_id' => $data['cash_account_id'],
+                        'employee_id' => $data['employee_id'] ?? null,
+                        'created_by' => $createdBy,
+                        'notes' => $data['notes'] ?? null,
+                        'idempotency_key' => $idempotencyKey,
+                    ]);
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Layer 2 catch — DB UNIQUE backstop.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        // The pre-check passed but the INSERT still tripped
+                        // the UNIQUE. Another call must have created the row
+                        // between SELECT and INSERT. Re-query and return the
+                        // now-existing row as idempotent_replay.
+                        $existing = WalletTransaction::query()
+                            ->where('created_by', $createdByForIdem)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->whereNull('deleted_at')
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+                            return $existing;
+                        }
+                    }
+                    // Not a duplicate-key error, or the row isn't visible
+                    // for some reason — rethrow so the outer catch logs it.
+                    throw $qe;
+                }
+
                 // Wrap in try/catch(Throwable) to surface inner exceptions clearly.
                 // Outer try only catches \Exception, but accountForSend/accountForReceive
                 // may throw \TypeError or \Error which silently bypass the catch.
@@ -145,6 +289,7 @@ class WalletTransactionService
                     'service_fee' => $fee,
                     'customer_name' => $customerName,
                     'created_by' => $createdBy,
+                    'idempotency_key' => $idempotencyKey,
                 ]);
 
                 // ── Audit log ─────────────────────────────────────────────
@@ -171,6 +316,25 @@ class WalletTransactionService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Identify a "duplicate entry on unique index" QueryException.
+     * MySQL: SQLSTATE 23000, error code 1062.
+     * SQLite: SQLSTATE 23000 (canonical SQL state).
+     * PostgreSQL: SQLSTATE 23000.
+     *
+     * Mirrors the same helper in HajjUmraBookingService, VisaBookingService,
+     * and FlightBookingService to keep the project-wide convention.
+     */
+    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+        return $code === 1062;
     }
 
     public function updateTransaction(WalletTransaction $transaction, array $data): WalletTransaction
@@ -569,6 +733,21 @@ class WalletTransactionService
      * Post only the optional settlement transaction for a Send with a
      * registered customer when amount_paid > 0. Idempotent — if amount_paid
      * is 0 or the customer has no registered account, this is a no-op.
+     *
+     * FINDING FIN-2 (HIGH) REMEDIATED (2026-08-21):
+     * Pre-fix: this method called `recordIncome(...)` with the SAME
+     * `(related_type, related_id)` as the main Send pair. The duplicate
+     * guard in `TransactionService::recordJournalTransfer` (lines 650-674)
+     * rejected the second call with "Duplicate income transaction blocked".
+     *
+     * The guard itself documents the intended pattern:
+     *   "Subsequent COLLECTIONS on a booking must use Transfer (type=transfer)."
+     *
+     * Post-fix: this method now calls `recordTransfer(...)` instead. The
+     * settlement becomes a cashbox→wallet-account replenishment, the
+     * proper double-entry for "cashier collected cash from the customer
+     * and put it into the wallet vault". This is the transfer, NOT an
+     * income — and it does not collide with the main Send income slot.
      */
     protected function postSettlementSend(
         WalletTransaction $record,
@@ -585,17 +764,25 @@ class WalletTransactionService
             return;
         }
 
-        $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
-
-        $this->transactionService->recordIncome([
+        // Settlement is a TRANSFER (cashbox → wallet-account replenishment),
+        // not a new income. The duplicate-active-income guard does not
+        // apply to transfers. We use `recordJournalTransfer` (not
+        // `recordTransfer`) so that `related_type`/`related_id` are
+        // preserved on the resulting Transaction row for audit
+        // traceability, while still routing through the journal layer
+        // (no Transfer approval workflow — the settlement is
+        // synchronous with the Send).
+        $this->transactionService->recordJournalTransfer([
             'amount' => $amountPaid,
-            'to_account_id' => $record->cash_account_id,
-            'contra_account_id' => $customerAccount->id,
+            'from_account_id' => $record->cash_account_id,
+            'to_account_id' => $record->wallet_account_id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
+            'type' => \App\Enums\TransactionType::Transfer->value,
             'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
     }
 
@@ -811,33 +998,51 @@ class WalletTransactionService
 
     protected function ensureCustomerAccount(int $customerId): Account
     {
-        $customer = Customer::findOrFail($customerId);
+        // FINDING CONC-2 (MED) REMEDIATION (2026-08-21):
+        // Two concurrent first-time sends for the same customer could each
+        // see `customer->account_id === NULL`, both call `Account::create()`,
+        // and both write to `$customer->account_id` — leaving the Customer
+        // pointing to one Account and the orphan Account dangling.
+        //
+        // The fix: acquire a row-level lock on the Customer row at the
+        // START of ensureCustomerAccount, re-read `account_id` under the
+        // lock, and only create a new Account if the second reader still
+        // sees NULL. The Customer row is the canonical serialization
+        // point because it is the cross-process mutual exclusion primitive.
+        //
+        // The check + create is wrapped in DB::transaction so that the
+        // lock is held for the duration of the create+update pair.
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customerId) {
+            /** @var Customer $customer */
+            $customer = Customer::query()
+                ->where('id', $customerId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($customer->account_id) {
-            $account = Account::find($customer->account_id);
-            if ($account) {
-                // Phase 8 fix: CustomerLedgerObserver creates a generic
-                // 'office'-tagged account the moment a Customer row is
-                // inserted. When that customer is later used by a wallet
-                // transaction, we re-tag the account to 'wallet_transfer'
-                // so it surfaces in the TransferDashboardController stats
-                // and TransferAccounts/* resources (which filter strictly
-                // by module_type='wallet_transfer'). The re-tag is wrapped
-                // in LedgerBalanceMutationGuard because touching `balance`
-                // — even to confirm 0.00 — would otherwise trip the
-                // `Account::updating` boot guard.
-                if ($account->module_type !== 'wallet_transfer') {
-                    LedgerBalanceMutationGuard::run(function () use ($account) {
-                        $account->module_type = 'wallet_transfer';
-                        $account->save();
-                    });
+            if ($customer->account_id) {
+                $account = Account::find($customer->account_id);
+                if ($account) {
+                    // Phase 8 fix: CustomerLedgerObserver creates a generic
+                    // 'office'-tagged account the moment a Customer row is
+                    // inserted. When that customer is later used by a wallet
+                    // transaction, we re-tag the account to 'wallet_transfer'
+                    // so it surfaces in the TransferDashboardController stats
+                    // and TransferAccounts/* resources (which filter strictly
+                    // by module_type='wallet_transfer'). The re-tag is wrapped
+                    // in LedgerBalanceMutationGuard because touching `balance`
+                    // — even to confirm 0.00 — would otherwise trip the
+                    // `Account::updating` boot guard.
+                    if ($account->module_type !== 'wallet_transfer') {
+                        LedgerBalanceMutationGuard::run(function () use ($account) {
+                            $account->module_type = 'wallet_transfer';
+                            $account->save();
+                        });
+                    }
+
+                    return $account;
                 }
-
-                return $account;
             }
-        }
 
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
             $account = Account::create([
                 'name' => 'حساب العميل: '.$customer->full_name,
                 'type' => AccountType::Customer,
@@ -865,15 +1070,41 @@ class WalletTransactionService
         ])->findOrFail($id);
     }
 
+    /**
+     * Test-only accessor for the protected ensureCustomerAccount method.
+     * The CONC-2 regression test in Phase12ConcurrencyTest calls this twice
+     * to verify the lockForUpdate serialization holds.
+     */
+    public function ensureCustomerAccountForTest(int $customerId): Account
+    {
+        return $this->ensureCustomerAccount($customerId);
+    }
+
     public function getDailySummary(string $date): array
     {
+        // FINDING FIN-4 (MED) REMEDIATION (2026-08-21):
+        // The previous implementation summed `amount` (the principal only)
+        // and reported it as `total_sent`/`total_received`, which silently
+        // undercounted cash moved through the wallet because the
+        // `service_fee` was excluded. For reconciliation purposes, the
+        // cash that physically LEAVES the cashbox for a Send is
+        // `total_amount` = `amount` + `service_fee`. The accounting
+        // ledger was already correct (each TX has 3 paired entries);
+        // only this summary aggregator was wrong.
+        //
+        // FIX: add `total_sent_with_fees` and `total_received_with_fees`
+        // using `total_amount`. Keep `total_sent`/`total_received`
+        // (using `amount`) for backward compatibility — older clients
+        // (Filament dashboard widgets, exports) still read those.
         $result = WalletTransaction::whereDate('created_at', $date)
             ->selectRaw('
                 COUNT(*)                                       as total_transactions,
                 SUM(CASE WHEN type = "send"    THEN 1 ELSE 0 END) as send_count,
                 SUM(CASE WHEN type = "receive" THEN 1 ELSE 0 END) as receive_count,
-                SUM(CASE WHEN type = "send"    THEN amount ELSE 0 END) as total_sent,
-                SUM(CASE WHEN type = "receive" THEN amount ELSE 0 END) as total_received,
+                SUM(CASE WHEN type = "send"    THEN amount ELSE 0 END)        as total_sent,
+                SUM(CASE WHEN type = "receive" THEN amount ELSE 0 END)        as total_received,
+                SUM(CASE WHEN type = "send"    THEN total_amount ELSE 0 END) as total_sent_with_fees,
+                SUM(CASE WHEN type = "receive" THEN total_amount ELSE 0 END) as total_received_with_fees,
                 SUM(service_fee) as total_fees
             ')
             ->first();
@@ -884,6 +1115,8 @@ class WalletTransactionService
             'receive_count' => (int) ($result->receive_count ?? 0),
             'total_sent' => (float) ($result->total_sent ?? 0),
             'total_received' => (float) ($result->total_received ?? 0),
+            'total_sent_with_fees' => (float) ($result->total_sent_with_fees ?? 0),
+            'total_received_with_fees' => (float) ($result->total_received_with_fees ?? 0),
             'total_fees' => (float) ($result->total_fees ?? 0),
         ];
     }
@@ -952,8 +1185,18 @@ class WalletTransactionService
             AuditLog::create([
                 'user_id' => Auth::id() ?? $record->created_by ?? 1,
                 'action' => $action,
+                // Legacy polymorphic convention (kept for backward compatibility —
+                // every existing audit consumer reads `model_type`/`model_id`).
                 'model_type' => WalletTransaction::class,
                 'model_id' => $record->id,
+                // FINDING FIN-5 (MED) REMEDIATION (2026-08-21):
+                // Also write the modern `related_type`/`related_id` pair so
+                // cross-table audit queries ("all audit rows for booking X",
+                // "all audit rows for transaction Y") can use a single
+                // convention. Columns added by migration
+                // `2026_08_19_120000_add_related_columns_to_audit_logs_table`.
+                'related_type' => WalletTransaction::class,
+                'related_id' => $record->id,
                 'old_values' => $oldValues,
                 'new_values' => $newValues,
                 'ip_address' => request()?->ip(),

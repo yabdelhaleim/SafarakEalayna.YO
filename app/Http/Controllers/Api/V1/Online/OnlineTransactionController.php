@@ -69,12 +69,35 @@ class OnlineTransactionController extends Controller
     public function store(StoreOnlineTransactionRequest $request): JsonResponse
     {
         try {
-            $tx = $this->service->create($request->validated());
+            $data = $request->validated();
+
+            // SEC-4 idempotency: accept the key via the IETF-draft header
+            // (`Idempotency-Key`). The header is the conventional transport
+            // for idempotency tokens; it takes precedence over any body
+            // value so callers can use either channel. Length is bounded
+            // (100 chars) to match the column constraint.
+            $headerKey = trim((string) $request->header('Idempotency-Key', ''));
+            if ($headerKey !== '') {
+                $data['idempotency_key'] = mb_substr($headerKey, 0, 100);
+            }
+
+            $tx = $this->service->create($data);
+
+            // SEC-4 contract: a replay (same key, same actor, row already
+            // exists) returns HTTP 200 + the same body as the original 201
+            // plus an `idempotent_replay: true` flag. New creations stay on
+            // HTTP 201. The transient flag is consumed by this controller —
+            // it's a service-layer signal, not part of the persisted model.
+            $isReplay = (bool) ($tx->idempotent_replay ?? false);
+            unset($tx->idempotent_replay);
 
             return ApiResponse::success(
                 'تم تنفيذ معاملة الخدمة بنجاح.',
-                new OnlineTransactionResource($tx),
-                201,
+                array_merge(
+                    (new OnlineTransactionResource($tx))->resolve(),
+                    ['idempotent_replay' => $isReplay],
+                ),
+                $isReplay ? 200 : 201,
             );
         } catch (\Throwable $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
@@ -84,12 +107,18 @@ class OnlineTransactionController extends Controller
     public function show(OnlineTransaction $onlineTransaction): JsonResponse
     {
         try {
+            // SEC-3: IDOR hardening. Only admins / owners / the transaction's
+            // owning employee may view this row. Anyone else → 403.
+            $this->authorize('view', $onlineTransaction);
+
             $tx = $this->service->getById($onlineTransaction->id);
 
             return ApiResponse::success(
                 'تم جلب المعاملة بنجاح.',
                 new OnlineTransactionResource($tx),
             );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('غير مصرح لك بعرض هذه المعاملة.', null, 403);
         } catch (\Throwable $e) {
             return ApiResponse::error('المعاملة غير موجودة.', null, 404);
         }
@@ -98,21 +127,39 @@ class OnlineTransactionController extends Controller
     public function update(UpdateOnlineTransactionRequest $request, OnlineTransaction $onlineTransaction): JsonResponse
     {
         try {
+            // SEC-3: IDOR hardening. Only admins / owners / the transaction's
+            // owning employee may PATCH this row.
+            $this->authorize('update', $onlineTransaction);
+
             $tx = $this->service->update($onlineTransaction, $request->validated());
 
             return ApiResponse::success(
                 'تم تحديث المعاملة بنجاح.',
                 new OnlineTransactionResource($tx),
             );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('غير مصرح لك بتعديل هذه المعاملة.', null, 403);
         } catch (\Throwable $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
 
-    public function destroy(OnlineTransaction $onlineTransaction): JsonResponse
+    public function destroy(int $onlineTransaction): JsonResponse
     {
+        // F-3 fix: route-model binding via `OnlineTransaction $onlineTransaction`
+        // would 404 on soft-deleted rows, breaking retry-idempotency at the
+        // HTTP layer. Resolve manually with withTrashed() so the service-level
+        // idempotency guard (`delete()` returns true on already-deleted rows
+        // without reversing GL again) takes over.
         try {
-            $this->service->delete($onlineTransaction);
+            $tx = OnlineTransaction::withTrashed()->findOrFail($onlineTransaction);
+
+            // SEC-3: IDOR hardening. Defense-in-depth — the route is already
+            // gated by `role:admin`, but the policy ensures ownership is
+            // enforced even if the route middleware is loosened.
+            $this->authorize('delete', $tx);
+
+            $this->service->delete($tx);
 
             // Flush finance-listing and dashboard caches so the
             // deleted Online operation disappears from `finance/accounts`,
@@ -122,6 +169,8 @@ class OnlineTransactionController extends Controller
             CacheHelper::flushNamespace();
 
             return ApiResponse::success('تم حذف المعاملة بنجاح.');
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('غير مصرح لك بحذف هذه المعاملة.', null, 403);
         } catch (\Throwable $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
@@ -129,8 +178,12 @@ class OnlineTransactionController extends Controller
 
     public function dailySummary(Request $request): JsonResponse
     {
+        // Validate first so ValidationException propagates to the global
+        // exception handler in bootstrap/app.php, which renders the
+        // standard `{success:false, message, errors:{field:[...]}}` envelope.
+        $request->validate(['date' => 'required|date_format:Y-m-d']);
+
         try {
-            $request->validate(['date' => 'required|date_format:Y-m-d']);
             $summary = $this->service->getDailySummary($request->string('date')->toString());
 
             return ApiResponse::success('تم جلب الملخص اليومي بنجاح.', $summary);

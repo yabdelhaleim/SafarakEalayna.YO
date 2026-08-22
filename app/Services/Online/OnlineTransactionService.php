@@ -109,8 +109,87 @@ class OnlineTransactionService
 
     public function create(array $data): OnlineTransaction
     {
+        // ─────────────────────────────────────────────────────────────────
+        // SEC-4 REMEDIATION (2026-08-21) — replay protection for Online
+        // transactions. Mirrors the established Hajj/Umra, Flight, Visa,
+        // Wallet, and Bus idempotency pattern.
+        //
+        //   Identity:    (created_by, idempotency_key)
+        //   Stored on:   online_transactions.idempotency_key  (nullable, 100 chars)
+        //   Enforced:    UNIQUE index `ot_idem_uniq` (migration 2026_08_21_010000)
+        //
+        //   Layered protection:
+        //     1. Pre-check inside DB::transaction: SELECT existing OnlineTransaction
+        //        with same (created_by, idempotency_key). If found and not
+        //        soft-deleted → return it as idempotent_replay=true. The caller
+        //        (controller) maps this to HTTP 200 + body flag.
+        //     2. DB-level UNIQUE constraint (the migration). Even if two
+        //        callers bypass the pre-check (race, buggy client, raw SQL),
+        //        the INSERT will fail with SQLSTATE 23000 / MySQL code 1062.
+        //        The catch below re-queries and returns the existing row
+        //        idempotently.
+        //     3. Soft-deleted rows are NOT treated as replay blockers.
+        //        A soft-deleted row has a non-null `deleted_at`; the
+        //        pre-check filters them out so a fresh INSERT is allowed
+        //        (after the soft-deleted row's key is cleared).
+        //
+        //   Backward compat: when `idempotency_key` is null/empty, no
+        //   protection is applied. Legacy callers keep their existing
+        //   behavior — no checkpoints, no errors.
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
+        // Resolve the principal (created_by) so the (created_by, key)
+        // scope is consistent with the UNIQUE index. Auth::id() is the
+        // authenticated user; fall back to the request-supplied value
+        // when called from a non-HTTP context (e.g. jobs, tests).
+        $createdByForIdem = (int) (Auth::id() ?? ($data['created_by'] ?? 1));
+
         try {
-            return DB::transaction(function () use ($data) {
+            return DB::transaction(function () use ($data, $idempotencyKey, $createdByForIdem) {
+                // Layer 1 — pre-check. If a non-soft-deleted row with the
+                // same (created_by, idempotency_key) exists, return it
+                // immediately. No new OnlineTransaction, no new ledger
+                // entries, no new audit log. The transient `idempotent_replay`
+                // flag is read by the controller to return HTTP 200.
+                if ($idempotencyKey !== null) {
+                    $existing = OnlineTransaction::query()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        // Soft-delete-aware: only ACTIVE rows block a replay.
+                        ->whereNull('deleted_at')
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+
+                        return $existing;
+                    }
+
+                    // Soft-deleted row with the same key: release the key
+                    // so the new INSERT can succeed. The UNIQUE constraint
+                    // (created_by, idempotency_key) does NOT distinguish
+                    // soft-deleted rows from active ones, so a fresh
+                    // INSERT would collide without this NULL-out. The
+                    // soft-deleted row keeps its `deleted_at` for audit;
+                    // only the idempotency_key is cleared.
+                    //
+                    // IMPORTANT: use `withTrashed()` because the default
+                    // SoftDeletes global scope HIDES soft-deleted rows
+                    // from `query()`. Without it, the UPDATE silently
+                    // matches 0 rows and the INSERT collides downstream.
+                    //
+                    // This is safe inside the DB transaction: if the new
+                    // INSERT/INSERT fails for any reason, the
+                    // soft-delete's key-revoke rolls back along with
+                    // everything else.
+                    OnlineTransaction::withTrashed()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->whereNotNull('deleted_at')
+                        ->update(['idempotency_key' => null]);
+                }
+
                 $serviceType = OnlineServiceType::findOrFail($data['service_type_id']);
                 if (! $serviceType->is_active) {
                     throw new \RuntimeException('نوع الخدمة غير نشط حالياً.');
@@ -146,31 +225,60 @@ class OnlineTransactionService
                 $status = OnlineTransactionStatus::tryFrom($data['status'] ?? OnlineTransactionStatus::Completed->value)
                     ?? OnlineTransactionStatus::Completed;
 
-                // Wrap the create in runProfitMutation() so the saving observer
-                // guard lets the explicit `profit` write through. Mirrors the
-                // BusBookingService / FawryTransactionService pattern.
-                $tx = OnlineTransaction::runProfitMutation(function () use ($data, $serviceType, $provider, $customerName, $customerPhone, $purchase, $selling, $amountPaid, $profit, $status) {
-                    return OnlineTransaction::create([
-                        'service_type_id' => $serviceType->id,
-                        'provider_id' => $provider?->id,
-                        'customer_id' => $data['customer_id'] ?? null,
-                        'customer_name' => $customerName,
-                        'customer_phone' => $customerPhone,
-                        'customer_country' => $data['customer_country'] ?? null,
-                        'employee_id' => $data['employee_id'] ?? null,
-                        'purchase_price' => $purchase,
-                        'selling_price' => $selling,
-                        'amount_paid' => $amountPaid,
-                        'profit' => $profit,
-                        'payment_method' => $data['payment_method'],
-                        'account_id' => $data['account_id'],
-                        'reference_number' => $data['reference_number'] ?? null,
-                        'status' => $status->value,
-                        'failure_reason' => $data['failure_reason'] ?? null,
-                        'notes' => $data['notes'] ?? null,
-                        'created_by' => Auth::id(),
-                    ]);
-                });
+                // Layer 2 — INSERT. The DB UNIQUE constraint is the final
+                // backstop. If two concurrent calls bypassed the pre-check
+                // (e.g. lock acquisition failed), the second INSERT will
+                // fail with SQLSTATE 23000 / MySQL code 1062. The catch
+                // block below converts that to an idempotent return.
+                try {
+                    // Wrap the create in runProfitMutation() so the saving observer
+                    // guard lets the explicit `profit` write through. Mirrors the
+                    // BusBookingService / FawryTransactionService pattern.
+                    $tx = OnlineTransaction::runProfitMutation(function () use ($data, $serviceType, $provider, $customerName, $customerPhone, $purchase, $selling, $amountPaid, $profit, $status, $idempotencyKey, $createdByForIdem) {
+                        return OnlineTransaction::create([
+                            'service_type_id' => $serviceType->id,
+                            'provider_id' => $provider?->id,
+                            'customer_id' => $data['customer_id'] ?? null,
+                            'customer_name' => $customerName,
+                            'customer_phone' => $customerPhone,
+                            'customer_country' => $data['customer_country'] ?? null,
+                            'employee_id' => $data['employee_id'] ?? null,
+                            'purchase_price' => $purchase,
+                            'selling_price' => $selling,
+                            'amount_paid' => $amountPaid,
+                            'profit' => $profit,
+                            'payment_method' => $data['payment_method'],
+                            'account_id' => $data['account_id'],
+                            'reference_number' => $data['reference_number'] ?? null,
+                            'idempotency_key' => $idempotencyKey,
+                            'status' => $status->value,
+                            'failure_reason' => $data['failure_reason'] ?? null,
+                            'notes' => $data['notes'] ?? null,
+                            'created_by' => $createdByForIdem,
+                        ]);
+                    });
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Layer 2 catch — DB UNIQUE backstop.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        // The pre-check passed but the INSERT still tripped
+                        // the UNIQUE. Another call must have created the row
+                        // between SELECT and INSERT. Re-query and return the
+                        // now-existing row as idempotent_replay.
+                        $existing = OnlineTransaction::query()
+                            ->where('created_by', $createdByForIdem)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->whereNull('deleted_at')
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+
+                            return $existing;
+                        }
+                    }
+                    // Not a duplicate-key error, or the row isn't visible
+                    // for some reason — rethrow so the outer catch logs it.
+                    throw $qe;
+                }
 
                 if ($status === OnlineTransactionStatus::Completed) {
                     $this->postFinancialEntries($tx, $serviceType, $provider, $purchase, $selling, $customerName);
@@ -183,7 +291,9 @@ class OnlineTransactionService
                     'purchase' => $purchase,
                     'selling' => $selling,
                     'profit' => $profit,
-                    'created_by' => Auth::id(),
+                    'created_by' => $createdByForIdem,
+                    'idempotency_key' => $idempotencyKey,
+                    'idempotent_replay' => false,
                 ]);
 
                 return $tx->fresh([
@@ -206,6 +316,27 @@ class OnlineTransactionService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Identify a "duplicate entry on unique index" QueryException.
+     * MySQL: SQLSTATE 23000, error code 1062.
+     * SQLite: SQLSTATE 23000 (canonical SQL state).
+     * PostgreSQL: SQLSTATE 23000.
+     *
+     * Mirrors the same helper in WalletTransactionService,
+     * HajjUmraBookingService, VisaBookingService, and FlightBookingService
+     * to keep the project-wide convention.
+     */
+    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+
+        return $code === 1062;
     }
 
     public function update(OnlineTransaction $tx, array $data): OnlineTransaction

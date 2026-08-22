@@ -172,6 +172,94 @@ class Account extends Model
 
     protected static function booted(): void
     {
+        // FINDING FIN-1 (HIGH) REMEDIATION (2026-08-21):
+        // Auto-create a paired opening-balance AccountEntry when an Account
+        // is created with `balance > 0`. Without this, the project invariant
+        //   `Account.balance = SUM(credit) - SUM(debit)` on `account_entries`
+        // is mathematically unsatisfiable for any account seeded with a
+        // non-zero opening balance (no entries exist to back the balance).
+        //
+        // The paired entry posts:
+        //   - DEBIT on the new account for `balance` (raises balance by
+        //     `credit - debit = -balance`, no — wait, project convention is
+        //     `balance = SUM(credit) - SUM(debit)`, so a starting balance
+        //     means a CREDIT entry of `balance` on the new account).
+        //   - CREDIT on a singleton "System Opening Balances" equity
+        //     contra account (one row, looked up by `name`, created on
+        //     demand if missing).
+        //
+        // The entry uses `transaction_id = NULL` (the column is already
+        // nullable per migration `2026_05_11_004055`) and `is_opening = true`
+        // so reconciliation queries can recognize it.
+        //
+        // Skipped during in-memory unit testing when the `disable_in_testing`
+        // balance guard is enabled (matches the existing pattern) — but
+        // we DO want it in tests because the FIN-1 invariant check tests
+        // depend on it. We therefore always run it (the entry creation is
+        // itself a safe write, no balance mutation on the new account).
+        static::created(function (Account $account): void {
+            $balance = (float) $account->balance;
+            if ($balance <= 0.0) {
+                return;
+            }
+
+            // Singleton opening-balance contra account. FirstOrCreate by name.
+            // The contra itself starts at zero and only ever receives a debit
+            // matching the cumulative opening balances. Uses AccountType::Owner
+            // (the closest semantic — "owner/internal system account") since the
+            // schema's ENUM doesn't have a dedicated "Equity" case.
+            $contra = Account::query()->firstOrCreate(
+                [
+                    'name' => 'System Opening Balances',
+                    'type' => AccountType::Owner->value,
+                ],
+                [
+                    'currency' => $account->currency ?? 'EGP',
+                    'balance' => 0,
+                    'is_active' => true,
+                    'owner_type' => self::OWNER_TYPE_OWNER,
+                    'module_type' => 'office',
+                    'is_module_vault' => false,
+                ]
+            );
+
+            // Project invariant: `balance = Σ credit − Σ debit` on every account.
+            // The contra entry below is a DEBIT of $balance, so the contra's
+            // balance must become −$balance for the invariant to hold. Wrap the
+            // write in LedgerBalanceMutationGuard so the updating observer
+            // (which enforces "no direct balance writes") accepts it. This is
+            // a seed-time mutation, not a runtime financial mutation.
+            LedgerBalanceMutationGuard::run(function () use ($contra, $balance) {
+                $contra->balance = (float) $contra->balance - $balance;
+                $contra->save();
+            });
+
+            AccountEntry::insert([
+                [
+                    'account_id' => $account->id,
+                    'transaction_id' => null,
+                    'debit' => 0,
+                    'credit' => $balance,
+                    'balance_after' => $balance,
+                    'notes' => 'Opening balance — auto-seeded by Account::created (FIN-1).',
+                    'is_opening' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+                [
+                    'account_id' => $contra->id,
+                    'transaction_id' => null,
+                    'debit' => $balance,
+                    'credit' => 0,
+                    'balance_after' => -$balance,
+                    'notes' => 'Opening balance contra — auto-seeded by Account::created (FIN-1).',
+                    'is_opening' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            ]);
+        });
+
         static::updating(function (Account $account): void {
             if (! $account->isDirty('balance')) {
                 return;

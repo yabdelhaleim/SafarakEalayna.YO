@@ -131,6 +131,23 @@ class UserPermissions
     /**
      * Permissions used for route guards and navigation.
      *
+     * Deny-by-default (SEC-1 fix, 2026-08-21):
+     *   - admin / owner → always full (`all()`)
+     *   - any other role → ONLY the stored, whitelisted permissions.
+     *     Empty / null / all-invalid stored permissions → `[]` (deny-all).
+     *
+     * Pre-fix, employees with `permissions=null` or `permissions=[]`
+     * silently received `defaultEmployeeModules()`, which includes
+     * `manage_treasury` and therefore unlocked wallet posting. That
+     * meant any newly-created `role='employee'` user could post wallet
+     * transactions immediately, with no way for an admin to "lock them
+     * out" short of changing their role.
+     *
+     * Post-fix, every non-admin/non-owner user MUST be granted
+     * permissions explicitly. `defaultEmployeeModules()` is preserved
+     * as a convenience constant for seeders / fixtures that explicitly
+     * seed it into `permissions` — it is no longer auto-applied.
+     *
      * @return list<string>
      */
     public static function effectiveFor(User $user): array
@@ -139,14 +156,15 @@ class UserPermissions
         $stored = array_values(array_intersect($stored, self::keys()));
 
         if (in_array($user->role, ['admin', 'owner'], true)) {
+            // Admin/owner always have full access; stored perms override the
+            // default-all only when explicitly granted (allows admin to
+            // temporarily narrow their own access for testing).
             return $stored !== [] ? $stored : self::all();
         }
 
-        if ($stored !== []) {
-            return $stored;
-        }
-
-        return self::defaultEmployeeModules();
+        // Any other role: deny-by-default. Return ONLY what is explicitly
+        // stored. Empty stored perms → [] → route guards will reject.
+        return $stored;
     }
 
     /**

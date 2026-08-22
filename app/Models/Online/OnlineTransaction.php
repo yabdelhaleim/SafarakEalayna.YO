@@ -36,6 +36,7 @@ class OnlineTransaction extends Model
         'payment_method',
         'account_id',
         'reference_number',
+        'idempotency_key',
         'expense_transaction_id',
         'income_transaction_id',
         'status',

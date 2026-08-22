@@ -22,7 +22,7 @@ class AccountFactory extends Factory
             ]),
             'owner_type' => Account::OWNER_TYPE_OWNER,
             'module_type' => 'office',
-            'currency' => $this->faker->randomElement(['EGP', 'USD', 'EUR', 'SAR', 'KWD']),
+            'currency' => 'EGP',
             'balance' => $this->faker->randomFloat(2, 1000, 100000),
             'is_active' => $this->faker->boolean(90),
             'notes' => $this->faker->optional()->sentence(),
@@ -68,6 +68,13 @@ class AccountFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'balance' => $balance,
+        ]);
+    }
+
+    public function foreignCurrency(string $currency = 'USD'): self
+    {
+        return $this->state(fn (array $attributes) => [
+            'currency' => $currency,
         ]);
     }
 }

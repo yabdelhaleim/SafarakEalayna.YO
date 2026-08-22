@@ -276,8 +276,51 @@ class CustomerController extends Controller
                 $journalConverted = null;
 
                 if ($hasConversion) {
-                    $exchangeRate = (float) ($validated['exchange_rate'] ?? 1.0);
-                    $convertedAmount = (float) ($validated['converted_amount'] ?? ($journalAmount * $exchangeRate));
+                    // ─────────────────────────────────────────────────────────
+                    // SAFE FX RULE (FIX 2026-08-21): cross-currency debt
+                    // settlements MUST carry explicit `converted_amount` +
+                    // `exchange_rate`. Reject when the caller did not supply
+                    // either, instead of silently coercing a missing rate to
+                    // 1.0 (the pre-fix vulnerable behaviour).
+                    //
+                    // The caller can supply either:
+                    //   (a) `converted_amount` (preferred — caller already
+                    //        computed via CurrencyService::convert()), OR
+                    //   (b) `exchange_rate` (we derive converted_amount from
+                    //        the supplied rate + journalAmount).
+                    // ─────────────────────────────────────────────────────────
+                    $rawConverted = $validated['converted_amount'] ?? null;
+                    $rawRate = $validated['exchange_rate'] ?? null;
+                    $hasConverted = $rawConverted !== null
+                        && is_numeric($rawConverted)
+                        && (float) $rawConverted > 0;
+                    $hasRate = $rawRate !== null
+                        && is_numeric($rawRate)
+                        && (float) $rawRate > 0;
+
+                    if (! $hasConverted && ! $hasRate) {
+                        return ApiResponse::error(
+                            'لا يمكن تنفيذ عملية بعملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. '
+                            .'عملة المصدر: '.$fromCurrency.'، عملة الهدف: '.$toCurrency.'. '
+                            .'يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة.',
+                            [
+                                'from_account_id' => $fromId,
+                                'to_account_id' => $toId,
+                                'from_currency' => $fromCurrency,
+                                'to_currency' => $toCurrency,
+                                'amount' => $journalAmount,
+                            ],
+                            422
+                        );
+                    }
+
+                    if ($hasConverted) {
+                        $convertedAmount = (float) $rawConverted;
+                        $exchangeRate = $hasRate ? (float) $rawRate : ($convertedAmount / max($journalAmount, 0.000001));
+                    } else {
+                        $exchangeRate = (float) $rawRate;
+                        $convertedAmount = $journalAmount * $exchangeRate;
+                    }
 
                     if ($type === 'receipt') {
                         // Customer (EGP) transfers money to Bank (foreign currency, e.g. KWD)
@@ -301,7 +344,7 @@ class CustomerController extends Controller
                     $foreignCurrency = $fromCurrency === 'EGP' ? $toCurrency : $fromCurrency;
                     $foreignAmount = $type === 'payment' ? $journalAmount : $journalConverted;
                     $egpAmount = $type === 'payment' ? $journalConverted : $journalAmount;
-                    $rateStr = number_format($exchangeRate ?? 1.0, 4);
+                    $rateStr = number_format($exchangeRate, 4);
                     
                     $conversionNote = sprintf(" (سعر الصرف: %s - المبلغ: %.2f %s = %.2f EGP)", 
                         $rateStr, 

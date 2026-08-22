@@ -42,24 +42,84 @@ class WalletTransactionController extends Controller
     public function store(StoreWalletTransactionRequest $request): JsonResponse
     {
         try {
-            $transaction = $this->service->createTransaction($request->validated());
+            // IDM-1 (2026-08-20): forward the Idempotency-Key header so the
+            // service can detect double-submits (same key → replay the
+            // original result instead of creating a duplicate transaction).
+            // Header is NOT in $request->validated() because it's a header,
+            // not a body field. Mirrors the established Bus/Hajj/Flight/Visa
+            // controller pattern.
+            $payload = $request->validated();
+            $idempotencyKey = $request->header('Idempotency-Key');
+            if ($idempotencyKey !== null && $idempotencyKey !== '') {
+                $payload['idempotency_key'] = $idempotencyKey;
+            }
 
-            return ApiResponse::success(
-                'Wallet transaction created successfully.',
-                new WalletTransactionResource($transaction),
-                201
+            $transaction = $this->service->createTransaction($payload);
+
+            // IDM-1: distinguish "first request, created" (201) from
+            // "replay, already existed" (200). The transient
+            // `idempotent_replay` flag is set by the service's
+            // Layer-1 pre-check or Layer-2 DB-UNIQUE backstop.
+            $isReplay = (bool) ($transaction->idempotent_replay ?? false);
+            $status = $isReplay ? 200 : 201;
+            $message = $isReplay
+                ? 'تم استرجاع العملية السابقة (إعادة طلب)'
+                : 'Wallet transaction created successfully.';
+
+            $response = ApiResponse::success(
+                $message,
+                array_merge(
+                    (new WalletTransactionResource($transaction))->resolve($request),
+                    ['idempotent_replay' => $isReplay]
+                ),
+                $status
             );
+            // Strip the transient flag from the model so downstream code
+            // that touches $transaction doesn't see a non-database field.
+            unset($transaction->idempotent_replay);
+            return $response;
+        } catch (\App\Exceptions\BusinessLogicException $e) {
+            // UX-1 (2026-08-21): re-throw typed business exceptions so the
+            // bootstrap/app.php withExceptions() handler can map them to
+            // HTTP 409 Conflict. ValidationException is intentionally left
+            // to Laravel's default handler (422). Generic \Exception is
+            // also re-thrown — we no longer coerce everything to 422 here.
+            throw $e;
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
 
-    public function show(WalletTransaction $transaction): JsonResponse
+    public function show(WalletTransaction $transaction, Request $request): JsonResponse
     {
+        // SEC-2 (2026-08-21) IDOR mitigation + SEC-4 soft-delete defense:
+        // the route-model binding already implicitly filters out soft-deleted
+        // rows (SoftDeletes global scope), but we re-check `whereNull('deleted_at')`
+        // explicitly here so the contract is documented and so any future
+        // change to the route binding does not silently re-introduce the leak.
+        //
+        // SEC-2: enforce creator-scoping for non-admin/non-owner viewers. A
+        // cashier who did NOT create the transaction must not be able to
+        // read it. Admin/owner bypass via `scopeVisibleTo`.
+        $user = $request->user();
         $transaction->load([
             'walletType', 'customer', 'walletAccount', 'cashAccount',
             'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
         ]);
+
+        if (! $transaction) {
+            return ApiResponse::error('Wallet transaction not found.', null, 404);
+        }
+        if ($transaction->deleted_at !== null) {
+            // SEC-4: explicit 404 on soft-deleted rows. Reachable only if
+            // someone bypasses route-model binding.
+            return ApiResponse::error('Wallet transaction not found.', null, 404);
+        }
+        if ($user && ! in_array($user->role, ['admin', 'owner'], true)
+            && (int) $transaction->created_by !== (int) $user->id) {
+            // SEC-2: non-admin non-creator → 404 (info-leak-safe).
+            return ApiResponse::error('Wallet transaction not found.', null, 404);
+        }
 
         return ApiResponse::success(
             'Wallet transaction retrieved successfully.',
@@ -116,6 +176,14 @@ class WalletTransactionController extends Controller
             $dateFrom = $request->query('from_date');
             $dateTo = $request->query('to_date');
 
+            // SEC-2 (2026-08-21): scope balances to the viewer's own
+            // transactions. Admin/owner see everything; everyone else sees
+            // only the rows they themselves created.
+            $user = $request->user();
+            $creatorScope = $user && ! in_array($user->role, ['admin', 'owner'], true)
+                ? (int) $user->id
+                : null;
+
             $query = WalletTransaction::query()
                 ->select([
                     'wallet_transactions.customer_id',
@@ -129,6 +197,9 @@ class WalletTransactionController extends Controller
                 ])
                 ->leftJoin('customers', 'wallet_transactions.customer_id', '=', 'customers.id')
                 ->groupBy(['wallet_transactions.customer_id', 'wallet_transactions.customer_name'])
+                ->when($creatorScope !== null, function ($q) use ($creatorScope) {
+                    $q->where('wallet_transactions.created_by', $creatorScope);
+                })
                 ->when($search, function ($q) use ($search) {
                     $q->where(function ($inner) use ($search) {
                         $inner->where('wallet_transactions.customer_name', 'like', '%'.$search.'%')
@@ -226,6 +297,12 @@ class WalletTransactionController extends Controller
             $clientId = $request->query('client_id');
             $clientName = $request->query('client_name');
 
+            // SEC-2 (2026-08-21): creator-scope the statement. Non-admin
+            // viewers only see transactions they themselves created.
+            $user = $request->user();
+            $isAdminViewer = $user && in_array($user->role, ['admin', 'owner'], true);
+            $creatorFilter = $isAdminViewer ? null : (int) ($user?->id ?? 0);
+
             $customer = $clientId ? Customer::find($clientId) : null;
             $customerAccount = $customer?->account_id ? Account::find($customer->account_id) : null;
 
@@ -240,8 +317,11 @@ class WalletTransactionController extends Controller
                     'transaction.related',
                 ])
                     ->where('account_id', $customerAccount->id)
-                    ->whereHas('transaction', function ($q) {
+                    ->whereHas('transaction', function ($q) use ($creatorFilter) {
                         $q->where('module', 'wallet');
+                        if ($creatorFilter !== null) {
+                            $q->where('created_by', $creatorFilter);
+                        }
                     })
                     ->orderBy('created_at', 'asc')
                     ->get();
@@ -289,7 +369,10 @@ class WalletTransactionController extends Controller
                 //       fall back to WalletTransaction directly so the modal
                 //       still shows the customer history.
                 $txsQ = WalletTransaction::query()
-                    ->with(['walletAccount', 'employee']);
+                    ->with(['walletAccount', 'employee'])
+                    ->when($creatorFilter !== null, function ($q) use ($creatorFilter) {
+                        $q->where('created_by', $creatorFilter);
+                    });
 
                 if ($customer) {
                     // Registered customer without an account row — pull their wallet

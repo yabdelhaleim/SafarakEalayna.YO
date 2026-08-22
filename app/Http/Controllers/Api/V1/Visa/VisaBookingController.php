@@ -190,6 +190,28 @@ class VisaBookingController extends Controller
      */
     public function refund(Request $request, VisaBooking $visa): JsonResponse
     {
+        // FIX V-2 (2026-08-20): close the Visa employee-refund authz gap.
+        //
+        // The route middleware `permission:manage_refunds` lets through any
+        // employee whose effective permissions include `manage_refunds` —
+        // including those who inherit it from
+        // UserPermissions::defaultEmployeeModules(). The Visa refund
+        // endpoint is stricter than Hajj/Umra: refunds are reserved to
+        //   1. admin / owner (full bypass), OR
+        //   2. the user who created the booking (booking-issuer exception), OR
+        //   3. an EXPLICIT `manage_refunds` grant on user.permissions
+        //      (i.e. NOT via the default-employee fallback).
+        //
+        // Default employees without an explicit grant are rejected here.
+        $user = $request->user();
+        if ($user && ! $this->visaRefundAllowed($user, $visa)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'غير مصرح لك بالاسترداد — يلزم صلاحية manage_refunds صريحة أو أن تكون منشئ الحجز',
+                'data' => null,
+            ], 403);
+        }
+
         try {
             $booking = app(VisaRefundService::class)
                 ->refund($visa, $request->input('reason'));
@@ -198,6 +220,29 @@ class VisaBookingController extends Controller
         }
 
         return ApiResponse::success('تم استرداد قيمة التأشيرة', new VisaBookingResource($booking));
+    }
+
+    /**
+     * V-2 strict authorization check for the Visa refund endpoint.
+     *
+     * Returns true when the actor is allowed to refund the given booking.
+     * The route's `permission:manage_refunds` middleware has already passed
+     * (so the actor's *effective* permissions include manage_refunds), but
+     * we re-verify here that the permission is EXPLICIT — default-employee
+     * inheritance is rejected for Visa refunds.
+     */
+    private function visaRefundAllowed(\App\Models\User $user, VisaBooking $visa): bool
+    {
+        if (in_array($user->role, ['admin', 'owner'], true)) {
+            return true;
+        }
+
+        if ((int) $visa->created_by === (int) $user->id) {
+            return true;
+        }
+
+        $explicit = is_array($user->permissions) ? $user->permissions : [];
+        return in_array(\App\Support\UserPermissions::MANAGE_REFUNDS, $explicit, true);
     }
 
     /**

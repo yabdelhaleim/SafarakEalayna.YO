@@ -87,6 +87,12 @@ return Application::configure(basePath: dirname(__DIR__))
                     $statusCode = 401;
                 } elseif ($e instanceof \Illuminate\Validation\ValidationException) {
                     $statusCode = 422;
+                } elseif ($e instanceof \App\Exceptions\BusinessLogicException) {
+                    // FINDING UX-1 (MED) REMEDIATION (2026-08-21):
+                    // BusinessLogicException → HTTP 409 Conflict. The request is
+                    // well-formed and authorized; the server's state conflicts
+                    // with it. 422 is reserved for input-shape errors.
+                    $statusCode = 409;
                 } elseif ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException || $e instanceof NotFoundHttpException) {
                     $statusCode = 404;
                 } elseif ($e instanceof \Illuminate\Auth\Access\AuthorizationException) {
@@ -94,7 +100,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
 
                 if ($statusCode >= 500) {
-                    file_put_contents('C:\laragon\tmp\passenger_error.log', 
+                    file_put_contents(storage_path('logs/api_errors.log'), 
                         "Timestamp: " . date('Y-m-d H:i:s') . "\n" .
                         "CRITICAL API ERROR: " . $e->getMessage() . "\n" .
                         "Exception: " . get_class($e) . "\n" .
@@ -122,6 +128,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 if ($e instanceof ValidationException) {
                     $response['errors'] = $e->errors();
+                } elseif ($e instanceof \App\Exceptions\BusinessLogicException) {
+                    // Surface the actual message (it's already user-friendly Arabic)
+                    // and attach the structured context so the FE can render
+                    // appropriate guidance (e.g. "Required: 200, Available: 50").
+                    $response['message'] = $e->getMessage();
+                    $response['errors'] = $e->context();
                 }
 
                 return response()->json($response, $statusCode);
