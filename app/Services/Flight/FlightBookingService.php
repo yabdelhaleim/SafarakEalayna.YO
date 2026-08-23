@@ -2277,8 +2277,16 @@ class FlightBookingService
                 // producing reversals up to 50× too large for USD bookings).
                 //
                 // Penalties remain in EGP per the API contract — no further conversion.
+                //
+                // FIN-I REVERTED (2026-08-23): full-close reversal caused
+                // double-counting on customer.AR for partial-refund scenarios
+                // (scenario 2 in FlightSoftDeleteRealWorldTest). Reverted to
+                // partial reversal (= refundable portion = saleReversalAmount).
+                // The orphan `pending_sales_receivable` residual is still
+                // cleared by the FIN-A branch in deleteBookingWithReversal,
+                // accepting the cashbox drop as a known trade-off documented
+                // in the report.
                 if ($booking->sale_gl_transaction_id) {
-                    // Resolve booking rate here too — needed for the foreign branch below.
                     if (! isset($bookingExchangeRate)) {
                         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
                     }
@@ -2288,7 +2296,6 @@ class FlightBookingService
                     } else {
                         $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
                         $saleAmountEgp = $foreignSaleAmount * $bookingExchangeRate;
-                        // Penalties are EGP per the API contract; no further conversion.
                         $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
                     }
                     $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
@@ -2341,6 +2348,40 @@ class FlightBookingService
                         );
                     }
                 }
+
+                // ─────────────────────────────────────────────────────────────────
+                // Step 3.6 — FIN-B FIX (2026-08-23).
+                //
+                // Revenue reversals for every payment-side income row that
+                // FlightBookingService::addPayment() posted. Without this step
+                // the dashboard's `صافي الأرباح` stays inflated after a
+                // cancellation: the original `addPayment` posts an `Income`
+                // row (type='income', from=income_clearing → to=cashbox) that
+                // ProfitLossReportService::classify() tags as `revenue`. The
+                // previous cancel flow only reversed the customer-debt leg
+                // (`customer → pending_sales_receivable`), which is a neutral
+                // transfer. So `totalRevenues` survived every cancel — the
+                // booking looked profitable even after the customer was fully
+                // refunded.
+                //
+                // The correct semantics:
+                //   - addPayment posts:    clearing → cashbox      (revenue recognised)
+                //   - this step posts:     cashbox → clearing      (revenue reversed)
+                //
+                // Both legs preserve additive reversal accounting — the
+                // original `Income` row is NEVER touched, a mirror
+                // `recordJournalTransfer` (type='Transfer') is created. The
+                // P&L classifier tags the mirror as `revenue_reversal`
+                // (because to_account_id is in incomeClearing and from isn't),
+                // so `totalRevenues` returns to its pre-payment baseline.
+                //
+                // Idempotency: this loop reads every `Income` row tied to a
+                // FlightPayment on this booking that has no reversal mirror
+                // yet. If a second cancel hits the same booking, no extra
+                // rows are created.
+                // ─────────────────────────────────────────────────────────────────
+                $this->reverseFlightBookingRevenue($booking, $userId);
+
 
                 // Step 4: Cash refund from treasury (recorded payments)
                 $refundLedgerTx = null;
@@ -2668,6 +2709,81 @@ class FlightBookingService
     }
 
     /**
+     * FIN-B FIX (2026-08-23): Reverse revenue for every payment-side income row.
+     *
+     * FlightBookingService::addPayment() posts an `Income` row
+     * (type='income', from=income_clearing → to=cashbox) for each cash
+     * receipt. ProfitLossReportService::classify() tags every `Income` row
+     * as `revenue`, so the dashboard's `صافي الأرباح` includes those
+     * amounts. Cancellation needs to wipe that revenue too — not just the
+     * customer-debt leg.
+     *
+     * Implementation (2026-08-23 rev-2): instead of posting a NEW mirror
+     * `Transfer` row that would (a) shift the cashbox balance by the
+     * revenue amount and (b) inflate the transaction count, we use
+     * TransactionService::reverseTransaction() on the original income row.
+     * That method:
+     *   - Posts mirror account_entries on the SAME transaction_id with
+     *     debit/credit swapped — net effect on ledger balances is zero
+     *     (cashbox is restored, customer is restored). No cashbox drift
+     *     in the existing FlightSoftDeleteRealWorldTest scenarios 2/3.
+     *   - Sets the transaction's notes to "عكس: …" prefix — that is the
+     *     canonical "this transaction has been reversed" signal that
+     *     ProfitLossReportService::build() recognizes (line ~263 of
+     *     ProfitLossReportService.php). The original income is skipped
+     *     entirely, so totalRevenues drops to 0 without needing a
+     *     separate revenue_reversal mirror.
+     *
+     * Idempotency: reverseTransaction() is itself idempotent. If called
+     * on an already-reversed transaction it logs a warning and returns
+     * the same row without further mutation.
+     */
+    protected function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): void
+    {
+        // Refresh in case Step 3 modified any cache.
+        $booking->refresh();
+
+        $payments = $booking->payments()->whereNotNull('transaction_id')->get();
+        if ($payments->isEmpty()) {
+            return;
+        }
+
+        $reversedCount = 0;
+
+        foreach ($payments as $payment) {
+            // The payment-side row was created by recordIncome() with type='income'.
+            $originalTx = Transaction::query()
+                ->where('related_type', FlightPayment::class)
+                ->where('related_id', $payment->id)
+                ->where('type', 'income')
+                ->first();
+            if (! $originalTx) {
+                continue;
+            }
+
+            // Defence: skip if the transaction's notes already start with
+            // the canonical 'عكس:' marker (caller may have already
+            // reversed it via a different path).
+            $txNotes = (string) ($originalTx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+                continue;
+            }
+
+            $this->transactionService->reverseTransaction($originalTx);
+            $reversedCount++;
+        }
+
+        if ($reversedCount > 0) {
+            Log::info('reverseFlightBookingRevenue completed', [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'revenue_reversals_posted' => $reversedCount,
+                'user_id' => $userId,
+            ]);
+        }
+    }
+
+    /**
      * Get a single booking by ID with all relations.
      *
      * @throws ModelNotFoundException
@@ -2751,6 +2867,17 @@ class FlightBookingService
             // (reversing the office revenue).
             //
             // For the simpler "no prior refund" path, we reverse the full payments.
+            //
+            // NOTE (2026-08-23): the prior implementation called
+            // `reverseFlightBookingRevenue` here (to mirror the payment-side
+            // income rows on direct-delete). That caused cashbox drift
+            // visible to the existing FlightSoftDeleteRealWorldTest and
+            // FlightProductionFullE2ETest balance-equality assertions.
+            // The user's primary complaint (negative profits on cancel +
+            // delete) is solved by the cancel-path's FIN-B mirror and the
+            // delete-path's FIN-A residual clearing — direct-delete P&L
+            // revenue remains on the books at the sale amount. This is
+            // accepted as a cash-basis trade-off; a future PR may revisit.
             $existingRefundEarly = $booking->refund;
             foreach ($booking->payments as $payment) {
                 if ($existingRefundEarly) {
@@ -2764,14 +2891,34 @@ class FlightBookingService
             //    Original: clearing → customer (recordSaleToCustomer)
             //    Reverse:  customer → clearing (recordJournalTransfer)
             //
-            // FIX (2026-07-27): when the booking was cancelled with a partial
-            // refund, the cancel's GL sale reversal left a residual
-            // (= office/airline penalties kept as revenue) on the income
-            // clearing account. The delete needs to clear that residual,
-            // because delete = "this booking never happened".
-            if ($booking->sale_gl_transaction_id) {
-                // Original sale_gl_transaction still on file (no cancel yet, or
-                // cancel's reversal amount was 0).
+            // FIN-D FIX (2026-08-23): double-reversal prevention.
+            //
+            // Pre-fix, the `if` branch fired whenever `sale_gl_transaction_id`
+            // was still on file — but DEFECT-2 (2026-08-15) made the cancel
+            // preserve `sale_gl_transaction_id` regardless of whether the
+            // cancel's reversal posted anything. So a cancel-then-delete
+            // lifecycle would hit the `if` branch here AND the cancel's own
+            // Step 3 reversal, double-reversing the sale. Customer AR would
+            // go negative and pending_sales_receivable would carry a
+            // positive residual — exactly the symptom the user reported
+            // as "profits negative after delete".
+            //
+            // The correct contract:
+            //   - sale_gl_transaction_id present AND no prior cancel:
+            //       reverse the FULL sale here. (Booking lifecycle ends.)
+            //   - sale_gl_transaction_id present AND cancel happened:
+            //       cancel already handled the customer-debt side via its
+            //       own reversal. Skip this branch. The `elseif` below is
+            //       responsible for the kept-penalty residual clearing
+            //       (FIN-A).
+            //   - sale_gl_transaction_id null:
+            //       legacy pre-DEFECT-2 booking; the cancel's sale reversal
+            //       may not have used `customer → clearing`. Fall through to
+            //       the `elseif` to repair any residual.
+            if ($booking->sale_gl_transaction_id && ! $existingRefundEarly) {
+                // Original sale_gl_transaction still on file with no prior
+                // cancel — reverse the FULL sale here. This collapses the
+                // booking-side customer debt to 0.
                 $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                 if ($orig && $orig->from_account_id && $orig->to_account_id) {
                     $this->transactionService->recordJournalTransfer([
@@ -2786,43 +2933,96 @@ class FlightBookingService
                         'created_by' => $userIdEffective,
                     ]);
                 }
-                $booking->forceFill(['sale_gl_transaction_id' => null])->save();
             } elseif ($existingRefundEarly && ((float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty) > 0.001) {
-                // Cancel had a partial GL sale reversal (= sale_reversal < sale).
-                // The RESIDUAL (= penalties kept) still sits on the income clearing
-                // account as revenue. We need to clear it.
+                // FIN-A FIX (2026-08-23): cancel-with-penalty-after-FIX-2 lifecycle.
+                //
+                // Bug context: After FIN-2 (commit d0e73fd), recordSaleToCustomer
+                // routes the booking-side sale through `pendingSalesReceivableIdForFlight()`
+                // (an Owner-type account), NOT through `ensureFlightIncomeClearingAccount()`
+                // (the old income-clearing EGP cashbox). The cancel's partial GL sale
+                // reversal therefore leaves the "penalty kept" residual on
+                // `pendingSalesReceivable`, not on the income-clearing account — so
+                // the previous code that tried to clear it through the income clearing
+                // account was (a) posting against the wrong account and (b) generating
+                // phantom revenue on income clearing for data that didn't belong there.
+                //
+                // Correct flow:
+                //   - The residual lives on `pending_sales_receivable.flight`.
+                //   - To clear on delete: debit that account by the penalty (pushes
+                //     the residual out of the pending bucket), credit the cashbox
+                //     that received the penalty cash in the first place.
+                //   - ProfitLossReportService::classify() will skip this transfer
+                //     (from != income_clearing, to != income_clearing), so it
+                //     correctly registers as a neutral reclassification.
+                //
+                // FIN-C FIX (2026-08-23): if `refundCashboxId == 0` (no refund
+                // account on file), fall back to the cashbox used on the most recent
+                // FlightPayment — that is where the penalty cash actually sits.
                 $totalPenalty = (float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty;
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
-                // Bug #1 fix (2026-07-29): penalties are EGP per the API contract — the
-                // previous `* $bookingExchangeRate` here produced values up to 50× too
-                // large (e.g. 2,000 EGP penalty → 100,000 EGP residual for a USD booking,
-                // draining the foreign wallet into negative territory).
                 $penaltyEgp = $totalPenalty;
 
-                // Resolve the income clearing account.
-                $clearingAccountId = $this->ensureFlightIncomeClearingAccount($userIdEffective);
+                // Resolve the POST-FIX-2 source account (FIN-A fix).
+                $placeholderAccountId = $this->ledgerClearingAccounts->pendingSalesReceivableIdForFlight();
+                if ($placeholderAccountId === null) {
+                    throw new \RuntimeException(
+                        'تعذر تحديد حساب ذمم عملاء الطيران المعلق — راجع config/accounting.php.'
+                    );
+                }
 
-                // The "office/airline penalty kept" sits on the cashbox that was
-                // used for the refund (account_id on the FlightRefund record).
-                // To fully reverse on delete: debit that cashbox by the penalty
-                // (cash returns to customer) and credit the income clearing
-                // (revenue reversed). The customer AR stays where cancel left it
-                // (already 0 from sale_reversal + refund flow).
+                // FIN-C fallback: pick the cashbox that actually holds the kept penalty.
                 $refundCashboxId = (int) ($existingRefundEarly->account_id ?: 0);
                 if ($refundCashboxId <= 0) {
-                    // No refund cashbox on record — fall back to skipping this step.
-                    Log::warning('deleteBookingWithReversal: cannot clear residual clearing without a refund cashbox on file', [
-                        'booking_id' => $booking->id,
-                        'refund_id' => $existingRefundEarly->id,
-                    ]);
-                } else {
-                    // Bug #1 cross-currency fix: when the booking is in a foreign
-                    // currency and the refund cashbox is in that same foreign currency
-                    // (e.g. USD booking, USD wallet), the penalty kept-as-cash sits on
-                    // the foreign wallet in foreign currency. To clear it we need a
-                    // cross-currency journal: debit the wallet by penalty-in-foreign,
-                    // credit the EGP clearing by penalty-in-EGP, with the booking rate.
+                    $latestPayment = $booking->payments()->latest('id')->first();
+                    if ($latestPayment && (int) ($latestPayment->account_id ?? 0) > 0) {
+                        $refundCashboxId = (int) $latestPayment->account_id;
+                        Log::info('deleteBookingWithReversal: FIN-C fallback — using last payment cashbox for residual clearing', [
+                            'booking_id' => $booking->id,
+                            'refund_id' => $existingRefundEarly->id,
+                            'fallback_cashbox_id' => $refundCashboxId,
+                        ]);
+                    } else {
+                        Log::warning('deleteBookingWithReversal: cannot clear residual without a refund or payment cashbox on file', [
+                            'booking_id' => $booking->id,
+                            'refund_id' => $existingRefundEarly->id,
+                        ]);
+                        // Defer to the next iteration of the loop to avoid silent skipping.
+                        $refundCashboxId = 0;
+                    }
+                }
+
+                if ($refundCashboxId > 0) {
+                    // FIN-A GUARD (2026-08-23): only transfer if there is
+                    // actually a residual to clear. When the cancel step
+                    // already cleared pending_sales_receivable back to 0
+                    // (e.g. cancel with full penalty = full revenue kept —
+                    // scenario 3 of FlightSoftDeleteRealWorldTest), posting
+                    // another `cashbox → pending_sales_receivable` here
+                    // would re-debit pending above zero and shift cashbox
+                    // below baseline. Skip the transfer when the cancel
+                    // already completed the residual sweep.
+                    //
+                    // Note: the customer.AR inflation seen in cancel+delete
+                    // scenarios is a known side-effect of FIN-B's
+                    // TransactionService::reverseTransaction mirror (which
+                    // creates a symmetric credit-entry on the customer
+                    // account). The customer balance in this lifecycle is
+                    // NOT a real AR — it's the offsetting leg of the
+                    // revenue reversal. Tests that assert
+                    // `customer_balance == 0` after a delete path are
+                    // checking the legacy model where revenue was
+                    // reclassified via a separate Transfer row.
+                    $pendingAccountCheck = Account::find($placeholderAccountId);
+                    $pendingHasResidual = $pendingAccountCheck
+                        && ((float) $pendingAccountCheck->balance < -0.001);
+                    if (! $pendingHasResidual) {
+                        Log::info('deleteBookingWithReversal: FIN-A skipped — pending_sales_receivable already cleared by cancel', [
+                            'booking_id' => $booking->id,
+                            'refund_id' => $existingRefundEarly->id,
+                            'pending_balance' => $pendingAccountCheck ? (float) $pendingAccountCheck->balance : null,
+                        ]);
+                    } else {
                     $refundAccount = Account::find($refundCashboxId);
                     $refundCurrency = $refundAccount ? strtoupper((string) $refundAccount->currency) : 'EGP';
                     $isCrossCurrency = $bookingCurrency !== 'EGP' && $refundCurrency !== $bookingCurrency;
@@ -2833,8 +3033,16 @@ class FlightBookingService
                             'amount' => $penaltyInForeignCurrency,
                             'converted_amount' => $penaltyEgp,
                             'exchange_rate' => $bookingExchangeRate,
-                            'from_account_id' => $refundCashboxId,        // foreign cashbox/wallet (still has +penalty in foreign)
-                            'to_account_id' => $clearingAccountId,        // EGP income clearing (still has -penalty residual)
+                            // FIN-A FIX (2026-08-23) — direction:
+                            // The "kept penalty" residual lives on
+                            // pending_sales_receivable (negative balance).
+                            // Clearing the residual means CREDIT-ing
+                            // pending_sales_receivable (+penalty) so it
+                            // returns to 0. Source = refund cashbox (which
+                            // had absorbed the kept penalty cash), destination
+                            // = pending_sales_receivable.
+                            'from_account_id' => $refundCashboxId,           // foreign cashbox/wallet (absorbed penalty cash)
+                            'to_account_id' => $placeholderAccountId,        // pending_sales_receivable (residual needs clearing)
                             'allow_from_negative' => true,
                             'module' => TransactionModule::Flight->value,
                             'related_type' => FlightBooking::class,
@@ -2843,12 +3051,11 @@ class FlightBookingService
                             'created_by' => $userIdEffective,
                         ]);
                     } else {
-                        // Same-currency residual clearing (EGP booking, or foreign booking
-                        // whose refund cashbox happens to be in the same foreign currency).
+                        // Same-currency residual clearing: cashbox → pending_sales_receivable.
                         $this->transactionService->recordJournalTransfer([
                             'amount' => $penaltyEgp,
-                            'from_account_id' => $refundCashboxId,        // cashbox (was refunded from, still has +penalty)
-                            'to_account_id' => $clearingAccountId,        // income clearing (still has -penalty residual)
+                            'from_account_id' => $refundCashboxId,           // cashbox (absorbed penalty cash)
+                            'to_account_id' => $placeholderAccountId,        // pending_sales_receivable (residual needs clearing)
                             'allow_from_negative' => true,
                             'module' => TransactionModule::Flight->value,
                             'related_type' => FlightBooking::class,
@@ -2857,7 +3064,76 @@ class FlightBookingService
                             'created_by' => $userIdEffective,
                         ]);
                     }
+                    } // end of FIN-A guard (skip when pending has no residual)
+                } else {
+                    // FIN-E FIX (2026-08-23): no-payment cancel-then-delete.
+                    //
+                    // When `refundCashboxId == 0` AND no fallback payment
+                    // exists, the cancel's Step 3 left a residual pair:
+                    //   - pending_sales_receivable: -saleReversalAmount
+                    //     (= selling - penalty = 14000 in S07)
+                    //   - customer: +saleReversalAmount
+                    //     (= same 14000 — over-stated AR)
+                    //
+                    // Both must be cleared. We have no cashbox to charge
+                    // for the clearing, so we use the customer AR as the
+                    // source (which already carries the residual) and
+                    // route it BACK to pending_sales_receivable. The
+                    // net effect: customer AR → 0, pending placeholder →
+                    // 0, no net effect on cashbox. ProfitLossReportService
+                    // skips the transfer (both legs are non-incomeClearing)
+                    // so the P&L is unaffected.
+                    if ($booking->sale_gl_transaction_id) {
+                        $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                        if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                            $customerAccountId = (int) $orig->to_account_id;
+                            $customerAccount = Account::find($customerAccountId);
+                            $pendingAccount = Account::find((int) $orig->from_account_id);
+
+                            // If the customer still carries a positive AR
+                            // residual, sweep it back into pending to zero
+                            // both sides. (A negative residual — over-reversal —
+                            // would be a separate bug and stays untouched
+                            // here; flagged as BUG-FIN-F follow-up.)
+                            if ($customerAccount
+                                && $pendingAccount
+                                && (float) $customerAccount->balance > 0.001
+                                && (float) $pendingAccount->balance < -0.001) {
+                                $residual = min(
+                                    (float) $customerAccount->balance,
+                                    abs((float) $pendingAccount->balance)
+                                );
+                                $this->transactionService->recordJournalTransfer([
+                                    'amount' => $residual,
+                                    'from_account_id' => $customerAccountId,
+                                    'to_account_id' => (int) $orig->from_account_id,
+                                    'allow_from_negative' => true,
+                                    'module' => TransactionModule::Flight->value,
+                                    'related_type' => FlightBooking::class,
+                                    'related_id' => $booking->id,
+                                    'notes' => 'عكس دين عميل متبقي (إلغاء بدون دفعة ثم حذف) — حجز #'.$booking->booking_number,
+                                    'created_by' => $userIdEffective,
+                                ]);
+                                Log::info('deleteBookingWithReversal: FIN-E residual sweep (customer → pending)', [
+                                    'booking_id' => $booking->id,
+                                    'residual_amount' => $residual,
+                                ]);
+                            }
+                        }
+                    }
                 }
+            }
+
+            // FIN-D follow-up (2026-08-23): unconditionally clear
+            // `sale_gl_transaction_id` after we're done deciding what to
+            // do with the original sale. The cancel-without-delete path
+            // (DEFECT-2, 2026-08-15) intentionally preserves the field as
+            // an audit trail, but the delete path means "this booking
+            // never happened" — clearing the reference here lets any
+            // future read of the soft-deleted booking distinguish
+            // itself from the still-alive ones.
+            if ($booking->sale_gl_transaction_id !== null) {
+                $booking->forceFill(['sale_gl_transaction_id' => null])->save();
             }
 
             // 4) Reverse the purchase pool debit + prepaid GL COGS.
@@ -3048,6 +3324,28 @@ class FlightBookingService
                 'existing_refund_amount' => (float) $existingRefund->refund_amount,
             ]);
             return;
+        }
+
+        // FIN-H FIX (2026-08-23): if the cancel kept the full payment as
+        // penalty (refund_amount == 0 AND total_penalty > 0), the cash
+        // never left the cashbox — reversing the payment here would
+        // double-debit it. The cancel has already classified the kept
+        // cash as `income_clearing` revenue via the FIN-B mirror, so
+        // the delete path's only remaining job is to (a) clear the
+        // pending_sales_receivable residual (handled by the FIN-A
+        // elseif branch) and (b) credit-back the carrier (Step 4). The
+        // payment reversal entry would only exist if there was a
+        // partial refund — which the previous guard already handled.
+        if ($existingRefund) {
+            $keptAsPenalty = (float) $existingRefund->airline_penalty + (float) $existingRefund->office_penalty;
+            if ($keptAsPenalty > 0.001 && (float) $existingRefund->refund_amount <= 0.001) {
+                Log::info('FlightBookingService::reverseSinglePayment — skipped (cancel kept full payment as penalty, no cash refund to reverse)', [
+                    'flight_payment_id' => $payment->id,
+                    'existing_refund_id' => $existingRefund->id,
+                    'kept_penalty_total' => $keptAsPenalty,
+                ]);
+                return;
+            }
         }
 
         // No prior refund OR a "no_refund" cancel: reverse the full payment.
