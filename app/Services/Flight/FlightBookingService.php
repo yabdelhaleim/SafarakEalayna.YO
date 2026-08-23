@@ -3132,6 +3132,19 @@ class FlightBookingService
 
     /**
      * Record the sale as a debt on the customer ledger.
+     *
+     * FIN-2 (2026-08-23) cash-basis recognition: under the previous
+     * behaviour the source account was `ensureFlightIncomeClearingAccount()`
+     * (an income-clearing account), which `ProfitLossReportService::classify()`
+     * classified as REVENUE the moment the booking was created — even with
+     * zero payment received. The dashboard therefore showed the unpaid
+     * customer debt as realised profit.
+     *
+     * The source is now the `pendingSalesReceivableIdForFlight()` account
+     * (AccountType::Owner). Because it is NOT in `incomeClearing`, the
+     * classifier returns `null` for this transfer — the customer AR is
+     * debited (debt recorded) but no revenue is recognised. Revenue is
+     * recognised only when cash arrives via `addPayment()`.
      */
     protected function recordSaleToCustomer(FlightBooking $booking, int $customerId, float $sellingPrice, int $userId, array $passengers = []): void
     {
@@ -3140,10 +3153,13 @@ class FlightBookingService
         }
 
         $customerAccount = $this->ensureCustomerAccount($customerId);
-        $clearingAccountId = $this->ensureFlightIncomeClearingAccount($userId);
+        $placeholderAccountId = $this->ledgerClearingAccounts->pendingSalesReceivableIdForFlight();
 
-        if ($clearingAccountId === $customerAccount->id) {
-            throw new \RuntimeException('حساب إقفال مبيعات الطيران يطابق حساب العميل — لا يمكن تسجيل المديونية.');
+        if ($placeholderAccountId === null) {
+            throw new \RuntimeException('تعذر تحديد حساب ذمم عملاء الطيران المعلق — راجع config/accounting.php.');
+        }
+        if ($placeholderAccountId === $customerAccount->id) {
+            throw new \RuntimeException('حساب ذمم عملاء الطيران المعلق يطابق حساب العميل — لا يمكن تسجيل المديونية.');
         }
 
         $booking->loadMissing(['customer', 'passengers', 'fromAirport', 'toAirport']);
@@ -3151,7 +3167,7 @@ class FlightBookingService
 
         $tx = $this->transactionService->recordJournalTransfer([
             'amount' => $sellingPrice,
-            'from_account_id' => $clearingAccountId,
+            'from_account_id' => $placeholderAccountId,
             'to_account_id' => $customerAccount->id,
             'allow_from_negative' => true,
             'module' => TransactionModule::Flight->value,
@@ -3163,10 +3179,11 @@ class FlightBookingService
 
         $booking->forceFill(['sale_gl_transaction_id' => $tx->id])->save();
 
-        Log::info('Flight sale recorded on customer ledger', [
+        Log::info('Flight sale recorded on customer ledger (cash-basis, no revenue recognition)', [
             'booking_id' => $booking->id,
             'customer_id' => $customerId,
             'account_id' => $customerAccount->id,
+            'placeholder_account_id' => $placeholderAccountId,
             'amount' => $sellingPrice,
         ]);
     }

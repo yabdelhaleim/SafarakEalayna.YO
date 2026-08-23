@@ -393,7 +393,12 @@ class ProfitLossReportTest extends TestCase
         $this->assertEquals('حساب مجموعة طيران: فوياج', $account->name);
         $this->assertEquals(0.0, (float) $account->balance);
 
-        // 4. Create a group booking using FlightBookingService
+        // 4. Create a group booking using FlightBookingService — NO initial payment.
+        //    FIN-2 (2026-08-23) cash-basis recognition: the customer AR is
+        //    debited (debt recorded) but the transfer uses the
+        //    pending-sales-receivable account as its contra leg — which is NOT
+        //    in `incomeClearing`, so the P&L classifier must NOT recognise
+        //    this as revenue until cash actually arrives via addPayment().
         $bookingData = [
             'customer_id' => $customer->id,
             'airline_name' => 'Test Carrier',
@@ -429,23 +434,50 @@ class ProfitLossReportTest extends TestCase
         $account->refresh();
         $this->assertEquals(-20000.0, (float) $account->balance);
 
-        // 6. Check P&L report
+        // 5b. Customer AR should reflect the debt even though nothing was paid.
+        $customerAccount = Account::findOrFail($customer->fresh()->account_id);
+        $this->assertEquals(22000.0, (float) $customerAccount->balance,
+            'Customer AR must reflect the 22,000 sale as a debt at booking creation.');
+
+        // 6. P&L report BEFORE payment — revenue must be 0 (cash-basis).
+        //    COGS is recognised at booking creation (we owe the group 20,000
+        //    EGP), so net profit is temporarily negative until cash arrives.
         $report = app(ProfitLossReportService::class)->report([]);
 
-        $this->assertEquals(22000.0, $report['totalRevenues']);
-        $this->assertEquals(20000.0, $report['totalCogs']);
-        $this->assertEquals(2000.0, $report['grossProfit']);
-        $this->assertEquals(2000.0, $report['netProfit']);
+        $this->assertEquals(0.0, (float) $report['totalRevenues'],
+            'Revenue must NOT be recognised on an unpaid credit booking (cash-basis).');
+        $this->assertEquals(20000.0, (float) $report['totalCogs']);
+        $this->assertEquals(-20000.0, (float) $report['grossProfit']);
+        $this->assertEquals(-20000.0, (float) $report['netProfit']);
 
-        // 7. Verify cancellation logic reverses everything
+        // 6b. Now record full payment. Revenue must be recognised at cash receipt.
+        $booking->refresh();
+        app(FlightBookingService::class)->addPayment($booking, [
+            'amount' => 22000,
+            'payment_method' => 'cash',
+            'account_id' => $this->treasury->id,
+        ]);
+
+        $reportAfterPayment = app(ProfitLossReportService::class)->report([]);
+        $this->assertEquals(22000.0, (float) $reportAfterPayment['totalRevenues'],
+            'Revenue must be recognised at cash receipt.');
+        $this->assertEquals(20000.0, (float) $reportAfterPayment['totalCogs']);
+        $this->assertEquals(2000.0, (float) $reportAfterPayment['grossProfit']);
+        $this->assertEquals(2000.0, (float) $reportAfterPayment['netProfit']);
+
+        // 7. Verify cancellation logic reverses everything.
         app(FlightBookingService::class)->cancelBooking($booking, ['airline_penalty' => 0, 'office_penalty' => 0]);
 
         $account->refresh();
         $this->assertEquals(0.0, (float) $account->balance);
 
+        $customerAccount->refresh();
+        $this->assertEquals(0.0, (float) $customerAccount->balance,
+            'Customer AR must be zeroed after cancellation.');
+
         $reportAfterCancel = app(ProfitLossReportService::class)->report([]);
-        $this->assertEquals(0.0, $reportAfterCancel['totalRevenues']);
-        $this->assertEquals(0.0, $reportAfterCancel['totalCogs']);
-        $this->assertEquals(0.0, $reportAfterCancel['netProfit']);
+        $this->assertEquals(0.0, (float) $reportAfterCancel['totalRevenues']);
+        $this->assertEquals(0.0, (float) $reportAfterCancel['totalCogs']);
+        $this->assertEquals(0.0, (float) $reportAfterCancel['netProfit']);
     }
 }

@@ -346,6 +346,30 @@ class LedgerClearingAccounts
         }));
     }
 
+    /**
+     * FIN-2 (2026-08-23) — Sales-pending-receivable contra for Flight bookings.
+     *
+     * When a flight booking is created on credit (no immediate payment), the
+     * customer AR is debited via a transfer whose source is THIS account
+     * (instead of `incomeContraIdForFlightBooking()`). Because the source is
+     * NOT in `incomeClearing`, `ProfitLossReportService::classify()` returns
+     * `null` for that transfer — so the dashboard does NOT count the unpaid
+     * sale as realised revenue. Revenue is recognised only when cash arrives
+     * via `FlightBookingService::addPayment()`.
+     *
+     * Owning account type is `AccountType::Owner` ("حساب داخلي") — internal
+     * system account, not visible in cashboxes, not user-controlled.
+     */
+    public function pendingSalesReceivableIdForFlight(): ?int
+    {
+        $name = config('accounting.clearing.sales_pending_receivable.flight');
+        if (! is_string($name) || $name === '') {
+            return null;
+        }
+
+        return $this->ensureClearingAccountExists($name, 'flight', 'pending_sales_receivable');
+    }
+
     protected function normalizeModuleKey(string|TransactionModule|null $module): string
     {
         if ($module instanceof TransactionModule) {

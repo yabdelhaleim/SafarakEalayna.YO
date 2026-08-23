@@ -168,6 +168,24 @@ return [
             'fawry' => env('ACCOUNTING_PREPAID_FAWRY_NAME', 'رصيد مسبق — ماكينات فوري'),
         ],
         /*
+         * Sales-pending-receivable accounts — FIN-2 (2026-08-23).
+         *
+         * في الحجز الآجل (بدون دفعة فورية) يُسجَّل دين العميل فقط بدون
+         * الاعتراف بالإيراد. تُستخدم هذه الحسابات كحساب مقابل في القيد
+         * (pending_receivable → customer) فلا يصنّفه P&L كإيراد لأن
+         * from_account ليس في incomeClearing. يُعترف بالإيراد فعلياً
+         * عند استلام الدفع عبر addPayment().
+         *
+         * In credit bookings (no immediate payment) only the customer AR
+         * is recorded — no revenue recognition. This account is used as
+         * the contra leg of the (pending_receivable → customer) transfer,
+         * which the P&L classifier therefore skips (not in incomeClearing).
+         * Revenue is recognised at cash receipt via addPayment().
+         */
+        'sales_pending_receivable' => [
+            'flight' => env('ACCOUNTING_FLIGHT_SALES_PENDING_RECEIVABLE_NAME', 'ذمم عملاء طيران معلق'),
+        ],
+        /*
          * Offset for raw TreasuryService::credit / ::debit when no module context exists.
          */
         'treasury_operations' => env(
