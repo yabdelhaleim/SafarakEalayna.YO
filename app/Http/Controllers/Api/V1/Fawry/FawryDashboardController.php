@@ -211,15 +211,30 @@ class FawryDashboardController extends Controller
         // its account_entries where the underlying transactions have
         // module='fawry'. Positive = customer owes us (receivable).
         //
-        // The `accounts.module_type = 'fawry'` filter excludes the unified
-        // walk-in AR account ("ذمم عملاء فوري غير مسجلين") so it isn't
-        // double-counted with `walkin_debt` below.
+        // Phase C fix (2026-08-23): the previous comment claimed
+        // `module_type='fawry'` excluded the walk-in AR account — it does
+        // NOT, because the walk-in AR account itself is created with
+        // `module_type='fawry'` (see LedgerClearingAccounts::fawryWalkInArAccountId
+        // line ~278). Without an explicit exclusion, the unified AR account
+        // would be double-counted: once here as `customers_debt` AND once
+        // as `walkin_debt` below — inflating the dashboard by the entire
+        // walk-in book.
+        //
+        // Fix: exclude the walk-in AR account by id AND by name (defence in
+        // depth — id handles the live case, name handles legacy/migrated
+        // rows that may have been re-keyed).
+        $walkInArAccountId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+            ->fawryWalkInArAccountId();
+        $walkInArAccountName = 'ذمم عملاء فوري غير مسجلين';
+
         $stats['customers_debt'] = (float) DB::table('account_entries')
             ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
             ->join('accounts', 'account_entries.account_id', '=', 'accounts.id')
             ->where('accounts.type', AccountType::Customer->value)
             ->where('accounts.module_type', 'fawry')
             ->where('transactions.module', TransactionModule::Fawry->value)
+            ->where('accounts.id', '!=', $walkInArAccountId)
+            ->where('accounts.name', '!=', $walkInArAccountName)
             ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
             ->value('debt') ?? 0.0;
 
@@ -264,7 +279,22 @@ class FawryDashboardController extends Controller
         // ============================================================
         // Section 7 — Recent Transactions (latest 10)
         // ============================================================
+        //
+        // Phase-B fix: filter out soft-deleted transactions. Without this,
+        // a cancelled/reversed Fawry operation would still appear in the
+        // "أحدث عمليات فوري" table, contradicting the rest of the dashboard
+        // KPIs (which all respect `deleted_at IS NULL` — see Sections 1-5).
+        // That contradiction surfaces in production as the "آجل بالكامل"
+        // ghost row on the dashboard even though the customer's balance is
+        // zero (the soft-delete reverses the GL entries, so the row is
+        // dead but still rendered in the UI).
+        //
+        // Same pattern as `tests/Feature/Fawry/FawryDashboardStatsConsistencyTest::test_soft_deleted_transactions_are_excluded_from_all_stats`
+        // which asserts the same invariant for the KPI cards — we now apply
+        // it to the recent-transactions list too so the table stays in sync
+        // with the numbers.
         $recentTransactions = FawryTransaction::with(['employee:id,name', 'currency:id,name_ar'])
+            ->whereNull('deleted_at')
             ->latest()
             ->limit(10)
             ->get();
