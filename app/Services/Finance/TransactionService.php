@@ -483,6 +483,14 @@ class TransactionService
                 'created_by' => (int) $createdBy,
                 'notes' => $data['notes'] ?? null,
                 'attachment_path' => $data['attachment_path'] ?? null,
+                // BUG-FIX (2026-08-24): propagate related_type/related_id so
+                // FlightBookingService::reverseGroupTransactionsForBooking can
+                // find the journal linked to a pay-debt FlightGroupTransaction.
+                // Pre-fix, pay-debt transfers were orphaned on the Transaction
+                // row (related_type/related_id were dropped) so the reverse
+                // path never matched them and cashbox balance drifted.
+                'related_type' => $data['related_type'] ?? null,
+                'related_id' => $data['related_id'] ?? null,
             ]);
 
             // Ledger entry directions match the project's convention (balance = SUM(credit) - SUM(debit)).
