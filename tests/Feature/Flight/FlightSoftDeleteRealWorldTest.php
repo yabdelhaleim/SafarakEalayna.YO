@@ -10,6 +10,7 @@ use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightPayment;
 use App\Models\Flight\FlightSystem;
+use App\Models\Setting\Currency;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Flight\FlightBookingService;
@@ -47,6 +48,7 @@ class FlightSoftDeleteRealWorldTest extends TestCase
     {
         parent::setUp();
         $this->bookingService = app(FlightBookingService::class);
+        $this->seedExchangeRates();
 
         $this->admin = User::factory()->create([
             'name' => 'Real World Admin',
@@ -629,5 +631,32 @@ class FlightSoftDeleteRealWorldTest extends TestCase
             $booking->fresh()->trashed(),
             "Booking #{$booking->id} must be soft-deleted"
         );
+    }
+
+    /**
+     * Seed EGP↔foreign exchange rates into the currencies table.
+     *
+     * Without these seeds, CurrencyService::convert() throws
+     * "لا يوجد سعر صرف متاح" when the booking service tries to compute
+     * EGP equivalents for foreign-currency transactions (KWD cross-currency
+     * scenarios in particular).
+     *
+     * Rates mirror FlightBookingService::FALLBACK_EGP_PER_UNIT plus EGP.
+     * @see \App\Services\Flight\FlightBookingService::FALLBACK_EGP_PER_UNIT
+     */
+    protected function seedExchangeRates(): void
+    {
+        $rates = [
+            ['code' => 'EGP', 'name_ar' => 'جنيه مصري', 'name_en' => 'Egyptian Pound', 'symbol' => 'E£', 'exchange_rate' => 1.0,    'is_active' => true, 'order' => 1],
+            ['code' => 'USD', 'name_ar' => 'دولار أمريكي', 'name_en' => 'US Dollar',         'symbol' => '$',   'exchange_rate' => 48.5,  'is_active' => true, 'order' => 2],
+            ['code' => 'EUR', 'name_ar' => 'يورو',          'name_en' => 'Euro',             'symbol' => '€',   'exchange_rate' => 52.3,  'is_active' => true, 'order' => 3],
+            ['code' => 'KWD', 'name_ar' => 'دينار كويتي',   'name_en' => 'Kuwaiti Dinar',    'symbol' => 'د.ك', 'exchange_rate' => 157.5, 'is_active' => true, 'order' => 4],
+            ['code' => 'SAR', 'name_ar' => 'ريال سعودي',    'name_en' => 'Saudi Riyal',      'symbol' => 'ر.س', 'exchange_rate' => 12.9,  'is_active' => true, 'order' => 5],
+            ['code' => 'GBP', 'name_ar' => 'جنيه إسترليني', 'name_en' => 'British Pound',    'symbol' => '£',   'exchange_rate' => 61.2,  'is_active' => true, 'order' => 6],
+        ];
+
+        foreach ($rates as $row) {
+            Currency::firstOrCreate(['code' => $row['code']], $row);
+        }
     }
 }

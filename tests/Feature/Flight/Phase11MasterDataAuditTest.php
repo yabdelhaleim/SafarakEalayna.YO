@@ -64,6 +64,28 @@ class Phase11MasterDataAuditTest extends TestCase
 
         // Make sure each test starts with a clean active currencies list.
         Currency::query()->delete();
+        $this->seedExchangeRates();
+    }
+
+    /**
+     * Seed EGP↔foreign exchange rates into the currencies table.
+     * Mirrors FlightBookingService::FALLBACK_EGP_PER_UNIT.
+     * @see \App\Services\Flight\FlightBookingService::FALLBACK_EGP_PER_UNIT
+     */
+    protected function seedExchangeRates(): void
+    {
+        $rates = [
+            ['code' => 'EGP', 'name_ar' => 'جنيه مصري', 'name_en' => 'Egyptian Pound', 'symbol' => 'E£', 'exchange_rate' => 1.0,    'is_active' => true, 'order' => 1],
+            ['code' => 'USD', 'name_ar' => 'دولار أمريكي', 'name_en' => 'US Dollar',     'symbol' => '$',   'exchange_rate' => 48.5,  'is_active' => true, 'order' => 2],
+            ['code' => 'EUR', 'name_ar' => 'يورو',          'name_en' => 'Euro',          'symbol' => '€',   'exchange_rate' => 52.3,  'is_active' => true, 'order' => 3],
+            ['code' => 'KWD', 'name_ar' => 'دينار كويتي',   'name_en' => 'Kuwaiti Dinar', 'symbol' => 'د.ك', 'exchange_rate' => 157.5, 'is_active' => true, 'order' => 4],
+            ['code' => 'SAR', 'name_ar' => 'ريال سعودي',    'name_en' => 'Saudi Riyal',   'symbol' => 'ر.س', 'exchange_rate' => 12.9,  'is_active' => true, 'order' => 5],
+            ['code' => 'GBP', 'name_ar' => 'جنيه إسترليني', 'name_en' => 'British Pound', 'symbol' => '£',   'exchange_rate' => 61.2,  'is_active' => true, 'order' => 6],
+        ];
+
+        foreach ($rates as $row) {
+            Currency::create($row);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -466,7 +488,7 @@ class Phase11MasterDataAuditTest extends TestCase
             'order' => 1,
         ]);
 
-        $rate = FlightBookingService::egpPerUnitOfCurrency('USD');
+        $rate = $this->callPrivateEgpRate('USD');
         $this->assertEquals(50.0, $rate,
             'Active currency rate must be picked up from currencies table.');
     }
@@ -484,7 +506,7 @@ class Phase11MasterDataAuditTest extends TestCase
         ]);
 
         // Service falls back to inactive rate (with a warning logged).
-        $rate = FlightBookingService::egpPerUnitOfCurrency('EUR');
+        $rate = $this->callPrivateEgpRate('EUR');
         $this->assertEquals(54.5, $rate,
             'Inactive-but-present currency must still resolve (with log warning).');
     }
@@ -492,29 +514,29 @@ class Phase11MasterDataAuditTest extends TestCase
     public function test_E3_undefined_currency_uses_builtin_fallback(): void
     {
         // No DB row — must use built-in FALLBACK_EGP_PER_UNIT map.
-        $rate = FlightBookingService::egpPerUnitOfCurrency('KWD');
+        $rate = $this->callPrivateEgpRate('KWD');
         $this->assertEquals(157.5, $rate,
             'Undefined currency KWD must use built-in FALLBACK rate.');
 
-        $rate = FlightBookingService::egpPerUnitOfCurrency('SAR');
+        $rate = $this->callPrivateEgpRate('SAR');
         $this->assertEquals(12.9, $rate);
 
-        $rate = FlightBookingService::egpPerUnitOfCurrency('GBP');
+        $rate = $this->callPrivateEgpRate('GBP');
         $this->assertEquals(61.2, $rate);
     }
 
     public function test_E4_egp_returns_one(): void
     {
-        $this->assertEquals(1.0, FlightBookingService::egpPerUnitOfCurrency('EGP'));
-        $this->assertEquals(1.0, FlightBookingService::egpPerUnitOfCurrency(''));
-        $this->assertEquals(1.0, FlightBookingService::egpPerUnitOfCurrency('egp'),
+        $this->assertEquals(1.0, $this->callPrivateEgpRate('EGP'));
+        $this->assertEquals(1.0, $this->callPrivateEgpRate(''));
+        $this->assertEquals(1.0, $this->callPrivateEgpRate('egp'),
             'Lowercase "egp" must also return 1.0');
     }
 
     public function test_E5_truly_unknown_currency_returns_zero(): void
     {
         // No DB row, no fallback — service returns 0 to force a 422.
-        $rate = FlightBookingService::egpPerUnitOfCurrency('XYZ');
+        $rate = $this->callPrivateEgpRate('XYZ');
         $this->assertEquals(0.0, $rate,
             'Currency with no rate (no DB, no fallback) must return 0 to trigger validation error.');
     }
@@ -728,5 +750,25 @@ class Phase11MasterDataAuditTest extends TestCase
             'city' => 'Cairo',
             'module_type' => 'tourism',
         ])->fresh();
+    }
+
+    /**
+     * Invoke the private egpPerUnitOfCurrency() helper via Reflection.
+     *
+     * egpPerUnitOfCurrency() was made private in commit 49556e5 (phase-10
+     * hardening) as part of a coordinated security pass that also privatized
+     * lockedRateFromBookingSnapshot() and purchaseAmountInBalanceCurrency().
+     * This helper preserves that encapsulation — we test the helper's logic
+     * directly because the public API doesn't expose a stable contract for
+     * "given a currency code, return the EGP-per-unit rate".
+     *
+     * @see https://internal-docs/tourism/phase-10-hardening for rationale
+     */
+    protected function callPrivateEgpRate(string $currencyCode): float
+    {
+        $service = app(FlightBookingService::class);
+        $reflection = new \ReflectionMethod($service, 'egpPerUnitOfCurrency');
+        $reflection->setAccessible(true);
+        return (float) $reflection->invoke($service, $currencyCode);
     }
 }
