@@ -1859,10 +1859,16 @@ class FlightBookingService
 
                 // Layer 1 — pre-check: if a payment already exists for this
                 // (booking, idempotency_key), return it instead of creating
-                // a duplicate. We also honor soft-deletes: a soft-deleted
-                // payment with the same key is treated as "deleted" and a
-                // new payment may be inserted (the unique index will be
-                // violated only by ACTIVE rows).
+                // a duplicate.
+                //
+                // DEFECT-001 fix (2026-08-24): if the existing payment was
+                // soft-deleted, we MUST reject the retry. Idempotency
+                // contract is "same key = same effect" — allowing a new
+                // INSERT under a key that previously produced (and was then
+                // deleted) a payment breaks that contract and risks a
+                // double-charge if the client forgot it had a deleted row.
+                // The DB UNIQUE index sees soft-deleted rows too, so we
+                // cannot bypass this — we surface a clear 409 instead.
                 if ($idempotencyKey !== null) {
                     $existing = FlightPayment::query()
                         ->where('flight_booking_id', $booking->id)
@@ -1871,6 +1877,22 @@ class FlightBookingService
                     if ($existing) {
                         $existing->idempotent_replay = true;
                         return $existing;
+                    }
+                    $trashed = FlightPayment::onlyTrashed()
+                        ->where('flight_booking_id', $booking->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($trashed) {
+                        throw new \App\Exceptions\BusinessLogicException(
+                            "Idempotency key '{$idempotencyKey}' was previously used and the payment was deleted. "
+                            .'Generate a fresh idempotency_key for this retry.',
+                            [
+                                'flight_booking_id' => $booking->id,
+                                'idempotency_key' => $idempotencyKey,
+                                'deleted_payment_id' => $trashed->id,
+                                'deleted_at' => optional($trashed->deleted_at)->toIso8601String(),
+                            ]
+                        );
                     }
                 }
 
@@ -2042,6 +2064,12 @@ class FlightBookingService
                     // the pre-check missed it (race window between SELECT and
                     // INSERT). The unique index is the last line. Convert the
                     // duplicate-key error into an idempotent return.
+                    //
+                    // DEFECT-001 fix (2026-08-24): if the row that owns the
+                    // duplicate key is SOFT-DELETED, we cannot INSERT another
+                    // active row under that key — the UNIQUE index sees the
+                    // trashed row. Surface a 409 BusinessLogicException so the
+                    // client knows it must use a fresh idempotency_key.
                     if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
                         $existing = FlightPayment::query()
                             ->where('flight_booking_id', $booking->id)
@@ -2050,6 +2078,22 @@ class FlightBookingService
                         if ($existing) {
                             $existing->idempotent_replay = true;
                             return $existing;
+                        }
+                        $trashed = FlightPayment::onlyTrashed()
+                            ->where('flight_booking_id', $booking->id)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->first();
+                        if ($trashed) {
+                            throw new \App\Exceptions\BusinessLogicException(
+                                "Idempotency key '{$idempotencyKey}' was previously used and the payment was deleted. "
+                                .'Generate a fresh idempotency_key for this retry.',
+                                [
+                                    'flight_booking_id' => $booking->id,
+                                    'idempotency_key' => $idempotencyKey,
+                                    'deleted_payment_id' => $trashed->id,
+                                    'deleted_at' => optional($trashed->deleted_at)->toIso8601String(),
+                                ]
+                            );
                         }
                     }
                     throw $qe;

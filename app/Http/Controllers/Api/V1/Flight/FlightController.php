@@ -284,6 +284,12 @@ class FlightController extends Controller
                 ),
                 $status
             );
+        } catch (\App\Exceptions\BusinessLogicException $e) {
+            // DEFECT-001 fix (2026-08-24): let BusinessLogicException reach the
+            // global handler so it maps to 409 Conflict (instead of being
+            // swallowed as a generic 422). The bootstrap/app.php withExceptions
+            // closure knows the correct mapping; we just rethrow.
+            throw $e;
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
