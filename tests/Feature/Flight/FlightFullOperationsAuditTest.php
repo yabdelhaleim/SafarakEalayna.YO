@@ -599,10 +599,34 @@ class FlightFullOperationsAuditTest extends TestCase
         );
 
         // INV-B: every transaction balanced (debit == credit per currency)
+        $details = '';
+        if (! empty($snap['unbalanced_details'])) {
+            $details = "\n";
+            foreach ($snap['unbalanced_details'] as $u) {
+                $tx = \Illuminate\Support\Facades\DB::table('transactions')->where('id', $u->transaction_id)->first();
+                $entries = \Illuminate\Support\Facades\DB::table('account_entries as ae')
+                    ->join('accounts as a', 'ae.account_id', '=', 'a.id')
+                    ->where('ae.transaction_id', $u->transaction_id)
+                    ->select('ae.debit', 'ae.credit', 'a.name as account_name', 'a.currency')
+                    ->get();
+                $entryStrs = [];
+                foreach ($entries as $e) {
+                    $entryStrs[] = sprintf('%s[%s/%s] d=%.2f/c=%.2f', $e->account_name, $e->currency, substr($e->currency, 0, 3), $e->debit, $e->credit);
+                }
+                $details .= sprintf(
+                    "    TX#%d | module=%s type=%s | notes=%s\n        entries: %s\n",
+                    $u->transaction_id,
+                    $tx->module ?? 'n/a',
+                    $tx->type ?? 'n/a',
+                    substr((string) ($tx->notes ?? ''), 0, 50),
+                    implode(' | ', $entryStrs),
+                );
+            }
+        }
         $this->reporter->invariant(
             'INV-B every transaction balanced',
             $snap['unbalanced_transactions'] === 0,
-            "unbalanced={$snap['unbalanced_transactions']}",
+            "unbalanced={$snap['unbalanced_transactions']}{$details}",
         );
 
         // INV-C: no orphan account_entries

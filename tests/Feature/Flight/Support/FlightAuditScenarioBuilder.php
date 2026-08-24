@@ -439,14 +439,31 @@ class FlightAuditScenarioBuilder
             ->count();
 
         // Count transactions whose entries don't balance (debit != credit by more than 0.01).
-        // Since account_entries has no currency column, every entry is in the account's
-        // currency, and a properly-balanced transaction always sums to zero.
-        $unbalancedTx = (int) DB::table('account_entries as ae')
-            ->select('ae.transaction_id')
-            ->groupBy('ae.transaction_id')
+        // Cross-currency aware: a transaction with entries in DIFFERENT currencies is a
+        // legitimate cross-currency transfer (debit USD, credit EGP-equivalent at FX rate).
+        // Only count as unbalanced if entries within the SAME currency don't sum to zero.
+        $unbalancedDetails = DB::table('account_entries as ae')
+            ->join('accounts as a', 'ae.account_id', '=', 'a.id')
+            ->select(
+                'ae.transaction_id',
+                DB::raw('a.currency as currency'),
+                DB::raw('SUM(ae.debit) as d'),
+                DB::raw('SUM(ae.credit) as c'),
+                DB::raw('ABS(SUM(ae.debit) - SUM(ae.credit)) as diff'),
+                DB::raw('COUNT(*) as entry_count'),
+            )
+            ->groupBy('ae.transaction_id', 'a.currency')
             ->havingRaw('ABS(SUM(ae.debit) - SUM(ae.credit)) > 0.01')
+            ->orderBy('ae.transaction_id')
             ->get()
-            ->count();
+            ->groupBy('transaction_id')
+            ->filter(function ($group) {
+                // Only count as unbalanced if it has entries in a SINGLE currency that don't balance.
+                // Multi-currency entries are cross-currency transfers (legitimately unbalanced in raw numbers).
+                return $group->count() === 1;
+            })
+            ->flatten();
+        $unbalancedTx = $unbalancedDetails->count();
 
         // We can't check absolute account.balance vs entries because the test setup
         // manually funds cashboxes (raw $cb->update(['balance' => X])), which bypasses
@@ -466,6 +483,7 @@ class FlightAuditScenarioBuilder
             'income_clearing' => $incomeClearing,
             'orphan_entries' => $orphanEntries,
             'unbalanced_transactions' => $unbalancedTx,
+            'unbalanced_details' => $unbalancedDetails->toArray(),
             'account_balance_mismatch' => $accountBalanceMismatch,
             'booking' => $booking,
         ];

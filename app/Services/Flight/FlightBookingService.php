@@ -914,8 +914,12 @@ class FlightBookingService
 
     /**
      * سعر الصرف المحفوظ على الحجز إن طابقت عملة كيان الإرجاع لقطة الرصيد.
+     *
+     * Public (was private pre-2026-08-24, F-1 audit fix): required by
+     * RefundService to lock the booking-time exchange rate when crediting
+     * back carrier/system balance during refunds and reversals.
      */
-    private function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
+    public function lockedRateFromBookingSnapshot(FlightBooking $booking, string $entityBalanceCurrency): ?float
     {
         $entity = strtoupper(trim($entityBalanceCurrency));
         $snap = strtoupper(trim((string) ($booking->balance_currency_used ?? '')));
@@ -933,11 +937,17 @@ class FlightBookingService
     /**
      * مبلغ خصم/إيداع رصيد شركة الطيران أو نظام الحجز بعملة ذلك الرصيد.
      *
+     * Public (was private pre-2026-08-24, F-1 audit fix): required by
+     * RefundService::processRefundRequest() to compute the correct credit-back
+     * amount in the carrier/system/group balance currency during refunds and
+     * reversals. Previously these callers had to compute the same value
+     * inline (or hit a "private method" error).
+     *
      * @param  string  $balanceCurrency  عملة رصيد الشركة أو النظام (مثل KWD)
      * @param  string  $bookingCurrency  عملة تسعير المورد في الحجز (EGP أو نفس عملة الرصيد)
      * @param  float|null  $lockedEgpPerBalanceUnit  لقطة وقت الحجز (جنيه/وحدة رصيد) — يُفضّل عند الإلغاء
      */
-    private function purchaseAmountInBalanceCurrency(
+    public function purchaseAmountInBalanceCurrency(
         string $balanceCurrency,
         string $bookingCurrency,
         float $purchasePriceEGP,
@@ -3024,46 +3034,44 @@ class FlightBookingService
                         ]);
                     } else {
                     $refundAccount = Account::find($refundCashboxId);
+                    $pendingAccount = Account::find($placeholderAccountId);
                     $refundCurrency = $refundAccount ? strtoupper((string) $refundAccount->currency) : 'EGP';
-                    $isCrossCurrency = $bookingCurrency !== 'EGP' && $refundCurrency !== $bookingCurrency;
+                    $pendingCurrency = $pendingAccount ? strtoupper((string) $pendingAccount->currency) : 'EGP';
+                    // F-2 audit fix (2026-08-24): the isCrossCurrency check used to compare
+                    // booking.currency vs refund-currency. But the destination (pending_sales_receivable)
+                    // is ALWAYS EGP. So when the refund cashbox is non-EGP (e.g. EUR cashbox for a
+                    // EUR booking), the else branch tried to post a EUR → EGP journal without
+                    // converted_amount/exchange_rate — which recordJournalTransfer rejects.
+                    //
+                    // Correct check: from_account.currency !== to_account.currency.
+                    $isCrossCurrency = $refundCurrency !== $pendingCurrency;
+
+                    $transferParams = [
+                        'from_account_id' => $refundCashboxId,
+                        'to_account_id' => $placeholderAccountId,
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                        'created_by' => $userIdEffective,
+                    ];
 
                     if ($isCrossCurrency) {
-                        $penaltyInForeignCurrency = $penaltyEgp / max($bookingExchangeRate, 0.0001);
-                        $this->transactionService->recordJournalTransfer([
-                            'amount' => $penaltyInForeignCurrency,
-                            'converted_amount' => $penaltyEgp,
-                            'exchange_rate' => $bookingExchangeRate,
-                            // FIN-A FIX (2026-08-23) — direction:
-                            // The "kept penalty" residual lives on
-                            // pending_sales_receivable (negative balance).
-                            // Clearing the residual means CREDIT-ing
-                            // pending_sales_receivable (+penalty) so it
-                            // returns to 0. Source = refund cashbox (which
-                            // had absorbed the kept penalty cash), destination
-                            // = pending_sales_receivable.
-                            'from_account_id' => $refundCashboxId,           // foreign cashbox/wallet (absorbed penalty cash)
-                            'to_account_id' => $placeholderAccountId,        // pending_sales_receivable (residual needs clearing)
-                            'allow_from_negative' => true,
-                            'module' => TransactionModule::Flight->value,
-                            'related_type' => FlightBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
-                            'created_by' => $userIdEffective,
-                        ]);
+                        // Cross-currency residual clearing: refund cashbox (foreign) → pending_sales_receivable (EGP).
+                        // amount = foreign-currency equivalent of the kept penalty (what's actually in the cashbox)
+                        // converted_amount = EGP penalty (matches pending_sales_receivable's reporting currency)
+                        // exchange_rate = snapshot at booking time (locked rate)
+                        $penaltyInForeignCurrency = round($penaltyEgp / max($bookingExchangeRate, 0.0001), 4);
+                        $transferParams['amount'] = $penaltyInForeignCurrency;
+                        $transferParams['converted_amount'] = $penaltyEgp;
+                        $transferParams['exchange_rate'] = $bookingExchangeRate;
                     } else {
-                        // Same-currency residual clearing: cashbox → pending_sales_receivable.
-                        $this->transactionService->recordJournalTransfer([
-                            'amount' => $penaltyEgp,
-                            'from_account_id' => $refundCashboxId,           // cashbox (absorbed penalty cash)
-                            'to_account_id' => $placeholderAccountId,        // pending_sales_receivable (residual needs clearing)
-                            'allow_from_negative' => true,
-                            'module' => TransactionModule::Flight->value,
-                            'related_type' => FlightBooking::class,
-                            'related_id' => $booking->id,
-                            'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
-                            'created_by' => $userIdEffective,
-                        ]);
+                        // Same-currency residual clearing (e.g. EGP booking, EGP cashbox, EGP pending).
+                        $transferParams['amount'] = $penaltyEgp;
                     }
+
+                    $this->transactionService->recordJournalTransfer($transferParams);
                     } // end of FIN-A guard (skip when pending has no residual)
                 } else {
                     // FIN-E FIX (2026-08-23): no-payment cancel-then-delete.

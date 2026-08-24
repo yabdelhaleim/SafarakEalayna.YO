@@ -490,7 +490,10 @@ class RefundService
                 if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
                     $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
                     if ($carrier && $purchaseNet > 0) {
-                        $creditSub = FlightBookingService::purchaseAmountInBalanceCurrency(
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        // purchaseAmountInBalanceCurrency is non-static — calling it via
+                        // `FlightBookingService::` produced "cannot be called statically".
+                        $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $carrier->currency,
                             $bookingCurrency,
                             $purchaseNet,
@@ -519,7 +522,8 @@ class RefundService
                 } elseif ($booking->purchase_balance_source === 'system' && $booking->flight_system_id) {
                     $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
                     if ($system && $purchaseNet > 0) {
-                        $creditSub = FlightBookingService::purchaseAmountInBalanceCurrency(
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $system->currency,
                             $bookingCurrency,
                             $purchaseNet,
@@ -569,17 +573,37 @@ class RefundService
                     $cashboxAccount = $this->resolveCashboxAccount($treasury, $refundRequest->refund_currency, $userId);
                     $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
 
-                    $cashoutGl = $this->transactionService->recordJournalTransfer([
-                        'amount' => $refundAmount,
+                    // F-2 audit fix (2026-08-24): wire the existing glTransferAmounts() helper.
+                    // The cashbox.currency == refund.currency (enforced at line 438), but the
+                    // customer account is ALWAYS EGP. When the booking is in a non-EGP currency
+                    // (e.g. USD booking paid to USD treasury), the cash-out is cross-currency:
+                    //   from = USD cashbox, to = EGP customer.
+                    // recordJournalTransfer rejects cross-currency journals that lack
+                    // converted_amount/exchange_rate, so we use glTransferAmounts() to compute them.
+                    $glAmounts = $this->glTransferAmounts(
+                        $cashboxAccount->currency,
+                        $customerAccount->currency,
+                        $refundAmount,
+                        (float) $refundRequest->base_currency_refund,
+                        (float) $refundRequest->refund_exchange_rate
+                    );
+
+                    $cashoutParams = [
+                        'amount' => $glAmounts['amount'],
                         'from_account_id' => $cashboxAccount->id,         // cashbox (DR — صرف نقدي)
                         'to_account_id' => $customerAccount->id,           // customer (CR — تسوية دين العميل)
-                        'allow_from_negative' => true,                      // الاسترداد تدفق مصرح حتى لو الرصيد بالسالب
+                        'allow_from_negative' => true,                      // الاسترداد تدفق مصرف حتى لو الرصيد بالسالب
                         'module' => TransactionModule::Flight->value,
                         'related_type' => RefundRequest::class,
                         'related_id' => $refundRequest->id,
                         'notes' => "صرف استرداد نقدي للعميل من الخزينة ({$treasury->name}) — طلب #{$refundRequest->id} — حجز #{$booking->booking_number}",
                         'created_by' => $userId,
-                    ]);
+                    ];
+                    if ($glAmounts['converted_amount'] !== null) {
+                        $cashoutParams['converted_amount'] = $glAmounts['converted_amount'];
+                        $cashoutParams['exchange_rate'] = $glAmounts['exchange_rate'];
+                    }
+                    $cashoutGl = $this->transactionService->recordJournalTransfer($cashoutParams);
                     $glTransaction = $cashoutGl;
 
                     // توثيق حركة الخزينة (audit trail) — debit من الخزينة النقدية
@@ -791,7 +815,8 @@ class RefundService
                 if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
                     $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
                     if ($carrier && $purchaseNet > 0) {
-                        $debitSub = FlightBookingService::purchaseAmountInBalanceCurrency(
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $carrier->currency,
                             $bookingCurrency,
                             $purchaseNet,
@@ -815,7 +840,8 @@ class RefundService
                 } elseif ($booking->purchase_balance_source === 'system' && $booking->flight_system_id) {
                     $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
                     if ($system && $purchaseNet > 0) {
-                        $debitSub = FlightBookingService::purchaseAmountInBalanceCurrency(
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $system->currency,
                             $bookingCurrency,
                             $purchaseNet,
