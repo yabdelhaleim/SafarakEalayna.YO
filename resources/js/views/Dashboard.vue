@@ -1509,6 +1509,7 @@ const fetchDashboardData = async () => {
         date_to: filters.value.date_to,
         carrier_id: filters.value.carrier_id,
         system_type: filters.value.system_type,
+        nocache: isRefreshing.value ? 1 : 0,
       }
     });
 
