@@ -202,7 +202,9 @@ class HajjUmraController extends Controller
                     DB::raw('MAX(hajj_umra_bookings.created_at) as last_booking'),
                 ])
                 ->join('customers', 'hajj_umra_bookings.customer_id', '=', 'customers.id')
-                ->where('hajj_umra_bookings.status', '!=', 'cancelled')
+                // DEFECT-2026-08-24-HJ-BAL fix: also exclude refunded bookings so
+                // partially-paid refunds do not show phantom residual debt.
+                ->whereNotIn('hajj_umra_bookings.status', ['cancelled', 'refunded'])
                 ->groupBy('hajj_umra_bookings.customer_id');
 
             if ($search) {
@@ -307,8 +309,13 @@ class HajjUmraController extends Controller
 
             // 2. Fetch general debt payments (journal entries)
             if ($customer->account_id) {
-                $paymentTxIds = HajjUmraPayment::pluck('transaction_id')->filter()->toArray();
-                $bookingTxIds = HajjUmraBooking::where('customer_id', $customer->id)
+                // DEFECT-2026-08-24-HJ-STMT fix: use withTrashed() so soft-deleted
+                // bookings/payments still contribute their transaction ids to the
+                // exclusion list — otherwise after DELETE both the original and
+                // the reversal entries leak into the statement as duplicate lines
+                // and the running balance walks to a large negative number.
+                $paymentTxIds = HajjUmraPayment::withTrashed()->pluck('transaction_id')->filter()->toArray();
+                $bookingTxIds = HajjUmraBooking::withTrashed()->where('customer_id', $customer->id)
                     ->pluck('income_transaction_id')
                     ->filter()
                     ->toArray();
@@ -403,8 +410,11 @@ class HajjUmraController extends Controller
             return 0.0;
         }
 
-        $paymentTxIds = HajjUmraPayment::query()->pluck('transaction_id')->filter()->all();
-        $bookingTxIds = HajjUmraBooking::query()
+        // DEFECT-2026-08-24-HJ-STMT fix (mirror): include soft-deleted rows
+        // so the exclusion list captures the original payment + income tx ids
+        // even after a booking has been DELETEd.
+        $paymentTxIds = HajjUmraPayment::withTrashed()->pluck('transaction_id')->filter()->all();
+        $bookingTxIds = HajjUmraBooking::withTrashed()
             ->where('customer_id', $customerId)
             ->pluck('income_transaction_id')
             ->filter()

@@ -71,6 +71,41 @@ abstract class HajjUmraTestCase extends BaseTestCase
                 'created_by' => $this->admin->id,
             ]);
         });
+
+        // DEFECT-2026-08-24-HJ-CCY fix: seed exchange rates so cross-currency
+        // booking tests (USD supplier, SAR executing company) succeed without
+        // each test having to insert its own rate. Mirrors the BRIEF 6 TASK A
+        // Safe FX Rule — no silent fallback, every cross-currency leg has a
+        // documented rate. Scope: EGP<->USD and EGP<->SAR only (per the
+        // agreed-upon patch spec — KWD rates are the Flight module's concern).
+        if (\Schema::hasTable('exchange_rates')) {
+            \DB::table('exchange_rates')->insert([
+                [
+                    'from_currency' => 'EGP', 'to_currency' => 'USD',
+                    'effective_date' => today(), 'rate' => 0.032, 'is_active' => 1,
+                    'created_by' => $this->admin->id,
+                    'created_at' => now(), 'updated_at' => now(),
+                ],
+                [
+                    'from_currency' => 'EGP', 'to_currency' => 'SAR',
+                    'effective_date' => today(), 'rate' => 0.078, 'is_active' => 1,
+                    'created_by' => $this->admin->id,
+                    'created_at' => now(), 'updated_at' => now(),
+                ],
+                [
+                    'from_currency' => 'USD', 'to_currency' => 'EGP',
+                    'effective_date' => today(), 'rate' => 31.25, 'is_active' => 1,
+                    'created_by' => $this->admin->id,
+                    'created_at' => now(), 'updated_at' => now(),
+                ],
+                [
+                    'from_currency' => 'SAR', 'to_currency' => 'EGP',
+                    'effective_date' => today(), 'rate' => 12.82, 'is_active' => 1,
+                    'created_by' => $this->admin->id,
+                    'created_at' => now(), 'updated_at' => now(),
+                ],
+            ]);
+        }
     }
 
     /* =========================================================
