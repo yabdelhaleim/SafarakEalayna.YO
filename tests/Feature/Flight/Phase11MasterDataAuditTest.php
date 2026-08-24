@@ -83,8 +83,13 @@ class Phase11MasterDataAuditTest extends TestCase
             ['code' => 'GBP', 'name_ar' => 'جنيه إسترليني', 'name_en' => 'British Pound', 'symbol' => '£',   'exchange_rate' => 61.2,  'is_active' => true, 'order' => 6],
         ];
 
+        // FIX (2026-08-24): use updateOrCreate so this helper is safe to call
+        // multiple times in the same DB lifecycle (e.g., a test that pre-seeds
+        // a currency before setUp runs, or another helper that re-runs). The
+        // previous Currency::create() blew up with SQLSTATE 23000 UNIQUE
+        // constraint failure whenever a caller touched the same code twice.
         foreach ($rates as $row) {
-            Currency::create($row);
+            Currency::updateOrCreate(['code' => $row['code']], $row);
         }
     }
 
@@ -478,15 +483,15 @@ class Phase11MasterDataAuditTest extends TestCase
 
     public function test_E1_active_currency_resolves_exchange_rate(): void
     {
-        Currency::create([
-            'code' => 'USD',
-            'name_ar' => 'دولار أمريكي',
-            'name_en' => 'US Dollar',
-            'symbol' => '$',
-            'exchange_rate' => 50.0,
-            'is_active' => true,
-            'order' => 1,
-        ]);
+        // FIX (2026-08-24): use updateOrCreate — the setUp() helper
+        // (seedExchangeRates) already inserts USD with rate=48.5; this
+        // test then overlaid rate=50.0. The previous Currency::create()
+        // crashed with SQLSTATE 23000 UNIQUE because the helper ran first.
+        Currency::updateOrCreate(
+            ['code' => 'USD'],
+            ['code' => 'USD', 'name_ar' => 'دولار أمريكي', 'name_en' => 'US Dollar',
+             'symbol' => '$', 'exchange_rate' => 50.0, 'is_active' => true, 'order' => 1]
+        );
 
         $rate = $this->callPrivateEgpRate('USD');
         $this->assertEquals(50.0, $rate,
@@ -495,15 +500,14 @@ class Phase11MasterDataAuditTest extends TestCase
 
     public function test_E2_inactive_currency_still_uses_rate_with_warning(): void
     {
-        Currency::create([
-            'code' => 'EUR',
-            'name_ar' => 'يورو',
-            'name_en' => 'Euro',
-            'symbol' => '€',
-            'exchange_rate' => 54.5,
-            'is_active' => false,  // inactive
-            'order' => 2,
-        ]);
+        // FIX (2026-08-24): same idempotency fix as test_E1 — the
+        // setUp() helper already inserted EUR; we now overlay the rate
+        // (54.5) via updateOrCreate instead of crashing on create.
+        Currency::updateOrCreate(
+            ['code' => 'EUR'],
+            ['code' => 'EUR', 'name_ar' => 'يورو', 'name_en' => 'Euro',
+             'symbol' => '€', 'exchange_rate' => 54.5, 'is_active' => false, 'order' => 2]
+        );
 
         // Service falls back to inactive rate (with a warning logged).
         $rate = $this->callPrivateEgpRate('EUR');
@@ -548,10 +552,17 @@ class Phase11MasterDataAuditTest extends TestCase
     public function test_F1_carrier_currency_must_match_booking_currency_handling(): void
     {
         // USD carrier with EGP booking: debit must convert at exchange rate.
-        Currency::create([
-            'code' => 'USD', 'name_ar' => 'دولار', 'name_en' => 'USD',
-            'symbol' => '$', 'exchange_rate' => 50.0, 'is_active' => true, 'order' => 1,
-        ]);
+        //
+        // FIX (2026-08-24): use updateOrCreate instead of create. The
+        // setUp() helper (seedExchangeRates) already inserts USD with
+        // rate=48.5; this test then overlaid rate=50.0. The previous
+        // Currency::create() blew up with SQLSTATE 23000 UNIQUE violation
+        // because the helper ran first. Now both writes are idempotent.
+        Currency::updateOrCreate(
+            ['code' => 'USD'],
+            ['code' => 'USD', 'name_ar' => 'دولار', 'name_en' => 'USD',
+             'symbol' => '$', 'exchange_rate' => 50.0, 'is_active' => true, 'order' => 1]
+        );
 
         $cashbox = $this->makeAccount('Cashbox USD', 'cashbox', 'USD', 10_000);
         $carrier = $this->makeCarrier('USD Carrier', null, 'USD');
@@ -626,6 +637,52 @@ class Phase11MasterDataAuditTest extends TestCase
     // ═══════════════════════════════════════════════════════════════
     // SECTION G — DIRECT MUTATION ATTEMPTS (security/auditor)
     // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * REGRESSION GUARD (2026-08-24) — seedExchangeRates() must be idempotent.
+     *
+     * History:
+     *   The seedExchangeRates() helper used Currency::create(), which
+     *   crashed with SQLSTATE 23000 UNIQUE whenever the calling test
+     *   (e.g. test_E1 / test_F1) also touched the same currency code.
+     *   This regression test asserts the helper's idempotency contract:
+     *   calling it twice in the same DB lifecycle must NOT raise a
+     *   UniqueConstraintViolationException.
+     *
+     * If this test ever fails, someone reverted the helper to
+     *   Currency::create() — restore the updateOrCreate() loop.
+     */
+    public function test_G0_seed_exchange_rates_helper_is_idempotent(): void
+    {
+        // setUp() already ran seedExchangeRates() once. Run it again.
+        // Before the fix, this threw UniqueConstraintViolationException
+        // on the second INSERT for EGP/USD/etc.
+        $countBefore = Currency::query()->count();
+
+        $this->seedExchangeRates();
+
+        $countAfter = Currency::query()->count();
+        $this->assertSame(
+            $countBefore,
+            $countAfter,
+            'seedExchangeRates() must be idempotent — same DB, same row count.'
+        );
+        $this->assertSame(
+            6,
+            $countAfter,
+            'After a second seeding pass, we still expect exactly 6 currencies.'
+        );
+
+        // The rates must remain the helper's values (the helper should
+        // NOT silently overwrite previously-set test rates — that would
+        // mask test intent). Verify EGP rate is still 1.0 from the helper.
+        $egp = Currency::query()->where('code', 'EGP')->firstOrFail();
+        $this->assertEquals(
+            1.0,
+            (float) $egp->exchange_rate,
+            'Helper must not mutate rates set by previous calls.'
+        );
+    }
 
     public function test_G1_carrier_balance_direct_save_blocked_by_observer(): void
     {
