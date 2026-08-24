@@ -450,13 +450,11 @@ class AccountService
 
         $allTransactions = $allTxQuery->get();
 
-        // Calculate Initial Balance (account balance minus all entry mutations)
-        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
-        $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
-        $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
-        $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
+        // Note: account.balance and account_entries are surfaced separately in stats;
+        // the flight-group statement derives its running balance purely from
+        // flight_group_transactions (independent ledger for B2B group debt/payments).
 
-        $running = $initialBalance;
+        $running = 0.0;
 
         foreach ($allTransactions as $tx) {
             if ($tx->type === 'payment') {
@@ -524,10 +522,11 @@ class AccountService
         }
 
         // Stats calculations
+        // Opening balance for a flight-group statement starts at 0 — the running balance
+        // is derived purely from flight_group_transactions, while account.balance is
+        // surfaced separately in stats.account_balance for transparency.
+        // Replaces undefined $firstEntry reference (pre-fix bug).
         $openingBalance = 0.0;
-        if ($firstEntry) {
-            $openingBalance += ($firstEntry->credit - $firstEntry->debit);
-        }
 
         if ($fromDate) {
             $lastTxBefore = $allTransactions->filter(function ($tx) use ($fromDate) {
