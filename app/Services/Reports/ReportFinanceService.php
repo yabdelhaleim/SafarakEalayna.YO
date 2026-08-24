@@ -183,50 +183,32 @@ class ReportFinanceService
     /**
      * Get income breakdown grouped by module.
      *
-     * @param  array  $filters  Keys: from_date, to_date
+     * Powers the dashboard's "دخل حسب القسم" chart and the per-module
+     * revenue cards. Uses {@see ProfitLossReportService::moduleBreakdown()}
+     * as the source of truth — that engine classifies ALL flight/hajj/visa/
+     * tourism revenue, which is recorded as `type='transfer'` touching the
+     * `pending_sales_receivable` / `income_clearing` accounts (cash-basis
+     * recognition). The previous raw `WHERE type='income'` query silently
+     * dropped ~100% of tourism revenue.
+     *
+     * @param  array  $filters  Keys: from_date, to_date, category
+     * @return array<string, float>
      */
     public function getIncomeByModule(array $filters): array
     {
-        $query = DB::table('transactions')
-            ->where('type', 'income')
-            // FIX (Path C, 2026-08-14): exclude reversed income rows from the
-            // per-module income total. A reversed Income contributes 0 net
-            // (its original entries + inverse entries cancel out in GL), so
-            // including it would over-count by the original amount after a
-            // HajjUmraBookingService::repostIncomeTransaction() reposts.
-            // Idempotency note: a second reversal call would no-op via
-            // reverseTransaction() line 312 idempotency check, but the
-            // notes prefix would remain on the row.
-            ->where(function ($q) {
-                $q->whereNull('notes')
-                    ->orWhere(function ($q2) {
-                        $q2->where('notes', 'not like', 'عكس:%')
-                            ->where('notes', 'not like', 'عكس %');
-                    });
-            });
+        $breakdown = app(ProfitLossReportService::class)->moduleBreakdown($filters);
 
-        if (! empty($filters['from_date'])) {
-            $query->whereDate('created_at', '>=', $filters['from_date']);
+        $incomeByModule = [];
+        foreach ($breakdown['by_module'] ?? [] as $row) {
+            $key = $this->normalizeModuleKey((string) ($row['module'] ?? ''));
+            $incomeByModule[$key] = (float) ($row['income'] ?? 0);
         }
 
-        if (! empty($filters['to_date'])) {
-            $query->whereDate('created_at', '<=', $filters['to_date']);
-        }
+        $result = $this->projectToCanonicalKeys($incomeByModule);
 
-        $modules = $query->selectRaw('
-            module,
-            SUM(amount) as total
-        ')->groupBy('module')->pluck('total', 'module');
-
-        $result = [
-            'flight' => round((float) ($modules['flight'] ?? 0), 2),
-            'bus' => round((float) ($modules['bus'] ?? 0), 2),
-            'service' => round((float) ($modules['service'] ?? 0), 2),
-            'online' => round((float) ($modules['online'] ?? 0), 2),
-            'general' => round((float) ($modules['general'] ?? 0), 2),
-        ];
-
-        $result['total'] = round(array_sum($result), 2);
+        $result['total'] = round(array_sum(array_intersect_key($result, array_flip([
+            'flight', 'hajj_umra', 'visa', 'tourism', 'bus', 'fawry', 'online', 'wallet', 'service', 'general',
+        ]))), 2);
 
         return $result;
     }
@@ -234,77 +216,294 @@ class ReportFinanceService
     /**
      * Get expense breakdown grouped by module.
      *
-     * @param  array  $filters  Keys: from_date, to_date
+     * Same rationale as {@see getIncomeByModule()} — pivots through
+     * {@see ProfitLossReportService::moduleBreakdown()} so COGS-classified
+     * spend (transfer rows from prepaid → expense accounts) is visible.
+     * Before this fix, only `type='expense'` rows were counted and the
+     * entire airline prepaid-consumption side of the ledger was invisible
+     * on the dashboard.
+     *
+     * COGS + operating_expense are combined into a single 'expense' bucket
+     * per module — that matches the operator-visible meaning of "مصروفات
+     * القسم" on the dashboard cards.
+     *
+     * @param  array  $filters  Keys: from_date, to_date, category
+     * @return array<string, float>
      */
     public function getExpenseByModule(array $filters): array
     {
-        $query = DB::table('transactions')->where('type', 'expense');
+        $breakdown = app(ProfitLossReportService::class)->moduleBreakdown($filters);
 
-        if (! empty($filters['from_date'])) {
-            $query->whereDate('created_at', '>=', $filters['from_date']);
+        $rows = $breakdown['by_module'] ?? [];
+        // Combine COGS + operating_expense per module. The breakdown
+        // service exposes them as separate keys ('cogs', 'expense'); on
+        // the dashboard the operator sees one "expenses" number, which
+        // is the sum of both — that matches `getFinancialSummary`'
+        // total_expense semantics.
+        $combined = [];
+        foreach ($rows as $row) {
+            $key = $this->normalizeModuleKey((string) ($row['module'] ?? ''));
+            $combined[$key] = (float) ($row['cogs'] ?? 0) + (float) ($row['expense'] ?? 0);
         }
 
-        if (! empty($filters['to_date'])) {
-            $query->whereDate('created_at', '<=', $filters['to_date']);
-        }
+        $result = $this->projectToCanonicalKeys($combined);
 
-        $modules = $query->selectRaw('
-            module,
-            SUM(amount) as total
-        ')->groupBy('module')->pluck('total', 'module');
-
-        $result = [
-            'flight' => round((float) ($modules['flight'] ?? 0), 2),
-            'bus' => round((float) ($modules['bus'] ?? 0), 2),
-            'service' => round((float) ($modules['service'] ?? 0), 2),
-            'online' => round((float) ($modules['online'] ?? 0), 2),
-            'general' => round((float) ($modules['general'] ?? 0), 2),
-        ];
-
-        $result['total'] = round(array_sum($result), 2);
+        $result['total'] = round(array_sum(array_intersect_key($result, array_flip([
+            'flight', 'hajj_umra', 'visa', 'tourism', 'bus', 'fawry', 'online', 'wallet', 'service', 'general',
+        ]))), 2);
 
         return $result;
     }
 
     /**
      * Get daily income and expense totals for a date range.
-     * Used for charts.
      *
-     * @param  array  $filters  Keys: from_date (required), to_date (required)
+     * Powers the monthly income-vs-expense line chart on the main
+     * dashboard. Like {@see getIncomeByModule()}, this previously queried
+     * `WHERE type IN ('income','expense')` and missed every
+     * `type='transfer'` row that carries the cash-basis revenue or COGS
+     * — i.e. the entire tourism book. Now routed through the P&L engine
+     * with a date-bucketed scan so transfer revenue is included.
+     *
+     * @param  array  $filters  Keys: from_date (required), to_date (required), category (optional)
      */
     public function getDailyFinancialChart(array $filters): Collection
     {
-        $query = DB::table('transactions')
-            ->selectRaw('
-                DATE(created_at) as date,
-                SUM(CASE WHEN type = "income" THEN amount ELSE 0 END) as total_income,
-                SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) as total_expense
-            ')
-            // FIX (Path C, 2026-08-14): same exclusion as getIncomeByModule — reversed
-            // Income rows must not inflate the daily-chart total.
-            ->where(function ($q) {
-                $q->whereNull('notes')
-                    ->orWhere(function ($q2) {
-                        $q2->where('notes', 'not like', 'عكس:%')
-                            ->where('notes', 'not like', 'عكس %');
-                    });
-            })
-            ->whereDate('created_at', '>=', $filters['from_date'])
-            ->whereDate('created_at', '<=', $filters['to_date'])
-            ->groupByRaw('DATE(created_at)')
-            ->orderByRaw('DATE(created_at)');
+        $maps = app(\App\Services\Finance\LedgerClearingAccounts::class)->moduleAccountMaps();
+        $incomeClearing = $maps['income'] ?? [];
+        $expenseClearing = $maps['expense'] ?? [];
+        $prepaidAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class)->prepaidAccountIdMap();
+        $allClearingIds = array_values(array_unique(array_merge(
+            array_keys($incomeClearing),
+            array_keys($expenseClearing),
+            array_keys($prepaidAccounts)
+        )));
 
-        return $query->get()->map(function ($row) {
-            $income = (float) ($row->total_income ?? 0);
-            $expense = (float) ($row->total_expense ?? 0);
+        $query = DB::table('transactions as t')
+            ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
+            ->leftJoin('accounts as from_acc', 't.from_account_id', '=', 'from_acc.id')
+            ->leftJoin('transfers as tr', 't.id', '=', 'tr.transaction_id')
+            ->select([
+                't.id',
+                't.type',
+                't.module',
+                't.amount',
+                't.notes',
+                't.from_account_id',
+                't.to_account_id',
+                't.created_at',
+                'to_acc.type as to_account_type',
+                'to_acc.module_type as to_account_module_type',
+                'from_acc.module_type as from_account_module_type',
+                'tr.converted_amount',
+                'tr.from_currency',
+                'tr.to_currency',
+            ])
+            ->whereDate('t.created_at', '>=', $filters['from_date'])
+            ->whereDate('t.created_at', '<=', $filters['to_date']);
+
+        // Mirror the relevance filter from ProfitLossReportService so
+        // transfer-type revenue and prepaid/cogs flows are picked up.
+        $query->where(function ($outer) use ($allClearingIds) {
+            $outer->whereIn('t.type', ['income', 'expense', 'refund']);
+            $outer->orWhere(function ($transfer) use ($allClearingIds) {
+                $transfer->where('t.type', 'transfer')
+                    ->where(function ($legs) use ($allClearingIds) {
+                        if ($allClearingIds !== []) {
+                            $legs->whereIn('t.from_account_id', $allClearingIds)
+                                ->orWhereIn('t.to_account_id', $allClearingIds);
+                        }
+                        $legs->orWhere('to_acc.type', 'expense');
+                    });
+            });
+        });
+
+        // Skip reversed rows (mirror notes) so we don't double-count.
+        $query->where(function ($q) {
+            $q->whereNull('t.notes')
+                ->orWhere(function ($q2) {
+                    $q2->where('t.notes', 'not like', 'عكس:%')
+                        ->where('t.notes', 'not like', 'عكس %');
+                });
+        });
+
+        $daily = [];
+        foreach ($query->orderBy('t.id')->cursor() as $tx) {
+            $classification = $this->classifyTransactionForChart((object) $tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            if ($classification === null) {
+                continue;
+            }
+
+            $amount = $this->chartAmountEGP((object) $tx);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $dateKey = substr((string) $tx->created_at, 0, 10);
+            if (! isset($daily[$dateKey])) {
+                $daily[$dateKey] = ['income' => 0.0, 'expense' => 0.0];
+            }
+
+            if (in_array($classification, ['revenue', 'cogs_reversal'], true)) {
+                $daily[$dateKey]['income'] += $amount;
+            } elseif (in_array($classification, ['cogs', 'operating_expense', 'revenue_reversal', 'refund'], true)) {
+                $daily[$dateKey]['expense'] += $amount;
+            }
+        }
+
+        ksort($daily);
+
+        return collect($daily)->map(function (array $row, string $date): array {
+            $income = round((float) $row['income'], 2);
+            $expense = round((float) $row['expense'], 2);
 
             return [
-                'date' => $row->date,
-                'total_income' => round($income, 2),
-                'total_expense' => round($expense, 2),
+                'date' => $date,
+                'total_income' => $income,
+                'total_expense' => $expense,
                 'net' => round($income - $expense, 2),
             ];
-        });
+        })->values();
+    }
+
+    /**
+     * Project a per-module value map onto the canonical UI keys
+     * (flight, hajj_umra, visa, tourism, bus, fawry, online, wallet,
+     * service, office, general).
+     *
+     * Powers both {@see getIncomeByModule()} and {@see getExpenseByModule()}.
+     *
+     * @param  array<string, float>  $valueByModule  Module key → value
+     * @return array<string, float>                  Canonical key → value (default 0)
+     */
+    private function projectToCanonicalKeys(array $valueByModule): array
+    {
+        $canonical = [
+            'flight' => 'flight',
+            'hajj_umra' => 'hajj_umra',
+            'visa' => 'visa',
+            'tourism' => 'tourism',
+            'bus' => 'bus',
+            'fawry' => 'fawry',
+            'online' => 'online',
+            'wallet_transfer' => 'wallet',
+            'wallets' => 'wallet',
+            'wallet' => 'wallet',
+            'service' => 'service',
+            'office' => 'office',
+            'general' => 'general',
+        ];
+
+        $out = [];
+        foreach ($canonical as $alias => $displayKey) {
+            $out[$displayKey] = round((float) ($valueByModule[$alias] ?? 0), 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Compact classification that mirrors {@see ProfitLossReportService::classify()}
+     * for the daily-chart bucketing pipeline. Returns one of:
+     *  - 'revenue' / 'revenue_reversal' (refund path on a transfer)
+     *  - 'cogs' / 'cogs_reversal'
+     *  - 'operating_expense'
+     *  - null (neutral / prepaid top-ups)
+     *
+     * Kept private to this service because the daily chart has its own
+     * bucket semantics (income vs expense columns) that don't need the
+     * full P&L report machinery.
+     *
+     * @param  array<int, string>  $incomeClearing
+     * @param  array<int, string>  $expenseClearing
+     * @param  array<int, string>  $prepaidAccounts
+     */
+    private function classifyTransactionForChart(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts): ?string
+    {
+        $type = (string) $tx->type;
+        $fromId = (int) ($tx->from_account_id ?? 0);
+        $toId = (int) ($tx->to_account_id ?? 0);
+        $toType = (string) ($tx->to_account_type ?? '');
+
+        if ($type === 'income') {
+            return 'revenue';
+        }
+
+        if ($type === 'refund') {
+            return 'refund';
+        }
+
+        if ($type === 'expense') {
+            return 'operating_expense';
+        }
+
+        if ($type !== 'transfer') {
+            return null;
+        }
+
+        $fromIncome = $fromId > 0 && isset($incomeClearing[$fromId]);
+        $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
+        $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
+        $toExpense = $toId > 0 && isset($expenseClearing[$toId]);
+        $fromPrepaid = $fromId > 0 && isset($prepaidAccounts[$fromId]);
+        $toPrepaid = $toId > 0 && isset($prepaidAccounts[$toId]);
+
+        // Liquidity → prepaid asset: neutral for P&L purposes.
+        if ($toPrepaid && ! $fromPrepaid && ! $fromExpense && ! $fromIncome) {
+            return null;
+        }
+
+        // Prepaid → expense clearing = COGS recognition.
+        if ($fromPrepaid && $toExpense && ! $toPrepaid) {
+            return 'cogs';
+        }
+
+        // Expense clearing → prepaid = COGS reversal (refund path).
+        if ($toPrepaid && $fromExpense && ! $fromPrepaid) {
+            return 'cogs_reversal';
+        }
+
+        if ($fromIncome && ! $toIncome) {
+            return 'revenue';
+        }
+
+        if ($toIncome && ! $fromIncome) {
+            return 'revenue_reversal';
+        }
+
+        if ($toExpense && ! $fromExpense) {
+            return 'operating_expense';
+        }
+
+        if ($toType === 'expense') {
+            return 'operating_expense';
+        }
+
+        return null;
+    }
+
+    private function chartAmountEGP(object $tx): float
+    {
+        $amount = (float) ($tx->amount ?? 0);
+
+        if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
+            $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
+            $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
+            if ($toCurrency === 'EGP') {
+                return (float) $tx->converted_amount;
+            }
+            if ($fromCurrency === 'EGP') {
+                return $amount;
+            }
+        }
+
+        // If both currencies are the same and not EGP the raw amount is fine
+        // for the per-day comparison (chart is in transaction currency-class).
+        // For chart purposes we keep the raw transaction amount, which is
+        // what the reporting accountant compares day-to-day in the source
+        // ledger currency bucket, then a separate EGP normalisation could be
+        // layered on top.
+        return $amount;
     }
 
     /**

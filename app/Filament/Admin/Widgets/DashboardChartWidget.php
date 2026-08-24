@@ -2,8 +2,8 @@
 
 namespace App\Filament\Admin\Widgets;
 
+use App\Services\Reports\ReportFinanceService;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardChartWidget extends ChartWidget
@@ -32,32 +32,33 @@ class DashboardChartWidget extends ChartWidget
             ];
         }
 
-        $months = [];
-        $sixMonthsAgo = now()->subMonths(5)->startOfMonth();
-
-        $monthlyStats = DB::table('transactions')
-            ->selectRaw("
-                DATE_FORMAT(created_at, '%Y-%m') as month_key,
-                type,
-                SUM(amount) as total
-            ")
-            ->where('created_at', '>=', $sixMonthsAgo)
-            ->whereIn('type', ['income', 'expense'])
-            ->groupByRaw('month_key, type')
-            ->get()
-            ->groupBy('month_key');
-
+        $labels = [];
         $incomeData = [];
         $expenseData = [];
 
+        // Pull each of the last 6 calendar months through the corrected
+        // ReportFinanceService::getDailyFinancialChart() so that
+        // `type='transfer'` rows (cash-basis tourism revenue and
+        // COGS / prepaid-consumption) are included. The previous
+        // `whereIn('type', ['income','expense'])` query silently
+        // dropped every flight / hajj / visa sale.
+        $service = app(ReportFinanceService::class);
+
         for ($i = 5; $i >= 0; $i--) {
             $date = now()->subMonths($i);
-            $key = $date->format('Y-m');
-            $months[] = $date->format('M');
+            $monthKey = $date->format('Y-m');
+            $labels[] = $date->format('M');
 
-            $stats = $monthlyStats->get($key, collect());
-            $incomeData[] = (float) $stats->firstWhere('type', 'income')?->total ?? 0;
-            $expenseData[] = (float) $stats->firstWhere('type', 'expense')?->total ?? 0;
+            $from = $date->copy()->startOfMonth()->toDateString();
+            $to = $date->copy()->endOfMonth()->toDateString();
+
+            $rows = $service->getDailyFinancialChart([
+                'from_date' => $from,
+                'to_date' => $to,
+            ]);
+
+            $incomeData[] = round((float) $rows->sum('total_income'), 2);
+            $expenseData[] = round((float) $rows->sum('total_expense'), 2);
         }
 
         return [
@@ -79,7 +80,7 @@ class DashboardChartWidget extends ChartWidget
                     'tension' => 0.4,
                 ],
             ],
-            'labels' => $months,
+            'labels' => $labels,
         ];
     }
 
