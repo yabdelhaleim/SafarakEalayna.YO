@@ -2897,6 +2897,25 @@ class FlightBookingService
                 }
             }
 
+            // 2.5) GROUP-SOURCED BOOKINGS (BUG-FIX 2026-08-24):
+            //
+            // The booking-debt was recorded against `flight_group_transactions`
+            // (separate from `flight_payments`), and any subsequent settle
+            // via `FlightGroupController::payDebt` posted a journal
+            // `cashbox → group_account`. The Step-2 loop above only walks
+            // $booking->payments, so `cashbox → group_account` transfers
+            // NEVER get reversed on delete — leaving:
+            //   - cashbox permanently debited
+            //   - group_account permanently credited (and Step-4's
+            //     `reverseGroupPurchase` adds ANOTHER credit on top)
+            //
+            // This step finds every FlightGroupTransaction linked to the
+            // booking, looks up its underlying Transaction, and posts a
+            // mirror entry. Returns true when at least one payDebt (cash out)
+            // was reversed, so Step-4 can skip `reverseGroupPurchase` for
+            // group source (otherwise it double-credits the group).
+            $groupPayDebtsReversed = $this->reverseGroupTransactionsForBooking($booking, $userIdEffective);
+
             // 3) Reverse the GL sale journal entry on customer ledger.
             //    Original: clearing → customer (recordSaleToCustomer)
             //    Reverse:  customer → clearing (recordJournalTransfer)
@@ -3192,10 +3211,21 @@ class FlightBookingService
                     $this->creditBackFlightSystem($booking, 0.0);
                 }
             } elseif ($src === 'group' && $booking->flight_group_id && (float) $booking->purchase_price > 0) {
-                if ($existingRefund) {
-                    $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                // BUG-FIX (2026-08-24): skip when Step 2.5 already reversed
+                // the group's payDebt journals — otherwise we double-credit
+                // the group account by posting expense_clearing → group
+                // on top of the already-corrected balance.
+                if ($groupPayDebtsReversed) {
+                    Log::info('FlightBookingService::deleteBookingWithReversal — skipped reverseGroupPurchase (payDebt already reversed in Step 2.5)', [
+                        'flight_booking_id' => $booking->id,
+                        'purchase_balance_source' => 'group',
+                    ]);
                 } else {
-                    $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                    if ($existingRefund) {
+                        $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                    } else {
+                        $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                    }
                 }
             } elseif ($src === null) {
                 // Legacy rows without an explicit source flag
@@ -3212,10 +3242,17 @@ class FlightBookingService
                         $this->creditBackFlightSystem($booking, 0.0);
                     }
                 } elseif ($booking->flight_group_id && (float) $booking->purchase_price > 0) {
-                    if ($existingRefund) {
-                        $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                    if ($groupPayDebtsReversed) {
+                        Log::info('FlightBookingService::deleteBookingWithReversal — skipped reverseGroupPurchase (legacy branch, payDebt already reversed in Step 2.5)', [
+                            'flight_booking_id' => $booking->id,
+                            'purchase_balance_source' => null,
+                        ]);
                     } else {
-                        $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                        if ($existingRefund) {
+                            $this->reverseGroupPurchase($booking, (float) $existingRefund->airline_penalty, $userIdEffective);
+                        } else {
+                            $this->reverseGroupPurchase($booking, 0.0, $userIdEffective);
+                        }
                     }
                 }
             }
@@ -3377,6 +3414,121 @@ class FlightBookingService
             'credit_total' => $creditTotal,
             'user_id' => $userId,
         ]);
+    }
+
+    /**
+     * BUG-FIX (2026-08-24): `deleteBookingWithReversal` did not reverse the
+     * `cashbox → group_account` journals posted by
+     * `FlightGroupController::payDebt` (sanded-qabz lines, the operator's
+     * "سند صرف للمجموعة" / outbound payment to settle the group's debt).
+     * Those journals are linked to a FlightGroupTransaction row (not a
+     * FlightPayment), so the existing `reverseSinglePayment()` loop — which
+     * only walks `$booking->payments` — missed them entirely. On delete the
+     * cashbox stayed debited and the group account stayed credited.
+     *
+     * This method walks every FlightGroupTransaction attached to the
+     * booking, finds the underlying Transaction
+     * (`related_type = FlightGroupTransaction::class`, `related_id` = row.id),
+     * and posts a mirror transfer that swaps from_account and to_account.
+     * The original FlightGroupTransaction row is hard-deleted afterwards to
+     * prevent double-reversal on retry (the model has no SoftDeletes).
+     *
+     * Idempotency: a `notes` prefix of `عكس:` on the original row indicates
+     * it has already been reversed and we skip it. The mirror transfer's
+     * own `notes` carries the same prefix so retries stay safe.
+     *
+     * @return bool true if at least one cash-out (type='payment') reversal
+     *              was posted — caller uses this to skip the redundant
+     *              `reverseGroupPurchase()` call that would otherwise
+     *              double-credit the group's account.
+     */
+    protected function reverseGroupTransactionsForBooking(FlightBooking $booking, int $userId): bool
+    {
+        if (! $booking->flight_group_id) {
+            return false;
+        }
+
+        $cashOutReversed = false;
+
+        $groupTxns = FlightGroupTransaction::query()
+            ->where('flight_booking_id', $booking->id)
+            ->get();
+
+        foreach ($groupTxns as $groupTx) {
+            /** @var FlightGroupTransaction $groupTx */
+
+            // Skip if already reversed (idempotency on retry / re-run).
+            if (str_starts_with((string) $groupTx->notes, 'عكس:')) {
+                Log::info('FlightBookingService::reverseGroupTransactionsForBooking — skip already-reversed', [
+                    'flight_group_tx_id' => $groupTx->id,
+                    'flight_booking_id' => $booking->id,
+                ]);
+                continue;
+            }
+
+            // Find the underlying journal (only if a transaction_id link exists
+            // — booking-time debt and payDebt both go through TransactionService
+            // and the related_type/related_id link is preserved).
+            $original = Transaction::query()
+                ->where('related_type', FlightGroupTransaction::class)
+                ->where('related_id', $groupTx->id)
+                ->first();
+            if (! $original || ! $original->from_account_id || ! $original->to_account_id) {
+                // No journal to reverse — clean up the FlightGroupTransaction row.
+                $groupTx->delete();
+                continue;
+            }
+
+            // Reverse the journal via TransactionService::reverseTransaction.
+// This is the correct path because reverseTransaction walks the
+// original AccountEntry rows and posts mirror legs on the SAME accounts
+// — so:
+//
+//   - Same-currency: each account's debit/credit is swapped in place,
+//     so the cashbox balance that was debited during the original
+//     payDebt is now credited back. No FX replay needed.
+//
+//   - Cross-currency (e.g. EGP cashbox → EUR group_account):
+//     reverseTransaction uses each entry's stored debit/credit
+//     (independent of the column `amount`), so the source-currency
+//     credit on the cashbox is mirrored on the cashbox, and the
+//     destination-currency debit on the EUR group is mirrored on
+//     the EUR group — without re-running FX conversion or tripping
+//     the cross-currency guard. This is what F-2 fixed for the
+//     standard payment reversal flow.
+//
+// Idempotency is built into reverseTransaction (it short-circuits on
+// a second call), so retry-after-failure is safe.
+$this->transactionService->reverseTransaction($original);
+            // Replace the original note with a deletion-context note so the
+            // audit trail explicitly labels the row as a deletion reversal.
+            $original->refresh();
+            $original->notes = trim(('عكس: '.($original->notes ?? '')).' — حذف حجز #'.$booking->booking_number);
+            $original->save();
+
+            // Track cash-out reversals so the caller can suppress the
+            // redundant reverseGroupPurchase credit-back.
+            if ($groupTx->type === 'payment') {
+                $cashOutReversed = true;
+            }
+
+            // Drop the FlightGroupTransaction row — it's been mirrored.
+            // There is no SoftDeletes on this model (see FlightGroupTransaction)
+            // so a hard DELETE is the audit-consistent cleanup path.
+            $groupTx->delete();
+
+            Log::info('FlightBookingService::reverseGroupTransactionsForBooking — mirrored journal', [
+                'flight_group_tx_id' => $groupTx->id,
+                'flight_group_tx_type' => $groupTx->type,
+                'original_transaction_id' => $original->id,
+                'amount' => (float) $original->amount,
+                'from_account_id' => $original->from_account_id,
+                'to_account_id' => $original->to_account_id,
+                'flight_booking_id' => $booking->id,
+            ]);
+        }
+
+        return $cashOutReversed;
     }
 
 
