@@ -3007,8 +3007,23 @@ class FlightBookingService
                         'created_by' => $userIdEffective,
                     ]);
                 }
-            } elseif ($existingRefundEarly && ((float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty) > 0.001) {
+            } elseif ($existingRefundEarly && (
+                ((float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty) > 0.001
+                || ((float) $existingRefundEarly->refund_amount) > 0.001
+            )) {
                 // FIN-A FIX (2026-08-23): cancel-with-penalty-after-FIX-2 lifecycle.
+                //
+                // DEFECT-009/010 FIX (2026-08-25): extended the elseif condition
+                // to also fire when total_penalty == 0 but existingRefund.refund_amount > 0.
+                // In the zero-penalty full-refund cancel, the cancel's refundTreasuryAccount
+                // debit was never reversed on delete because the original guard excluded
+                // the penalty==0 case. With the extension:
+                //   - H1's internal guard (`refund_amount > 0.001`) auto-fires to walk
+                //     back the cashbox → customer_AR transfer posted by refundTreasuryAccount.
+                //   - H2's internal guard (`pending_sales_receivable.balance < -0.001`)
+                //     auto-skips because the zero-penalty cancel's sale reversal already
+                //     swept pending_sales_receivable back to 0.
+                // Same `elseif` body, only the entry condition is widened.
                 //
                 // Bug context: After FIN-2 (commit d0e73fd), recordSaleToCustomer
                 // routes the booking-side sale through `pendingSalesReceivableIdForFlight()`
