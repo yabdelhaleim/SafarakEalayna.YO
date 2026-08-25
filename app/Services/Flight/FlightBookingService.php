@@ -8,6 +8,7 @@ use App\Enums\FlightBookingStatus;
 use App\Enums\FlightPaymentMethod;
 use App\Enums\FlightSystemType;
 use App\Enums\TransactionModule;
+use App\Exceptions\BusinessLogicException;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Airport;
@@ -3066,76 +3067,40 @@ class FlightBookingService
                 }
 
                 if ($refundCashboxId > 0) {
-                    // FIN-A GUARD (2026-08-23): only transfer if there is
-                    // actually a residual to clear. When the cancel step
-                    // already cleared pending_sales_receivable back to 0
-                    // (e.g. cancel with full penalty = full revenue kept —
-                    // scenario 3 of FlightSoftDeleteRealWorldTest), posting
-                    // another `cashbox → pending_sales_receivable` here
-                    // would re-debit pending above zero and shift cashbox
-                    // below baseline. Skip the transfer when the cancel
-                    // already completed the residual sweep.
+                    // DEFECT-006 FIX (2026-08-24) — H2: replaces the old
+                    // FIN-A `cashbox → pending_sales_receivable` transfer
+                    // (which was generating phantom cashbox debits in
+                    // scenario 3 of FlightSoftDeleteRealWorldTest and the
+                    // 12000 phantom loss in our DEFECT-006 regression).
                     //
-                    // Note: the customer.AR inflation seen in cancel+delete
-                    // scenarios is a known side-effect of FIN-B's
-                    // TransactionService::reverseTransaction mirror (which
-                    // creates a symmetric credit-entry on the customer
-                    // account). The customer balance in this lifecycle is
-                    // NOT a real AR — it's the offsetting leg of the
-                    // revenue reversal. Tests that assert
-                    // `customer_balance == 0` after a delete path are
-                    // checking the legacy model where revenue was
-                    // reclassified via a separate Transfer row.
-                    $pendingAccountCheck = Account::find($placeholderAccountId);
-                    $pendingHasResidual = $pendingAccountCheck
-                        && ((float) $pendingAccountCheck->balance < -0.001);
-                    if (! $pendingHasResidual) {
-                        Log::info('deleteBookingWithReversal: FIN-A skipped — pending_sales_receivable already cleared by cancel', [
-                            'booking_id' => $booking->id,
-                            'refund_id' => $existingRefundEarly->id,
-                            'pending_balance' => $pendingAccountCheck ? (float) $pendingAccountCheck->balance : null,
+                    // The residual now clears via `customer_AR → pending_sales_receivable` —
+                    // the customer ledger already carries the offsetting +balance
+                    // from the cancel's FIN-B revenue reversal, so the sweep
+                    // costs nothing in cash.
+                    //
+                    // Same guard as old FIN-A: only fire if pending_sales_receivable
+                    // still has a negative residual (cancel's Step 3 sale reversal
+                    // did NOT clear it).
+                    $pendingAccountH2 = Account::find($placeholderAccountId);
+                    if ($pendingAccountH2 && ((float) $pendingAccountH2->balance < -0.001)) {
+                        $residualH2 = abs((float) $pendingAccountH2->balance);
+                        $customerAccountH2 = $this->ensureCustomerAccount($booking->customer_id);
+                        $this->transactionService->recordJournalTransfer([
+                            'from_account_id' => $customerAccountH2->id,
+                            'to_account_id' => $placeholderAccountId,
+                            'amount' => $residualH2,
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => 'عكس دين عميل متبقي (H2 — إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                            'created_by' => $userIdEffective,
                         ]);
-                    } else {
-                    $refundAccount = Account::find($refundCashboxId);
-                    $pendingAccount = Account::find($placeholderAccountId);
-                    $refundCurrency = $refundAccount ? strtoupper((string) $refundAccount->currency) : 'EGP';
-                    $pendingCurrency = $pendingAccount ? strtoupper((string) $pendingAccount->currency) : 'EGP';
-                    // F-2 audit fix (2026-08-24): the isCrossCurrency check used to compare
-                    // booking.currency vs refund-currency. But the destination (pending_sales_receivable)
-                    // is ALWAYS EGP. So when the refund cashbox is non-EGP (e.g. EUR cashbox for a
-                    // EUR booking), the else branch tried to post a EUR → EGP journal without
-                    // converted_amount/exchange_rate — which recordJournalTransfer rejects.
-                    //
-                    // Correct check: from_account.currency !== to_account.currency.
-                    $isCrossCurrency = $refundCurrency !== $pendingCurrency;
-
-                    $transferParams = [
-                        'from_account_id' => $refundCashboxId,
-                        'to_account_id' => $placeholderAccountId,
-                        'allow_from_negative' => true,
-                        'module' => TransactionModule::Flight->value,
-                        'related_type' => FlightBooking::class,
-                        'related_id' => $booking->id,
-                        'notes' => 'عكس قيد مبيعات متبقي (إلغاء ثم حذف) — حجز #'.$booking->booking_number,
-                        'created_by' => $userIdEffective,
-                    ];
-
-                    if ($isCrossCurrency) {
-                        // Cross-currency residual clearing: refund cashbox (foreign) → pending_sales_receivable (EGP).
-                        // amount = foreign-currency equivalent of the kept penalty (what's actually in the cashbox)
-                        // converted_amount = EGP penalty (matches pending_sales_receivable's reporting currency)
-                        // exchange_rate = snapshot at booking time (locked rate)
-                        $penaltyInForeignCurrency = round($penaltyEgp / max($bookingExchangeRate, 0.0001), 4);
-                        $transferParams['amount'] = $penaltyInForeignCurrency;
-                        $transferParams['converted_amount'] = $penaltyEgp;
-                        $transferParams['exchange_rate'] = $bookingExchangeRate;
-                    } else {
-                        // Same-currency residual clearing (e.g. EGP booking, EGP cashbox, EGP pending).
-                        $transferParams['amount'] = $penaltyEgp;
+                        Log::info('deleteBookingWithReversal: H2 cleared pending_sales_receivable residual', [
+                            'booking_id' => $booking->id,
+                            'residual_amount' => $residualH2,
+                        ]);
                     }
-
-                    $this->transactionService->recordJournalTransfer($transferParams);
-                    } // end of FIN-A guard (skip when pending has no residual)
                 } else {
                     // FIN-E FIX (2026-08-23): no-payment cancel-then-delete.
                     //
@@ -3192,6 +3157,48 @@ class FlightBookingService
                             }
                         }
                     }
+                }
+
+                // DEFECT-005 FIX (2026-08-24) — H1: walk back the cancel's
+                // `refundTreasuryAccount` debit. The cancel posted
+                // from=cashbox → to=customer_AR for `refund_amount` (cash
+                // the customer got back). The delete must post the inverse
+                // to restore the cashbox to its pre-booking baseline.
+                //
+                // Cross-currency KWD/EUR/SAR/GBP is NOT supported —
+                // recordJournalTransfer requires converted_amount for
+                // cross-currency transfers. We throw BusinessLogicException
+                // (→ HTTP 409 Conflict) so the operator is forced to handle.
+                // Tracked as a separate backlog item (see
+                // .zcode/plans/DEFECT_005_006_TRACE_20260824.md).
+                if ($existingRefundEarly && ((float) $existingRefundEarly->refund_amount) > 0.001) {
+                    $refundCashboxRow = Account::find($existingRefundEarly->account_id);
+                    $refundCurrencyCode = $refundCashboxRow ? strtoupper((string) $refundCashboxRow->currency) : 'EGP';
+                    $customerAccountRow = $this->ensureCustomerAccount($booking->customer_id);
+                    $customerCurrencyCode = strtoupper((string) $customerAccountRow->currency);
+
+                    if ($refundCurrencyCode !== $customerCurrencyCode) {
+                        // KNOWN LIMITATION (2026-08-24) — cross-currency refund walk-back.
+                        // The whole transaction rolls back; the booking is NOT soft-deleted.
+                        throw new BusinessLogicException("لا يمكن حذف حجز بعملة {$refundCurrencyCode} تم إلغاؤه مع استرداد — يدعم النظام حالياً الاسترداد العكسي للعملة المحلية فقط (EGP). يجب إجراء العكس يدوياً عبر إدارة الحسابات.");
+                    }
+
+                    $this->transactionService->recordJournalTransfer([
+                        'from_account_id' => $customerAccountRow->id,
+                        'to_account_id' => $existingRefundEarly->account_id,
+                        'amount' => (float) $existingRefundEarly->refund_amount,
+                        'allow_from_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'عكس استرداد عميل (H1 — إلغاء ثم حذف) — حجز #'.$booking->booking_number,
+                        'created_by' => $userIdEffective,
+                    ]);
+                    Log::info('deleteBookingWithReversal: H1 walked back cancel refund', [
+                        'booking_id' => $booking->id,
+                        'refund_id' => $existingRefundEarly->id,
+                        'refund_amount' => (float) $existingRefundEarly->refund_amount,
+                    ]);
                 }
             }
 

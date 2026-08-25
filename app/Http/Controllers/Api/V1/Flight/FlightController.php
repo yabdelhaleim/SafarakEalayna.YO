@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Flight;
 
+use App\Exceptions\BusinessLogicException;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Flight\StoreFlightBookingRequest;
@@ -353,6 +354,13 @@ class FlightController extends Controller
             $this->bookingService->deleteBookingWithReversal($flightBooking->id, $userId);
 
             return ApiResponse::success('تم حذف الحجز مع عكس كل الآثار المحاسبية بنجاح.');
+        } catch (BusinessLogicException $e) {
+            // DEFECT-005/006 FIX (2026-08-24): re-throw so the global
+            // exception handler in bootstrap/app.php:90-95 maps this to
+            // HTTP 409 Conflict. BusinessLogicException is the project's
+            // canonical "state conflict" exception — used here for the
+            // cross-currency refund walk-back known limitation.
+            throw $e;
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         }
