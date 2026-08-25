@@ -1474,12 +1474,31 @@ class FlightBookingService
     /**
      * Update booking details. Structural and pricing changes are restricted to PENDING bookings.
      *
+     * DEFECT-011 (2026-08-26): Tourism no-edit contract (INCIDENT-2026-08-17) is
+     * now enforced at the service layer. Any caller — current or future — that
+     * reaches this method gets a LogicException. The supported correction path
+     * is: cancel (which posts reversal entries) + create a new booking.
+     *
+     * The full implementation that lived here is preserved below as
+     * unreachable reference code, guarded behind the throw. It is intentionally
+     * NOT reachable so future developers cannot accidentally re-enable edit
+     * without also updating the contract tests in
+     * tests/Feature/Tourism/TourismNoEditContractTest.
+     *
      * @param  array  $data  Validated data
      *
-     * @throws \Exception
+     * @throws \LogicException always
      */
     public function updateBooking(FlightBooking $booking, array $data): FlightBooking
     {
+        // INCIDENT-2026-08-17 — Tourism no-edit contract. See DEFECT-011.
+        throw new \LogicException(
+            'Tourism no-edit contract INCIDENT-2026-08-17: '
+            .'FlightBookingService::updateBooking() is disabled. '
+            .'All edits must go through cancel-and-recreate.'
+        );
+
+        // ── Code below is unreachable and remains for reference only ──
         try {
             return DB::transaction(function () use ($booking, $data) {
                 unset($data['payment'], $data['initial_payment']);
@@ -1686,10 +1705,30 @@ class FlightBookingService
      * Only allowed if booking status is pending.
      * Recomputes profit.
      *
-     * @throws \Exception
+     * DEFECT-011 (2026-08-26): Tourism no-edit contract (INCIDENT-2026-08-17) is
+     * now enforced at the service layer. Any caller — current or future — that
+     * reaches this method gets a LogicException. The supported correction path
+     * is: cancel (which posts reversal entries) + create a new booking with the
+     * correct prices.
+     *
+     * The full implementation that lived here is preserved below as
+     * unreachable reference code, guarded behind the throw. The previous D4
+     * guard (negative-price check) is kept in the reference block because
+     * it is still the right defense-in-depth if this method is ever
+     * re-enabled in the future.
+     *
+     * @throws \LogicException always
      */
     public function updatePrices(FlightBooking $booking, float $purchasePrice, float $sellingPrice): FlightBooking
     {
+        // INCIDENT-2026-08-17 — Tourism no-edit contract. See DEFECT-011.
+        throw new \LogicException(
+            'Tourism no-edit contract INCIDENT-2026-08-17: '
+            .'FlightBookingService::updatePrices() is disabled. '
+            .'All price corrections must go through cancel-and-recreate.'
+        );
+
+        // ── Code below is unreachable and remains for reference only ──
         if ($booking->status !== FlightBookingStatus::PENDING) {
             throw new \Exception('Only pending bookings can have prices updated.');
         }

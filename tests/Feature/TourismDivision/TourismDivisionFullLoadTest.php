@@ -466,19 +466,16 @@ class TourismDivisionFullLoadTest extends TourismTestCase
                 }
             }
 
-            // 1 in 7 bookings: price modification — ONLY if the booking is
-            // still PENDING (not modified post-payment) because the system
-            // correctly enforces that rule.
-            if ($idx % 7 === 0 && $idx > 0 && $booking->status === 'pending') {
-                $modified = $this->safeCall('flight.modify', fn () => $service->updatePrices(
-                    $booking->fresh(),
-                    $purchase + 100,
-                    $selling + 200,
-                ));
-                if ($modified) {
-                    $this->stats['flight_modifications']++;
-                }
-            }
+            // 1 in 7 bookings: price modification — DISABLED under
+            // DEFECT-011 (Tourism no-edit contract INCIDENT-2026-08-17).
+            // FlightBookingService::updatePrices() now throws LogicException
+            // unconditionally. Price corrections must go through cancel-and-
+            // recreate; that path is exercised elsewhere in the suite.
+            // Keeping the if-block removed (rather than guarded) so the
+            // 1-in-7 spacing remains predictable for the remaining phases.
+            //
+            // See tests/Feature/Tourism/TourismNoEditContractTest for the
+            // contract assertion.
         }
     }
 
