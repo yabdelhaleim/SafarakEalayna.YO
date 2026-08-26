@@ -200,6 +200,24 @@ class RefundRequestReversalTest extends TestCase
             'treasury'  => (float) $this->treasury->fresh()->current_balance, // 0
         ];
 
+        // RC-002 INVARIANT FIX (2026-08-26):
+        //   Snapshot expense_clearing BEFORE the refund. After RC-002, the
+        //   payment-time recogniser posts `pending_cogs → expense_clearing`
+        //   for the FULL purchase price. So expense_clearing.balance is
+        //   +purchase (15000) just before the refund runs — NOT 0.
+        //
+        //   The original test formula used `expenseContraBalance - 0.0` as
+        //   the baseline, which assumed pre-refund balance == 0 (a holdover
+        //   from the pre-FIN-3 / pre-RC-002 era when COGS was not posted at
+        //   payment). After RC-002, that baseline is wrong; the delta must
+        //   measure the CHANGE during the refund, not the absolute balance
+        //   from origin.
+        $expenseContraId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+            ->expenseContraIdForModule(\App\Enums\TransactionModule::Flight);
+        $expenseContraBalanceBeforeRefund = $expenseContraId
+            ? (float) DB::table('accounts')->where('id', $expenseContraId)->value('balance')
+            : 0.0;
+
         // Create + process refund to agency_treasury
         $refundRequest = $this->refundService->createRefundRequest([
             'flight_booking_id' => $booking->id,
@@ -258,17 +276,17 @@ class RefundRequestReversalTest extends TestCase
 
         // مجموع كل الدلتا = 0 (الحساب المزدوج محفوظ)
         //
-        // ملاحظة مهمة: لازم نضم الـ COGS expense_clearing account لأنه بيتأثر بـ refundCogs:
-        // - Step B بيعمل refundCogs(expenseContra → prepaid, purchaseNet)
-        // - expenseContra.balance بيتخصم منه purchaseNet (14000)
-        // - carrier.balance (الـ prepaid) بيتزاد بـ purchaseNet (14000)
-        // فالناتج الإجمالي للدلتا = 0 بشرط إننا نضم الـ expenseContra
-        $expenseContraId = app(\App\Services\Finance\LedgerClearingAccounts::class)
-            ->expenseContraIdForModule(\App\Enums\TransactionModule::Flight);
-        $expenseContraBalance = $expenseContraId
+        // RC-002 INVARIANT (2026-08-26): expense_clearing delta is computed
+        // from the PRE-REFUND baseline, not from zero. Step B in the refund
+        // posts refundCogs(expenseContra → prepaid, purchaseNet). The CHANGE
+        // in expense_clearing is therefore -purchaseNet (e.g. -14000). After
+        // the refund, expense_clearing.balance = pre-refund-balance - purchaseNet
+        // = 15000 - 14000 = 1000 (the cancellation fee retained as COGS,
+        // balanced by the cancellation fee retained in pending_sales_receivable).
+        $expenseContraBalanceAfterRefund = $expenseContraId
             ? (float) DB::table('accounts')->where('id', $expenseContraId)->value('balance')
             : 0.0;
-        $expenseContraDelta = $expenseContraBalance - 0.0; // كان 0 قبل (لم يتأثر بالحجز)
+        $expenseContraDelta = $expenseContraBalanceAfterRefund - $expenseContraBalanceBeforeRefund;
 
         $deltaSum = ($carrierAfter - $before['carrier'])
             + ($cashboxAfter - $before['cashbox'])
