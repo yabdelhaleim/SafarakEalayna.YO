@@ -1,0 +1,155 @@
+
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m  PHASE 10+11 — BUS FINANCIAL RETEST — FM-01..FM-67 (67 scenarios)[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+
+[2m  Pre-flight: pre-cleanup + setup[0m
+  - test user: id=1 email=phase10-fm67-tester@example.com
+  - run marker: FM67-RUN-7e348b39 | pre-cleaned 0 leftover entities
+  - liquidity accounts seeded: cashbox=200000 EGP, bank_sar=10000 SAR
+  - FX rates seeded (USD_EGP=50, SAR_EGP=13.3333, KWD_EGP=162.5, EUR_EGP=54.5)
+  - clearing: income=8, expense=9
+  - customer: id=1, account_id=11
+  - supplier: company_id=1, account_id=12
+
+[1m[36m── §B  Booking Creation (FM-01..FM-06) ─────────────────────────────────[0m
+  [FM-01] Create EGP booking (Mode A)                        [32m✓ PASS[0m  [2mtx+=2 cust_ar_Δ=+200.00 avail=9[0m
+  [FM-02] Create USD booking (FX)                            [31m✗ FAIL[0m  [2mtx+=2 USD_AR_created=YES supplier_EGP=-80[0m
+  [FM-03] Auto-inventory Mode B (SAR)                        [31m✗ FAIL[0m  [2mtotal=30 SAR, auto_inv_created=YES[0m
+  [FM-04] Auto-create customer + replay                      [31m✗ FAIL[0m  [2mledger_OK=NO no_dup_on_replay=YES[0m
+  [FM-05] Invalid qty (0/neg/over)                           [32m✓ PASS[0m  [2mqty=0 rejected:Journal transfer amount must b | qty=-1 rejected:Journal transfer amount must b | qty>avail rejected:لا توجد تذاكر كا� tx_created=0[0m
+  [FM-06] Inventory capacity decrement+restore               [32m✓ PASS[0m  [2mavail 10→8→10 (cancel restores)[0m
+  [32m§B ledger invariant: OK[0m
+
+[1m[36m── §C  Payment Flows (FM-07..FM-15) ────────────────────────────────────[0m
+  [FM-07] Full EGP payment                                   [31m✗ FAIL[0m  [2mcashbox_Δ=+200.00 cust_AR_Δ=-0.00[0m
+  [FM-08] Full USD wallet payment                            [32m✓ PASS[0m  [2mUSD_AR_Δ=-100.00 USD_wallet_Δ=+100.00[0m
+  [FM-09] SAR booking → EGP cashbox (FX) [NEW]             [31m✗ FAIL[0m  [2mSAR_AR_Δ=-50.00 EGP_cashbox_Δ=+666.6700 rate=0.0000 converted=0.0000[0m
+  [FM-10] Partial → top-up                                 [32m✓ PASS[0m  [2mpaid=200.00/200 cashbox_Δ=+200.00 payments=2[0m
+  [FM-11] Three partial payments                             [32m✓ PASS[0m  [2mpaid=200.00 tx+=3[0m
+  [FM-12] Idempotency replay (same key)                      [32m✓ PASS[0m  [2mpaid_after_first=200.00 paid_after_replay=200.00 tx+=1[0m
+  [FM-13] Safety-net 5s tuple replay                         [32m✓ PASS[0m  [2mrejected=YES tx+=1 paid=100.00 err=تم رفض عملية دفع بنفس المبلغ والح[0m
+  [FM-14] Overpayment rejected                               [32m✓ PASS[0m  [2mrejected=YES tx+=0[0m
+  [FM-15] Pay cancelled booking rejected                     [32m✓ PASS[0m  [2mrejected=YES tx+=0[0m
+  [32m§C ledger invariant: OK[0m
+
+[1m[36m── §D  Cancellation (FM-16..FM-23) ─────────────────────────────────────[0m
+  [FM-16] Cancel unpaid booking                              [31m✗ FAIL[0m  [2mavail 9→10 cust_AR_Δ=-0.00[0m
+  [FM-17] Cancel paid (full refund, no penalty)              [31m✗ FAIL[0m  [2mstatus=refunded cashbox_Δ=-200.00 cust_AR_Δ=+0.00[0m
+  [FM-18] Cancel paid (100% penalty)                         [32m✓ PASS[0m  [2mstatus=partially_refunded cashbox_Δ=0.0000 refund=0.00[0m
+  [FM-19] Cancel paid (partial penalty)                      [31m✗ FAIL[0m  [2mrefund=0.00 cashbox_Δ=-150.00[0m
+      FM-20 cancel threw: فشل إلغاء الحجز: لا يمكن تنفيذ تحويل عبر عمل�
+  [FM-20] USD wallet refund                                  [31m✗ FAIL[0m  [2mUSD_wallet_Δ=-0.00 USD_AR_Δ=+0.00 status=paid[0m
+  [31m[§D CRASH][0m يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.
+
+[1m[36m── §E  Simple Delete (FM-24..FM-26) ────────────────────────────────────[0m
+  [FM-24] Delete unpaid booking                              [31m✗ FAIL[0m  [2mavail 9→10 cust_AR_Δ=-0.00 trashed=YES[0m
+  [FM-25] Delete paid booking rejected                       [32m✓ PASS[0m  [2mrejected=YES tx+=0[0m
+  [FM-26] Delete already-cancelled booking                   [31m✗ FAIL[0m  [2mtrashed=YES avail_Δ=1 tx+=2[0m
+
+[1m[36m── §F  With-Reversal Delete (FM-27..FM-31) ─────────────────────────────[0m
+  [FM-27] Partial-paid delete with reversal                  [32m✓ PASS[0m  [2mcashbox_Δ=-80.00 avail_Δ=+1[0m
+  [FM-28] Fully-paid delete with reversal                    [32m✓ PASS[0m  [2mcashbox_Δ=-200.00 avail_Δ=+1[0m
+  [FM-29] Multi-payment delete                               [32m✓ PASS[0m  [2mcashbox_Δ=-200.00 payments_reversed=3/3[0m
+  [FM-30] Double delete rejected                             [32m✓ PASS[0m  [2mrejected=YES tx+=0[0m
+  [FM-31] BusRefundRequest.transaction_id nulled             [31m✗ FAIL[0m  [2mtx_id_before=109 tx_id_after=109[0m
+  [32m§E/F ledger invariant: OK[0m
+
+[1m[36m── §G  Inventory Debt (FM-32..FM-35) ───────────────────────────────────[0m
+  [FM-32] Deferred inventory debt pay                        [31m✗ FAIL[0m  [2mpaid=1000.00 remaining=0.00 cashbox_Δ=-1000.00 supplier_Δ=+0.00[0m
+  [FM-33] Cash inventory delete reverses expense             [31m✗ FAIL[0m  [2mcashbox_Δ=800.00 tx+=0[0m
+  [FM-34] Deferred inventory delete (no expense)             [32m✓ PASS[0m  [2mtrashed=YES tx+=0 cashbox_Δ=0.00[0m
+  [FM-35] Inventory delete with bookings rejected            [32m✓ PASS[0m  [2mrejected=YES tx+=0[0m
+  [32m§G ledger invariant: OK[0m
+
+[1m[36m── §H  Cross-Currency HTTP (FM-36..FM-41) ──────────────────────────────[0m
+  [FM-36] USD booking → USD wallet (HTTP) [NEW]            [32m✓ PASS[0m  [2mUSD_AR_Δ=-100.00 USD_wallet_Δ=+100.00[0m
+  [FM-37] USD booking → EGP cashbox (FX, HTTP) [NEW]       [31m✗ FAIL[0m  [2mUSD_AR_Δ=-100.00 EGP_cashbox_Δ=+5000.00 converted=0.00[0m
+  [FM-38] SAR booking → SAR wallet (HTTP) [NEW]            [32m✓ PASS[0m  [2mSAR_AR_Δ=-50.00 SAR_wallet_Δ=+50.00[0m
+  [FM-39] SAR booking → EGP cashbox (FX, HTTP) [NEW]       [31m✗ FAIL[0m  [2mSAR_AR_Δ=-50.00 EGP_cashbox_Δ=+666.6700 converted=0.0000[0m
+  [FM-40] KWD high-precision FX (HTTP) [NEW]                 [31m✗ FAIL[0m  [2mKWD_AR_Δ=-1.5000 EGP_cashbox_Δ=+243.7500 rate=0.0000 converted=0.0000[0m
+  [FM-41] Customer AR multi-currency stacking                [32m✓ PASS[0m  [2mEGP_AR=200.00 USD_AR=100.00 (independent)[0m
+  [32m§H ledger invariant: OK[0m
+
+[1m[36m── §I  Idempotency (FM-42..FM-46) ──────────────────────────────────────[0m
+  [FM-42] Same key ×3 → 1 movement                        [32m✓ PASS[0m  [2mcashbox_Δ=+200.00 tx+=1 payments=1[0m
+  [FM-43] Replay after 422 → 0 new rows [NEW]              [31m✗ FAIL[0m  [2m1st_rejected=YES tx+=1 payments=1[0m
+  [FM-44] Same key + diff payment_method [NEW]               [32m✓ PASS[0m  [2mtx+=1 payments=1 2nd_rejected=NO/undefined[0m
+  [FM-45] Same key + diff amount [NEW]                       [32m✓ PASS[0m  [2mtx+=1 payments=1 paid=100.00 2nd_idx_rejected=NO[0m
+  [FM-46] Same key on different bookings [NEW]               [32m✓ PASS[0m  [2mA.paid=200.00 B.paid=200.00 tx+=2[0m
+  [32m§I ledger invariant: OK[0m
+
+[1m[36m── §J  TRUE Concurrency (FM-47..FM-50) ─────────────────────────────────[0m
+  [FM-47] Concurrent same-key payments [TRUE]                [32m✓ PASS[0m  [2mworkers=3 ok=1 reject=2 tx+=1 payments=1[0m
+  [31m[§J CRASH][0m stream_get_contents(): supplied resource is not a valid stream resource
+
+[1m[36m── §K  Mutation Lock (FM-51..FM-54) [NEW] ──────────────────────────────[0m
+  [FM-51] Direct total_price write after pay [NEW]           [33m◐ PART[0m  [2mblocked=NO total=200.00→0.00 paid=200.00→200.00 err=[0m
+  [FM-52] Direct currency write after pay [NEW]              [33m◐ PART[0m  [2mblocked=NO currency=EGP→EUR err=[0m
+  [FM-53] Direct restore after delete [NEW]                  [32m✓ PASS[0m  [2mrestore_attempted=Y succeeded=Y tx+=0[0m
+  [FM-54] Direct status write after cancel [NEW]             [33m◐ PART[0m  [2mblocked=NO status=cancelled→pending tx+=0 err=[0m
+  [32m§K ledger invariant: OK[0m
+
+[1m[36m── §L  Illegal States (FM-55..FM-59) ───────────────────────────────────[0m
+  [FM-55] Refund unpaid rejected                             [32m✓ PASS[0m  [2mrejected=YES tx+=0 err=لا يمكن إنشاء استرداد لحجز غير مد[0m
+  [FM-56] Refund > paid rejected [NEW]                       [31m✗ FAIL[0m  [2mreq_rejected=N cancel_rejected=Y tx+=0 err=[0m
+  [FM-57] Refund twice (2nd no-op)                           [32m✓ PASS[0m  [2m2nd_rejected=Y tx+=0 cust_AR_Δ=0.00[0m
+  [FM-58] Pay amount=0 + negative [NEW]                      [32m✓ PASS[0m  [2mzero_rejected=Y neg_rejected=Y tx+=0[0m
+  [FM-59] Cancel after Refunded rejected [NEW]               [32m✓ PASS[0m  [2mstatus_after_1st=refunded 2nd_rejected=Y tx+=0 err=الحجز ملغي أو مسترد بالفعل.[0m
+  [32m§L ledger invariant: OK[0m
+
+[1m[36m── §M  DB Audit (FM-60..FM-64) ─────────────────────────────────────────[0m
+  [FM-60] Transaction count after lifecycle                  [31m✗ FAIL[0m  [2mcreate=0 pay=0 cancel=0 (expected=6)[0m
+  [FM-61] Soft-deleted hidden from default query [NEW]       [32m✓ PASS[0m  [2mdefault=N withTrashed=Y onlyTrashed=Y[0m
+  [FM-62] No orphan AccountEntries [NEW]                     [32m✓ PASS[0m  [2morphan_count=0[0m
+  [FM-63] No dangling transaction refs [NEW]                 [32m✓ PASS[0m  [2mdangling_count=0[0m
+  [FM-64] Duplicate income rejected [NEW]                    [31m✗ FAIL[0m  [2mrejected=N tx+=1 err=[0m
+  [32m§M ledger invariant: OK[0m
+
+[1m[36m── §N  Reconciliation (FM-65..FM-67) ───────────────────────────────────[0m
+  [FM-65] Cashbox Δ = Σ payments − Σ refunds            [32m✓ PASS[0m  [2mcashbox=213827.09 expected_delta=204701.50 inbound=4701.5000 outbound=0.0000[0m
+  [FM-66] Booking state = Σ tx [NEW]                        [31m✗ FAIL[0m  [2mpaid=200.00 Σ_payments=200.00 Σ_tx=0.00[0m
+  [FM-67] Refund net = 0 on customer AR [NEW]                [32m✓ PASS[0m  [2mstatus=refunded AR_Δ_after_full_refund=0.0000 (vs baseline)[0m
+  [32m§N ledger invariant: OK[0m
+
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m  PHASE 10+11 — BUS FM-67 RETEST — FINAL SUMMARY[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+  Total scenarios:             67
+  [32m✓ FULL PASS:                36 (53.7%)[0m
+  [33m◐ PARTIAL:                  3 (4.5%)[0m
+  [31m✗ FAIL:                     22 (32.8%)[0m
+  [35m⏸ BLOCKED:                 0[0m
+  [2m⊘ N/A:                      0[0m
+  ────────────────────────────────────────────────────────
+  Total assertions:            282
+  Transaction assertions:      57
+  AccountEntry assertions:     39
+  Balance assertions:          59
+  FX assertions:               11
+  Idempotency assertions:      21
+  Concurrency assertions:      1
+  Refund assertions:           20
+  Ledger imbalance:            [32mNONE[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+  VERDICT: [31mNO-GO[0m — 22 FAIL / 0 BLOCKED scenarios require attention.
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+
+  [36mReport written to: .zcode/plans/BUS_FM67_RETEST_REPORT_20260826.md[0m
+
+
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m  PHASE 10+11 — BUS FM-67 RETEST — FINAL SUMMARY (from shutdown)[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+  Total scenarios:             67
+  [32m✓ FULL PASS:                36 (53.7%)[0m
+  [33m◐ PARTIAL:                  3 (4.5%)[0m
+  [31m✗ FAIL:                     22 (32.8%)[0m
+  [35m⏸ BLOCKED:                 6[0m
+  [2m⊘ N/A:                      0[0m
+  Total assertions:            282
+  Ledger imbalance:            [32mNONE[0m
+  VERDICT: [31mNO-GO[0m — 22 FAIL / 6 BLOCKED — see coverage matrix.
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+
+  [36mReport written to: .zcode/plans/BUS_FM67_RETEST_REPORT_20260826.md[0m
