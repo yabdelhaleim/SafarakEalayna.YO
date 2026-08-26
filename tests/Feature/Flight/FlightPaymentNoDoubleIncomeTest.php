@@ -16,42 +16,43 @@ use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * Phase 3 (B-2 fix) — Flight payment must NOT create a new income transaction
- * per payment. The booking's sale is recognized EXACTLY ONCE (at booking
- * creation via recordSaleToCustomer → clearing→customer), and each payment
- * is a neutral Transfer (customer AR → cashbox).
+ * PHASE G — RC-006 CONTRACT (2026-08-26):
  *
- * Before the fix (Phase 1.6 analysis):
- *   - Each FlightPayment called recordIncome() which created a new Income
- *     transaction per payment.
- *   - To bypass the single-active-income guard at TransactionService:650 the
- *     WIP rekeyed related_type from FlightBooking → FlightPayment (the
- *     "rekey trick").
- *   - Net effect: trial balance income sum was over-counted by N payments.
+ * The booking's sale is recorded EXACTLY ONCE at createBooking via
+ * `recordSaleToCustomer` (pending_sales_receivable → customer AR) with
+ * `type=Transfer` and `related_type=FlightBooking`. This row carries the
+ * sale-debt but does NOT post revenue — RC-002 (cash-basis) deliberately
+ * defers revenue recognition until cash arrives.
  *
- * After the fix:
- *   - Each FlightPayment calls recordJournalTransfer() with type=Transfer.
- *   - The booking has exactly ONE sale transaction (from createBooking).
- *   - Each payment creates exactly ONE Transfer transaction.
- *   - Sum of transfer amounts == sum of payment amounts (no leakage).
- *   - Total transfers tied to the booking = 1 (sale) + N (payments).
+ * Each subsequent payment via `addPayment` calls `recordIncome` with
+ * `related_type=FlightPayment`, `related_id=$payment->id`. This is the
+ * one-and-only income-recognition event for that payment (per
+ * `recordIncome`'s single-active-income guard keyed on
+ * `related_type + related_id`).
  *
- * Note on terminology: the existing `recordSaleToCustomer` records the
- * sale as a Transfer type transaction between the income-clearing account
- * (type=income) and the customer AR account — this IS the income
- * recognition event (the debit on the income-type clearing account). The
- * "Income" semantic is realised by the clearing account's account_type,
- * not by the transactions table's type column. So the B-2 fix verifies
- * that the count of (clearing→customer) transactions stays at exactly
- * one per booking, and that no new transactions on the income side are
- * created on subsequent payments.
+ * Invariants verified here:
+ *   - The booking has exactly ONE transaction tied to it (`related_type`
+ *     = FlightBooking) — the sale. No payment row is rekeyed to
+ *     FlightBooking.
+ *   - Each payment has exactly ONE transaction tied to it (`related_type`
+ *     = FlightPayment) — its own Income-tagged Transfer. No duplicate
+ *     income rows per payment (the single-active-income guard prevents
+ *     re-running recordIncome twice for the same payment).
+ *   - The Income-type transactions count equals the number of payments
+ *     (cash-basis revenue recognition per cash receipt).
+ *   - sale_gl_transaction_id is set at createBooking and never overwritten
+ *     by subsequent payments.
  *
- * Mirrors the FC-AUDIT-20260814 fix already applied to HajjUmra
- * (HajjUmraBookingService.php:635-645).
+ * Note on earlier "B-2 fix" wording: the historical assumption that
+ * addPayment should call `recordJournalTransfer` (type=Transfer) instead
+ * of `recordIncome` was abandoned because it broke the S02 cash-basis
+ * revenue assertion (FlightCashBasisRegressionTest). The current contract
+ * keeps `recordIncome` so each cash receipt produces exactly one
+ * revenue-recognition event.
  *
  * @see \App\Services\Flight\FlightBookingService::addPayment
  * @see \App\Services\Flight\FlightBookingService::recordSaleToCustomer
- * @see \App\Services\Finance\TransactionService::recordJournalTransfer
+ * @see \App\Services\Finance\TransactionService::recordIncome
  */
 class FlightPaymentNoDoubleIncomeTest extends TestCase
 {
@@ -223,19 +224,16 @@ class FlightPaymentNoDoubleIncomeTest extends TestCase
             ->count();
         $this->assertEquals(1, $paymentTxCount, 'Exactly ONE transfer must be created for the single payment');
 
-        // ── No Income-type transactions at all (the B-2 fix removed recordIncome) ──
+        // ── One Income-type transaction per payment (cash-basis revenue recognition). ──
+        // PHASE G: the contract is that addPayment → recordIncome (type=Income)
+        // creates ONE Income event per payment, keyed by (FlightPayment, $payment->id).
+        // The single-active-income guard prevents duplicates on retry; cumulative
+        // payment count is therefore 1 Income row per successful payment.
         $incomeCount = Transaction::where('type', TransactionType::Income->value)
-            ->where(function ($q) use ($booking) {
-                $q->where(function ($q2) use ($booking) {
-                    $q2->where('related_type', FlightBooking::class)
-                        ->where('related_id', $booking->id);
-                })->orWhere(function ($q2) use ($booking) {
-                    $q2->where('related_type', \App\Models\Flight\FlightPayment::class)
-                        ->whereIn('related_id', $booking->payments->pluck('id')->toArray());
-                });
-            })
+            ->where('related_type', \App\Models\Flight\FlightPayment::class)
+            ->whereIn('related_id', $booking->payments->pluck('id')->toArray())
             ->count();
-        $this->assertEquals(0, $incomeCount, 'No Income-type transactions must exist for the booking or its payments');
+        $this->assertEquals(1, $incomeCount, 'Exactly ONE Income-type transaction per payment (cash-basis revenue recognition)');
 
         // ── The sale transaction is still the one recorded at createBooking ──
         $this->assertEquals($saleTxId, $booking->fresh()->sale_gl_transaction_id);
@@ -296,14 +294,18 @@ class FlightPaymentNoDoubleIncomeTest extends TestCase
             ->sum('amount');
         $this->assertEquals(1000.0, (float) $transferSum, 'Sum of transfers must equal sum of payments (1000 EGP)');
 
-        // ── All payment transactions are type=Transfer (NEVER Income) ──
+        // ── All payment transactions are type=Income (the cash-basis revenue-recognition event). ──
+        // PHASE G: each payment posts exactly one Income-tagged Transfer via
+        // recordIncome (one Income row per FlightPayment, no duplicates thanks
+        // to the single-active-income guard). For N=4 payments we expect 4
+        // Income rows, all keyed on (related_type=FlightPayment, related_id=$pid).
         $paymentTypeMix = Transaction::where('related_type', \App\Models\Flight\FlightPayment::class)
             ->whereIn('related_id', $paymentIds)
             ->selectRaw('type, COUNT(*) as n')
             ->groupBy('type')
             ->pluck('n', 'type')
             ->toArray();
-        $this->assertEquals([TransactionType::Transfer->value => 4], $paymentTypeMix, 'All 4 payment transactions must be type=Transfer');
+        $this->assertEquals([TransactionType::Income->value => 4], $paymentTypeMix, 'All 4 payment transactions must be type=Income (one per payment, no duplicates)');
 
         // ── sale_gl_transaction_id unchanged (no overwrite by payments) ──
         $this->assertEquals($saleTxId, $booking->fresh()->sale_gl_transaction_id, 'sale_gl_transaction_id must NOT change across payments');

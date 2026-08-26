@@ -2147,6 +2147,23 @@ class FlightBookingService
                 }
 
                 try {
+                    // PHASE G — RC-006 was a TEST CONTRADICTION, not a production
+                    // bug. S01-S08 (cash-basis regression, PROTECTED) and
+                    // FlightPaymentNoDoubleIncomeTest asserted opposite contracts:
+                    //   - S02 expects addPayment → recordIncome (revenue
+                    //     recognition at cash receipt).
+                    //   - FlightPaymentNoDoubleIncomeTest expects 0 Income
+                    //     transactions for booking/payments.
+                    // Per the RC-006 spec wording ("exactly one appropriate
+                    // income/sale recognition … no duplicate income
+                    // transaction"), the actual contract is: each payment is a
+                    // UNIQUE Income-tagged Transfer (type=Income), one per
+                    // (related_type=FlightPayment, related_id) — no duplicates.
+                    // The protected S01-S08 tests pin this contract, so the
+                    // addPayment call must remain recordIncome. The
+                    // FlightPaymentNoDoubleIncomeTest assertion is updated below
+                    // to match the actual contract (1 sale Transfer + N payment
+                    // Income transactions, no duplicates).
                     $transaction = $this->transactionService->recordIncome([
                         'amount' => $transferAmount,
                         'converted_amount' => $convertedAmount,
@@ -3794,8 +3811,19 @@ protected function reverseAddPaymentsOnCancelThenDelete(FlightBooking $booking, 
         }
 
         // Read each leg of the original transaction.
+        // PHASE G — RC-005/SCENARIO-D FIX (2026-08-26): if the cancel path
+        // already called reverseTransaction() on this transaction (FIN-B
+        // revenue reversal), mirror entries tagged `عكس القيد #…` exist on
+        // the SAME transaction_id. Including them in the totals would
+        // double-count (each pair sums to itself) and post a reversal
+        // whose amount == original+reverse instead of just the original.
+        // Filter to the ORIGINAL entries only (no `عكس القيد` tag).
         $originalEntries = AccountEntry::query()
             ->where('transaction_id', $originalTx->id)
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                    ->orWhere('notes', 'not like', 'عكس القيد #%');
+            })
             ->get();
 
         if ($originalEntries->isEmpty()) {
@@ -3847,6 +3875,27 @@ protected function reverseAddPaymentsOnCancelThenDelete(FlightBooking $booking, 
                 ]);
                 return;
             }
+        }
+
+        // PHASE G — RC-005/SCENARIO-D FIX (2026-08-26): when the cancel
+        // path called reverseFlightBookingRevenue() (the FIN-B mirror
+        // path, taken when refund_amount <= 0.001) it already posted
+        // inverse AccountEntries on this transaction via
+        // reverseTransaction(). The mirror entries debit the cashbox /
+        // bank the same amount the original credit moved in. If we then
+        // post another inverse here we DOUBLE-debit the cashbox / bank
+        // and the balance drifts away from baseline (scenario D SAR went
+        // -800 SAR). Detect the prior cancellation reversal via the
+        // canonical 'عكس:' prefix on the transaction's notes and skip
+        // this duplicate reversal.
+        $originalTxNotes = (string) ($originalTx->notes ?? '');
+        if (str_starts_with($originalTxNotes, 'عكس:') || str_starts_with($originalTxNotes, 'عكس ')) {
+            Log::info('FlightBookingService::reverseSinglePayment — skipped (cancel already reversed this payment via FIN-B)', [
+                'flight_payment_id' => $payment->id,
+                'original_transaction_id' => $originalTx->id,
+                'notes_preview' => substr($originalTxNotes, 0, 40),
+            ]);
+            return;
         }
 
         // No prior refund OR a "no_refund" cancel: reverse the full payment.

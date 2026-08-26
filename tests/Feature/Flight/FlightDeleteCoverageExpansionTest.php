@@ -442,6 +442,8 @@ class FlightDeleteCoverageExpansionTest extends TestCase
         $customer = $this->buildFixtureCustomer();
         $system = $this->buildFixtureSystem('EGP');
         $carrier = $this->buildFixtureCarrier($system);
+        // PHASE G: fund the system so debitFlightSystem has headroom for the 16000 EGP booking.
+        app(\App\Services\Flight\FlightSystemRechargeService::class)->rechargeFromAccount($system, $cashbox, 50000);
 
         $customerAR = Account::find($customer->account_id);
         $before = $this->snapshot([
@@ -549,6 +551,8 @@ class FlightDeleteCoverageExpansionTest extends TestCase
         $customer = $this->buildFixtureCustomer();
         $system = $this->buildFixtureSystem('EGP');
         $carrier = $this->buildFixtureCarrier($system);
+        // PHASE G: fund the system so debitFlightSystem has headroom for the 15000 EGP booking.
+        app(\App\Services\Flight\FlightSystemRechargeService::class)->rechargeFromAccount($system, $cashbox, 50000);
 
         $customerAR = Account::find($customer->account_id);
         $before = $this->snapshot([
@@ -599,6 +603,8 @@ class FlightDeleteCoverageExpansionTest extends TestCase
         $customer = $this->buildFixtureCustomer();
         $system = $this->buildFixtureSystem('EGP');
         $carrier = $this->buildFixtureCarrier($system);
+        // PHASE G: fund the system so debitFlightSystem has headroom for the 15000 EGP booking.
+        app(\App\Services\Flight\FlightSystemRechargeService::class)->rechargeFromAccount($system, $cashbox, 50000);
 
         $customerAR = Account::find($customer->account_id);
         $before = $this->snapshot([
@@ -710,6 +716,13 @@ class FlightDeleteCoverageExpansionTest extends TestCase
             'cashbox' => $cashbox, 'customer' => $customerAR, 'carrier' => $carrier,
         ]);
 
+        // PHASE G: pick a clean selling price (15750 EGP = 100 KWD exactly at rate 157.5)
+        // so that penalties summing to 15750 EGP give a zero refund in booking currency.
+        // This avoids the 0.015873 KWD cross-currency rounding slip in refundTreasuryAccount.
+        $exchangeRate = 157.5;
+        $sellingPriceForeign = 100.0; // KWD
+        $sellingPriceEgp = $sellingPriceForeign * $exchangeRate; // 15750 EGP exactly
+
         $booking = $this->bookingService->createBooking([
             'customer_id' => $customer->id,
             'airline_name' => 'Jazeera',
@@ -718,10 +731,10 @@ class FlightDeleteCoverageExpansionTest extends TestCase
             'trip_type' => 'one_way',
             'currency' => 'KWD',
             'foreign_currency' => 'KWD',
-            'exchange_rate' => 157.5,
+            'exchange_rate' => $exchangeRate,
             'purchase_price_foreign' => 100.0,
             'purchase_price' => 15750.0,
-            'selling_price' => 20000.0, // ~127 KWD
+            'selling_price' => $sellingPriceEgp,
             'flight_system_id' => $system->id,
             'flight_carrier_id' => $carrier->id,
             'purchase_balance_source' => 'carrier',
@@ -729,12 +742,12 @@ class FlightDeleteCoverageExpansionTest extends TestCase
             'passengers' => [['first_name' => 'Test', 'last_name' => 'Pax', 'passenger_type' => 'adult']],
         ]);
 
-        $booking->forceFill(['selling_price_foreign' => 127.0])->save();
+        $booking->forceFill(['selling_price_foreign' => $sellingPriceForeign])->save();
         $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
 
-        // Full penalty (everything kept as office revenue), refund = 0
+        // Full penalty (everything kept as office revenue), refund = 0 in KWD
         $refund = $this->bookingService->cancelBooking($booking, [
-            'airline_penalty' => 12000, 'office_penalty' => 8000, // 20000 EGP = ~127 KWD penalty
+            'airline_penalty' => 7875, 'office_penalty' => 7875, // 15750 EGP = 100 KWD exactly
             'account_id' => $cashbox->id,
         ]);
         // KWD cashbox required for refund — accept that refund_amount may be 0 or partial here

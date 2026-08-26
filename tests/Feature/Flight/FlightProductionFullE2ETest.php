@@ -20,6 +20,7 @@ use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Tests\Feature\Flight\FlightFxFixtureTrait;
 
 /**
  * COMPREHENSIVE PRODUCTION TEST — Flight Module
@@ -44,6 +45,7 @@ use Tests\TestCase;
 class FlightProductionFullE2ETest extends TestCase
 {
     use RefreshDatabase;
+    use FlightFxFixtureTrait;
 
     protected FlightBookingService $bookingService;
 
@@ -57,6 +59,9 @@ class FlightProductionFullE2ETest extends TestCase
     {
         parent::setUp();
         $this->bookingService = app(FlightBookingService::class);
+
+        // PHASE G: seed currencies so cross-currency scenarios b/c/d/f can resolve.
+        $this->seedFlightExchangeRates();
 
         $this->admin = User::factory()->create([
             'name' => 'Flight Production Admin',

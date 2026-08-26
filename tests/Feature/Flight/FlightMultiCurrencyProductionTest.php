@@ -25,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
+use Tests\Feature\Flight\FlightFxFixtureTrait;
 
 /**
  * Comprehensive production test for the Flight Module — covers all currencies (EGP, USD, SAR, KWD)
@@ -48,6 +49,7 @@ use Tests\TestCase;
 class FlightMultiCurrencyProductionTest extends TestCase
 {
     use RefreshDatabase;
+    use FlightFxFixtureTrait;
 
     protected FlightBookingService $bookingService;
 
@@ -72,6 +74,10 @@ class FlightMultiCurrencyProductionTest extends TestCase
 
         $this->bookingService = app(FlightBookingService::class);
         $this->refundService = app(RefundService::class);
+
+        // PHASE G: seed currencies so CurrencyService::convert() can resolve
+        // cross-currency prepaid recharges (RC-003/RC-004 cascade).
+        $this->seedFlightExchangeRates();
 
         $this->admin = User::factory()->create([
             'name' => 'MultiCurrency Admin',

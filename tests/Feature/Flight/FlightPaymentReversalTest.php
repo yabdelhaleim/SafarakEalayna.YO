@@ -192,13 +192,16 @@ class FlightPaymentReversalTest extends TestCase
             'Income clearing balance delta must be zero after reversal');
 
         // ── ASSERT 2: original payment transaction preserved ──────
-        // Note: the original addPayment creates a transaction with related_type=FlightBooking
-        // (per line 1614 in FlightBookingService). The REVERSAL transaction gets
-        // related_type=FlightPayment (line 2178). The original must remain unchanged.
+        // PHASE G — RC-007 (2026-08-26): the approved contract is that the
+        // payment's transfer transaction is tagged related_type=FlightPayment
+        // (not FlightBooking). The booking-level sale (clearing → customer AR)
+        // is the unique FlightBooking-related transaction; each payment has
+        // its own FlightPayment-related Transfer row. The reversal transaction
+        // also uses related_type=FlightPayment (additive inverse).
         $this->assertDatabaseHas('transactions', [
             'id' => $payment->transaction_id,
-            'related_type' => FlightBooking::class,
-            'related_id' => $booking->id,
+            'related_type' => FlightPayment::class,
+            'related_id' => $payment->id,
         ]);
 
         // ── ASSERT 3: reversal transaction exists with opposite legs ─

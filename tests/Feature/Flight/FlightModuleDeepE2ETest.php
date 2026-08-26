@@ -23,6 +23,7 @@ use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Tests\Feature\Flight\FlightFxFixtureTrait;
 
 /**
  * COMPREHENSIVE DEEP E2E — Flight Module + Finance Core
@@ -71,6 +72,7 @@ use Tests\TestCase;
 class FlightModuleDeepE2ETest extends TestCase
 {
     use RefreshDatabase;
+    use FlightFxFixtureTrait;
 
     protected FlightBookingService $bookingService;
 
@@ -96,6 +98,9 @@ class FlightModuleDeepE2ETest extends TestCase
         $this->bookingService = app(FlightBookingService::class);
         $this->treasuryService = app(TreasuryService::class);
         $this->txService = app(TransactionService::class);
+
+        // PHASE G: seed currencies so cross-currency scenarios 13/14/17 can resolve.
+        $this->seedFlightExchangeRates();
 
         $this->admin = \App\Models\User::factory()->create([
             'name' => 'Deep E2E Admin',

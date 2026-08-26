@@ -15,6 +15,7 @@ use App\Services\Flight\FlightBookingService;
 use App\Services\Flight\FlightCarrierRechargeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Feature\Flight\FlightFxFixtureTrait;
 
 /**
  * Regression test for the 2026-07-23 finding:
@@ -33,6 +34,7 @@ use Tests\TestCase;
 class FlightKwdPaymentConversionTest extends TestCase
 {
     use RefreshDatabase;
+    use FlightFxFixtureTrait;
 
     protected FlightBookingService $bookingService;
 
@@ -53,6 +55,10 @@ class FlightKwdPaymentConversionTest extends TestCase
         parent::setUp();
 
         $this->bookingService = app(FlightBookingService::class);
+
+        // PHASE G: seed KWD rate so the KWD→EGP carrier recharge can resolve
+        // (RC-004 cascade from RC-003 fixture fix).
+        $this->seedFlightExchangeRates();
 
         $this->admin = User::factory()->create([
             'name' => 'KWD Payment Admin',

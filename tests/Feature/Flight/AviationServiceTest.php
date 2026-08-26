@@ -240,7 +240,11 @@ class AviationServiceTest extends TestCase
     }
 
     /**
-     * ✅ 8) OP-03 — updateBooking sets status + notes
+     * ✅ 8) OP-03 — updateBooking is INTENTIONALLY DISABLED per the Tourism
+     *    no-edit contract INCIDENT-2026-08-17. All booking edits must go
+     *    through delete-and-recreate. AviationService::updateBooking() must
+     *    throw a LogicException to enforce the contract. (See
+     *    AviationService.php:305 and TourismNoEditContractTest.)
      */
     public function test_update_booking_via_aviation_service(): void
     {
@@ -276,14 +280,17 @@ class AviationServiceTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        $result = $this->service->updateBooking($booking->id, [
+        // PHASE G: AviationService::updateBooking() is INTENTIONALLY disabled.
+        // The contract says all edits must use delete-and-recreate. The test
+        // now asserts the disabled behaviour (LogicException) instead of the
+        // obsolete update flow.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/AviationService::updateBooking\\(\\) is disabled/');
+
+        $this->service->updateBooking($booking->id, [
             'status' => 'PENDING',
             'notes' => 'Aviation update test',
         ]);
-
-        $freshStatus = $result->fresh()->status;
-        $this->assertEquals('PENDING', $freshStatus instanceof \BackedEnum ? $freshStatus->value : $freshStatus);
-        $this->assertEquals('Aviation update test', $result->fresh()->notes);
     }
 
     /**

@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
+use Tests\Feature\Flight\FlightFxFixtureTrait;
 
 /**
  * PHASE 11.2 — FLIGHT FE/BE CONTRACT AUDIT
@@ -39,6 +40,7 @@ use Tests\TestCase;
 class Phase11FeBeContractAuditTest extends TestCase
 {
     use RefreshDatabase;
+    use FlightFxFixtureTrait;
 
     protected User $admin;
 
@@ -46,6 +48,9 @@ class Phase11FeBeContractAuditTest extends TestCase
     {
         parent::setUp();
         config(['accounting.strict_test_guards' => true]);
+
+        // PHASE G: seed USD rate so system-source HTTP contract booking can resolve.
+        $this->seedFlightExchangeRates();
 
         $this->admin = User::factory()->create([
             'name' => 'Phase11 FE/BE Admin',
