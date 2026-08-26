@@ -1022,6 +1022,10 @@ class FlightBookingService
             userId: $userId
         );
 
+        // RC-002 (2026-08-26): post COGS to pending_cogs placeholder (NOT expense_clearing).
+        // The proportional recogniser in addPayment() will move the appropriate
+        // amount to expense_clearing only when customer cash arrives.
+        $pendingCogsId = $this->prepaidLedgerService->pendingCogsAccountId(TransactionModule::Flight);
         $this->prepaidLedgerService->consumeCogs(
             prepaidKey: 'flight_carrier',
             module: TransactionModule::Flight,
@@ -1029,6 +1033,7 @@ class FlightBookingService
             notes: sprintf('تكلفة حجز %s — ناقل %s', $booking->booking_number, $carrier->name),
             relatedType: FlightBooking::class,
             relatedId: $booking->id,
+            destinationOverride: $pendingCogsId,
         );
 
         Log::info('Flight carrier debited', [
@@ -1074,6 +1079,7 @@ class FlightBookingService
             userId: $userId
         );
 
+        $pendingCogsId = $this->prepaidLedgerService->pendingCogsAccountId(TransactionModule::Flight);
         $this->prepaidLedgerService->consumeCogs(
             prepaidKey: 'flight_system',
             module: TransactionModule::Flight,
@@ -1081,6 +1087,7 @@ class FlightBookingService
             notes: sprintf('تكلفة حجز %s — نظام %s', $booking->booking_number, $system->name),
             relatedType: FlightBooking::class,
             relatedId: $booking->id,
+            destinationOverride: $pendingCogsId,
         );
 
         Log::info('Flight system debited', [
@@ -2187,6 +2194,26 @@ class FlightBookingService
                     if ($sellingPrice > 0 && $cumulativePaid + 0.0001 >= $sellingPrice) {
                         $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
                     }
+                }
+
+                // RC-002 FIX (2026-08-26): recognise proportional COGS now that cash
+                // arrived. Runs inside the same DB::transaction so the COGS
+                // recognition is atomic with the payment insert. Skipped if the
+                // booking was sourced from `group` (recogniser handles only
+                // carrier/system prepaid keys; group-sourced bookings still need
+                // a separate proportional path which is not in this commit's
+                // scope — RC-002 fix is scoped to carrier/system cash-basis).
+                if ($booking->purchase_balance_source !== 'group') {
+                    // Reload payments inside the same transaction so the freshly
+                    // inserted $payment row is included in cumulative sum.
+                    $cumulativePaid = (float) FlightPayment::query()
+                        ->where('flight_booking_id', $booking->id)
+                        ->sum('amount');
+                    $this->prepaidLedgerService->recognizeProportionalFlightCogs(
+                        $booking,
+                        $cumulativePaid,
+                        (int) (Auth::id() ?: 1)
+                    );
                 }
 
                 Log::info('Flight payment recorded', [
@@ -4154,12 +4181,15 @@ $this->transactionService->reverseTransaction($original);
         ]);
 
         $expenseContraId = $this->ledgerClearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+        // RC-002 (2026-08-26): post to pending_cogs placeholder — COGS is recognised
+        // only when customer cash arrives via addPayment().
+        $pendingCogsId = $this->prepaidLedgerService->pendingCogsAccountId(TransactionModule::Flight);
 
         $this->transactionService->recordJournalTransfer([
             'amount' => $debitAmount,
             'converted_amount' => $purchasePriceEGP,
             'from_account_id' => $group->account_id,
-            'to_account_id' => $expenseContraId,
+            'to_account_id' => $pendingCogsId ?? $expenseContraId,
             'allow_from_negative' => true,
             'module' => TransactionModule::Flight->value,
             'related_type' => FlightGroupTransaction::class,

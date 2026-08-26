@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Enums\TransactionModule;
 use App\Exceptions\InsufficientBalanceException;
 use App\Models\Account;
+use App\Models\Flight\FlightBooking;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,18 @@ class PrepaidLedgerService
         protected LedgerClearingAccounts $clearingAccounts,
         protected CurrencyService $currencyService,
     ) {}
+
+    /**
+     * RC-002 FIX (2026-08-26): pending COGS placeholder account id (flight module).
+     */
+    public function pendingCogsAccountId(TransactionModule $module): ?int
+    {
+        if ($module === TransactionModule::Flight) {
+            return $this->clearingAccounts->pendingCogsIdForFlight();
+        }
+
+        return null;
+    }
 
     /**
      * شحن: سيولة → حساب رصيد مسبق (بدون تأثير على P&L).
@@ -110,6 +123,11 @@ class PrepaidLedgerService
      * حماية: يرمي InsufficientBalanceException لو الرصيد المسبق أقل من المبلغ.
      * هذا يضمن أن الحسابات المسبقة (مثل "رصيد مسبق — ناقلو الطيران") لا تدخل في السالب
      * عند حجز جديد حتى لو تم تعديل رصيد الناقل/النظام يدوياً من الـ Filament UI.
+     *
+     * RC-002 (2026-08-26): when `$destinationOverride` is supplied, the destination
+     * account is the PENDING COGS placeholder instead of expense_clearing. The
+     * transaction is then NOT classified as P&L COGS until the recogniser moves
+     * the proportional amount to expense_clearing on cash receipt.
      */
     public function consumeCogs(
         string $prepaidKey,
@@ -118,15 +136,17 @@ class PrepaidLedgerService
         ?string $notes = null,
         ?string $relatedType = null,
         ?int $relatedId = null,
+        ?int $destinationOverride = null,
     ): ?Transaction {
         if ($amount <= 0) {
             return null;
         }
 
         $prepaidId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
-        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule($module);
+        $defaultContra = $this->clearingAccounts->expenseContraIdForModule($module);
+        $destinationId = $destinationOverride !== null ? $destinationOverride : $defaultContra;
 
-        if ($expenseContraId === null || $prepaidId === $expenseContraId) {
+        if ($destinationId === null || $prepaidId === $destinationId) {
             throw new \RuntimeException('تعذر تحديد حسابات استهلاك الرصيد المسبق للموديول «'.$module->value.'».');
         }
 
@@ -166,7 +186,7 @@ class PrepaidLedgerService
         $transaction = $this->transactionService->recordJournalTransfer([
             'amount' => $amount,
             'from_account_id' => $prepaidId,
-            'to_account_id' => $expenseContraId,
+            'to_account_id' => $destinationId,
             'allow_from_negative' => true,
             'module' => $module->value,
             'related_type' => $relatedType,
@@ -178,6 +198,8 @@ class PrepaidLedgerService
         Log::info('Prepaid COGS consumption recorded', [
             'prepaid_key' => $prepaidKey,
             'amount' => $amount,
+            'destination_account_id' => $destinationId,
+            'destination_is_pending_cogs' => $destinationOverride !== null,
             'transaction_id' => $transaction->id,
         ]);
 
@@ -186,6 +208,15 @@ class PrepaidLedgerService
 
     /**
      * إرجاع تكلفة استهلاك: إقفال تكاليف (COGS) → رصيد مسبق.
+     *
+     * RC-002 FIX (2026-08-26): refundCogs now handles the pending_cogs
+     * placeholder. The booking flow is:
+     *   - createBooking:    prepaid_carrier → pending_cogs (X)
+     *   - addPayment:       pending_cogs    → expense_clearing (X × paid/selling)
+     *   - refundCogs (now): expense_clearing → prepaid_carrier (recognized portion)
+     *                       pending_cogs    → prepaid_carrier (unrecognised portion)
+     *
+     * Both legs credit the prepaid asset account. Total credit = X.
      */
     public function refundCogs(
         string $prepaidKey,
@@ -201,29 +232,193 @@ class PrepaidLedgerService
 
         $prepaidId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
         $expenseContraId = $this->clearingAccounts->expenseContraIdForModule($module);
+        $pendingCogsId = $this->pendingCogsAccountId($module);
 
         if ($expenseContraId === null || $prepaidId === $expenseContraId) {
             throw new \RuntimeException('تعذر تحديد حسابات استرجاع تكلفة الرصيد المسبق للموديول «'.$module->value.'».');
         }
 
-        $transaction = $this->transactionService->recordJournalTransfer([
-            'amount' => $amount,
-            'from_account_id' => $expenseContraId,
-            'to_account_id' => $prepaidId,
-            'allow_from_negative' => true,
-            'module' => $module->value,
-            'related_type' => $relatedType,
-            'related_id' => $relatedId,
-            'notes' => ($notes ?? 'إرجاع استهلاك رصيد مسبق').' [COGS Reversal]',
-            'created_by' => Auth::id() ?? 1,
-        ]);
+        // Leg 1: pull the recognised portion from expense_clearing → prepaid_carrier.
+        $expenseBalance = (float) Account::query()->whereKey($expenseContraId)->value('balance');
+        $recognizedAmount = min($amount, max(0.0, $expenseBalance));
+
+        if ($recognizedAmount > 0) {
+            $this->transactionService->recordJournalTransfer([
+                'amount' => $recognizedAmount,
+                'from_account_id' => $expenseContraId,
+                'to_account_id' => $prepaidId,
+                'allow_from_negative' => true,
+                'module' => $module->value,
+                'related_type' => $relatedType,
+                'related_id' => $relatedId,
+                'notes' => ($notes ?? 'إرجاع تكلفة طيران (الجزء المُعترف به)').' [COGS Reversal]',
+                'created_by' => Auth::id() ?? 1,
+            ]);
+        }
+
+        // Leg 2: pull the remaining (unrecognised) portion from pending_cogs → prepaid_carrier.
+        $remaining = max(0.0, $amount - $recognizedAmount);
+        $pendingBalance = $pendingCogsId !== null
+            ? (float) Account::query()->whereKey($pendingCogsId)->value('balance')
+            : 0.0;
+        $unrecognizedAmount = min($remaining, max(0.0, $pendingBalance));
+
+        if ($unrecognizedAmount > 0 && $pendingCogsId !== null) {
+            $this->transactionService->recordJournalTransfer([
+                'amount' => $unrecognizedAmount,
+                'from_account_id' => $pendingCogsId,
+                'to_account_id' => $prepaidId,
+                'allow_from_negative' => true,
+                'module' => $module->value,
+                'related_type' => $relatedType,
+                'related_id' => $relatedId,
+                'notes' => ($notes ?? 'إرجاع تكلفة طيران (الجزء غير المُعترف به)').' [Pending COGS Reversal]',
+                'created_by' => Auth::id() ?? 1,
+            ]);
+        }
+
+        $reversedTotal = $recognizedAmount + $unrecognizedAmount;
 
         Log::info('Prepaid COGS refund recorded', [
             'prepaid_key' => $prepaidKey,
             'amount' => $amount,
+            'recognized_amount' => $recognizedAmount,
+            'unrecognized_amount' => $unrecognizedAmount,
+            'reverse_total' => $reversedTotal,
+            'shortfall' => $amount - $reversedTotal,
+            'transaction_id' => null,
+        ]);
+
+        return null;
+    }
+
+    /**
+     * RC-002 FIX (2026-08-26): recognise proportional COGS for a flight booking.
+     *
+     * عند استلام دفعة من العميل (جزئية أو كاملة)، يُرحَّل الجزء النسبي من
+     * تكلفة الحجز من حساب pending_cogs إلى expense_clearing ليدخل P&L.
+     *
+     * القاعدة النسبية:
+     *   recognised_amount = purchase_price × (cumulative_paid / selling_price)
+     *
+     * الفارق بين recognised_amount الحالي والجديد هو الزيادة المطلوب
+     * ترحيلها — هذا يسمح باستدعاءات متعددة (دفعات جزئية متتالية).
+     */
+    public function recognizeProportionalFlightCogs(
+        FlightBooking $booking,
+        float $cumulativePaidEgp,
+        int $userId
+    ): ?Transaction {
+        if (! ($booking instanceof FlightBooking)) {
+            // forward declare usage
+        }
+
+        $purchasePriceEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
+        $sellingPriceEgp = (float) $booking->selling_price;
+
+        if ($purchasePriceEgp <= 0 || $sellingPriceEgp <= 0) {
+            return null;
+        }
+
+        $targetRecognised = $purchasePriceEgp * ($cumulativePaidEgp / $sellingPriceEgp);
+
+        $module = TransactionModule::Flight;
+        $prepaidKey = $this->resolveFlightPrepaidKey($booking);
+        if ($prepaidKey === null) {
+            return null;
+        }
+
+        $pendingCogsId = $this->pendingCogsAccountId($module);
+        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule($module);
+        if ($pendingCogsId === null || $expenseContraId === null || $pendingCogsId === $expenseContraId) {
+            return null;
+        }
+
+        $alreadyRecognised = $this->sumFlightRecognisedCogs($booking);
+        $delta = $targetRecognised - $alreadyRecognised;
+
+        // EPS guard — don't post zero/negative deltas (no new recognition).
+        if ($delta <= 0.005) {
+            return null;
+        }
+
+        // Cap delta at what's actually available in pending_cogs (defensive).
+        $pendingBalance = (float) Account::query()->whereKey($pendingCogsId)->value('balance');
+        if ($pendingBalance + 0.005 < $delta) {
+            $delta = max(0.0, $pendingBalance);
+        }
+        if ($delta <= 0.005) {
+            return null;
+        }
+
+        $transaction = $this->transactionService->recordJournalTransfer([
+            'amount' => round($delta, 2),
+            'from_account_id' => $pendingCogsId,
+            'to_account_id' => $expenseContraId,
+            'allow_from_negative' => true,
+            'module' => $module->value,
+            'related_type' => FlightBooking::class,
+            'related_id' => $booking->id,
+            'notes' => sprintf(
+                'اعتراف تكلفة طيران متناسب — حجز %s — نسبة التحصيل %.2f%%',
+                $booking->booking_number,
+                round(($cumulativePaidEgp / max(0.0001, $sellingPriceEgp)) * 100, 2)
+            ),
+            'created_by' => $userId,
+        ]);
+
+        Log::info('Proportional flight COGS recognition', [
+            'flight_booking_id' => $booking->id,
+            'booking_number' => $booking->booking_number,
+            'cumulative_paid_egp' => $cumulativePaidEgp,
+            'selling_price_egp' => $sellingPriceEgp,
+            'purchase_price_egp' => $purchasePriceEgp,
+            'target_recognised' => $targetRecognised,
+            'already_recognised' => $alreadyRecognised,
+            'delta' => $delta,
             'transaction_id' => $transaction->id,
+            'user_id' => $userId,
         ]);
 
         return $transaction;
+    }
+
+    /**
+     * RC-002 helper: identify the prepaid GL key for a flight booking
+     * (flight_carrier, flight_system, or null for group-sourced).
+     */
+    protected function resolveFlightPrepaidKey(FlightBooking $booking): ?string
+    {
+        return match ($booking->purchase_balance_source) {
+            'carrier' => 'flight_carrier',
+            'system' => 'flight_system',
+            default => null,
+        };
+    }
+
+    /**
+     * RC-002 helper: sum the COGS already recognised (pending_cogs → expense_clearing)
+     * for a flight booking. Used by recogniseProportionalFlightCogs() to compute the
+     * delta between the target and what is already in the books.
+     */
+    protected function sumFlightRecognisedCogs(FlightBooking $booking): float
+    {
+        $module = TransactionModule::Flight->value;
+        $pendingCogsId = $this->pendingCogsAccountId(TransactionModule::Flight);
+        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+        if ($pendingCogsId === null || $expenseContraId === null) {
+            return 0.0;
+        }
+
+        // Recognised COGS = Σ tx where from=pending_cogs AND to=expense_clearing.
+        // (The creation-time consumeCogs posts TO pending_cogs, not FROM it —
+        //  those are NOT recognition postings.)
+        return (float) \App\Models\Transaction::query()
+            ->where('module', $module)
+            ->where('related_type', FlightBooking::class)
+            ->where('related_id', $booking->id)
+            ->where('from_account_id', $pendingCogsId)
+            ->where('to_account_id', $expenseContraId)
+            ->sum('amount');
     }
 }

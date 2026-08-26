@@ -370,6 +370,24 @@ class LedgerClearingAccounts
         return $this->ensureClearingAccountExists($name, 'flight', 'pending_sales_receivable');
     }
 
+    /**
+     * RC-002 FIX (2026-08-26): pending COGS placeholder.
+     *
+     * الحساب الذي يستقبل COGS المؤجلة عند إنشاء الحجز. لا يدخل P&L
+     * (لا يوجد في expenseClearing map في P&L report). عند استلام
+     * دفعة العميل، يتم ترحيل الجزء النسبي من هذا الحساب إلى
+     * expense_clearing ليُعترف به كتكلفة.
+     */
+    public function pendingCogsIdForFlight(): ?int
+    {
+        $name = config('accounting.clearing.pending_cogs.flight');
+        if (! is_string($name) || $name === '') {
+            return null;
+        }
+
+        return $this->ensureClearingAccountExists($name, 'flight', 'pending_cogs');
+    }
+
     protected function normalizeModuleKey(string|TransactionModule|null $module): string
     {
         if ($module instanceof TransactionModule) {

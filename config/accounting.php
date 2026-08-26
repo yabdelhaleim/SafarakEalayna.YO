@@ -186,6 +186,19 @@ return [
             'flight' => env('ACCOUNTING_FLIGHT_SALES_PENDING_RECEIVABLE_NAME', 'ذمم عملاء طيران معلق'),
         ],
         /*
+         * Pending COGS accounts — RC-002 FIX (2026-08-26).
+         *
+         * FIN-3 cash-basis: COGS must only be recognised when cash arrives.
+         * At booking creation we move `prepaid_carrier` → `pending_cogs` (NOT
+         * `expense_clearing`). At payment, we move `pending_cogs` →
+         * `expense_clearing` for the proportional amount
+         * `purchase_price × (paid / selling_price)`. The P&L therefore stays
+         * at 0 for unpaid credit bookings.
+         */
+        'pending_cogs' => [
+            'flight' => env('ACCOUNTING_FLIGHT_PENDING_COGS_NAME', 'تكلفة طيران معلقة (تحت التحصيل)'),
+        ],
+        /*
          * Offset for raw TreasuryService::credit / ::debit when no module context exists.
          */
         'treasury_operations' => env(
