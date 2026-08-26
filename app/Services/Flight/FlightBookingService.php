@@ -2473,8 +2473,40 @@ class FlightBookingService
                 // FlightPayment on this booking that has no reversal mirror
                 // yet. If a second cancel hits the same booking, no extra
                 // rows are created.
+                //
+                // DEFECT-008 FIX (2026-08-26) — When `refundAmount > 0.001` the
+                // customer is getting cash back. The original FIN-B mirror
+                // reverses every addPayment income entry (debits cashbox by
+                // total_paid, credits customer_AR by total_paid), then the
+                // subsequent `refundTreasuryAccount` debits cashbox AGAIN by
+                // refund_amount — so cashbox loses `total_paid + refund_amount`
+                // instead of just `refund_amount`. For a paid-in-full cancel
+                // with partial penalty that's the full sale amount lost from
+                // the cashbox on top of the legitimate refund. Skipping FIN-B
+                // here is safe because:
+                //   - The Step 3 sale reversal already debits customer_AR by
+                //     (X-P), and refundTreasuryAccount credits it back by the
+                //     same (X-P) → customer_AR nets to 0.
+                //   - The cashbox is debited only by refundTreasuryAccount
+                //     (refund_amount = total_paid - total_penalty), so the
+                //     kept penalty naturally stays in the cashbox.
+                //   - The companion delete-side Step-2.7 in
+                //     deleteBookingWithReversal() picks up the income
+                //     reversal that FIN-B would have done, restoring the
+                //     pre-booking state when the operator deletes a booking
+                //     that was previously cancelled with a refund.
+                //   - For `refundAmount == 0` (full-penalty cancel) we still
+                //     run FIN-B to zero out revenue on the books.
                 // ─────────────────────────────────────────────────────────────────
-                $this->reverseFlightBookingRevenue($booking, $userId);
+                if ($refundAmount <= 0.001) {
+                    $this->reverseFlightBookingRevenue($booking, $userId);
+                } else {
+                    Log::info('cancelBooking: skipped reverseFlightBookingRevenue (refund > 0, DEFECT-008 path)', [
+                        'flight_booking_id' => $booking->id,
+                        'refund_amount' => $refundAmount,
+                        'user_id' => $userId,
+                    ]);
+                }
 
 
                 // Step 4: Cash refund from treasury (recorded payments)
@@ -2486,6 +2518,25 @@ class FlightBookingService
                         $refundAmount,
                         $userId
                     );
+                }
+
+                // DEFECT-008 CANCEL-SIDE COMPANION (2026-08-26): when we
+                // skipped `reverseFlightBookingRevenue()` above (refund >
+                // 0 path), the original addPayment income rows are still
+                // tagged with `type=income` and the P&L classifier would
+                // count them as revenue. Apply a SOFT reversal — only
+                // prepend `'عكس:'` to each income row's notes so the
+                // classifier skips them, WITHOUT posting mirror entries
+                // that would re-debit the cashbox. The full balance
+                // reversal is done by `reverseAddPaymentsOnCancelThenDelete`
+                // on the delete path through a different (clearing-only)
+                // route.
+                //
+                // For `refundAmount == 0` (full-penalty cancel) we don't
+                // need this — `reverseFlightBookingRevenue()` already
+                // did both (set notes + posted mirrors).
+                if ($refundAmount > 0.001) {
+                    $this->softReverseAddPaymentRevenues($booking, $userId);
                 }
 
                 // Step 5: Create refund record
@@ -2878,6 +2929,234 @@ class FlightBookingService
     }
 
     /**
+     * DEFECT-008 CANCEL-SIDE COMPANION (2026-08-26) — soft-reverse the
+     * addPayment income transactions when the cancel-with-refund path
+     * skips `reverseFlightBookingRevenue()`.
+     *
+     * Why a separate soft-reverse instead of calling
+     * `reverseTransaction()`:
+     *   - `reverseTransaction()` posts mirror AccountEntries on the SAME
+     *     transaction_id with debit/credit swapped, AND sets the
+     *     transaction's notes to start with 'عكس:'. Both effects are
+     *     needed for the P&L classifier to zero revenue.
+     *   - The mirror entries debit the cashbox (cashbox was originally
+     *     credited by `addPayment`'s `recordIncome()`), which on the
+     *     cancel-with-refund path is exactly the double-debit DEFECT-008
+     *     fix is preventing.
+     *   - We therefore split the two effects: here we set the `'عكس:'`
+     *     marker on the original notes (so the classifier skips the row),
+     *     but DO NOT post the mirror entries (so the cashbox state stays
+     *     at `baseline - refund_amount`).
+     *
+     * The companion delete-side fix in
+     * `reverseAddPaymentsOnCancelThenDelete()` posts the proper 2-leg
+     * transfer through `income_clearing` that brings both cashbox AND
+     * customer_AR back to baseline while leaving the original income
+     * transaction tagged with `'عكس:'` so revenue stays at 0.
+     *
+     * Idempotency: any row whose notes already start with `عكس:` or
+     * `عكس ` is skipped (same guard as `reverseTransaction()`).
+     */
+    protected function softReverseAddPaymentRevenues(FlightBooking $booking, int $userId): void
+    {
+        $booking->refresh();
+
+        $payments = $booking->payments()->whereNotNull('transaction_id')->get();
+        if ($payments->isEmpty()) {
+            return;
+        }
+
+        $reversedCount = 0;
+
+        foreach ($payments as $payment) {
+            $originalTx = Transaction::query()
+                ->where('related_type', FlightPayment::class)
+                ->where('related_id', $payment->id)
+                ->where('type', 'income')
+                ->first();
+            if (! $originalTx) {
+                continue;
+            }
+
+            $txNotes = (string) ($originalTx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+                continue;
+            }
+
+            // SOFT REVERSAL: only update notes. No mirror entries.
+            $originalTx->notes = 'عكس: '.ltrim($txNotes);
+            $originalTx->save();
+            $reversedCount++;
+        }
+
+        if ($reversedCount > 0) {
+            Log::info('softReverseAddPaymentRevenues completed', [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'revenue_soft_reversals_posted' => $reversedCount,
+                'user_id' => $userId,
+            ]);
+        }
+    }
+
+    /**
+     * Companion to the DEFECT-008 cancel-side fix — reverse every
+     * addPayment income transaction on the cancel-then-delete path.
+     *
+     * Why this exists (2026-08-26):
+     *   - Before DEFECT-008, `cancelBooking()` ran
+     *     `reverseFlightBookingRevenue()` (FIN-B) which zeroed out the
+     *     revenue from the books via `reverseTransaction()` on each
+     *     `addPayment` income entry (debit/credit swap + 'عكس:' prefix).
+     *   - DEFECT-008 skips FIN-B when `refundAmount > 0.001` to stop the
+     *     cashbox from losing `total_paid + refund_amount` instead of
+     *     just `refund_amount`. The cancel-side companion
+     *     `softReverseAddPaymentRevenues()` then prepends `'عкс:'` to the
+     *     original notes WITHOUT posting mirror entries, so revenue is
+     *     zeroed in the P&L classifier but the cashbox state stays at
+     *     `baseline - refund_amount`.
+     *   - On delete, the cashbox must still come back to baseline, the
+     *     customer_AR must be cleared (H1 mirrors the cancel refund
+     *     leaving customer_AR at -total_paid), and revenue must stay at 0.
+     *     We can't call `reverseTransaction()` because the original
+     *     notes already start with `'عкс:'` and it would no-op.
+     *
+     * The fix is a 2-leg transfer through `income_clearing`:
+     *   1. `cashbox → income_clearing` for total_paid with `'عкс '` notes.
+     *      Effect: cashbox -= T, income_clearing += T.
+     *      Classifier: type=Transfer, from=cashbox (not in clearing),
+     *      to=income_clearing (in clearing) → 'revenue_reversal'
+     *      (line 1843 of FinancialReportService). With `'عкс '` prefix
+     *      the reclassifier no-op is fine. Subtracts T from totalRevenue.
+     *   2. `income_clearing → customer_AR` for total_paid with `'عкс '`
+     *      notes. Effect: income_clearing -= T, customer_AR += T.
+     *      Classifier: type=Transfer, from=income_clearing (in clearing),
+     *      to=customer_AR → 'revenue' (line 1839). With `'عкс '` prefix
+     *      reclassified to 'revenue_reversal', subtracts T from
+     *      totalRevenue.
+     *      The customer_AR += T brings it back to 0 (H1 had pushed it to
+     *      -T by mirroring the cancel refund).
+     *
+     * Net effect:
+     *   - cashbox: -T → back to baseline ✓
+     *   - customer_AR: +T → 0 ✓
+     *   - income_clearing: -T → back to whatever the addPayment had
+     *     recognised (or 0 for clean EGP same-currency flow) ✓
+     *   - revenue: original income skipped via 'عкс:' + 2x revenue_reversal
+     *     mirror entries → net 0 ✓
+     *
+     * Why a dedicated method instead of un-skipping
+     * `reverseSinglePayment()`:
+     *   - `reverseSinglePayment()` has a hard skip guard at line 3470
+     *     for `existingRefund && refund_amount > 0.001`. That guard was
+     *     correct under the pre-FIX-2 cancel flow (where the income was
+     *     already reversed by FIN-B and re-reversing would double-debit
+     *     the cashbox), but is wrong for the post-DEFECT-008 cancel flow
+     *     (where the income is still on the books).
+     *   - Loosening the guard would risk breaking the direct-delete path
+     *     and any other caller of `reverseSinglePayment()`. A dedicated
+     *     method keeps the change surgical.
+     *
+     * @param  FlightBooking  $booking  booking whose addPayment income rows
+     *                                  were soft-reversed by
+     *                                  `softReverseAddPaymentRevenues()`
+     *                                  on the cancel side
+     * @param  int  $userId  effective user id for the reversal entries
+     */
+protected function reverseAddPaymentsOnCancelThenDelete(FlightBooking $booking, int $userId): void
+    {
+        $payments = $booking->payments()->whereNotNull('transaction_id')->get();
+        if ($payments->isEmpty()) {
+            return;
+        }
+
+        $reversedCount = 0;
+
+        foreach ($payments as $payment) {
+            $originalTx = Transaction::query()
+                ->where('related_type', FlightPayment::class)
+                ->where('related_id', $payment->id)
+                ->where('type', 'income')
+                ->first();
+            if (! $originalTx) {
+                continue;
+            }
+
+            $txNotes = (string) ($originalTx->notes ?? '');
+            // If notes don't start with 'عكس:', the cancel-side soft
+            // reverse didn't fire for this payment. Skip — the delete path
+            // shouldn't double-process; the caller can handle the residual
+            // manually if needed.
+            if (! str_starts_with($txNotes, 'عكس:') && ! str_starts_with($txNotes, 'عكس ')) {
+                continue;
+            }
+
+            // Use the same-currency EGP amount: `converted_amount ?: amount`.
+            // Cross-currency bookings would have stored the EGP equivalent
+            // in `converted_amount` on the income row. EGP same-currency
+            // bookings leave it NULL → fall back to `amount`.
+            $reversalAmount = (float) ($originalTx->converted_amount ?: $originalTx->amount);
+            if ($reversalAmount <= 0) {
+                continue;
+            }
+
+            $cashboxId = (int) $originalTx->to_account_id;
+            $customerId = (int) $originalTx->from_account_id;
+
+            // Resolve the income-clearing account for the booking's currency.
+            // We pass the EGP equivalent so the resolver picks the right
+            // per-currency bucket when configured.
+            $clearingId = $this->ledgerClearingAccounts->incomeContraIdForFlightBooking();
+            if ($clearingId === null) {
+                throw new \RuntimeException(
+                    'تعذر تحديد حساب إقفال إيرادات الطيران للـ DEFECT-008 delete-side companion. '
+                    .'راجع config/accounting.php.'
+                );
+            }
+
+            // Leg 1: cashbox → income_clearing (clears the cashbox credit
+            // and reclassifies the original income as revenue_reversal).
+            $this->transactionService->recordJournalTransfer([
+                'from_account_id' => $cashboxId,
+                'to_account_id' => $clearingId,
+                'amount' => $reversalAmount,
+                'allow_from_negative' => true,
+                'module' => TransactionModule::Flight->value,
+                'related_type' => FlightBooking::class,
+                'related_id' => $booking->id,
+                'notes' => 'عكس إيراد دفعة — حجز #'.$booking->booking_number.' (DEFECT-008 delete companion)',
+                'created_by' => $userId,
+            ]);
+
+            // Leg 2: income_clearing → customer_AR (clears the customer
+            // over-debit from H1's mirror and further reclassifies
+            // revenue as revenue_reversal).
+            $this->transactionService->recordJournalTransfer([
+                'from_account_id' => $clearingId,
+                'to_account_id' => $customerId,
+                'amount' => $reversalAmount,
+                'allow_from_negative' => true,
+                'module' => TransactionModule::Flight->value,
+                'related_type' => FlightBooking::class,
+                'related_id' => $booking->id,
+                'notes' => 'عكس دين عميل متبقي — حجز #'.$booking->booking_number.' (DEFECT-008 delete companion)',
+                'created_by' => $userId,
+            ]);
+
+            $reversedCount++;
+        }
+
+        if ($reversedCount > 0) {
+            Log::info('reverseAddPaymentsOnCancelThenDelete completed', [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'clearing_transfers_posted' => $reversedCount * 2,
+                'user_id' => $userId,
+            ]);
+        }
+    }
+
+    /**
      * Get a single booking by ID with all relations.
      *
      * @throws ModelNotFoundException
@@ -3253,6 +3532,51 @@ class FlightBookingService
                         'refund_id' => $existingRefundEarly->id,
                         'refund_amount' => (float) $existingRefundEarly->refund_amount,
                     ]);
+                }
+
+                // DEFECT-007/008 COMPANION FIX (2026-08-26) — Step-2.7:
+                // Companion to the cancel-side DEFECT-008 fix that skips
+                // `reverseFlightBookingRevenue` when `refundAmount > 0.001`.
+                //
+                // The skip on the cancel side leaves the original addPayment
+                // income transactions ON THE BOOKS — without this companion
+                // step, the cancel-then-delete path leaves the cashbox at
+                // baseline + total_paid (instead of baseline) because H1 only
+                // walks back the refund, not the income.
+                //
+                // To bring the cashbox back to baseline we need to reverse
+                // each addPayment income transaction: `cashbox → customer_AR`
+                // for `creditTotal`. We use `allow_from_negative => true` on
+                // the cashbox side because after H1 the cashbox is at
+                // `baseline + total_paid` and we want it to drop to baseline.
+                //
+                // Ordering rationale (H2 → H1 → Step-2.7):
+                //   - After H2, customer_AR = -(office_penalty) and pending = 0
+                //   - After H1, customer_AR = -(office_penalty) - refund_amount
+                //     and cashbox = baseline + total_paid
+                //   - After Step-2.7, customer_AR = -(office_penalty)
+                //     - refund_amount + total_paid = 0
+                //     and cashbox = baseline + total_paid - total_paid = baseline
+                //
+                // We use a new dedicated method rather than calling
+                // `reverseSinglePayment` because the latter has a guard at
+                // line 3470 that skips the entire reversal when the booking
+                // was previously refunded — that guard is correct for the
+                // pre-FIX-2 cancel-then-delete flow (where the income was
+                // already reversed by FIN-B) but wrong for the post-DEFECT-008
+                // cancel flow (where the income is still on the books).
+                //
+                // Idempotency: each reversal checks the original transaction
+                // notes via `reverseSinglePayment`'s existing defence
+                // (`عكس:` prefix check) — re-running this branch is a no-op.
+                //
+                // NO-OP for the no-refund cancel-then-delete path because in
+                // that case the cancel-side still ran FIN-B (its guard is
+                // `refundAmount <= 0.001`), so the income is already reversed
+                // and Step-2 here would double-reverse it. We gate on
+                // `refund_amount > 0.001` to match the cancel-side guard.
+                if ($existingRefundEarly && ((float) $existingRefundEarly->refund_amount) > 0.001) {
+                    $this->reverseAddPaymentsOnCancelThenDelete($booking, $userIdEffective);
                 }
             }
 
