@@ -11,6 +11,7 @@ use App\Services\Finance\TransactionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FlightGroupController extends Controller
 {
@@ -207,16 +208,73 @@ public function thresholdSummary(Request $request)
                     return ApiResponse::error('لا يوجد رصيد مستحق على هذه المجموعة.', null, 422);
                 }
 
+                // BUG-FIX (2026-08-27): payDebt only linked `flight_booking_id`
+                // when there was EXACTLY ONE debt with the matching amount.
+                // In every other case (multiple exact matches, partial payments,
+                // amounts that differ from any debt by even a rounding unit),
+                // the resulting FlightGroupTransaction was created with
+                // `flight_booking_id = NULL` — which made it invisible to
+                // FlightBookingService::reverseGroupTransactionsForBooking()
+                // when the operator later deleted the booking, leaving the
+                // cashbox permanently debited by the payDebt amount.
+                //
+                // Resolution: always link the payment to the OLDEST open debt
+                // (FIFO). This guarantees every payDebt is reachable by the
+                // delete-reversal path so the cashbox returns to baseline.
+                //
+                //   1. Fast path: single exact match  → use it (unchanged).
+                //   2. Multiple exact matches        → oldest (FIFO).
+                //   3. No exact match                → oldest open debt that
+                //                                      the payment can cover
+                //                                      (falls back to the
+                //                                      oldest open debt even
+                //                                      for partial coverage —
+                //                                      the booking-side debt
+                //                                      is reduced but not
+                //                                      cleared, and the
+                //                                      reverseGroupTransactionsForBooking
+                //                                      mirror is still correct).
                 $linkedBookingId = null;
                 if (! $isReceiving) {
                     $matchingDebts = $group->groupTransactions()
                         ->where('type', 'debt')
                         ->whereNotNull('flight_booking_id')
                         ->where('amount', $request->amount)
-                        ->orderByDesc('created_at')
                         ->get();
+
                     if ($matchingDebts->count() === 1) {
                         $linkedBookingId = $matchingDebts->first()->flight_booking_id;
+                    } elseif ($matchingDebts->count() > 1) {
+                        // Tie-break: oldest debt wins (FIFO).
+                        $linkedBookingId = $matchingDebts
+                            ->sortBy('created_at')
+                            ->first()
+                            ->flight_booking_id;
+                        Log::info('FlightGroupController::payDebt — multiple exact debt matches, FIFO applied', [
+                            'group_id' => $group->id,
+                            'amount' => (float) $request->amount,
+                            'matches_count' => $matchingDebts->count(),
+                            'linked_booking_id' => $linkedBookingId,
+                            'user_id' => $userId,
+                        ]);
+                    } else {
+                        // No exact amount match — try to cover the oldest open
+                        // debt (the one the operator is most likely settling).
+                        $oldestOpenDebt = $group->groupTransactions()
+                            ->where('type', 'debt')
+                            ->whereNotNull('flight_booking_id')
+                            ->orderBy('created_at')
+                            ->first();
+                        if ($oldestOpenDebt) {
+                            $linkedBookingId = $oldestOpenDebt->flight_booking_id;
+                            Log::info('FlightGroupController::payDebt — no exact match, FIFO oldest open debt applied', [
+                                'group_id' => $group->id,
+                                'amount' => (float) $request->amount,
+                                'linked_booking_id' => $linkedBookingId,
+                                'oldest_debt_amount' => (float) $oldestOpenDebt->amount,
+                                'user_id' => $userId,
+                            ]);
+                        }
                     }
                 }
 
