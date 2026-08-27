@@ -93,6 +93,7 @@
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-amber-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
+            <div v-if="tourismSummary.total_count === 0" class="text-[10px] text-gray-500 mt-0.5 italic">لا توجد حركات في الفترة</div>
           </div>
         </button>
 
@@ -116,6 +117,7 @@
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-sky-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
+            <div v-if="officeSummary.total_count === 0" class="text-[10px] text-gray-500 mt-0.5 italic">لا توجد حركات في الفترة</div>
           </div>
         </button>
 
@@ -225,7 +227,8 @@
           <div class="absolute -left-4 -bottom-4 text-amber-500/5 text-7xl font-black select-none">✈️</div>
           <div class="text-xs font-bold text-amber-400 mb-1">إجمالي إيرادات قطاع السياحة</div>
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(tourismSummary.total_revenue) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>الطيران: {{ formatCompactNumber(tourismSummary.flights.revenue) }}</span>
             <span>الحج والعمرة: {{ formatCompactNumber(tourismSummary.hajj.revenue) }}</span>
           </div>
@@ -235,7 +238,8 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💰</div>
           <div class="text-xs font-bold mb-1" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح قطاع السياحة</div>
           <div class="text-3xl font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>ربح الطيران: {{ formatCompactNumber(tourismSummary.flights.profit) }}</span>
             <span>ربح الحج: {{ formatCompactNumber(tourismSummary.hajj.profit) }}</span>
             <span>ربح التأشيرات: {{ formatCompactNumber(tourismSummary.visa.profit) }}</span>
@@ -246,7 +250,8 @@
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">📊</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي العمليات المنفذة</div>
           <div class="text-3xl font-black text-white font-mono">{{ tourismSummary.total_count }} <span class="text-sm font-normal text-gray-400">حجز منفذ</span></div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>تذاكر طيران: {{ tourismSummary.flights.count }}</span>
             <span>برامج حج/عمرة: {{ tourismSummary.hajj.count }}</span>
           </div>
@@ -408,7 +413,8 @@
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">🏢</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي إيرادات حسابات المكتب</div>
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(officeSummary.total_revenue) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>الباص: {{ formatCompactNumber(officeSummary.bus.revenue) }}</span>
             <span>فوري: {{ formatCompactNumber(officeSummary.fawry.revenue) }}</span>
             <span>المحافظ: {{ formatCompactNumber(officeSummary.wallet.revenue) }}</span>
@@ -420,7 +426,8 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💎</div>
           <div class="text-xs font-bold mb-1" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح حسابات المكتب</div>
           <div class="text-3xl font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
             <span>ربح فوري: {{ formatCompactNumber(officeSummary.fawry.profit) }}</span>
             <span>ربح المحافظ: {{ formatCompactNumber(officeSummary.wallet.profit) }}</span>
@@ -432,7 +439,8 @@
           <div class="absolute -left-4 -bottom-4 text-amber-500/5 text-7xl font-black select-none">⚡</div>
           <div class="text-xs font-bold text-amber-400 mb-1">العمليات التشغيلية (المكتب)</div>
           <div class="text-3xl font-black text-white font-mono">{{ officeSummary.total_count }} <span class="text-sm font-normal text-gray-400">حركة</span></div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>حجوزات باص: {{ officeSummary.bus.count }}</span>
             <span>حركات فوري: {{ officeSummary.fawry.count }}</span>
             <span>خدمات إلكترونية: {{ officeSummary.online.count }}</span>
