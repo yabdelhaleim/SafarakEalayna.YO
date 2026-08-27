@@ -315,6 +315,8 @@
               <option value="present">حاضر</option>
               <option value="late">متأخر</option>
               <option value="absent">غائب</option>
+              <option value="leave">في إجازة</option>
+              <option value="half_day">نصف يوم</option>
             </select>
           </div>
 
@@ -498,6 +500,8 @@ const getAttendanceStatusClass = (employeeRecord) => {
   if (employee.status === 'on_leave') return 'bg-warning/10 text-warning';
   if (!employeeRecord.record) return 'bg-gray-500/10 text-gray-400';
   if (employeeRecord.record.status === 'late') return 'bg-warning/10 text-warning';
+  if (employeeRecord.record.status === 'leave') return 'bg-blue-500/10 text-blue-400';
+  if (employeeRecord.record.status === 'half_day') return 'bg-teal-400/10 text-teal-400';
   if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return 'bg-error/10 text-error';
   return 'bg-success/10 text-success';
 };
@@ -509,6 +513,8 @@ const getAttendanceStatusIcon = (employeeRecord) => {
   if (employee.status === 'on_leave') return CalendarClock;
   if (!employeeRecord.record) return AlertCircle;
   if (employeeRecord.record.status === 'late') return Clock;
+  if (employeeRecord.record.status === 'leave') return CalendarClock;
+  if (employeeRecord.record.status === 'half_day') return Clock;
   if (employeeRecord.record.status === 'absent' || !employeeRecord.record.present) return XCircle;
   return CheckCircle;
 };

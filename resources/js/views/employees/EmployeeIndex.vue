@@ -12,7 +12,7 @@
       </div>
       <div class="flex gap-3">
         <router-link
-          to="/attendance"
+          to="/employees/attendance"
           class="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
         >
           <Clock class="w-5 h-5" />

@@ -127,6 +127,7 @@
                   type="number"
                   step="0.01"
                   min="0"
+                  max="1000000"
                   required
                   placeholder="0.00"
                   class="w-full pl-4 pr-16 py-3 bg-input-bg border border-white/10 rounded-xl focus:border-gold outline-none text-sm font-mono"
@@ -261,7 +262,15 @@ const handleSubmit = async () => {
     store.addToast('تم إضافة الموظف بنجاح');
     router.push('/employees');
   } catch (error) {
-    store.addToast('فشل إضافة الموظف', 'error');
+    // Surface the first validation error so the user knows what to fix.
+    const fieldErrors = error?.response?.data?.errors;
+    if (fieldErrors && typeof fieldErrors === 'object') {
+      const firstKey = Object.keys(fieldErrors)[0];
+      const firstMsg = firstKey ? fieldErrors[firstKey][0] : null;
+      store.addToast(firstMsg || 'فشل إضافة الموظف — تحقق من البيانات المدخلة', 'error');
+    } else {
+      store.addToast('فشل إضافة الموظف — تحقق من الاتصال بالخادم', 'error');
+    }
   }
 };
 

@@ -45,7 +45,7 @@ class AttendanceController extends Controller
         $request->validate([
             'employee_id' => 'required|exists:employees,id',
             'attendance_date' => 'required|date',
-            'status' => 'required|in:present,absent,late',
+            'status' => 'required|in:present,absent,late,leave,half_day',
             'check_in' => 'nullable|date_format:H:i',
             'check_out' => 'nullable|date_format:H:i',
             'notes' => 'nullable|string|max:500',
@@ -79,7 +79,7 @@ class AttendanceController extends Controller
         $this->authorize('update', $attendance);
 
         $request->validate([
-            'status' => 'sometimes|required|in:present,absent,late',
+            'status' => 'sometimes|required|in:present,absent,late,leave,half_day',
             'check_in' => 'nullable|date_format:H:i',
             'check_out' => 'nullable|date_format:H:i',
             'notes' => 'nullable|string|max:500',

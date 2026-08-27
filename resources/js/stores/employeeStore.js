@@ -578,7 +578,10 @@ export const useEmployeeStore = defineStore('employee', {
     transformEmployeePayload(payload) {
       return {
         full_name: payload.full_name || payload.name || '',
+        email: payload.email || null,
         phone: payload.phone || null,
+        national_id: payload.national_id || payload.nationalId || null,
+        address: payload.address || null,
         department: payload.department || null,
         position: payload.position || null,
         salary: parseAmount(payload.salary),

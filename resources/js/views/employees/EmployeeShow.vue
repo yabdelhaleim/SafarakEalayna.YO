@@ -154,7 +154,7 @@
         </div>
 
         <router-link
-          to="/attendance"
+          to="/employees/attendance"
           class="block text-center px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-semibold transition-all"
         >
           عرض سجل الحضور الكامل
@@ -196,7 +196,7 @@
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <router-link
-            to="/attendance"
+            to="/employees/attendance"
             class="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
           >
             <Clock class="w-4 h-4" />

@@ -28,8 +28,9 @@
               <Home class="w-5 h-5" />
               العودة للرئيسية
             </router-link>
-            <button 
-              @click="$router.back()" 
+            <button
+              v-if="hasHistory"
+              @click="goBack"
               class="w-full sm:w-auto px-10 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
             >
               <ArrowLeft class="w-5 h-5" />
@@ -47,5 +48,22 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { SearchX, Home, ArrowLeft } from 'lucide-vue-next';
+
+const router = useRouter();
+
+// Only allow going back if there's a previous page in this tab's history.
+// Direct visits (e.g. typing the URL or following an external link) have no
+// history to go back to, so we route the user to the dashboard instead.
+const hasHistory = computed(() => window.history.length > 1);
+
+const goBack = () => {
+  if (hasHistory.value) {
+    router.back();
+  } else {
+    router.push('/dashboard');
+  }
+};
 </script>
