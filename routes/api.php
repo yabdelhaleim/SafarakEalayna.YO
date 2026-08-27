@@ -177,7 +177,10 @@ Route::prefix('v1')->middleware([
             Route::delete('bookings/{flightBooking}', [FlightController::class, 'destroy']);
             Route::post('bookings/{flightBooking}/cancel', [FlightController::class, 'cancel']);
             Route::post('bookings/{flightBooking}/confirm', [FlightController::class, 'confirm']);
-            Route::post('bookings/{flightBooking}/prices', [FlightController::class, 'updatePrices']);
+            // INCIDENT-2026-08-17: POST /prices route removed (DEFECT-002 fix).
+            // The /prices route was an orphan — FlightController::updatePrices() was
+            // removed but the route definition stayed, causing 500 instead of 404.
+            // Use cancel + new booking instead for price corrections.
         });
         Route::apiResource('aviation', AviationController::class)
             // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH disabled.
