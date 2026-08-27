@@ -48,11 +48,12 @@ BRANCH="phase-10-tourism-production-audit-hajj-umra"
 LOG_DIR="/var/log/safarakealayna-deploy-staging"
 
 # -----------------------------------------------------------------------------
-# ⚠️  Set this to the SHA of the deploy commit (code + deploy script together).
-#     Defaults to the HEAD of the local branch if reachable, but should be
-#     replaced with the exact commit hash after `git push`.
+# ⚠️  Pinned to the code commit (d9d46f1) that adds the empty-state hint +
+#     the dashboard:demo-data artisan command. The deploy script itself
+#     (f43853d) lives on the feature branch and is NOT what we want to
+#     check out on staging.
 # -----------------------------------------------------------------------------
-FIX_COMMIT="${FIX_COMMIT:-HEAD}"
+FIX_COMMIT="d9d46f1"
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { printf '[%s] %s\n' "$(ts)" "$*"; }
