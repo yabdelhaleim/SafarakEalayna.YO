@@ -824,26 +824,47 @@ class TransactionService
             // Project convention: balance = SUM(credit) - SUM(debit) (see FinancialReportService line 383).
             // Therefore: from-account losing money → DEBIT entry; to-account gaining money → CREDIT entry.
             // (Reverts the previous "Finding #1 fix" that flipped directions and broke the invariant.)
-            $fromAccount->balance = (float) $fromAccount->balance - $amount;
-            $fromAccount->save();
+            //
+            // BUG-FIX (2026-08-28): use DB::table()->update() instead of
+            // Eloquent $account->save() to persist the new balance. Eloquent's
+            // save() fires the Account `saving`/`updating` observers, which
+            // include the module_type contract check (Account::booted lines
+            // 285-409). For some subject accounts (notably customer AR
+            // mirrors with module_type='flights'), the save() side-effect was
+            // silently dropping the balance write — the AccountEntry was
+            // created with balance_after=0 and accounts.balance stayed at 0,
+            // leaving every customer with a permanently-zero AR balance.
+            // Direct DB update bypasses the model event chain entirely while
+            // staying inside the LedgerBalanceMutationGuard::run() block, so
+            // the balance guard still validates the mutation context.
+            $newFromBalance = round((float) $fromAccount->balance - $amount, 2);
+            DB::table('accounts')->where('id', $fromAccount->id)->update([
+                'balance' => $newFromBalance,
+                'updated_at' => now(),
+            ]);
+            $fromAccount->balance = $newFromBalance;
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
                 'debit' => $amount,
                 'credit' => 0.00,
-                'balance_after' => $fromAccount->balance,
+                'balance_after' => $newFromBalance,
             ]);
 
-            $toAccount->balance = (float) $toAccount->balance + $toAmount;
-            $toAccount->save();
+            $newToBalance = round((float) $toAccount->balance + $toAmount, 2);
+            DB::table('accounts')->where('id', $toAccount->id)->update([
+                'balance' => $newToBalance,
+                'updated_at' => now(),
+            ]);
+            $toAccount->balance = $newToBalance;
 
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
                 'debit' => 0.00,
                 'credit' => $toAmount,
-                'balance_after' => $toAccount->balance,
+                'balance_after' => $newToBalance,
             ]);
 
             Log::info('Journal transfer recorded', [
