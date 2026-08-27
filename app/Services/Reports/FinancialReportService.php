@@ -37,10 +37,27 @@ class FinancialReportService
 {
     /**
      * تقرير كشف خزينة (إيرادات + مصروفات + رصيد)
+     *
+     * FIX FIN-AUDIT-2026-08-27: Exclude opening entries
+     * (transaction_id IS NULL) from totalIncome / totalExpense /
+     * netChange calculations. After the FIN-1 patch, every Account
+     * seeded with a non-zero balance auto-creates a paired opening
+     * entry (credit = balance on the new account, debit = balance on
+     * the System Opening Balances contra-account). Including those
+     * opening entries in income/expense sums falsely inflates
+     * "total_income" for liquidity accounts by their entire opening
+     * balance, producing grossly incorrect statements.
+     *
+     * Post-fix: opening entries are EXCLUDED from totals — they are
+     * equity seed, not operational income. The closing balance still
+     * reflects the stored Account.balance (which already incorporates
+     * the opening seed). The opening_balance is derived by subtracting
+     * the OPERATIONAL netChange from the stored balance.
      */
     public function getTreasuryReport(Account $treasury, array $filters = []): array
     {
         $query = $treasury->entries()
+            ->whereNotNull('transaction_id')
             ->with('transaction');
 
         if (! empty($filters['from_date'])) {

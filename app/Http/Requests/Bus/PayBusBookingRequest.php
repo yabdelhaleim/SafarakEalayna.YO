@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Bus;
 
+use App\Models\Account;
 use App\Models\Bus\BusBooking;
 use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
@@ -58,17 +59,33 @@ class PayBusBookingRequest extends FormRequest
                 );
             }
 
-            // Phase 6.B fix: enforce currency match between booking + payment account.
+            // EGP-only contract (Phase 3 — Bus EGP-Only Hardening):
+            // the booking MUST be in EGP. A non-EGP booking is a
+            // configuration error after Phase 3 hardening.
+            $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
+            if ($bookingCurrency !== 'EGP') {
+                $validator->errors()->add(
+                    'account_id',
+                    "وحدة الباص تعمل بالجنيه المصري فقط. هذا الحجز بعملة {$bookingCurrency} — ".
+                    'يجب تسوية هذا الحجز يدوياً قبل أي عملية دفع.'
+                );
+
+                return;
+            }
+
+            // EGP-only contract: every Bus payment account MUST be EGP. The
+            // previous Phase 6.B code only enforced currency-match between
+            // booking + account; now the only acceptable currency is EGP.
             $accountId = (int) $this->input('account_id');
             if ($accountId > 0) {
-                $account = \App\Models\Account::find($accountId);
+                $account = Account::find($accountId);
                 if ($account) {
-                    $bookingCurrency = strtoupper((string) ($booking->currency ?? 'EGP'));
                     $accountCurrency = strtoupper((string) $account->currency);
-                    if ($bookingCurrency !== $accountCurrency) {
+                    if ($accountCurrency !== 'EGP') {
                         $validator->errors()->add(
                             'account_id',
-                            "الحجز بعملة {$bookingCurrency} لكن الحساب المختار بعملة {$accountCurrency}. اختر حساباً بنفس عملة الحجز."
+                            "وحدة الباص تعمل بالجنيه المصري فقط. الحساب المختار بعملة {$accountCurrency}. ".
+                            'اختر حساباً بالجنيه المصري.'
                         );
                     }
                     if (! BusLiquidityAccount::belongsToBusModule($account)) {
@@ -103,7 +120,7 @@ class PayBusBookingRequest extends FormRequest
         $unknown = array_diff(array_keys($this->all()), $allowed);
 
         if (! empty($unknown)) {
-            throw \Illuminate\Validation\ValidationException::withMessages(
+            throw ValidationException::withMessages(
                 array_fill_keys($unknown, 'This field is not allowed.')
             );
         }

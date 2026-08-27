@@ -645,13 +645,22 @@ class TreasuryService
             $balance = (float) ($item['balance'] ?? 0);
             $entityType = (string) ($item['entity_type'] ?? '');
 
-            // ⚠️ FlightGroup = supplier (مورد): تقرير الديون يُرسل موجب = المستحق علينا،
-            // بينما هذا الـ trial balance يحسب موجب = المستحق لنا. نعكس الإشارة للمجموعات
-            // فقط كي لا تُحسب مرتين بإشارتين متعاكستين عند fallback (الخطوة 3).
-            if ($entityType === 'flight_group') {
-                $balance = -$balance;
-            }
-
+            // FIX FIN-AUDIT-2026-08-27: Removed the flight_group sign flip.
+            //
+            // Pre-fix behaviour:
+            //   The debts report emits positive balance for flight_groups as
+            //   "they owe us" (debt - payment). The trial balance was flipping
+            //   the sign, treating positive as "we owe them" instead. This
+            //   silently pushed flight_group debt OUT of `due_to_us` and INTO
+            //   `due_from_us`, producing a 3,500 EGP deficit in the tourism
+            //   trial balance whenever a group had outstanding receivables.
+            //
+            // Post-fix behaviour:
+            //   Trust the debts report's sign convention — positive balance
+            //   always means "they owe us" (receivable). flight_group with
+            //   positive balance correctly enters `due_to_us`. The fallback
+            //   in step 3 still uses $seenIds dedup, so no double-counting
+            //   occurs between (1) and (3).
             if ($balance === 0.0) {
                 continue;
             }
@@ -721,12 +730,12 @@ class TreasuryService
                     return;
                 }
                 $balance = (float) $acc->balance;
-                // ⚠️ flight_group = supplier: في الحسابات الفعلية رصيدها سالب = علينا،
-                // وفي تقرير الديون رصيدها موجب = علينا أيضًا. نعكس الإشارة هنا لتطابق
-                // اتجاه $dueFromUs (الذي يستقبل الموجب من الخطوة 1 للمجموعات).
-                if (((string) $acc->type) === 'flight_group') {
-                    $balance = -$balance;
-                }
+                // FIX FIN-AUDIT-2026-08-27: removed sign flip for flight_group.
+                // The balance on the Account row is the source of truth —
+                // positive = receivable (they owe us), negative = payable
+                // (we owe them). This matches the convention used by
+                // calculateReceivablesAndPayables step (1) and the unified
+                // debts report, so we trust it directly.
                 if ($balance === 0.0) {
                     return;
                 }

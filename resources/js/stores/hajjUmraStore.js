@@ -176,9 +176,15 @@ export const useHajjUmraStore = defineStore('hajjUmra', {
     },
 
     async cancelBooking(id, reason = '') {
+      // PHASE-11 fix: POST /api/v1/hajj-umra/bookings/{id}/cancel performs a
+      // LIGHT cancel (status flips to Cancelled, additive reversal applied, row
+      // stays visible). DELETE performs a soft-delete with FULL financial
+      // reversal and removes the row from listings — a different operation.
+      // Sending DELETE here was a misroute that would have destroyed the
+      // booking instead of cancelling it.
       this.loading.delete = true;
       try {
-        const { data } = await axios.delete(`/api/v1/hajj-umra/bookings/${id}`, { data: { reason } });
+        const { data } = await axios.post(`/api/v1/hajj-umra/bookings/${id}/cancel`, { reason });
         const updated = this._enrich(data?.data);
         const i = this.bookings.findIndex((b) => b.id === id);
         if (i !== -1 && updated) this.bookings[i] = updated;

@@ -306,8 +306,14 @@ class LedgerRepairService
                     ->all();
 
                 foreach ($accountIds as $accountId) {
+                    // FIX FIN-AUDIT-2026-08-27: order by created_at (chronological)
+                    // rather than id (insertion order). Backdated opening entries
+                    // can have id > later movements; using chronological order
+                    // ensures balance_after chains are correct regardless of
+                    // when entries were actually persisted.
                     $entries = AccountEntry::query()
                         ->where('account_id', $accountId)
+                        ->orderBy('created_at')
                         ->orderBy('id')
                         ->lockForUpdate()
                         ->get();
