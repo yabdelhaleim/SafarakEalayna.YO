@@ -162,6 +162,26 @@ class CheckPermission
                 'fawry.view', 'fawry.create',
                 'customers.view', 'customers.create',
             ],
+            // FIX FIN-AUDIT-2026-08-27: SEC-1 deny-by-default patch left the
+            // 'cashier' role with NO permissions at all — the role was not
+            // present in the legacy role map, and the new permission system
+            // does not auto-grant defaultEmployeeModules() to non-admin
+            // users. Result: cashiers (a role used heavily in the HajjUmra
+            // E2E suite and in production for payment posting) cannot
+            // access any guarded route. Add a cashier baseline that mirrors
+            // the operational surface cashiers need (treasury posting +
+            // booking payment + refund execution), keeping the deny-by-
+            // default philosophy intact for genuinely unconfigured users.
+            'cashier' => [
+                'hajj_umra.view', 'hajj_umra.create', 'hajj_umra.edit',
+                'flights.view', 'flights.create',
+                'visa.view', 'visa.create',
+                'wallet.view', 'wallet.create',
+                'fawry.view', 'fawry.create',
+                'online.view', 'online.create',
+                'customers.view', 'customers.create',
+                'finance.view',
+            ],
         ];
 
         $permissions = $map[$user->role] ?? [];

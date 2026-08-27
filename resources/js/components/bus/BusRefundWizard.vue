@@ -150,7 +150,7 @@
               @click="form.accountId = acc.id"
             >
               <div class="font-bold text-white text-sm">{{ acc.name }}</div>
-              <div class="text-[11px] text-muted mt-1">{{ accountTypeLabel(acc.type) }} — {{ formatMoney(acc.balance, acc.currency) }}</div>
+              <div class="text-[11px] text-muted mt-1">{{ accountTypeLabel(acc.type) }} — {{ formatMoney(acc.balance, 'EGP') }}</div>
             </button>
           </div>
         </div>
@@ -328,12 +328,19 @@ function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/**
+ * Format an amount as EGP currency.
+ *
+ * EGP-only contract (Phase 3 — Bus EGP-Only Hardening): the Bus module
+ * only displays EGP. The `curr` parameter is ignored — every monetary
+ * value is rendered in EGP regardless of the caller's intent.
+ */
 function formatMoney(amount, curr = 'EGP') {
   const n = Number(amount) || 0;
   try {
-    return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: curr }).format(n);
+    return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP' }).format(n);
   } catch {
-    return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })} ${curr}`;
+    return `${n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })} ج.م`;
   }
 }
 

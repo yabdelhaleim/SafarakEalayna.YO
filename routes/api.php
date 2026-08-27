@@ -38,7 +38,6 @@ use App\Http\Controllers\Api\V1\Flight\FlightDashboardController;
 use App\Http\Controllers\Api\V1\Flight\FlightGroupController;
 use App\Http\Controllers\Api\V1\Flight\FlightSystemController;
 use App\Http\Controllers\Api\V1\Flight\FlightTreasuryController;
-use App\Http\Controllers\Api\V1\Office\OfficeTreasuryController;
 use App\Http\Controllers\Api\V1\Flight\ModificationController;
 use App\Http\Controllers\Api\V1\Flight\PassengerController;
 use App\Http\Controllers\Api\V1\Flight\RefundController;
@@ -50,6 +49,7 @@ use App\Http\Controllers\Api\V1\HajjUmra\UmrahSupplierApiController;
 use App\Http\Controllers\Api\V1\HajjUmraController;
 use App\Http\Controllers\Api\V1\HajjUmraReferenceController;
 use App\Http\Controllers\Api\V1\InvoiceController;
+use App\Http\Controllers\Api\V1\Office\OfficeTreasuryController;
 use App\Http\Controllers\Api\V1\Online\OnlineCustomerController;
 use App\Http\Controllers\Api\V1\Online\OnlineServiceProviderController;
 use App\Http\Controllers\Api\V1\Online\OnlineServiceTypeController;
@@ -369,7 +369,6 @@ Route::prefix('v1')->middleware([
         Route::get('accounts/{account}/transactions', [OfficeTreasuryController::class, 'accountTransactions']);
     });
 
-
     // Wallet & Transfers API
     Route::prefix('wallet')->group(function () {
         Route::get('dashboard', [TransferDashboardController::class, 'index']);
@@ -662,7 +661,11 @@ Route::prefix('v1')->middleware([
 
         Route::get('bookings', [VisaBookingController::class, 'index'])->middleware('admin');
         Route::post('bookings', [VisaBookingController::class, 'store']);
-        Route::get('bookings/{visa}', [VisaBookingController::class, 'show'])->middleware('admin');
+        // FIX-2026-08-26 (D-07): employees must be able to VIEW visa bookings.
+        // Admin-only middleware is removed from the show route — matching the
+        // Hajj/Umra pattern (routes/api.php L628). Destructive/financial
+        // operations (delete, cancel, refund, payments) remain gated.
+        Route::get('bookings/{visa}', [VisaBookingController::class, 'show']);
         // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
         // Phase 8.5 A3 — payments require `manage_online` permission. Cashiers
         // (no explicit perms) still pass via `defaultEmployeeModules()` which

@@ -2,7 +2,6 @@
 
 namespace App\Services\Visa;
 
-use App\Enums\TransactionModule;
 use App\Enums\VisaStatus;
 use App\Models\Transaction;
 use App\Models\User;
@@ -304,6 +303,18 @@ class VisaRefundService
                 if ($booking->trashed()) {
                     throw new \RuntimeException(
                         'هذا الحجز محذوف بالفعل (soft delete) — لا يمكن عكسه مرة ثانية.'
+                    );
+                }
+
+                $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+                if ($status === VisaStatus::Cancelled->value) {
+                    throw new \RuntimeException(
+                        'لا يمكن حذف وعكس حجز تأشيرة ملغى بالفعل (status=cancelled) — تفادياً لفقدان سجل المراجعة.'
+                    );
+                }
+                if ($status === VisaStatus::Refunded->value) {
+                    throw new \RuntimeException(
+                        'لا يمكن حذف وعكس حجز تأشيرة مسترد بالفعل (status=refunded) — تفادياً لفقدان سجل المراجعة.'
                     );
                 }
 

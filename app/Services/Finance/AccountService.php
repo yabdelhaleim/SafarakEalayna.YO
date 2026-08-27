@@ -228,7 +228,13 @@ class AccountService
             return $this->getFlightGroupStatementForAccount($flightGroup, $account, $filters);
         }
 
+        // FIX FIN-AUDIT-2026-08-27: Exclude opening entries
+        // (transaction_id IS NULL) from periodTotals, initialBalance,
+        // and openingBalance calculations. Opening entries are pre-existing
+        // equity postings created by FIN-1 — they are NOT operational
+        // movements and must not be summed into period income/expense.
         $query = $account->entries()
+            ->whereNotNull('transaction_id')
             ->with([
                 'transaction.createdBy',
                 'transaction.fromAccount',
@@ -245,7 +251,7 @@ class AccountService
             ]);
 
         // Base query for stats (without eager loading and pagination)
-        $statsQuery = $account->entries();
+        $statsQuery = $account->entries()->whereNotNull('transaction_id');
 
         // Apply filters to both queries
         $this->applyStatementFilters($query, $filters);
@@ -254,16 +260,23 @@ class AccountService
         // Calculate Period Totals
         $periodTotals = (clone $statsQuery)->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
 
-        // Calculate Initial Balance (account balance minus all entry mutations)
-        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
+        // Calculate Initial Balance (account balance minus all OPERATIONAL
+        // entry mutations). Opening entries are excluded because they
+        // represent the seed, not a movement.
+        $allEntriesTotals = $account->entries()
+            ->whereNotNull('transaction_id')
+            ->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')
+            ->first();
         $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
         $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
         $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
 
-        // Calculate Opening Balance (initial balance + mutations before from_date)
+        // Calculate Opening Balance (initial balance + operational
+        // mutations before from_date).
         $openingBalance = $initialBalance;
         if (! empty($filters['from_date'])) {
             $beforeBalance = $account->entries()
+                ->whereNotNull('transaction_id')
                 ->where('created_at', '<', $filters['from_date'])
                 ->selectRaw('SUM(credit) - SUM(debit) as balance')
                 ->value('balance') ?? 0;

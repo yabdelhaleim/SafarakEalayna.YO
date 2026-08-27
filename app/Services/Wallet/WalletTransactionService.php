@@ -4,6 +4,7 @@ namespace App\Services\Wallet;
 
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Enums\WalletTransactionType;
 use App\Models\Account;
 use App\Models\AuditLog;
@@ -14,6 +15,7 @@ use App\Models\Wallet\WalletType;
 use App\Services\Finance\DeferredTransactionDeletionGuard;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -76,6 +78,46 @@ class WalletTransactionService
         return $query->orderBy('created_at', 'desc')->paginate($perPage);
     }
 
+    /**
+     * Normalize a monetary value to the canonical 2-decimal half-up precision.
+     *
+     * FINDING D-V2-009 (P2, MEDIUM) REMEDIATION (2026-08-26):
+     * Pre-fix, raw 3-decimal inputs (e.g. 100.005) reached three different
+     * layers with three different representations:
+     *   - wallet_transactions.amount stored as 100.01 (decimal:2 cast rounds)
+     *   - account_entries.debit stored as 100.005 (raw value posted)
+     *   - accounts.balance derived from balance_after = 9900.00
+     * This created a split-brain where reports aggregating WT.amount disagreed
+     * with reports aggregating account_entries.
+     *
+     * Post-fix: every monetary value MUST be normalized to 2-decimal
+     * half-up precision at the service layer BEFORE it touches:
+     *   - WalletTransaction::create() / ->amount / ->service_fee / ->total_amount
+     *   - TransactionService::recordIncome() / recordExpense() / recordJournalTransfer()
+     *   - AccountEntry::create() debit/credit fields
+     *   - Account::balance mutation
+     *
+     * After normalization, 100.005 → 100.01 EVERYWHERE. One canonical value.
+     *
+     * Implementation uses bcmath (PHP_INT_MAX-safe) with a half-away-from-zero
+     * offset of 0.005, identical to tests/Feature/Wallet/Support/Decimal::round().
+     */
+    public static function normalizeAmount(int|float|string $value): float
+    {
+        $value = (string) $value;
+        if ($value === '' || $value === null) {
+            return 0.00;
+        }
+        $negative = str_starts_with($value, '-');
+        $abs = $negative ? substr($value, 1) : $value;
+        // bcadd 0.005 to round-half-away-from-zero at 2 decimals.
+        $rounded = bcadd($abs, '0.005', 2);
+
+        return (float) ($negative && $rounded !== '0' && ! str_contains($rounded, '-')
+            ? '-' . $rounded
+            : $rounded);
+    }
+
     public function createTransaction(array $data): WalletTransaction
     {
         // ─────────────────────────────────────────────────────────────────
@@ -130,6 +172,7 @@ class WalletTransactionService
                         ->first();
                     if ($existing) {
                         $existing->idempotent_replay = true;
+
                         return $existing;
                     }
 
@@ -161,8 +204,10 @@ class WalletTransactionService
                 $type = $rawType instanceof WalletTransactionType
                     ? $rawType
                     : WalletTransactionType::from((string) $rawType);
-                $amount = (float) $data['amount'];
-                $fee = (float) ($data['service_fee'] ?? 0);
+                // D-V2-009: normalize to 2-decimal precision BEFORE any further
+                // arithmetic or storage. Same canonical value used everywhere downstream.
+                $amount = self::normalizeAmount($data['amount']);
+                $fee = self::normalizeAmount($data['service_fee'] ?? 0);
 
                 // FINDING CONC-1 (HIGH) REMEDIATED (2026-08-21):
                 // Pre-fix: `WalletTransaction::create()` ran BEFORE any row
@@ -216,7 +261,10 @@ class WalletTransactionService
                 }
                 $walletTypeName = WalletType::find($data['wallet_type_id'])?->name ?? '';
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? 1);
-                $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $totalAmount;
+                // D-V2-009: normalize amount_paid for consistency.
+                $amountPaid = isset($data['amount_paid'])
+                    ? self::normalizeAmount($data['amount_paid'])
+                    : $totalAmount;
 
                 // Layer 2 — INSERT. The DB UNIQUE constraint is the final
                 // backstop. If two concurrent calls bypassed the pre-check
@@ -241,7 +289,7 @@ class WalletTransactionService
                         'notes' => $data['notes'] ?? null,
                         'idempotency_key' => $idempotencyKey,
                     ]);
-                } catch (\Illuminate\Database\QueryException $qe) {
+                } catch (QueryException $qe) {
                     // Layer 2 catch — DB UNIQUE backstop.
                     if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
                         // The pre-check passed but the INSERT still tripped
@@ -255,6 +303,7 @@ class WalletTransactionService
                             ->first();
                         if ($existing) {
                             $existing->idempotent_replay = true;
+
                             return $existing;
                         }
                     }
@@ -327,13 +376,14 @@ class WalletTransactionService
      * Mirrors the same helper in HajjUmraBookingService, VisaBookingService,
      * and FlightBookingService to keep the project-wide convention.
      */
-    private function isDuplicateKeyError(\Illuminate\Database\QueryException $qe): bool
+    private function isDuplicateKeyError(QueryException $qe): bool
     {
         $sqlState = (string) ($qe->errorInfo[0] ?? '');
         if ($sqlState === '23000') {
             return true;
         }
         $code = (int) ($qe->errorInfo[1] ?? 0);
+
         return $code === 1062;
     }
 
@@ -366,15 +416,24 @@ class WalletTransactionService
                 // Compute the new totals BEFORE the model update so we can
                 // re-derive total_amount (Send: amount+fee, Receive: amount-fee).
                 if ($amountOrFeeChanged) {
-                    $newAmount = (float) ($data['amount'] ?? $transaction->amount);
-                    $newFee = (float) ($data['service_fee'] ?? $transaction->service_fee);
+                    // D-V2-009: normalize amount + fee to 2-decimal precision
+                    // BEFORE re-deriving total_amount. The total must use the
+                    // canonical 2-decimal values.
+                    $newAmount = self::normalizeAmount($data['amount'] ?? $transaction->amount);
+                    $newFee = self::normalizeAmount($data['service_fee'] ?? $transaction->service_fee);
                     $type = $transaction->type instanceof WalletTransactionType
                         ? $transaction->type
                         : WalletTransactionType::from((string) $transaction->type);
+                    $data['amount'] = $newAmount;
+                    $data['service_fee'] = $newFee;
                     $data['total_amount'] = match ($type) {
-                        WalletTransactionType::Send => $newAmount + $newFee,
-                        WalletTransactionType::Receive => $newAmount - $newFee,
+                        WalletTransactionType::Send => self::normalizeAmount($newAmount + $newFee),
+                        WalletTransactionType::Receive => self::normalizeAmount($newAmount - $newFee),
                     };
+                }
+                // D-V2-009: normalize amount_paid if supplied.
+                if (array_key_exists('amount_paid', $data) && $data['amount_paid'] !== null) {
+                    $data['amount_paid'] = self::normalizeAmount($data['amount_paid']);
                 }
                 $transaction->update($data);
                 // ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
@@ -498,8 +557,8 @@ class WalletTransactionService
             ? $transaction->type
             : WalletTransactionType::from((string) $transaction->type);
 
-        $amount = (float) $transaction->amount;
-        $fee = (float) $transaction->service_fee;
+        $amount = self::normalizeAmount($transaction->amount);
+        $fee = self::normalizeAmount($transaction->service_fee);
 
         $walletTypeName = $transaction->walletType?->name ?? '';
         $customerName = $transaction->customer_name ?: '—';
@@ -597,7 +656,7 @@ class WalletTransactionService
             $this->transactionService->reverseTransaction($settlement);
         }
 
-        $amountPaid = (float) $transaction->amount_paid;
+        $amountPaid = self::normalizeAmount($transaction->amount_paid);
         if ($amountPaid < 0.001) {
             return;
         }
@@ -609,15 +668,17 @@ class WalletTransactionService
         // Re-emit the same settlement entry that the original
         // accountForSend / accountForReceive would have posted.
         if ($type === WalletTransactionType::Send) {
-            $this->transactionService->recordIncome([
+            $this->transactionService->recordJournalTransfer([
                 'amount' => $amountPaid,
+                'from_account_id' => $customerAccount->id,
                 'to_account_id' => $transaction->cash_account_id,
-                'contra_account_id' => $customerAccount->id,
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $transaction->id,
+                'type' => TransactionType::Transfer->value,
                 'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
                 'created_by' => $createdBy,
+                'currency' => $transaction->walletAccount?->currency,
             ]);
         } else {
             // Receive
@@ -764,22 +825,21 @@ class WalletTransactionService
             return;
         }
 
-        // Settlement is a TRANSFER (cashbox → wallet-account replenishment),
-        // not a new income. The duplicate-active-income guard does not
-        // apply to transfers. We use `recordJournalTransfer` (not
-        // `recordTransfer`) so that `related_type`/`related_id` are
-        // preserved on the resulting Transaction row for audit
-        // traceability, while still routing through the journal layer
-        // (no Transfer approval workflow — the settlement is
-        // synchronous with the Send).
+        $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+
+        // Settlement is a TRANSFER from the customer account to the cash account,
+        // reducing customer debt and increasing cashbox balance.
+        // D-V2-009: normalize the settlement amount so WT.amount_paid and the
+        // settlement ledger leg carry the SAME canonical 2-decimal value.
+        $amountPaid = self::normalizeAmount($amountPaid);
         $this->transactionService->recordJournalTransfer([
             'amount' => $amountPaid,
-            'from_account_id' => $record->cash_account_id,
-            'to_account_id' => $record->wallet_account_id,
+            'from_account_id' => $customerAccount->id,
+            'to_account_id' => $record->cash_account_id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'type' => \App\Enums\TransactionType::Transfer->value,
+            'type' => TransactionType::Transfer->value,
             'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
             'created_by' => $createdBy,
             'currency' => $record->walletAccount?->currency,
@@ -1139,7 +1199,6 @@ class WalletTransactionService
      *
      * @param  string  $action  مثل: 'wallet_transaction.created'
      * @param  WalletTransaction  $record  الـ record بعد/قبل العملية
-     * @param  WalletTransactionType  $type
      * @param  array<string, mixed>|null  $oldValues
      */
     protected function writeAuditLog(
