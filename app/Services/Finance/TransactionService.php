@@ -376,6 +376,57 @@ class TransactionService
     }
 
     /**
+     * Mark a transaction as "reversed" for P&L classifier purposes WITHOUT
+     * creating mirror AccountEntry rows or mutating account balances.
+     *
+     * Used by the flight cancellation flow's FIN-B revenue-reversal step.
+     * The full {@see self::reverseTransaction()} creates mirror entries
+     * that debit the cashbox AND credit the customer AR — which, in
+     * combination with the cancellation's separate cash-refund journal
+     * (treasury → customer), produces a duplicate customer-credit
+     * (HIGH — flight cancellation posts duplicate customer AR credits).
+     *
+     * This lightweight marker only sets the canonical `عكس:` notes prefix
+     * that ProfitLossReportService::report() recognises for skipping
+     * already-reversed revenue. The actual cash return is handled by the
+     * regular cash-refund journal (refundTreasuryAccount).
+     *
+     * Idempotent: a transaction already in a reversed state is returned
+     * unchanged (same idempotency contract as reverseTransaction).
+     */
+    public function markTransactionReversed(Transaction $transaction): Transaction
+    {
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($transaction) {
+            $transaction = Transaction::query()
+                ->lockForUpdate()
+                ->findOrFail($transaction->id);
+
+            if (str_starts_with((string) $transaction->notes, 'عكس:')
+                || str_starts_with((string) $transaction->notes, 'عكس ')) {
+                Log::info('markTransactionReversed: already reversed, no-op', [
+                    'transaction_id' => $transaction->id,
+                    'type' => $transaction->type,
+                    'user_id' => Auth::id(),
+                ]);
+
+                return $transaction;
+            }
+
+            $transaction->notes = 'عكس: '.($transaction->notes ?? '');
+            $transaction->save();
+
+            Log::info('Transaction marked as reversed (no balance mutation)', [
+                'transaction_id' => $transaction->id,
+                'type' => $transaction->type,
+                'amount' => $transaction->amount,
+                'user_id' => Auth::id(),
+            ]);
+
+            return $transaction;
+        }));
+    }
+
+    /**
      * @param  array<string,mixed>  $data
      */
     public function recordTransfer(array $data): Transfer

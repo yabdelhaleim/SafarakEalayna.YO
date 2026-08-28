@@ -2719,34 +2719,44 @@ class FlightBookingService
     }
 
     /**
-     * FIN-B FIX (2026-08-23): Reverse revenue for every payment-side income row.
+     * FIN-B FIX (2026-08-23) rev-3 (2026-08-28): Mark every payment-side
+     * income row as reversed WITHOUT creating mirror AccountEntry rows
+     * that would mutate account balances.
      *
-     * FlightBookingService::addPayment() posts an `Income` row
-     * (type='income', from=income_clearing → to=cashbox) for each cash
-     * receipt. ProfitLossReportService::classify() tags every `Income` row
-     * as `revenue`, so the dashboard's `صافي الأرباح` includes those
-     * amounts. Cancellation needs to wipe that revenue too — not just the
-     * customer-debt leg.
+     * Background:
+     *   - FlightBookingService::addPayment() posts an `Income` row
+     *     (type='income', from=customer → to=cashbox) per cash receipt.
+     *   - ProfitLossReportService::classify() tags every `Income` row as
+     *     `revenue`, so the dashboard's `صافي الأرباح` includes those
+     *     amounts. Cancellation must wipe that revenue — but ONLY in P&L.
      *
-     * Implementation (2026-08-23 rev-2): instead of posting a NEW mirror
-     * `Transfer` row that would (a) shift the cashbox balance by the
-     * revenue amount and (b) inflate the transaction count, we use
-     * TransactionService::reverseTransaction() on the original income row.
-     * That method:
-     *   - Posts mirror account_entries on the SAME transaction_id with
-     *     debit/credit swapped — net effect on ledger balances is zero
-     *     (cashbox is restored, customer is restored). No cashbox drift
-     *     in the existing FlightSoftDeleteRealWorldTest scenarios 2/3.
-     *   - Sets the transaction's notes to "عكس: …" prefix — that is the
-     *     canonical "this transaction has been reversed" signal that
-     *     ProfitLossReportService::build() recognizes (line ~263 of
-     *     ProfitLossReportService.php). The original income is skipped
-     *     entirely, so totalRevenues drops to 0 without needing a
-     *     separate revenue_reversal mirror.
+     * rev-3 fix (this revision) — replaces the rev-2
+     * TransactionService::reverseTransaction() call with the new
+     * lightweight TransactionService::markTransactionReversed().
      *
-     * Idempotency: reverseTransaction() is itself idempotent. If called
-     * on an already-reversed transaction it logs a warning and returns
-     * the same row without further mutation.
+     * Why the change:
+     *   The rev-2 reverseTransaction() creates mirror AccountEntry rows
+     *   that debit the cashbox AND credit customer AR. The cancel flow's
+     *   separate cash-refund journal (`refundTreasuryAccount` posts
+     *   `treasury → customer`) ALSO credits customer AR. Combined effect:
+     *   `customer AR` ends at +22000 instead of the accounting-correct 0
+     *   for a fully-paid + fully-refunded booking. The cashbox is also
+     *   debited TWICE (once by the mirror, once by the refund journal)
+     *   for a total of -44000 instead of -22000.
+     *
+     *   markTransactionReversed() keeps the canonical `عكس:` notes prefix
+     *   that ProfitLossReportService::report() uses to skip already-
+     *   reversed revenue — but does NOT create mirror AccountEntry rows
+     *   and does NOT mutate any account balance. The actual cash return
+     *   is handled by the regular cash-refund journal below
+     *   (refundTreasuryAccount), which preserves the correct customer AR
+     *   and treasury cash semantics.
+     *
+     * Idempotency: markTransactionReversed() is itself idempotent — a
+     * second call on an already-reversed transaction returns the same
+     * row without further mutation. The cancel-flight status guard at
+     * the top of cancelBooking() rejects repeat cancellations of the
+     * same booking anyway, so this guard is defensive only.
      */
     protected function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): void
     {
@@ -2773,21 +2783,23 @@ class FlightBookingService
 
             // Defence: skip if the transaction's notes already start with
             // the canonical 'عكس:' marker (caller may have already
-            // reversed it via a different path).
+            // reversed it via a different path). markTransactionReversed
+            // is itself idempotent but we keep the early-exit to avoid
+            // an unnecessary DB round-trip.
             $txNotes = (string) ($originalTx->notes ?? '');
             if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
                 continue;
             }
 
-            $this->transactionService->reverseTransaction($originalTx);
+            $this->transactionService->markTransactionReversed($originalTx);
             $reversedCount++;
         }
 
         if ($reversedCount > 0) {
-            Log::info('reverseFlightBookingRevenue completed', [
+            Log::info('reverseFlightBookingRevenue completed (rev-3: prefix-only)', [
                 'booking_id' => $booking->id,
                 'booking_number' => $booking->booking_number,
-                'revenue_reversals_posted' => $reversedCount,
+                'revenue_reversals_marked' => $reversedCount,
                 'user_id' => $userId,
             ]);
         }
