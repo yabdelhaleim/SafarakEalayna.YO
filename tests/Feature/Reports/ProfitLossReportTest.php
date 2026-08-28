@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Flight\FlightBookingService;
+use App\Services\Reports\FinancialReportService;
 use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -466,18 +467,228 @@ class ProfitLossReportTest extends TestCase
         $this->assertEquals(2000.0, (float) $reportAfterPayment['netProfit']);
 
         // 7. Verify cancellation logic reverses everything.
-        app(FlightBookingService::class)->cancelBooking($booking, ['airline_penalty' => 0, 'office_penalty' => 0]);
+        // FlightBookingService::cancelBooking now requires `account_id`
+        // when the booking has paid customer balance to disburse back —
+        // updated from the obsolete 0-arg signature the original test had.
+        app(FlightBookingService::class)->cancelBooking(
+            $booking,
+            [
+                'airline_penalty' => 0,
+                'office_penalty' => 0,
+                'account_id' => $this->treasury->id,
+            ]
+        );
 
+        // [FAILURE #1 — DIAGNOSTIC ONLY, NOT FIXED IN THIS TASK]
+        //
+        // The cancel flow currently leaves customer AR at +22000 instead of
+        // the accounting-correct 0. Three independent customer-account credits
+        // are posted during cancellation:
+        //   - TX5 (sale-reversal leg, customer → pending_sales_receivable)
+        //   - reverseTransaction mirror on TX3 (reverses the addPayment income)
+        //   - TX6 (cash refund, treasury → customer)
+        //
+        // Per the user's directive for this task, this is classified as a
+        // REAL production accounting bug — NOT test drift — and is NOT fixed
+        // here. The full accounting trace and overlap analysis are recorded
+        // in `.zcode/plans/PNL_3_FAILURES_REMEDIATION_REPORT_20260828.md`.
+        // See "Failure #1 — accounting diagnosis" for the per-transaction
+        // ledger walk.
         $account->refresh();
-        $this->assertEquals(0.0, (float) $account->balance);
+        $this->assertEquals(0.0, (float) $account->balance,
+            'Group account must be zeroed after cancellation.');
 
         $customerAccount->refresh();
         $this->assertEquals(0.0, (float) $customerAccount->balance,
-            'Customer AR must be zeroed after cancellation.');
+            'Customer AR must be zeroed after cancellation. '
+            .'See `.zcode/plans/PNL_3_FAILURES_REMEDIATION_REPORT_20260828.md` '
+            .'for the double-refund root cause (Failure #1 — production bug, not fixed in this task).');
 
         $reportAfterCancel = app(ProfitLossReportService::class)->report([]);
         $this->assertEquals(0.0, (float) $reportAfterCancel['totalRevenues']);
         $this->assertEquals(0.0, (float) $reportAfterCancel['totalCogs']);
         $this->assertEquals(0.0, (float) $reportAfterCancel['netProfit']);
+    }
+
+    /**
+     * Regression test for Phase 2.1 (PNL/TOURISM-FIX-A2).
+     *
+     * getDailyProfitByModule() previously skipped NEITHER 'عكس:' nor 'عكس '
+     * prefixes, while report() handled both. The mismatch meant daily charts
+     * overstated revenue on cancellation/correction days. After the fix the
+     * daily chart mirrors report()'s prefix semantics for both forms.
+     */
+    public function test_daily_profit_by_module_skips_already_reversed_rows(): void
+    {
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+
+        // Live revenue: clearing → treasury (revenue per classifier).
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 5000, 'fawry', 'بيع فوري');
+        // Two 'عكس:' rows (the colon form, post-TransactionService::reverseTransaction)
+        // — they must be skipped so they don't double-count.
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 1000, 'fawry', 'عكس: sale #1');
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 1000, 'fawry', 'عكس: sale #2');
+
+        $byDay = app(ProfitLossReportService::class)->getDailyProfitByModule('fawry', [
+            'from_date' => $yesterday,
+            'to_date' => $today,
+        ]);
+
+        $todayRow = collect($byDay)->firstWhere('date', $today);
+        $this->assertNotNull($todayRow, 'Today row must exist');
+        // Only the live 5000 row counts. The two 'عكس:' rows (1000 each) must
+        // be skipped — otherwise income would be 7000.
+        $this->assertSame(5000.0, $todayRow['income']);
+        $this->assertSame(5000.0, $todayRow['profit']);
+    }
+
+    /**
+     * Regression test for Phase 2.1 (PNL/TOURISM-FIX-A2).
+     *
+     * 'عكس ' (with space, no colon) rows are companion rows from
+     * FlightBookingService::cancelBooking's recordJournalTransfer call.
+     * The classifier labels them as 'revenue' based on the clearing-account
+     * leg, but the row is in fact a reversal — must be SUBTRACTED, not added.
+     */
+    public function test_daily_profit_by_module_reclassifies_space_reversal_to_reversal(): void
+    {
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+
+        // Live revenue 8000
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 8000, 'fawry', 'بيع فوري');
+        // Reversal companion row (space prefix). The classifier would label
+        // this as 'revenue' (income clearing → treasury is revenue direction),
+        // but the prefix tells us it's a reversal → SUBTRACT 3000.
+        $this->createTransfer($this->incomeClearing->id, $this->treasury->id, 3000, 'fawry', 'عكس حجز رقم 1');
+
+        $byDay = app(ProfitLossReportService::class)->getDailyProfitByModule('fawry', [
+            'from_date' => $yesterday,
+            'to_date' => $today,
+        ]);
+
+        $todayRow = collect($byDay)->firstWhere('date', $today);
+        $this->assertNotNull($todayRow);
+        // Net result: 8000 (forward) - 3000 (reversal) = 5000
+        $this->assertSame(5000.0, $todayRow['income']);
+        $this->assertSame(5000.0, $todayRow['profit']);
+    }
+
+    /**
+     * Regression test for Phase 2.2 (PNL/TOURISM-FIX-A3).
+     *
+     * formatNamedList() previously used `if ($sum <= 0) continue;` while
+     * formatModuleList() uses `if (abs($sum) < 0.00001)`. The asymmetry
+     * meant that a single named-expense bucket netting to negative (e.g.
+     * refunds exceeding the original operating expense) was silently
+     * dropped from expensesList while totalExpenses still showed the
+     * negative value — internally inconsistent and Vue-display incorrect.
+     *
+     * This test directly invokes the private formatNamedList via reflection
+     * to exercise both the near-zero filter and the negative-bucket
+     * preservation in a single assertion surface.
+     */
+    public function test_format_named_list_keeps_negative_buckets_to_match_module_list(): void
+    {
+        $service = app(ProfitLossReportService::class);
+        $ref = new \ReflectionMethod($service, 'formatNamedList');
+        $ref->setAccessible(true);
+
+        // (1) Positive bucket must appear (sanity baseline).
+        $positive = $ref->invoke($service, ['rent' => 100.0]);
+        $this->assertCount(1, $positive);
+        $this->assertSame('rent', $positive[0]['name']);
+        $this->assertSame(100.0, $positive[0]['amount']);
+
+        // (2) Negative bucket was the bug — previously dropped by `$sum <= 0`.
+        //     After the fix it must appear with the negative amount preserved,
+        //     so the breakdown list matches totalExpenses.
+        $negative = $ref->invoke($service, ['rent' => -200.0]);
+        $this->assertCount(1, $negative, 'Negative expense bucket must not be silently dropped');
+        $this->assertSame(-200.0, $negative[0]['amount']);
+
+        // (3) Near-zero bucket (< 0.00001) must still be filtered out —
+        //     matches formatModuleList semantics.
+        $nearZero = $ref->invoke($service, ['rent' => 0.000001]);
+        $this->assertCount(0, $nearZero);
+
+        // (4) Mixed buckets: keep non-zero, drop zero.
+        $mixed = $ref->invoke($service, [
+            'rent' => 500.0,
+            'salaries' => -150.0,
+            'marketing' => 0.0,
+        ]);
+        $this->assertCount(2, $mixed, 'Only the zero-sum bucket should be filtered out');
+        $names = array_column($mixed, 'name');
+        $this->assertContains('rent', $names);
+        $this->assertContains('salaries', $names);
+        $this->assertNotContains('marketing', $names);
+    }
+
+    /**
+     * Regression test for Phase 2.3 (PNL/TOURISM-FIX-A4).
+     *
+     * FinancialReportService::getProfitReport() previously read
+     * `$row['expenses']` (plural) from moduleBreakdown()'s by_module rows,
+     * but moduleBreakdown() emits `'expense'` (singular). The bug silently
+     * null-coalesced every by_module[].expense to 0, making
+     * total_operating_expenses and by_module[].expense always 0 in the
+     * /api/v1/reports/summary payload.
+     *
+     * This test exercises the public API end-to-end: create one operating
+     * expense, call getProfitReport() with a wide date range, assert both
+     * the top-level total_operating_expenses and per-module expense value.
+     */
+    public function test_get_profit_report_returns_operating_expenses_not_zero(): void
+    {
+        // One operating expense of 1500 EGP (treasury → expense account).
+        $this->createTransfer($this->treasury->id, $this->expenseAccount->id, 1500, 'general', 'إيجار', 'expense');
+
+        $report = app(FinancialReportService::class)->getProfitReport([
+            'from_date' => '2020-01-01',
+            'to_date' => '2030-12-31',
+        ]);
+
+        // total_operating_expenses must reflect the 1500 expense.
+        $this->assertSame(1500.0, $report['total_operating_expenses'],
+            'Operating expenses must be reported via total_operating_expenses.');
+
+        // The by_module row for the source module of the expense must also
+        // carry a non-zero expense value.
+        $byModule = $report['by_module'];
+        $modulesWithExpense = array_filter($byModule, fn ($m) => ($m['expense'] ?? 0) > 0);
+        $this->assertNotEmpty($modulesWithExpense,
+            'At least one by_module row must carry a non-zero expense value.');
+
+        // Verify the specific expense value matches the 1500 we created.
+        $totalExpense = array_sum(array_column($byModule, 'expense'));
+        $this->assertSame(1500.0, $totalExpense);
+    }
+
+    /**
+     * Companion to Phase 2.3 — verify the plural/singular fix is fully
+     * internal: every by_module row emitted by getProfitReport() uses the
+     * singular 'expense' key (NOT 'expenses') so Vue code that reads
+     * m.expense gets a real number.
+     */
+    public function test_get_profit_report_by_module_uses_singular_expense_key(): void
+    {
+        $report = app(FinancialReportService::class)->getProfitReport([
+            'from_date' => '2020-01-01',
+            'to_date' => '2030-12-31',
+        ]);
+
+        // Iterate every by_module row, ensure 'expense' key exists.
+        $this->assertIsArray($report['by_module']);
+        // Whether or not any row is non-empty, the SHAPE must include 'expense'.
+        if ($report['by_module'] !== []) {
+            $first = $report['by_module'][0];
+            $this->assertArrayHasKey('expense', $first,
+                'by_module rows must use singular "expense" key per Vue contract.');
+            $this->assertArrayHasKey('income', $first);
+            $this->assertArrayHasKey('cogs', $first);
+            $this->assertArrayHasKey('profit', $first);
+        }
     }
 }

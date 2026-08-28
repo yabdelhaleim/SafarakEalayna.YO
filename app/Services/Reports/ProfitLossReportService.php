@@ -788,7 +788,15 @@ class ProfitLossReportService
     {
         $list = [];
         foreach ($byName as $name => $sum) {
-            if ($sum <= 0) {
+            // Symmetric with formatModuleList (line ~764): keep near-zero
+            // and negative-net buckets in the list. A single named-expense
+            // bucket can legitimately net to negative when refunds exceed
+            // the original operating-expense postings in the period; the
+            // totalExpenses aggregate still reflects the negative value,
+            // so the breakdown line must too — otherwise Vue shows
+            // "لا توجد مصروفات مسجلة" while a non-zero totalExpenses
+            // appears below it, which is internally inconsistent.
+            if (abs($sum) < 0.00001) {
                 continue;
             }
             $list[] = [
@@ -854,6 +862,7 @@ class ProfitLossReportService
                 't.type',
                 't.module',
                 't.amount',
+                't.notes',
                 't.created_at',
                 't.from_account_id',
                 't.to_account_id',
@@ -882,6 +891,32 @@ class ProfitLossReportService
             $amount = $this->resolveAmountEGP($tx);
             if ($amount <= 0) {
                 continue;
+            }
+
+            // Mirror the two-flavor reversal handling from report() so the
+            // daily chart never overstates revenue on reversal days.
+            //
+            // 1. 'عكس:' (with colon) — TransactionService::reverseTransaction()
+            //    modified the SAME original row; original + mirror entries
+            //    already net to zero on the ledger → SKIP entirely.
+            //
+            // 2. 'عكس ' (with space) — companion row from a direct
+            //    recordJournalTransfer() call (e.g. FlightBookingService::
+            //    cancelBooking). Reclassify so the subtraction path runs.
+            //
+            // Without this guard, daily chart income would INCLUDE both the
+            // already-reversed 'عكس:' row (double-counting) and the
+            // 'عكس ' companion row as positive revenue instead of subtracting.
+            $txNotes = (string) ($tx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:')) {
+                continue;
+            }
+            if (str_starts_with($txNotes, 'عكس ')) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $date = substr((string) $tx->created_at, 0, 10); // 'YYYY-MM-DD'

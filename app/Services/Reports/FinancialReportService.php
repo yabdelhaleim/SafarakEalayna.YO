@@ -132,13 +132,19 @@ class FinancialReportService
             $mod = $row['module'] ?? 'unknown';
             $income = (float) ($row['income'] ?? 0);
             $cogs = (float) ($row['cogs'] ?? 0);
-            $expenses = (float) ($row['expenses'] ?? 0);
+            // FIX (PNL/TOURISM-FIX-A4, 2026-08-28): moduleBreakdown() emits
+            // 'expense' (singular) on its by_module rows. The earlier input
+            // read used 'expenses' (plural) — null-coalesce to 0 — so
+            // total_operating_expenses and every by_module[].expense were
+            // silently always 0. Fixing the read key here makes the data
+            // flow internally consistent with the singular 'expense' that
+            // /profit-by-module already returns to Vue.
+            $expenses = (float) ($row['expense'] ?? 0);
             $byModule[] = [
                 'module' => $mod,
                 'income' => $income,
                 'cogs' => $cogs,
-                'expense' => $expenses,    // FIX: singular 'expense' to match
-                // /profit-by-module and Vue code (m.expense)
+                'expense' => $expenses,
                 'profit' => $income - $cogs - $expenses,
             ];
             $totalIncome += $income;
@@ -191,7 +197,8 @@ class FinancialReportService
             foreach ($rowsBd as $row) {
                 $income += (float) ($row['income'] ?? 0);
                 $cogs += (float) ($row['cogs'] ?? 0);
-                $expenses += (float) ($row['expenses'] ?? 0);
+                // Singular 'expense' key — see PNL/TOURISM-FIX-A4 above.
+                $expenses += (float) ($row['expense'] ?? 0);
             }
             $rows[] = [
                 'date' => $day,

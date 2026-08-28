@@ -144,12 +144,24 @@ abstract class TourismAuditTestCase extends TestCase
             ]);
         });
 
-        // Seed opening balances
-        $this->seedOpeningBalance($this->vaultEgp, 1_000_000.0);
-        $this->seedOpeningBalance($this->vaultUsd, 100_000.0);
-        $this->seedOpeningBalance($this->vaultSar, 100_000.0);
-        $this->seedOpeningBalance($this->bankEgp, 500_000.0);
-        $this->seedOpeningBalance($this->walletEgp, 200_000.0);
+        // ─────────────────────────────────────────────────────────────────
+        // FIN-1 (2026-08-21) auto-seeding note:
+        //
+        // The Account::created observer (FIN-1 fix, app/Models/Account.php
+        // lines 175-275) auto-creates paired opening-balance AccountEntry rows
+        // on every Account created with `balance > 0`. The previous manual
+        // seedOpeningBalance() calls below were written BEFORE the FIN-1
+        // observer existed; calling both doubled the credit-side AccountEntry
+        // count and broke the `balance = SUM(credit) - SUM(debit)` invariant
+        // asserted by assertLedgerGloballyBalanced().
+        //
+        // Therefore the manual seedOpeningBalance() loop is now REMOVED.
+        // The FIN-1 observer handles the credit-side entry on each newly-
+        // created account, and the matching debit-side entry is posted on
+        // the singleton "System Opening Balances" contra account (also
+        // auto-created by the observer). Removing these calls brings the
+        // seed back into balance with current production behavior.
+        // ─────────────────────────────────────────────────────────────────
     }
 
     /**
