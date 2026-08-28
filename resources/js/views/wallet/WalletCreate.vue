@@ -540,21 +540,49 @@
           </div>
         </section>
 
-        <!-- STEP 5: Cash Account -->
+        <!-- STEP 5: Counterparty Account (cash/bank/wallet) -->
         <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
           <div class="mb-5 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400">
               <Landmark class="h-5 w-5" />
             </div>
             <div class="flex-1">
-              <h2 class="text-base font-bold text-white">5. الحساب النقدي</h2>
-              <p class="text-xs text-white/40">الخزينة أو البنك الذي ستصرف منه / إليه نقدياً</p>
+              <h2 class="text-base font-bold text-white">5. الحساب المقابل</h2>
+              <p class="text-xs text-white/40">اختر نوع الحساب ثم الحساب الذي ستصرف منه / إليه نقدياً</p>
             </div>
           </div>
 
+          <!-- Account type chips -->
+          <div class="mb-4">
+            <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
+              نوع الحساب <span class="text-rose-400">*</span>
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="opt in COUNTERPARTY_TYPE_OPTIONS"
+                :key="opt.key"
+                type="button"
+                @click="form.counterparty_account_type = opt.key"
+                :class="[
+                  'group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all',
+                  form.counterparty_account_type === opt.key
+                    ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-md shadow-amber-500/10'
+                    : 'border-white/10 bg-white/5 text-white/80 hover:border-amber-500/40 hover:bg-amber-500/5',
+                ]"
+              >
+                <component :is="opt.icon" class="h-4 w-4" />
+                <span>{{ opt.label }}</span>
+                <span
+                  class="rounded-full bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-white/60"
+                >{{ { cash: cashboxAccounts.length, bank: bankAccounts.length, wallet: walletAccounts.length }[opt.key] }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filtered account dropdown -->
           <div>
             <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
-              الحساب النقدي <span class="text-rose-400">*</span>
+              الحساب ({{ counterpartyTypeOption.label }}) <span class="text-rose-400">*</span>
             </label>
             <select
               v-model="form.cash_account_id"
@@ -562,12 +590,12 @@
               :class="{ '!border-rose-500': errors.cash_account_id }"
             >
               <option value="">— اختر الحساب —</option>
-              <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">
+              <option v-for="acc in counterpartyAccountOptions" :key="acc.id" :value="acc.id">
                 {{ acc.name }} — {{ formatCurrency(acc.balance) }}
               </option>
             </select>
-            <p v-if="cashAccounts.length === 0" class="mt-2 text-xs text-amber-300 leading-relaxed">
-              لا توجد حسابات نقدية مفعّلة. أضف خزينة أو بنك من
+            <p v-if="counterpartyAccountOptions.length === 0" class="mt-2 text-xs text-amber-300 leading-relaxed">
+              {{ counterpartyTypeOption.emptyMessage }}
               <router-link to="/finance/accounts" class="font-bold underline hover:text-amber-200">إدارة الحسابات والخزائن</router-link>.
             </p>
             <p v-if="errors.cash_account_id" class="mt-1.5 text-xs text-rose-400">{{ errors.cash_account_id }}</p>
@@ -725,7 +753,9 @@
               </li>
               <li class="flex items-center gap-2">
                 <component :is="form.cash_account_id ? Check : Circle" class="h-4 w-4" :class="form.cash_account_id ? 'text-emerald-400' : 'text-white/30'" />
-                <span :class="form.cash_account_id ? 'text-white' : 'text-white/40'">الحساب النقدي</span>
+                <span :class="form.cash_account_id ? 'text-white' : 'text-white/40'">
+                  الحساب ({{ counterpartyTypeOption.label }})
+                </span>
               </li>
             </ul>
           </div>
@@ -791,6 +821,7 @@ function createDefaultForm() {
     service_fee: '',
     amount_paid: 0,
     wallet_account_id: '',
+    counterparty_account_type: 'cash', // 'cash' | 'bank' | 'wallet'
     cash_account_id: '',
     notes: '',
   };
@@ -806,8 +837,10 @@ function resetForm() {
 
 const errors = ref({});
 const globalError = ref('');
-const walletAccounts = ref([]);
-const cashAccounts = ref([]);
+// Account pools: 3 أنواع منفصلة عشان dropdown الـ counterparty يفلتر على حسب النوع
+const walletAccounts   = ref([]);
+const cashboxAccounts  = ref([]);
+const bankAccounts     = ref([]);
 const customers = ref([]);
 
 /* ═══════ Computed totals ═══════ */
@@ -975,6 +1008,48 @@ watch(visibleWalletAccounts, (newAccounts) => {
   }
 });
 
+/* ═══════ Counterparty account (Step 5) ═══════
+ * الـ Step 5 بقى فيه نوع + dropdown:
+ *   - نوع الحساب (chips): cash (نقدي) | bank (بنوك) | wallet (محافظ)
+ *   - dropdown تحته يعرض الحسابات اللي تطابق النوع المختار
+ *
+ * الـ `cash_account_id` في الـ form هو الـ ID اللي يتبعت للـ backend — مصدره
+ * ممكن يكون cashbox أو bank أو wallet حسب اختيار المستخدم.
+ */
+const COUNTERPARTY_TYPE_OPTIONS = [
+  { key: 'cash',   label: 'نقدي',   icon: Banknote,   pool: 'cashboxAccounts',
+    emptyMessage: 'لا توجد خزائن نقدية مفعّلة. أضف خزينة من إدارة الحسابات.' },
+  { key: 'bank',   label: 'بنوك',   icon: Landmark,   pool: 'bankAccounts',
+    emptyMessage: 'لا توجد حسابات بنكية مفعّلة. أضف حساباً بنكياً من إدارة الحسابات.' },
+  { key: 'wallet', label: 'محافظ',  icon: Wallet,     pool: 'walletAccounts',
+    emptyMessage: 'لا توجد محافظ إلكترونية مفعّلة. أضف محفظة من إدارة الحسابات.' },
+];
+
+const counterpartyTypeOption = computed(() =>
+  COUNTERPARTY_TYPE_OPTIONS.find((o) => o.key === form.value.counterparty_account_type)
+    || COUNTERPARTY_TYPE_OPTIONS[0]
+);
+
+const counterpartyAccountOptions = computed(() => {
+  switch (form.value.counterparty_account_type) {
+    case 'cash':   return cashboxAccounts.value;
+    case 'bank':   return bankAccounts.value;
+    case 'wallet': return walletAccounts.value;
+    default:       return [];
+  }
+});
+
+// لو المستخدم غيّر النوع و الـ cash_account_id المختار مش موجود في البِركة الجديدة، نمسحه
+watch(
+  () => form.value.counterparty_account_type,
+  () => {
+    const validIds = new Set(counterpartyAccountOptions.value.map((a) => a.id));
+    if (form.value.cash_account_id && !validIds.has(Number(form.value.cash_account_id))) {
+      form.value.cash_account_id = '';
+    }
+  }
+);
+
 /* ═══════ Progress ═══════ */
 const totalSteps = 6;
 const completedSteps = computed(() => {
@@ -984,7 +1059,7 @@ const completedSteps = computed(() => {
   if (form.value.wallet_account_id) n++;
   if (form.value.customer_name) n++;
   if (form.value.amount > 0) n++;
-  if (form.value.cash_account_id) n++;
+  if (form.value.counterparty_account_type && form.value.cash_account_id) n++;
   return n;
 });
 
@@ -1040,14 +1115,14 @@ async function fetchAccounts() {
 
   try {
     const overview = await store.fetchTransferTreasury();
-    const treasuryWallets = Array.isArray(overview?.wallets) ? overview.wallets : [];
-    const treasuryCash = [
-      ...(Array.isArray(overview?.cashboxes) ? overview.cashboxes : []),
-      ...(Array.isArray(overview?.banks) ? overview.banks : []),
-    ];
-    if (treasuryWallets.length > 0 || treasuryCash.length > 0) {
-      walletAccounts.value = treasuryWallets;
-      cashAccounts.value = treasuryCash;
+    const treasuryWallets   = Array.isArray(overview?.wallets)   ? overview.wallets   : [];
+    const treasuryCashboxes = Array.isArray(overview?.cashboxes) ? overview.cashboxes : [];
+    const treasuryBanks     = Array.isArray(overview?.banks)     ? overview.banks     : [];
+
+    if (treasuryWallets.length > 0 || treasuryCashboxes.length > 0 || treasuryBanks.length > 0) {
+      walletAccounts.value   = treasuryWallets;
+      cashboxAccounts.value  = treasuryCashboxes;
+      bankAccounts.value     = treasuryBanks;
       return;
     }
   } catch (e) {
@@ -1056,12 +1131,14 @@ async function fetchAccounts() {
 
   try {
     const all = await fetchSettlementAccounts(axios, { module: 'wallet' });
-    walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
-    cashAccounts.value = all.filter((a) => ['cashbox', 'bank'].includes(typeOf(a)));
+    walletAccounts.value   = all.filter((a) => typeOf(a) === 'wallet');
+    cashboxAccounts.value  = all.filter((a) => typeOf(a) === 'cashbox');
+    bankAccounts.value     = all.filter((a) => typeOf(a) === 'bank');
   } catch (e) {
     console.error('Failed to load accounts', e);
-    walletAccounts.value = [];
-    cashAccounts.value = [];
+    walletAccounts.value  = [];
+    cashboxAccounts.value = [];
+    bankAccounts.value    = [];
   }
 }
 
