@@ -358,14 +358,44 @@ class CustomerController extends Controller
                 }
 
                 $transactionService = app(TransactionService::class);
-                $transaction = $transactionService->recordJournalTransfer([
+
+                // REVENUE RECOGNITION FIX (FIN-3, 2026-08-29):
+                //
+                // The old code called `recordJournalTransfer` with `type='Transfer'`
+                // (the default). For cash-basis revenue recognition in
+                // ProfitLossReportService::classify() a transaction must either
+                //   (a) be `type='Income'` (short-circuit → 'revenue'), or
+                //   (b) touch the income_clearing account on one leg.
+                //
+                // A direct AR → treasury transfer satisfies NEITHER rule, so the
+                // dashboard P&L silently dropped the revenue line and reported
+                // profit = -cogs even though cash actually arrived. Switching to
+                // `recordIncome` with `contra_account_id = customer AR` produces
+                // exactly the same ledger shape (AR loses balance, treasury
+                // gains) but with `type='Income'` — the engine's short-circuit
+                // recognizes it as revenue, mirroring the proven
+                // FlightBookingService::addPayment() pattern.
+                //
+                // Safety guarantees preserved:
+                //   • Customer AR balance still decreases (from_account_id = AR).
+                //   • Treasury still gains (to_account_id = treasury).
+                //   • Multi-currency converted_amount + exchange_rate still threaded.
+                //   • `allow_from_negative` (re-keyed as allow_contra_negative)
+                //     preserves the convention that customer AR may go negative
+                //     when they pay more than they owe.
+                //   • related_type/related_id give the duplicate-Income guard a
+                //     proper slot per debt settlement — a second payDebt() with
+                //     the same (customer_id, ?) is correctly rejected as dup.
+                $transaction = $transactionService->recordIncome([
                     'amount' => $journalAmount,
                     'converted_amount' => $journalConverted,
                     'exchange_rate' => $validated['exchange_rate'] ?? null,
-                    'from_account_id' => $fromId,
                     'to_account_id' => $toId,
-                    'allow_from_negative' => true, // Customer debt can go negative (i.e. they pay extra, becoming in credit)
+                    'contra_account_id' => $fromId,
+                    'allow_contra_negative' => true, // preserve pre-fix AR-can-go-negative convention
                     'module' => $moduleEnum->value,
+                    'related_type' => Customer::class,
+                    'related_id' => $customer->id,
                     'notes' => $notes,
                     'created_by' => Auth::id() ?? 1,
                 ]);
