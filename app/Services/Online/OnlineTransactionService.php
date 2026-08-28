@@ -42,8 +42,8 @@ class OnlineTransactionService
         }
 
         $query->with([
-            'serviceType',
-            'provider',
+            'serviceTypeRow',
+            'providerRow',
             'customer',
             'employee.user',
             'account',
@@ -51,11 +51,11 @@ class OnlineTransactionService
             'createdBy',
         ]);
 
-        if (! empty($filters['service_type_id'])) {
-            $query->where('service_type_id', $filters['service_type_id']);
+        if (! empty($filters['service_type_code'])) {
+            $query->where('service_type_code', $filters['service_type_code']);
         }
-        if (! empty($filters['provider_id'])) {
-            $query->where('provider_id', $filters['provider_id']);
+        if (! empty($filters['provider_code'])) {
+            $query->where('provider_code', $filters['provider_code']);
         }
         if (! empty($filters['customer_id'])) {
             $query->where('customer_id', $filters['customer_id']);
@@ -95,8 +95,8 @@ class OnlineTransactionService
     public function getById(int $id): OnlineTransaction
     {
         return OnlineTransaction::with([
-            'serviceType',
-            'provider',
+            'serviceTypeRow',
+            'providerRow',
             'customer',
             'employee.user',
             'account',
@@ -190,13 +190,18 @@ class OnlineTransactionService
                         ->update(['idempotency_key' => null]);
                 }
 
-                $serviceType = OnlineServiceType::findOrFail($data['service_type_id']);
-                if (! $serviceType->is_active) {
-                    throw new \RuntimeException('نوع الخدمة غير نشط حالياً.');
+                $serviceTypeCode = trim((string) ($data['service_type_code'] ?? ''));
+                if ($serviceTypeCode === '') {
+                    throw new \RuntimeException('نوع الخدمة مطلوب.');
                 }
 
-                $provider = ! empty($data['provider_id'])
-                    ? OnlineServiceProvider::find($data['provider_id'])
+                // Service Type and Provider are now free-text codes.
+                // The online_service_types / online_service_providers
+                // master tables are kept only as *optional* lookups —
+                // the existence check is intentionally skipped.
+
+                $providerCode = ! empty($data['provider_code'])
+                    ? trim((string) $data['provider_code'])
                     : null;
 
                 // If no customer_id was passed but a name was typed, try to
@@ -234,10 +239,10 @@ class OnlineTransactionService
                     // Wrap the create in runProfitMutation() so the saving observer
                     // guard lets the explicit `profit` write through. Mirrors the
                     // BusBookingService / FawryTransactionService pattern.
-                    $tx = OnlineTransaction::runProfitMutation(function () use ($data, $serviceType, $provider, $customerName, $customerPhone, $purchase, $selling, $amountPaid, $profit, $status, $idempotencyKey, $createdByForIdem) {
+                    $tx = OnlineTransaction::runProfitMutation(function () use ($data, $serviceTypeCode, $providerCode, $customerName, $customerPhone, $purchase, $selling, $amountPaid, $profit, $status, $idempotencyKey, $createdByForIdem) {
                         return OnlineTransaction::create([
-                            'service_type_id' => $serviceType->id,
-                            'provider_id' => $provider?->id,
+                            'service_type_code' => $serviceTypeCode,
+                            'provider_code' => $providerCode,
                             'customer_id' => $data['customer_id'] ?? null,
                             'customer_name' => $customerName,
                             'customer_phone' => $customerPhone,
@@ -281,13 +286,17 @@ class OnlineTransactionService
                 }
 
                 if ($status === OnlineTransactionStatus::Completed) {
-                    $this->postFinancialEntries($tx, $serviceType, $provider, $purchase, $selling, $customerName);
+                    $serviceTypeLookup = OnlineServiceType::where('code', $serviceTypeCode)->first();
+                    $providerLookup = $providerCode
+                        ? OnlineServiceProvider::where('code', $providerCode)->first()
+                        : null;
+                    $this->postFinancialEntries($tx, $serviceTypeLookup, $providerLookup, $purchase, $selling, $customerName);
                 }
 
                 Log::info('Online transaction created', [
                     'online_transaction_id' => $tx->id,
-                    'service_type' => $serviceType->code,
-                    'provider' => $provider?->code,
+                    'service_type_code' => $serviceTypeCode,
+                    'provider_code' => $providerCode,
                     'purchase' => $purchase,
                     'selling' => $selling,
                     'profit' => $profit,
@@ -297,8 +306,8 @@ class OnlineTransactionService
                 ]);
 
                 return $tx->fresh([
-                    'serviceType',
-                    'provider',
+                    'serviceTypeRow',
+                    'providerRow',
                     'customer',
                     'employee.user',
                     'account',
@@ -452,10 +461,13 @@ class OnlineTransactionService
                         })
                         ->exists();
                     if (! $hasLiveLinked) {
+                        $provider = $tx->provider_code
+                            ? OnlineServiceProvider::where('code', $tx->provider_code)->first()
+                            : null;
                         $this->postFinancialEntries(
                             $tx,
-                            $tx->serviceType,
-                            $tx->provider_id ? $tx->provider : null,
+                            $tx->serviceTypeRow,
+                            $provider,
                             (float) $tx->purchase_price,
                             (float) $tx->selling_price,
                             (string) ($tx->customer_name ?? ''),
@@ -519,8 +531,8 @@ class OnlineTransactionService
                 ]);
 
                 return $tx->fresh([
-                    'serviceType',
-                    'provider',
+                    'serviceTypeRow',
+                    'providerRow',
                     'customer',
                     'employee.user',
                     'account',
@@ -620,7 +632,9 @@ class OnlineTransactionService
             return $oldTx; // no-op
         }
 
-        $provider = $tx->provider_id ? OnlineServiceProvider::find($tx->provider_id) : null;
+        $provider = $tx->provider_code
+            ? OnlineServiceProvider::where('code', $tx->provider_code)->first()
+            : null;
         $amountPaid = (float) ($tx->amount_paid ?? $tx->selling_price);
 
         if ($provider?->default_purchase_account_id) {
@@ -1055,7 +1069,7 @@ class OnlineTransactionService
 
     private function postFinancialEntries(
         OnlineTransaction $tx,
-        OnlineServiceType $serviceType,
+        ?OnlineServiceType $serviceType,
         ?OnlineServiceProvider $provider,
         float $purchase,
         float $selling,
@@ -1064,6 +1078,10 @@ class OnlineTransactionService
         $module = TransactionModule::Online->value;
         $providerLabel = $provider?->name_ar ? " - {$provider->name_ar}" : '';
         $createdBy = Auth::id() ?? 1;
+
+        // service_type_code is now the source of truth (free-text). The
+        // $serviceType passed in is an optional lookup for the Arabic label.
+        $serviceTypeLabel = $serviceType?->name_ar ?? $tx->service_type_code;
 
         // Resolve the AR account that holds the receivable (debt).
         // - Registered customer → their own AR (auto-created on first use).
@@ -1087,8 +1105,8 @@ class OnlineTransactionService
                 'related_type' => OnlineTransaction::class,
                 'related_id' => $tx->id,
                 'notes' => ($tx->customer_id
-                    ? "تحصيل خدمة أونلاين (مديونية) - {$serviceType->name_ar}{$providerLabel}: {$customerName}"
-                    : "مديونية خدمة أونلاين (عميل غير مسجل - {$customerName}) - {$serviceType->name_ar}{$providerLabel}"),
+                    ? "تحصيل خدمة أونلاين (مديونية) - {$serviceTypeLabel}{$providerLabel}: {$customerName}"
+                    : "مديونية خدمة أونلاين (عميل غير مسجل - {$customerName}) - {$serviceTypeLabel}{$providerLabel}"),
                 'created_by' => $createdBy,
             ]);
             $tx->income_transaction_id = $income->id;
@@ -1109,8 +1127,8 @@ class OnlineTransactionService
                 'related_type' => OnlineTransaction::class,
                 'related_id' => $tx->id,
                 'notes' => ($tx->customer_id
-                    ? "سداد جزئي من عميل - {$serviceType->name_ar}{$providerLabel}: {$customerName}"
-                    : "سداد جزئي (عميل غير مسجل - {$customerName}) - {$serviceType->name_ar}{$providerLabel}"),
+                    ? "سداد جزئي من عميل - {$serviceTypeLabel}{$providerLabel}: {$customerName}"
+                    : "سداد جزئي (عميل غير مسجل - {$customerName}) - {$serviceTypeLabel}{$providerLabel}"),
                 'created_by' => $createdBy,
             ]);
         }
@@ -1142,7 +1160,7 @@ class OnlineTransactionService
                 'module' => $module,
                 'related_type' => OnlineTransaction::class,
                 'related_id' => $tx->id,
-                'notes' => "تكلفة خدمة أونلاين - {$serviceType->name_ar}{$providerLabel}: {$customerName}",
+                'notes' => "تكلفة خدمة أونلاين - {$serviceTypeLabel}{$providerLabel}: {$customerName}",
                 'created_by' => $createdBy,
             ]);
             $tx->expense_transaction_id = $expense->id;

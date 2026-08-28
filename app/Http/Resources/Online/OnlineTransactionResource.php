@@ -16,22 +16,25 @@ class OnlineTransactionResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'service_type' => $this->whenLoaded('serviceType', fn () => $this->serviceType ? [
-                'id' => $this->serviceType->id,
-                'code' => $this->serviceType->code,
-                'name' => $this->serviceType->name_ar,
-                'color' => $this->serviceType->color,
-                'icon' => $this->serviceType->icon,
+            // Service Type is now stored as a free-text code. The master
+            // table (online_service_types) is kept only as an optional
+            // lookup for displaying the Arabic label in lists/reports.
+            'service_type' => $this->whenLoaded('serviceTypeRow', fn () => $this->serviceTypeRow ? [
+                'id' => $this->serviceTypeRow->id,
+                'code' => $this->serviceTypeRow->code,
+                'name' => $this->serviceTypeRow->name_ar,
+                'color' => $this->serviceTypeRow->color,
+                'icon' => $this->serviceTypeRow->icon,
             ] : null),
-            'service_type_id' => $this->service_type_id,
-            'provider' => $this->whenLoaded('provider', fn () => $this->provider ? [
-                'id' => $this->provider->id,
-                'code' => $this->provider->code,
-                'name' => $this->provider->name_ar,
-                'color' => $this->provider->color,
-                'icon' => $this->provider->icon,
+            'service_type_code' => $this->service_type_code,
+            'provider' => $this->whenLoaded('providerRow', fn () => $this->providerRow ? [
+                'id' => $this->providerRow->id,
+                'code' => $this->providerRow->code,
+                'name' => $this->providerRow->name_ar,
+                'color' => $this->providerRow->color,
+                'icon' => $this->providerRow->icon,
             ] : null),
-            'provider_id' => $this->provider_id,
+            'provider_code' => $this->provider_code,
 
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,

@@ -4,8 +4,6 @@ namespace App\Http\Requests\Online;
 
 use App\Enums\OnlineTransactionStatus;
 use App\Models\Account;
-use App\Models\Online\OnlineServiceProvider;
-use App\Models\Online\OnlineServiceType;
 use App\Models\Setting\PaymentMethod;
 use App\Rules\OnlineLiquidityAccount;
 use App\Support\Finance\PaymentMethodAccountType;
@@ -22,18 +20,8 @@ class StoreOnlineTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_type_id' => [
-                'required',
-                'integer',
-                Rule::exists((new OnlineServiceType)->getTable(), 'id')
-                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
-            ],
-            'provider_id' => [
-                'nullable',
-                'integer',
-                Rule::exists((new OnlineServiceProvider)->getTable(), 'id')
-                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
-            ],
+            'service_type_code' => ['required', 'string', 'max:80'],
+            'provider_code' => ['nullable', 'string', 'max:80'],
 
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
@@ -136,7 +124,7 @@ class StoreOnlineTransactionRequest extends FormRequest
     {
         $merge = [];
 
-        foreach (['service_type_id', 'provider_id', 'customer_id', 'employee_id', 'account_id'] as $key) {
+        foreach (['customer_id', 'employee_id', 'account_id'] as $key) {
             if (! $this->exists($key)) {
                 continue;
             }
@@ -158,6 +146,19 @@ class StoreOnlineTransactionRequest extends FormRequest
 
         if ($this->has('payment_method') && $this->input('payment_method') === '') {
             $merge['payment_method'] = null;
+        }
+
+        // Trim and normalize the free-text *_code fields. Empty strings
+        // become null so the validation rules can flag them as required.
+        foreach (['service_type_code', 'provider_code'] as $key) {
+            if (! $this->exists($key)) {
+                continue;
+            }
+            $v = $this->input($key);
+            if (is_string($v)) {
+                $trimmed = trim($v);
+                $merge[$key] = $trimmed === '' ? null : $trimmed;
+            }
         }
 
         $this->merge($merge);

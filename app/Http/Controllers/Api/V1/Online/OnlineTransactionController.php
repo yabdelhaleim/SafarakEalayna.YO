@@ -28,8 +28,8 @@ class OnlineTransactionController extends Controller
     {
         try {
             $filters = $request->only([
-                'service_type_id',
-                'provider_id',
+                'service_type_code',
+                'provider_code',
                 'customer_id',
                 'employee_id',
                 'payment_method',
@@ -197,7 +197,7 @@ class OnlineTransactionController extends Controller
         try {
             $search = $request->query('search');
             $status = $request->query('status', 'all');
-            $serviceTypeId = $request->query('service_type_id', 'all');
+            $serviceTypeCode = $request->query('service_type_code', 'all');
             $dateFrom = $request->query('from_date');
             $dateTo = $request->query('to_date');
 
@@ -221,8 +221,8 @@ class OnlineTransactionController extends Controller
                             ->orWhere('customers.phone', 'like', '%'.$search.'%');
                     });
                 })
-                ->when($serviceTypeId !== 'all', function ($q) use ($serviceTypeId) {
-                    $q->where('online_transactions.service_type_id', $serviceTypeId);
+                ->when($serviceTypeCode !== 'all', function ($q) use ($serviceTypeCode) {
+                    $q->where('online_transactions.service_type_code', $serviceTypeCode);
                 })
                 ->when($dateFrom, function ($q) use ($dateFrom) {
                     $q->whereDate('online_transactions.created_at', '>=', $dateFrom);

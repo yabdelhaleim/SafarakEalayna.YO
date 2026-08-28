@@ -21,8 +21,8 @@ class UpdateOnlineTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_type_id' => ['sometimes', 'integer', 'exists:online_service_types,id'],
-            'provider_id' => ['nullable', 'integer', 'exists:online_service_providers,id'],
+            'service_type_code' => ['sometimes', 'string', 'max:80'],
+            'provider_code' => ['nullable', 'string', 'max:80'],
 
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],

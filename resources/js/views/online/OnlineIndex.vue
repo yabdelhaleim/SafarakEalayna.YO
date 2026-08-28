@@ -72,24 +72,24 @@
       </div>
 
       <select
-        v-model="store.filters.service_type_id"
+        v-model="store.filters.service_type_code"
         class="px-4 py-2.5 bg-input-bg border border-white/5 rounded-xl text-sm min-w-[160px] cursor-pointer"
         @change="onFiltersChanged"
       >
         <option value="">كل أنواع الخدمات</option>
-        <option v-for="t in store.serviceTypes" :key="t.id" :value="t.id">
-          {{ t.name ?? t.name_ar }}
+        <option v-for="t in store.serviceTypes" :key="t.code" :value="t.code">
+          {{ t.name ?? t.name_ar ?? t.code }}
         </option>
       </select>
 
       <select
-        v-model="store.filters.provider_id"
+        v-model="store.filters.provider_code"
         class="px-4 py-2.5 bg-input-bg border border-white/5 rounded-xl text-sm min-w-[160px] cursor-pointer"
         @change="onFiltersChanged"
       >
         <option value="">كل المزودين</option>
-        <option v-for="p in store.providers" :key="p.id" :value="p.id">
-          {{ p.name ?? p.name_ar }}
+        <option v-for="p in store.providers" :key="p.code" :value="p.code">
+          {{ p.name ?? p.name_ar ?? p.code }}
         </option>
       </select>
 

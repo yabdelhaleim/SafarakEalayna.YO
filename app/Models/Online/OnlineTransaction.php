@@ -22,8 +22,8 @@ class OnlineTransaction extends Model
     use SoftDeletes, ClearsCache, ModelDeletionGuard, ModelProfitMutationGuard;
 
     protected $fillable = [
-        'service_type_id',
-        'provider_id',
+        'service_type_code',
+        'provider_code',
         'customer_id',
         'customer_name',
         'customer_phone',
@@ -105,14 +105,24 @@ class OnlineTransaction extends Model
         });
     }
 
-    public function serviceType(): BelongsTo
+    /**
+     * Display lookup — joins `online_service_types.code` on the free-text
+     * `service_type_code` column for showing the Arabic name in lists and
+     * reports. The Create form does NOT use this relation; it writes
+     * `service_type_code` directly as a text field.
+     */
+    public function serviceTypeRow(): BelongsTo
     {
-        return $this->belongsTo(OnlineServiceType::class, 'service_type_id');
+        return $this->belongsTo(OnlineServiceType::class, 'service_type_code', 'code');
     }
 
-    public function provider(): BelongsTo
+    /**
+     * Display lookup — joins `online_service_providers.code` on the free-text
+     * `provider_code` column. The Create form writes `provider_code` directly.
+     */
+    public function providerRow(): BelongsTo
     {
-        return $this->belongsTo(OnlineServiceProvider::class, 'provider_id');
+        return $this->belongsTo(OnlineServiceProvider::class, 'provider_code', 'code');
     }
 
     public function customer(): BelongsTo
@@ -160,14 +170,14 @@ class OnlineTransaction extends Model
         return $query->where('customer_id', $customerId);
     }
 
-    public function scopeByServiceType(Builder $query, int $typeId): Builder
+    public function scopeByServiceType(Builder $query, string $code): Builder
     {
-        return $query->where('service_type_id', $typeId);
+        return $query->where('service_type_code', $code);
     }
 
-    public function scopeByProvider(Builder $query, int $providerId): Builder
+    public function scopeByProvider(Builder $query, string $code): Builder
     {
-        return $query->where('provider_id', $providerId);
+        return $query->where('provider_code', $code);
     }
 
     public function scopeByEmployee(Builder $query, int $employeeId): Builder

@@ -39,9 +39,15 @@ class OnlineServiceType extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * Transactions using this service type's code.
+     * The FK column is `service_type_code` (string), not `service_type_id` —
+     * the relation joins `online_service_types.code` ↔
+     * `online_transactions.service_type_code` (Fawry-style lookup pattern).
+     */
     public function transactions(): HasMany
     {
-        return $this->hasMany(OnlineTransaction::class, 'service_type_id');
+        return $this->hasMany(OnlineTransaction::class, 'service_type_code', 'code');
     }
 
     public function scopeActive(Builder $query): Builder
