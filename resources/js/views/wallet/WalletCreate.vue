@@ -746,6 +746,7 @@ import {
   fetchSettlementAccounts,
   accountMatchesWalletType,
   normalizeWalletProviderCode,
+  walletProviderLabel,
 } from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
@@ -961,7 +962,7 @@ const unmatchedWalletProviders = computed(() => {
   if (!type || walletAccounts.value.length === 0) return [];
   return walletAccounts.value
     .filter((a) => !accountMatchesWalletType(a, type))
-    .map((a) => normalizeWalletProviderCode(a.wallet_provider) || '(غير محدد)')
+    .map((a) => walletProviderLabel(a.wallet_provider))
     .filter((v, i, arr) => arr.indexOf(v) === i);
 });
 
