@@ -259,7 +259,7 @@
               <!-- اختصار لإضافة محفظة قسم مكتب جديدة -->
               <p class="text-white/60 pt-2 border-t border-white/10">
                 <a
-                  href="/admin/accounts/create?type=wallet&module_type=office&wallet_provider={{ selectedWalletType?.code }}"
+                  :href="newOfficeWalletUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-500/20"
@@ -852,6 +852,18 @@ const selectedWalletType = computed(() => {
   const id = form.value.wallet_type_id;
   if (!id) return null;
   return activeWalletTypes.value.find((w) => String(w.id) === String(id)) ?? null;
+});
+
+/**
+ * رابط اختصار «إضافة محفظة قسم مكتب جديدة» — يفتح تبويبًا جديدًا على
+ * صفحة إنشاء محفظة في Filament مع تحديد نوع المحفظة مسبقًا.
+ * المسار الصحيح هو /admin/wallet-accounts/create
+ * (المشتق من اسم Resource class حسب آلية Filament v3)
+ * وليس /admin/accounts/create كما كان مكتوباً مسبقاً.
+ */
+const newOfficeWalletUrl = computed(() => {
+  const code = selectedWalletType.value?.code ?? '';
+  return `/admin/wallet-accounts/create?type=wallet&module_type=office&wallet_provider=${code}`;
 });
 
 const filteredWalletAccounts = computed(() => {
