@@ -328,34 +328,53 @@
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- طريقة الدفع — FREE-TEXT input (Fawry pattern).
+                     Mirrors the way service_type_code + provider_code work:
+                     free-text, validated only by the backend
+                     PaymentMethodAccountType::resolve() helper. The dropdown
+                     was dropped because production has zero rows in the
+                     `payment_methods` master table, and free-text is what
+                     the project owner asked for. -->
                 <div class="space-y-2">
-                  <label class="text-xs font-bold text-text-muted">طريقة الدفع <span class="text-error">*</span></label>
-                  <select
+                  <label class="text-xs font-bold text-text-muted">
+                    طريقة الدفع <span class="text-error">*</span>
+                  </label>
+                  <input
                     v-model="form.payment_method"
+                    type="text"
                     required
-                    class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-gold/50 outline-none cursor-pointer text-text-main"
-                    @change="onPaymentMethodChange"
-                  >
-                    <option value="" class="bg-card-bg">— اختر طريقة الدفع —</option>
-                    <option
-                      v-for="m in store.paymentMethods"
-                      :key="m.code || m.value"
-                      :value="m.code || m.value"
-                      :disabled="!m.account_type"
-                      class="bg-card-bg"
-                    >
-                      {{ m.label || m.name_ar || m.code }}{{ !m.account_type ? ' — (غير مرتبطة بحساب)' : '' }}
+                    maxlength="80"
+                    placeholder="مثال: cash، bank_transfer، vodafone_cash"
+                    list="known-payment-methods"
+                    class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm font-mono focus:border-gold/50 outline-none text-text-main"
+                    @input="onPaymentMethodChange"
+                  />
+                  <datalist id="known-payment-methods">
+                    <option v-for="m in store.paymentMethods" :key="m.code || m.value" :value="m.code || m.value">
+                      {{ m.label || m.name_ar }}
                     </option>
-                  </select>
-                  <div v-if="selectedPaymentMethod" class="flex items-center gap-2 mt-1">
+                  </datalist>
+                  <div v-if="form.payment_method" class="flex flex-wrap items-center gap-2 mt-1">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/5 text-text-muted">
+                      <CheckCircle2 class="w-3 h-3" />
+                      {{ form.payment_method }}
+                    </span>
                     <span
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
-                      :style="{ backgroundColor: (selectedPaymentMethod.color || '#D4A843') + '22', color: selectedPaymentMethod.color || '#D4A843' }"
+                      v-if="paymentMethodTypedType"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300"
                     >
-                      <span class="w-1.5 h-1.5 rounded-full inline-block" :style="{ backgroundColor: selectedPaymentMethod.color || '#D4A843' }"></span>
-                      {{ selectedPaymentMethod.label || selectedPaymentMethod.name_ar }}
+                      مرتبط بـ: {{ ACCOUNT_TYPE_LABELS[paymentMethodTypedType] }}
+                    </span>
+                    <span
+                      v-else
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300"
+                    >
+                      غير معروف — اختر نوع الحساب يدوياً
                     </span>
                   </div>
+                  <p class="text-[11px] text-text-muted">
+                    اكتب طريقة الدفع كنص حر — يمكنك اختيار من القائمة أو كتابة نوع جديد. النوع هنا يحدد الحساب تلقائياً، أو اختر نوع الحساب يدوياً من التابات أدناه.
+                  </p>
                 </div>
 
                 <div class="space-y-2">
@@ -363,7 +382,7 @@
                   <select
                     v-model="form.account_id"
                     required
-                    :disabled="!selectedAccountType || filteredAccounts.length === 0"
+                    :disabled="!effectiveAccountType || filteredAccounts.length === 0"
                     class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-gold/50 outline-none cursor-pointer text-text-main disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option :value="null" class="bg-card-bg">{{ accountPlaceholder }}</option>
@@ -374,6 +393,57 @@
                   <p v-if="accountHelpText" class="text-[11px] font-bold text-amber-400">
                     {{ accountHelpText }}
                   </p>
+                </div>
+
+                <!-- نوع حساب التحصيل — manual type tabs (FawryCreate pattern).
+                     Three big chips for cashbox / bank / wallet. Auto-selected
+                     when the typed payment_method resolves cleanly; the user
+                     can always override. Whatever tab is the "manualAccountType"
+                     wins over the auto-detected one. -->
+                <div class="space-y-2 md:col-span-2">
+                  <div class="flex items-center justify-between">
+                    <label class="text-xs font-bold text-text-muted">
+                      نوع حساب التحصيل <span class="text-error">*</span>
+                    </label>
+                    <span
+                      v-if="paymentMethodTypedType && !manualAccountType"
+                      class="text-[10px] font-semibold text-emerald-300"
+                    >
+                      تم الاختيار تلقائياً من طريقة الدفع
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-3 gap-3">
+                    <button
+                      v-for="type in ACCOUNT_TYPE_OPTIONS"
+                      :key="type"
+                      type="button"
+                      @click="pickAccountType(type)"
+                      :disabled="filteredAccountsByType(type).length === 0 && !manualAccountType"
+                      :class="[
+                        'rounded-2xl border-2 px-4 py-3 text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed',
+                        effectiveAccountType === type
+                          ? 'border-gold bg-gold/10 shadow-lg shadow-gold/20'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/30',
+                      ]"
+                    >
+                      <div class="flex items-center justify-center gap-2 mb-1">
+                        <component
+                          :is="type === 'cashbox' ? Wallet : (type === 'bank' ? Landmark : Smartphone)"
+                          class="w-4 h-4"
+                          :class="effectiveAccountType === type ? 'text-gold' : 'text-text-muted'"
+                        />
+                        <span
+                          class="font-black text-base"
+                          :class="effectiveAccountType === type ? 'text-gold' : 'text-text-main'"
+                        >
+                          {{ ACCOUNT_TYPE_LABELS[type] }}
+                        </span>
+                      </div>
+                      <div class="text-[10px] text-text-muted">
+                        {{ filteredAccountsByType(type).length }} حساب متاح
+                      </div>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="space-y-2">
@@ -545,9 +615,13 @@ import {
   Banknote,
   CreditCard,
   CheckCircle,
+  CheckCircle2,
   Loader2,
   TrendingUp,
   Check,
+  Wallet,
+  Landmark,
+  Smartphone,
 } from 'lucide-vue-next';
 import { useOnlineStore } from '@/stores/onlineStore';
 
@@ -639,48 +713,122 @@ const ACCOUNT_TYPE_COPY = {
   wallet: { placeholder: '— اختر محفظة —', empty: 'لا توجد محافظ متاحة لقسم المكتب.' },
 };
 
+const ACCOUNT_TYPE_LABELS = {
+  cashbox: 'خزينة',
+  bank: 'بنك',
+  wallet: 'محفظة',
+};
+
 const normalizeAccountType = (type) => String(type?.value ?? type ?? '').trim().toLowerCase();
 
-const selectedPaymentMethod = computed(() => {
+/** Mirror of `PaymentMethodAccountType::resolve()` on the backend — pure,
+ *  free-text mapping from a typed code to an AccountType enum. Keeps the UI
+ *  in sync with the server's validation rule (so the local select filters
+ *  the right accounts and the user gets an immediate green light if their
+ *  pick would have been accepted).
+ *
+ *  Order matters: wallet is the most specific (anything with "wallet"
+ *  substring), then bank (contains bank/card/postal), then cashbox
+ *  (the safe default). */
+function resolvePaymentMethodType(code) {
+  const normalized = String(code ?? '').toLowerCase().trim();
+  if (!normalized) return null;
+  if (normalized.includes('wallet') || normalized.includes('cash_vodafone') || normalized.includes('instapay')) return 'wallet';
+  if (
+    normalized.includes('bank')
+    || normalized.includes('card')
+    || normalized.includes('postal')
+    || normalized.includes('post_office')
+    || normalized.includes('transfer')
+  ) return 'bank';
+  if (
+    normalized === 'cash'
+    || normalized === 'cash_egp'
+    || normalized === 'cashbox'
+    || normalized === 'office_safe'
+    || normalized === 'office_drawer'
+    || normalized === 'cod'
+  ) return 'cashbox';
+  return null;
+}
+
+const paymentMethodTypedType = computed(() =>
+  resolvePaymentMethodType(form.value.payment_method),
+);
+
+/** Manually selected type tab. Always wins over the auto-detected one
+ *  (the user may want to route a "cash" payment through the bank account
+ *  if their office is set up that way). Once the user picks a tab
+ *  themselves we stop auto-jumping so we don't fight them. */
+const manualAccountType = ref(null);
+
+const effectiveAccountType = computed(() =>
+  manualAccountType.value ?? paymentMethodTypedType.value
+);
+
+const selectedPaymentMethodRow = computed(() => {
   const selectedCode = String(form.value.payment_method || '');
   return store.paymentMethods.find(
     (method) => String(method.code ?? method.value ?? '') === selectedCode,
   ) ?? null;
 });
 
-const selectedAccountType = computed(() =>
-  normalizeAccountType(selectedPaymentMethod.value?.account_type),
-);
-
 const filteredAccounts = computed(() => {
-  if (!selectedAccountType.value) return [];
+  if (!effectiveAccountType.value) return [];
   return store.accounts.filter(
     (account) =>
       account.is_active !== false
-      && normalizeAccountType(account.type) === selectedAccountType.value,
+      && normalizeAccountType(account.type) === effectiveAccountType.value,
   );
 });
 
 const accountPlaceholder = computed(() => {
-  if (!form.value.payment_method) return '— اختر طريقة الدفع أولاً —';
-  if (!selectedAccountType.value) return '— طريقة الدفع غير مرتبطة بحساب —';
+  if (!form.value.payment_method) return '— اكتب طريقة الدفع أولاً —';
+  if (!effectiveAccountType.value) return '— اختر نوع الحساب من التابات أعلاه —';
   if (filteredAccounts.value.length === 0) return '— لا توجد حسابات متاحة —';
-  return ACCOUNT_TYPE_COPY[selectedAccountType.value]?.placeholder ?? '— اختر حساب التحصيل —';
+  return ACCOUNT_TYPE_COPY[effectiveAccountType.value]?.placeholder ?? '— اختر حساب التحصيل —';
 });
 
 const accountHelpText = computed(() => {
-  if (!form.value.payment_method) return 'اختر طريقة الدفع أولاً لعرض حسابات التحصيل المناسبة.';
-  if (!selectedAccountType.value) return 'طريقة الدفع المحددة غير مرتبطة بنوع حساب تحصيل مدعوم.';
+  if (!form.value.payment_method) return 'اختر نوع الحساب وطريقة الدفع لتظهر لك الحسابات المتاحة.';
+  if (!effectiveAccountType.value) return 'اختر نوع الحساب من التابات أعلاه لعرض الحسابات المتاحة.';
   if (filteredAccounts.value.length === 0) {
-    return ACCOUNT_TYPE_COPY[selectedAccountType.value]?.empty
-      ?? 'لا توجد حسابات متاحة لهذه الطريقة في قسم المكتب.';
+    return ACCOUNT_TYPE_COPY[effectiveAccountType.value]?.empty
+      ?? 'لا توجد حسابات متاحة لهذا النوع في قسم المكتب.';
   }
   return '';
+});
+
+/** Reset the manual tab override when the user clears the payment method. */
+watch(() => form.value.payment_method, (newVal) => {
+  if (!newVal) {
+    manualAccountType.value = null;
+    form.value.account_id = null;
+  }
 });
 
 function onPaymentMethodChange() {
   form.value.account_id = null;
 }
+
+function pickAccountType(type) {
+  manualAccountType.value = type;
+  form.value.account_id = null;
+}
+
+/** Count-only helper used by the tab chips to show "X account available"
+ *  per type without depending on the user having picked a tab. Used by
+ *  the chips themselves (so each chip knows how many accounts of its
+ *  type exist) AND by the auto-disabled state when zero accounts are
+ *  available. */
+function filteredAccountsByType(type) {
+  return store.accounts.filter(
+    (account) =>
+      account.is_active !== false && normalizeAccountType(account.type) === type,
+  );
+}
+
+const ACCOUNT_TYPE_OPTIONS = ['cashbox', 'bank', 'wallet'];
 
 const profit = computed(() => {
   const purchase = Number(form.value.purchase_price) || 0;
@@ -736,11 +884,11 @@ const submit = async () => {
     return;
   }
   if (!form.value.payment_method) {
-    store.addToast('اختر طريقة الدفع.', 'error');
+    store.addToast('اكتب طريقة الدفع.', 'error');
     return;
   }
-  if (!selectedAccountType.value) {
-    store.addToast('طريقة الدفع المحددة غير مرتبطة بحساب تحصيل مدعوم.', 'error');
+  if (!effectiveAccountType.value) {
+    store.addToast('اختر نوع حساب التحصيل من التابات.', 'error');
     return;
   }
   if (!form.value.account_id) {

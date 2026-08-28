@@ -4,7 +4,6 @@ namespace App\Http\Requests\Online;
 
 use App\Enums\OnlineTransactionStatus;
 use App\Models\Account;
-use App\Models\Setting\PaymentMethod;
 use App\Rules\OnlineLiquidityAccount;
 use App\Support\Finance\PaymentMethodAccountType;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,10 +34,18 @@ class StoreOnlineTransactionRequest extends FormRequest
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
 
             'payment_method' => [
+                // Free-text: matches the Fawry `operation_type` pattern.
+                // The text is what we store on the transaction AND in the
+                // ledger description. The PaymentMethodAccountType::resolve()
+                // helper (run inside withValidator, below) maps the typed
+                // code to an AccountType enum so we can still validate the
+                // picked collection account is the right kind. No DB lookup
+                // is required at request-validation time, so empty
+                // `payment_methods` rows on production are no longer a
+                // blocker.
                 'required',
                 'string',
-                Rule::exists(PaymentMethod::class, 'code')
-                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+                'max:80',
             ],
             'account_id' => [
                 'required',
