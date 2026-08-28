@@ -2795,6 +2795,55 @@ class FlightBookingService
             $reversedCount++;
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // FIN-3 BUG-2 (2026-08-29): Reverse Customer-keyed payDebt income.
+        //
+        // The payDebt flow (CustomerController::payDebt after the FIN-3
+        // fix) posts a type='income' row keyed to the Customer model, NOT
+        // the FlightPayment model — so the loop above misses it. Without
+        // this second pass, a customer who paid via /customers/{id}/pay-
+        // debt would get their cash refunded by refundTreasuryAccount()
+        // but the income row stays as revenue in P&L.
+        //
+        // Result pre-fix: dashboard reports revenue that has no matching
+        // cash, and the cancel flow effectively double-counts the same
+        // 600 EGP as an outflow AND a non-reversed inflow.
+        //
+        // Scan all Customer-keyed income rows for this customer + flight
+        // module and mark them reversed (markTransactionReversed is
+        // idempotent — a row already prefixed with 'عكس:' is skipped).
+        //
+        // Limitation: when a customer has multiple flight bookings, this
+        // scan can't pinpoint which payDebt row belongs to THIS booking
+        // (the transactions table stores related_type='Customer' without
+        // a flight_booking_id link). The long-term fix is to thread
+        // flight_booking_id into the payDebt related metadata; until
+        // that lands, this works correctly for the common
+        // one-customer-one-booking flow and is conservative for the
+        // multi-booking case (it reverses all un-reversed flight payDebt
+        // income for that customer, which matches the user's intent of
+        // "refund this booking" → "any payDebt they made is now gone").
+        // ─────────────────────────────────────────────────────────────────
+        $payDebtIncomes = Transaction::query()
+            ->where('related_type', Customer::class)
+            ->where('related_id', (int) $booking->customer_id)
+            ->where('type', 'income')
+            ->where('module', TransactionModule::Flight->value)
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                    ->orWhere(function ($q2) {
+                        $q2->where('notes', 'not like', 'عكس:%')
+                            ->where('notes', 'not like', 'عكس %');
+                    });
+            })
+            ->orderBy('id')
+            ->get();
+
+        foreach ($payDebtIncomes as $tx) {
+            $this->transactionService->markTransactionReversed($tx);
+            $reversedCount++;
+        }
+
         if ($reversedCount > 0) {
             Log::info('reverseFlightBookingRevenue completed (rev-3: prefix-only)', [
                 'booking_id' => $booking->id,
