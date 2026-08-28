@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\FlightBookingStatus;
 use App\Enums\TransactionModule;
 use App\Helpers\ApiResponse;
+use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customer\StoreCustomerRequest;
 use App\Http\Requests\Customer\UpdateCustomerRequest;
@@ -19,6 +20,7 @@ use App\Http\Resources\Visa\VisaBookingResource;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\Fawry\FawryTransaction;
 use App\Models\Flight\FlightBooking;
 use App\Services\CustomerService;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
@@ -368,9 +370,76 @@ class CustomerController extends Controller
                     'created_by' => Auth::id() ?? 1,
                 ]);
 
+                // 🛡️ Fawry per-transaction amount sync (BUG FIX 2026-08-28):
+                //
+                // Before this fix, a registered Fawry customer's pay-debt
+                // through /customers/{id}/pay-debt updated ONLY the GL
+                // (customer AR → cashbox) but did NOT bump the
+                // `fawry_transactions.amount` column on the underlying
+                // transaction rows. This caused a desync between:
+                //   • customerBalances endpoint  → reads GL → shows paid
+                //   • FawryDashboard recent ops → reads fawry_transactions.amount
+                //                                    → still shows "غير مكتمل"
+                //   • total_payments KPI sum     → reads fawry_transactions.amount
+                //                                    → still shows 0
+                //
+                // The walk-in flow (FawryWalkInPaymentController::payDebt) has
+                // the same FIFO logic; this mirrors it for registered customers.
+                //
+                // Allocation is FIFO (oldest unpaid transaction first) and only
+                // touches transactions where selling_price > amount (i.e. still
+                // has outstanding debt). Soft-deleted rows are excluded so we
+                // don't resurrect ghost balances.
+                $fawryAllocatedTotal = 0.0;
+                if ($moduleEnum === TransactionModule::Fawry && $type === 'receipt' && $journalAmount > 0) {
+                    $remaining = (float) $journalAmount;
+
+                    $fawryTxs = DB::table('fawry_transactions')
+                        ->where('client_id', $customer->id)
+                        ->whereNull('deleted_at')
+                        ->whereRaw('selling_price > amount')
+                        ->orderBy('created_at', 'asc')
+                        ->orderBy('id', 'asc')
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($fawryTxs as $fawryTx) {
+                        if ($remaining <= 0.005) {
+                            break;
+                        }
+                        $gap = (float) $fawryTx->selling_price - (float) $fawryTx->amount;
+                        if ($gap <= 0) {
+                            continue;
+                        }
+                        $allocate = min($remaining, $gap);
+                        $allocate = round($allocate, 2);
+
+                        DB::table('fawry_transactions')
+                            ->where('id', $fawryTx->id)
+                            ->update([
+                                'amount' => DB::raw('amount + '.(float) $allocate),
+                                'updated_at' => now(),
+                            ]);
+
+                        $fawryAllocatedTotal = round($fawryAllocatedTotal + $allocate, 2);
+                        $remaining = round($remaining - $allocate, 2);
+                    }
+
+                    // Bust dashboard + transaction caches so the bumped
+                    // `amount` is reflected in the next fetch (the
+                    // /fawry/dashboard endpoint itself isn't cached, but
+                    // /fawry/transactions, /customers and the finance
+                    // listings are — flush them all to stay consistent).
+                    if ($fawryAllocatedTotal > 0) {
+                        CacheHelper::flushTags(['accounts', 'dashboard', 'fawry_transactions']);
+                        CacheHelper::flushNamespace();
+                    }
+                }
+
                 return ApiResponse::success($type === 'payment' ? 'تم صرف المبلغ للعميل بنجاح وقيد سند الصرف.' : 'تم سداد المبلغ بنجاح وقيد سند القبض.', [
                     'transaction_id' => $transaction->id,
                     'new_balance' => (float) $fromAccount->fresh()->balance,
+                    'fawry_allocated' => round($fawryAllocatedTotal, 2),
                 ]);
             });
         } catch (\Exception $e) {
