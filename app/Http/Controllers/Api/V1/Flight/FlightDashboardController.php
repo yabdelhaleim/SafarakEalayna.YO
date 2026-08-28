@@ -33,23 +33,25 @@ class FlightDashboardController extends Controller
         $totalBookings = FlightBooking::count();
 
         // 3. Accounts Balances (Cashboxes, Banks, Wallets)
-        // ✅ Fix: نستخدم 'flights' في module column (وليس module_type) — لأن AccountModuleContract
-        // يُعرّف flights كـ module داخل tourism division. الـ E2E accounts module_type = 'tourism', module = 'flights'
+        // Per AccountModuleContract::TOURISM_DIVISION_MODULES = ['tourism','flights','hajj_umra','visas'],
+        // a division-unified tourism vault has module_type='tourism' (and module=NULL or 'tourism').
+        // AccountModuleDivision::TOURISM captures every flight-relevant module_type. Match the
+        // BusDashboardController / HajjUmraDashboardController pattern (whereIn module_type) so
+        // the flight dashboard picks up both flight-specific accounts AND the tourism division
+        // unified vault that was introduced by UnifiedVaultsSeeder (Phase 7).
         $accounts = Account::query()
             ->where('is_active', true)
-            ->where(function ($q) {
-                $q->where('module', 'flights')
-                  ->orWhere('module_type', 'flights');
-            })
-            // ✅ نقتصر على liquidity types فقط (cashbox, bank, wallet) — لا نضع clearing/supplier/customer في الإجمالي
+            ->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::TOURISM)
+            // نقتصر على liquidity types فقط (cashbox, bank, wallet) — لا نضع clearing/supplier/customer في الإجمالي
             ->whereIn('type', [AccountType::Cashbox->value, AccountType::Bank->value, AccountType::Wallet->value])
             ->get(['type', 'balance', 'currency']);
 
         $treasuryService = app(\App\Services\Finance\TreasuryService::class);
 
-        // Safe enum comparison
-        $cashboxes = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Cashbox->value, AccountType::Bank->value], true));
-        $banks = $accounts->filter(fn ($a) => in_array(($a->type instanceof \BackedEnum ? $a->type->value : $a->type), [AccountType::Bank->value], true));
+        // Safe enum comparison — one type per bucket so bank rows are not double-counted in
+        // both cashboxes and banks. Matches BusDashboardController / HajjUmraDashboardController.
+        $cashboxes = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
+        $banks = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Bank->value);
         $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
         $cashboxCount = $cashboxes->count();
