@@ -2173,7 +2173,59 @@ class FlightBookingService
                 // — but the sum of payments is always in EGP (converted on insert).
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
-                $totalPaid = (float) ($booking->payments()->sum('amount') ?? 0);
+
+                // FIN-3 BUG-3 (2026-08-29): include payDebt income in refund calc.
+                //
+                // Pre-fix, $totalPaid only summed `flight_payments` rows. The
+                // /customers/{id}/pay-debt flow (post FIN-3) posts its income
+                // row keyed to the Customer model — never touching
+                // `flight_payments`. So a customer who paid their debt via
+                // the payDebt endpoint would see `refund = 0` on the
+                // cancellation modal even though they paid the full
+                // selling_price. Combining clicks "Next" with empty refund
+                // stranded the cash: refundTreasuryAccount would no-op
+                // (zero movement) but reverseFlightBookingRevenue would
+                // still mark the income reversed → P&L would silently
+                // drop revenue that the system itself acknowledged was
+                // paid.
+                //
+                // Fix: ALSO sum un-reversed payDebt income rows for this
+                // customer + flight module. Matches the lookup pattern in
+                // reverseFlightBookingRevenue (commit 6b318f7) so both
+                // halves of the cancellation flow see the same payment
+                // surface.
+                //
+                // Limitation: same as the BUG-2 fix — multi-booking
+                // customers will attribute all their flight-module payDebt
+                // income to the cancellation. Acceptable until
+                // flight_booking_id is threaded into payDebt's related
+                // metadata.
+                //
+                // All amounts on transactions here are EGP (either paid in
+                // EGP or converted at the payment-time rate), which is the
+                // reporting currency for this refund comparison on EGP
+                // bookings. For foreign-currency bookings this would
+                // over-count by FX-gain/loss — the long-term fix is to
+                // thread the FX rate per-row, but for the staging sample
+                // (EGP-only) this is exact.
+                $flightPaymentsPaid = (float) ($booking->payments()->sum('amount') ?? 0);
+
+                $payDebtPaid = (float) DB::table('transactions')
+                    ->where('related_type', Customer::class)
+                    ->where('related_id', (int) $booking->customer_id)
+                    ->where('type', 'income')
+                    ->where('module', TransactionModule::Flight->value)
+                    ->where(function ($q) {
+                        $q->whereNull('notes')
+                            ->orWhere(function ($q2) {
+                                $q2->where('notes', 'not like', 'عكس:%')
+                                    ->where('notes', 'not like', 'عكس %');
+                            });
+                    })
+                    ->sum('amount');
+
+                $totalPaid = $flightPaymentsPaid + $payDebtPaid;
+
                 $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
