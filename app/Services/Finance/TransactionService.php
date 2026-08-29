@@ -717,7 +717,10 @@ class TransactionService
             // booking.
             $relatedType = $data['related_type'] ?? null;
             $relatedId = $data['related_id'] ?? null;
-            if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId) {
+            // The duplicate-income guard protects booking-level sales against double revenue
+            // recognition. We exclude Customer::class because customers legitimately pay their
+            // outstanding balance (debt) in multiple separate receipts/installments over time.
+            if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId && $relatedType !== Customer::class) {
                 $existingActiveIncome = DB::table('transactions')
                     ->where('related_type', $relatedType)
                     ->where('related_id', $relatedId)

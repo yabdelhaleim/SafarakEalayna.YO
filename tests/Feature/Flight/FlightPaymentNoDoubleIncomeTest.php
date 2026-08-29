@@ -221,9 +221,9 @@ class FlightPaymentNoDoubleIncomeTest extends TestCase
         $paymentTxCount = Transaction::where('related_type', \App\Models\Flight\FlightPayment::class)
             ->whereIn('related_id', $booking->payments->pluck('id')->toArray())
             ->count();
-        $this->assertEquals(1, $paymentTxCount, 'Exactly ONE transfer must be created for the single payment');
+        $this->assertEquals(1, $paymentTxCount, 'Exactly ONE transaction must be created for the single payment');
 
-        // ── No Income-type transactions at all (the B-2 fix removed recordIncome) ──
+        // ── Exactly one Income-type transaction (the payment transaction under D3/FIN-3 design) ──
         $incomeCount = Transaction::where('type', TransactionType::Income->value)
             ->where(function ($q) use ($booking) {
                 $q->where(function ($q2) use ($booking) {
@@ -235,7 +235,7 @@ class FlightPaymentNoDoubleIncomeTest extends TestCase
                 });
             })
             ->count();
-        $this->assertEquals(0, $incomeCount, 'No Income-type transactions must exist for the booking or its payments');
+        $this->assertEquals(1, $incomeCount, 'Exactly one Income-type transaction must exist for the payment');
 
         // ── The sale transaction is still the one recorded at createBooking ──
         $this->assertEquals($saleTxId, $booking->fresh()->sale_gl_transaction_id);
@@ -296,14 +296,14 @@ class FlightPaymentNoDoubleIncomeTest extends TestCase
             ->sum('amount');
         $this->assertEquals(1000.0, (float) $transferSum, 'Sum of transfers must equal sum of payments (1000 EGP)');
 
-        // ── All payment transactions are type=Transfer (NEVER Income) ──
+        // ── All payment transactions are type=Income (NEVER Transfer) ──
         $paymentTypeMix = Transaction::where('related_type', \App\Models\Flight\FlightPayment::class)
             ->whereIn('related_id', $paymentIds)
             ->selectRaw('type, COUNT(*) as n')
             ->groupBy('type')
             ->pluck('n', 'type')
             ->toArray();
-        $this->assertEquals([TransactionType::Transfer->value => 4], $paymentTypeMix, 'All 4 payment transactions must be type=Transfer');
+        $this->assertEquals([TransactionType::Income->value => 4], $paymentTypeMix, 'All 4 payment transactions must be type=Income');
 
         // ── sale_gl_transaction_id unchanged (no overwrite by payments) ──
         $this->assertEquals($saleTxId, $booking->fresh()->sale_gl_transaction_id, 'sale_gl_transaction_id must NOT change across payments');
