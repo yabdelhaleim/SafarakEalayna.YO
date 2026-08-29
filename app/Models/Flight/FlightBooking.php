@@ -280,13 +280,17 @@ class FlightBooking extends Model
 
     /**
      * حالة تحصيل العميل: paid / partial / unpaid (نفس منطق التصفية في FlightBookingService).
+     *
+     * FIN-3 BUG-5 (2026-08-29): delegate to paid_amount accessor so this
+     * agrees with what the JSON resource sends to the Vue client.
+     * Pre-fix, both this and the resource summed `flight_payments` only,
+     * so the API returned payment_status='paid' AND total_paid=0 at the
+     * same time when the booking was paid via payDebt income.
      */
     public function computePaymentStatus(): string
     {
         $selling = (float) $this->selling_price;
-        $totalPaid = $this->relationLoaded('payments')
-            ? (float) $this->payments->sum(fn ($p) => (float) $p->amount)
-            : (float) $this->payments()->sum('amount');
+        $totalPaid = (float) $this->paid_amount;
 
         if ($selling <= 0.01) {
             return 'paid';
