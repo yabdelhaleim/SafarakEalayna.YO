@@ -324,7 +324,19 @@ const totalPaid = computed(() => {
   if (!b) return 0;
   const fromPayments = payments.value.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   if (fromPayments > 0) return fromPayments;
-  return Number(b.totalPaid ?? b.total_paid ?? b.pricing?.sellingPrice ?? b.selling_price ?? 0) || 0;
+  // No flight_payments rows — common for credit-sale customers who paid
+  // via CustomerController::payDebt (post FIN-3, commit e96d841). The
+  // payDebt flow posts income to the `transactions` table only; it does
+  // NOT create a `flight_payments` row. So `b.total_paid` from the API
+  // returns 0 in this scenario, and the modal previously rendered with
+  // المبلغ المدفوع = 0 → refund = 0.
+  //
+  // Pre-fix bug: the previous `??`-chain didn't fall through on `0` (the
+  // nullish operator only triggers on null/undefined), so `0 ?? 600` is
+  // still `0`. Switching to a sellling-price-first fallback makes the
+  // modal auto-fill to the full booking price for payDebt customers,
+  // matching what they actually paid.
+  return Number(b.selling_price ?? b.pricing?.sellingPrice ?? b.total_paid ?? b.totalPaid ?? 0) || 0;
 });
 
 const customerRefundAmount = computed(() =>
