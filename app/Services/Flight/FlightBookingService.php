@@ -2815,11 +2815,23 @@ class FlightBookingService
         // Refresh in case Step 3 modified any cache.
         $booking->refresh();
 
+        // BUG-6 fix (2026-08-29): do NOT early-return on empty $payments.
+        //
+        // Pre-fix, this guard meant: if a booking had zero flight_payments
+        // rows with a transaction_id, the function exited before reaching
+        // the BUG-2 second loop (Customer-keyed payDebt income reversal).
+        // That scenario is the common case when a customer paid entirely
+        // via /customers/{id}/pay-debt — that flow posts a type='income'
+        // row keyed to the Customer model and creates NO flight_payments
+        // row. Result: the income was never marked reversed, the P&L
+        // engine kept counting it as revenue, and the tourism dashboard
+        // showed residual profit equal to the payDebt amount.
+        //
+        // Both loops below are independently idempotent — they call
+        // markTransactionReversed which is a no-op on already-reversed
+        // rows (notes already starting with 'عكس:'). Removing the guard
+        // is therefore safe to re-run on any historical cancellation.
         $payments = $booking->payments()->whereNotNull('transaction_id')->get();
-        if ($payments->isEmpty()) {
-            return;
-        }
-
         $reversedCount = 0;
 
         foreach ($payments as $payment) {
