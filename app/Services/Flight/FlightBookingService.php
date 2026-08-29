@@ -2456,6 +2456,48 @@ class FlightBookingService
                     );
                 }
 
+                // BUG-7 fix (2026-08-29): post office_penalty as an income
+                // transaction so the office's cancellation fee is recognized
+                // in the P&L dashboard.
+                //
+                // Pre-fix, office_penalty was recorded in
+                // flight_refunds.office_penalty column but never posted as a
+                // transaction. The cancel flow only:
+                //   - reverseFlightBookingRevenue (marks income rows 'عكس:')
+                //   - creditBackFlightCarrier/System/Group (reverses cogs)
+                //   - refundTreasuryAccount (cash refund to customer)
+                // The 100 EGP office kept from cancellation was invisible to
+                // ProfitLossReportService — leaving the dashboard showing
+                // -100 (net of -100 airline_penalty still on books as cogs)
+                // instead of 0 (cancellation is wash: lost revenue + kept
+                // margin by office).
+                //
+                // Post office_penalty as a type='income' row with the cashbox
+                // (or whatever account_id the user picked) as the destination
+                // and the customer's AR account as the contra. Same shape as
+                // the FIN-3 pay-debt fix (CustomerController::payDebt) which
+                // posts a type='income' row keyed to the Customer model.
+                //
+                // Idempotency: we guard on office_penalty > 0.001 AND an
+                // account_id being supplied (the refund path always supplies
+                // one when office_penalty > 0, per the validation at Step
+                // 3.5). The flight_refunds row also acts as a dedup key —
+                // this code path runs once per cancellation.
+                if ($officePenalty > 0.001 && ! empty($data['account_id'])) {
+                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+                    $this->transactionService->recordIncome([
+                        'amount' => $officePenalty,
+                        'to_account_id' => (int) $data['account_id'],
+                        'contra_account_id' => (int) $customerAccount->id,
+                        'allow_contra_negative' => true,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightBooking::class,
+                        'related_id' => $booking->id,
+                        'notes' => 'office_penalty kept from cancelled booking #'.$booking->booking_number,
+                        'created_by' => $userId,
+                    ]);
+                }
+
                 // Step 5: Create refund record
                 $refund = FlightRefund::create([
                     'flight_booking_id' => $booking->id,
