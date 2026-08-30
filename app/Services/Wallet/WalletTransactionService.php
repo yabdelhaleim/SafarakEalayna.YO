@@ -738,56 +738,63 @@ class WalletTransactionService
         string $customerName,
         int $createdBy
     ): array {
-        $totalAmount = $amount + $fee;
+        // FIX: SEND must debit ONLY the wallet provider account at send time —
+        // not the wallet income/expense clearing accounts that
+        // recordIncome()/recordExpense() auto-route through. Treasury /
+        // cashbox must stay untouched at the moment of sending; any cash
+        // movement from the customer to the cashbox happens later via
+        // postSettlementSend() (transfer, not income/expense).
+        //
+        // We replace the prior income+expense pair with a single journal
+        // transfer between the two real accounts involved:
+        //   - source:  wallet_account_id  (the wallet provider balance)
+        //   - dest:    customerAccount     (registered customer)
+        //              OR cash_account_id   (anonymous cash customer)
+        //
+        // The fee is NOT lumped into the transfer — it stays attached to the
+        // WT row (record->service_fee / total_amount / amount_paid) and is
+        // surfaced to P&L via the settlement transfer in postSettlementSend()
+        // when the cashier actually collects the cash.
 
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-            $income = $this->transactionService->recordIncome([
-                'amount' => $totalAmount,
-                'to_account_id' => $customerAccount->id,
+            $transfer = $this->transactionService->recordJournalTransfer([
+                'amount' => $amount,                                // المبلغ فقط — الرسوم على الـ settlement
+                'from_account_id' => $record->wallet_account_id,    // المحفظة (يخصم منها)
+                'to_account_id' => $customerAccount->id,            // حساب العميل (مديونية تزيد)
+                'allow_from_negative' => true,                      // allow negative on prepaid wallets
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: مديونية إرسال رصيد بقيمة {$amount} + رسوم {$fee}",
+                'type' => TransactionType::Transfer->value,
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة لمديونية العميل",
                 'created_by' => $createdBy,
+                'currency' => $record->walletAccount?->currency,
             ]);
 
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم رصيد بقيمة {$amount} من المحفظة",
-                'created_by' => $createdBy,
-            ]);
-
-            return [$income, $expense];
+            // Return the same transfer as both legs for backward compat with
+            // the caller that stores $record->income_transaction_id /
+            // $record->expense_transaction_id (both point at this transfer).
+            return [$transfer, $transfer];
         }
 
-        // Anonymous customer (نقدي فوري): no settlement, no customer account
-        $income = $this->transactionService->recordIncome([
-            'amount' => $totalAmount,
-            'to_account_id' => $record->cash_account_id,
-            'module' => TransactionModule::Wallet->value,
-            'related_type' => WalletTransaction::class,
-            'related_id' => $record->id,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: استلام نقدي {$amount} + خدمة {$fee}",
-            'created_by' => $createdBy,
-        ]);
-
-        $expense = $this->transactionService->recordExpense([
+        // Anonymous customer (نقدي فوري): المحفظة → الخزنة مباشرة
+        $transfer = $this->transactionService->recordJournalTransfer([
             'amount' => $amount,
-            'from_account_id' => $record->wallet_account_id,
+            'from_account_id' => $record->wallet_account_id,  // المحفظة (يخصم)
+            'to_account_id' => $record->cash_account_id,      // الخزنة (العميل دفع cash)
+            'allow_from_negative' => true,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم من المحفظة {$amount}",
+            'type' => TransactionType::Transfer->value,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة، أضيف للخزنة",
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
 
-        return [$income, $expense];
+        return [$transfer, $transfer];
     }
 
     /**
