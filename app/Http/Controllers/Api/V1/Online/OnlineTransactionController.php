@@ -335,7 +335,11 @@ class OnlineTransactionController extends Controller
                     'transaction.toAccount',
                     'transaction.related' => function ($morph) {
                         $morph->morphWith([
-                            OnlineTransaction::class => ['serviceType', 'provider'],
+                            // OnlineTransaction relations were renamed to *Row helpers
+                            // (serviceTypeRow / providerRow) after migration
+                            // 2026_08_28_000000_convert_online_service_type_and_provider_to_text
+                            // converted the FK columns to free-text codes.
+                            OnlineTransaction::class => ['serviceTypeRow', 'providerRow'],
                         ]);
                     },
                 ])

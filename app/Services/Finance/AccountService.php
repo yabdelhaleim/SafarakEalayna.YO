@@ -243,7 +243,14 @@ class AccountService
                     $morph->morphWith([
                         FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
                         BusBooking::class => ['customer', 'inventory.company'],
-                        OnlineTransaction::class => ['serviceType', 'provider'],
+                        // OnlineTransaction relations live in *Row suffixed helpers
+                        // (serviceTypeRow / providerRow) after migration
+                        // 2026_08_28_000000_convert_online_service_type_and_provider_to_text
+                        // converted the FK columns to free-text codes. Referencing
+                        // the old names here crashes with `Call to undefined
+                        // method ::serviceType()` / `::provider()` and surfaces
+                        // as HTTP 500 on /finance/accounts/{id}/statement.
+                        OnlineTransaction::class => ['serviceTypeRow', 'providerRow'],
                         VisaBooking::class => ['customer', 'visaDetail'],
                         HajjUmraBooking::class => ['customer', 'program'],
                     ]);

@@ -651,7 +651,11 @@ class ReportFinanceService
                     VisaBooking::class => ['customer', 'visaDetail'],
                     HajjUmraBooking::class => ['customer', 'program'],
                     BusBooking::class => ['customer', 'inventory.company'],
-                    OnlineTransaction::class => ['customer', 'serviceType', 'provider'],
+                    // OnlineTransaction relations were renamed to *Row helpers
+                    // (serviceTypeRow / providerRow) after migration
+                    // 2026_08_28_000000_convert_online_service_type_and_provider_to_text
+                    // converted the FK columns to free-text codes.
+                    OnlineTransaction::class => ['customer', 'serviceTypeRow', 'providerRow'],
                 ]);
             },
         ])->find($id);
