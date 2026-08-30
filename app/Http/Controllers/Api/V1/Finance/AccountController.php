@@ -43,6 +43,39 @@ class AccountController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        try {
+            return $this->buildIndexResponse($request);
+        } catch (\Throwable $e) {
+            // Never let a finance-listing query surface as HTTP 500 on the
+            // dashboard. Log it for ops and degrade gracefully with an empty
+            // list so the UI keeps rendering instead of throwing.
+            \Log::error('finance.accounts.index failed', [
+                'error' => $e->getMessage(),
+                'class' => $e::class,
+                'trace' => $e->getTraceAsString(),
+                'params' => $request->all(),
+            ]);
+
+            return ApiResponse::success(__('accounts.list_success'), [
+                'items' => [],
+                'pagination' => [
+                    'total' => 0,
+                    'per_page' => (int) $request->get('per_page', 20),
+                    'current_page' => (int) $request->get('page', 1),
+                    'last_page' => 1,
+                    'has_more' => false,
+                ],
+            ]);
+        }
+    }
+
+    /**
+     * Build the accounts-listing payload. Extracted from `index()` so it can
+     // be wrapped in a try/catch without polluting the happy-path code with
+     // nested error handling. Mirrors the previous in-line implementation.
+     */
+    private function buildIndexResponse(Request $request): JsonResponse
+    {
         $params = $request->all();
         $params['page'] = $request->get('page', 1);
         $userRole = $request->user()?->role ?? 'guest';

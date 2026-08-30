@@ -76,6 +76,19 @@
         </div>
         
         <div class="flex items-center gap-3 print:hidden">
+          <!-- Manual refresh — bypasses any debounced filter change and
+               forces a fresh fetch. Useful when the user suspects stale data
+               (e.g. after a payment was just made elsewhere). -->
+          <button
+            v-if="statementTargetType === 'account' ? account : selectedCustomer"
+            @click="refreshStatement"
+            :disabled="loading"
+            class="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-text-muted hover:text-white hover:bg-white/10 transition-all font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="إعادة تحميل البيانات الآن"
+          >
+            <RotateCcw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          </button>
+
           <button
             @click="printStatement"
             class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 hover:text-white hover:bg-rose-500/20 transition-all font-bold text-sm"
@@ -123,25 +136,89 @@
         </div>
       </div>
 
-      <!-- Switcher Tabs -->
-      <div class="mt-8 flex items-center justify-center gap-4 border-b border-white/10 pb-6 print:hidden">
+      <!-- Switcher Tabs + freshness indicator -->
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 border-b border-white/10 pb-6 print:hidden">
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            @click="setTargetType('account')"
+            class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+            :class="statementTargetType === 'account' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          >
+            <Wallet class="w-4 h-4" />
+            <span>حسابات الخزائن والبنوك</span>
+          </button>
+          <button
+            type="button"
+            @click="setTargetType('customer')"
+            class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+            :class="statementTargetType === 'customer' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          >
+            <User class="w-4 h-4" />
+            <span>كشوفات العملاء والشركات</span>
+          </button>
+        </div>
+
+        <!-- Freshness chip — only visible after the first successful fetch
+             and only when there is data to display. Replaces silent failures
+             with an explicit "last refresh" timestamp. -->
+        <div
+          v-if="lastUpdated && !loading && (statementTargetType === 'account' ? account : selectedCustomer)"
+          class="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-text-muted"
+          :title="'آخر تحديث: ' + lastUpdated.toLocaleString('ar-EG')"
+        >
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60 opacity-75"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
+          </span>
+          <span>آخر تحديث: {{ lastUpdated.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) }}</span>
+        </div>
+      </div>
+
+      <!-- Error Banners (visible only on failure of each block, with retry) -->
+      <div
+        v-if="accountLoadError"
+        role="alert"
+        class="mt-6 flex items-start gap-4 rounded-2xl border border-error/30 bg-error/10 p-5 text-error print:hidden"
+      >
+        <div class="shrink-0 rounded-xl bg-error/15 p-2.5">
+          <X class="h-5 w-5" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-black text-error">تعذّر تحميل بيانات الحساب</p>
+          <p class="mt-1 text-xs font-bold text-error/80 break-words">
+            {{ accountLoadError }}
+          </p>
+        </div>
         <button
           type="button"
-          @click="setTargetType('account')"
-          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
-          :class="statementTargetType === 'account' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          @click="retryAccount"
+          class="shrink-0 rounded-xl border border-error/30 bg-error/5 px-4 py-2 text-xs font-black text-error transition-all hover:bg-error/20"
         >
-          <Wallet class="w-4 h-4" />
-          <span>حسابات الخزائن والبنوك</span>
+          إعادة المحاولة
         </button>
+      </div>
+
+      <div
+        v-if="statementLoadError"
+        role="alert"
+        class="mt-6 flex items-start gap-4 rounded-2xl border border-warning/30 bg-warning/10 p-5 text-warning print:hidden"
+      >
+        <div class="shrink-0 rounded-xl bg-warning/15 p-2.5">
+          <X class="h-5 w-5" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-black text-warning">تعذّر تحميل كشف الحساب</p>
+          <p class="mt-1 text-xs font-bold text-warning/80 break-words">
+            {{ statementLoadError }}
+          </p>
+        </div>
         <button
           type="button"
-          @click="setTargetType('customer')"
-          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
-          :class="statementTargetType === 'customer' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          @click="retryStatement"
+          class="shrink-0 rounded-xl border border-warning/30 bg-warning/5 px-4 py-2 text-xs font-black text-warning transition-all hover:bg-warning/20"
         >
-          <User class="w-4 h-4" />
-          <span>كشوفات العملاء والشركات</span>
+          إعادة المحاولة
         </button>
       </div>
 
@@ -418,8 +495,10 @@
 
       <!-- Main Statement Table -->
       <div class="flight-panel !p-0 overflow-hidden border border-white/5 shadow-2xl relative">
-        <!-- Loading Overlay -->
-        <div v-if="loading" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
+        <!-- Loading Overlay — only shown when statement has rows to preserve
+             (prevents the table from disappearing during background refresh).
+             Initial load uses the inline skeleton rows instead. -->
+        <div v-if="loading && statement.length" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
           <div class="flex flex-col items-center gap-4">
             <div class="w-12 h-12 border-4 border-gold/20 border-t-gold rounded-full animate-spin"></div>
             <p class="text-base font-black text-gold">جاري تحديث السجل...</p>
@@ -441,11 +520,40 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-              <tr v-if="!statement.length && !loading">
-                <td colspan="8" class="px-6 py-20 text-center">
-                  <div class="flex flex-col items-center gap-4 opacity-30">
-                    <History class="w-16 h-16" />
-                    <p class="text-lg font-black">لا توجد حركات مالية مسجلة لهذا الحساب في الفترة المحددة</p>
+              <!-- Skeleton rows while loading so the table doesn't "jump" -->
+              <template v-if="loading && !statement.length">
+                <tr v-for="i in 8" :key="'skeleton-' + i" class="border-b border-white/5">
+                  <td v-for="j in 8" :key="'skeleton-' + i + '-' + j" class="px-6 py-5">
+                    <div class="h-4 w-full max-w-[120px] rounded bg-white/5 animate-pulse"></div>
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Empty state — shows different copy for "no selection yet" vs "no rows in period" -->
+              <tr v-else-if="!statement.length">
+                <td colspan="8" class="px-6 py-16">
+                  <div class="flex flex-col items-center gap-5 max-w-md mx-auto text-center">
+                    <div class="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center border border-white/10">
+                      <History class="w-10 h-10 text-text-muted" />
+                    </div>
+                    <div>
+                      <p class="text-base font-black text-text-main">
+                        {{ hasActiveFilters ? 'لا توجد حركات مطابقة للبحث الحالي' : 'لا توجد حركات مالية لهذا الحساب' }}
+                      </p>
+                      <p class="mt-2 text-sm font-bold text-text-muted">
+                        {{ hasActiveFilters
+                            ? 'جرّب توسيع الفترة الزمنية أو إعادة ضبط الفلاتر.'
+                            : 'ابدأ بتسجيل أول إيداع أو سحب من خلال زر "إيداع / سحب سريع".' }}
+                      </p>
+                    </div>
+                    <button
+                      v-if="hasActiveFilters"
+                      @click="resetFilters"
+                      class="px-5 py-2.5 rounded-xl border border-gold/30 bg-gold/10 text-gold hover:bg-gold/20 text-xs font-black transition-all flex items-center gap-2"
+                    >
+                      <RotateCcw class="w-4 h-4" />
+                      إعادة ضبط الفلاتر
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -1317,6 +1425,83 @@ const route = useRoute();
 const accountStore = useAccountStore();
 const financeStore = useFinanceStore();
 
+/**
+ * Centralized toast helpers so we never silently swallow an error.
+ * Always logs the full axios error to the console for ops, AND surfaces
+ * a translated toast + an in-page error banner so the user understands
+ * what failed and can retry.
+ *
+ * `window.addToast` is provided globally by the Vue layout (`addToast`
+ * registered in app.js). Falls back gracefully if it isn't installed.
+ */
+function notifyError(logLabel, err, userMessage) {
+  // eslint-disable-next-line no-console
+  console.error(`[AccountStatement] ${logLabel}:`, err);
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(userMessage || 'حدث خطأ غير متوقع', 'error');
+  }
+}
+
+function notifySuccess(message) {
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(message, 'success');
+  }
+}
+
+function notifyInfo(message) {
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(message, 'info');
+  }
+}
+
+// Page-level error state. Each block keeps its own slot so the banner can
+// say *which* API failed (e.g. "account metadata failed" vs "statement
+// failed") and offer a "retry" affordance scoped to that block.
+const accountLoadError = ref(null);
+const statementLoadError = ref(null);
+
+// Last-successful-fetch timestamp for the statement. Surfaced in the UI
+// header so the user knows how fresh the rows are; reset on each error.
+const lastUpdated = ref(null);
+
+// `hasActiveFilters` is the computed used by the empty-state copy above
+// to decide between "no rows in the period" vs "your filters are too narrow".
+// We compute this from `filters.value` reactively.
+const hasActiveFilters = computed(() => {
+  const f = filters.value;
+  return Boolean(
+    (f.search && f.search.trim()) ||
+    f.type ||
+    f.module ||
+    f.from_date ||
+    f.to_date
+  );
+});
+
+function retryAccount() {
+  fetchAccountData();
+}
+
+function retryStatement() {
+  fetchStatement();
+}
+
+/**
+ * Manual refresh entry-point bound to the refresh button in the header.
+ * Identical to retryStatement() but surfaces a success toast so the user
+ * gets visible feedback that the refresh actually ran.
+ */
+async function refreshStatement() {
+  try {
+    await fetchStatement();
+    if (!statementLoadError.value) {
+      notifySuccess('تم تحديث كشف الحساب');
+    }
+  } catch {
+    // fetchStatement already toasted + set the error banner — nothing to do.
+  }
+}
+
 // Entry Details Modal State
 const selectedEntryDetails = ref(null);
 
@@ -1622,8 +1807,12 @@ async function fetchAccountData() {
   try {
     const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}`);
     account.value = res.data?.data || null;
+    accountLoadError.value = null;
   } catch (err) {
-    console.error('Failed to fetch account:', err);
+    const message = err.response?.data?.message || 'تعذّر جلب بيانات الحساب';
+    accountLoadError.value = message;
+    notifyError('فشل تحميل بيانات الحساب', err, message);
+    account.value = null;
   }
 }
 
@@ -1637,11 +1826,12 @@ async function fetchStatement() {
       statement.value = data.items || [];
       if (data.stats) stats.value = data.stats;
       if (data.pagination) pagination.value = data.pagination;
+      statementLoadError.value = null;
+      lastUpdated.value = new Date();
     } catch (err) {
-      console.error('Failed to fetch customer statement:', err);
-      if (window.addToast) {
-        window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
-      }
+      const message = err.response?.data?.message || 'تعذّر جلب كشف العميل';
+      statementLoadError.value = message;
+      notifyError('فشل تحميل كشف العميل', err, 'فشل تحميل الكشف، يرجى المحاولة لاحقاً');
       statement.value = [];
     } finally {
       loading.value = false;
@@ -1652,12 +1842,12 @@ async function fetchStatement() {
   if (!route.params.id) return;
   loading.value = true;
   try {
-    const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}/statement`, { 
-      params: filters.value 
+    const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}/statement`, {
+      params: filters.value
     });
     const data = res.data?.data || {};
     statement.value = data.items || [];
-    
+
     if (data.pagination) {
       pagination.value = data.pagination;
     }
@@ -1665,11 +1855,12 @@ async function fetchStatement() {
     if (data.stats) {
       stats.value = data.stats;
     }
+    statementLoadError.value = null;
+    lastUpdated.value = new Date();
   } catch (err) {
-    console.error('Failed to fetch statement:', err);
-    if (window.addToast) {
-      window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
-    }
+    const message = err.response?.data?.message || 'تعذّر جلب كشف الحساب من الخادم';
+    statementLoadError.value = message;
+    notifyError('فشل تحميل كشف الحساب', err, 'فشل تحميل الكشف، يرجى المحاولة لاحقاً');
     statement.value = [];
   } finally {
     loading.value = false;
@@ -1681,23 +1872,22 @@ async function printFullStatement() {
   const originalStatement = [...statement.value];
   loading.value = true;
   try {
-    const url = statementTargetType.value === 'customer' 
+    const url = statementTargetType.value === 'customer'
       ? `/api/v1/customers/${selectedCustomer.value.id}/statement`
       : `/api/v1/finance/accounts/${route.params.id}/statement`;
-      
-    const res = await axios.get(url, { 
-      params: { ...filters.value, per_page: 5000, page: 1 } 
+
+    const res = await axios.get(url, {
+      params: { ...filters.value, per_page: 5000, page: 1 }
     });
     const data = res.data?.data || {};
     statement.value = data.items || [];
-    
+
     await nextTick();
     window.print();
-    
+
     statement.value = originalStatement;
   } catch (err) {
-    console.error('Failed to fetch full statement for printing:', err);
-    if (window.addToast) window.addToast('فشل تحميل التقرير الكامل للطباعة', 'error');
+    notifyError('فشل تحميل التقرير الكامل للطباعة', err, 'فشل تحميل التقرير الكامل للطباعة');
   } finally {
     loading.value = false;
   }
