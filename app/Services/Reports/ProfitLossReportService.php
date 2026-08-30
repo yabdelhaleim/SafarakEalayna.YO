@@ -975,14 +975,21 @@ class ProfitLossReportService
      *                                 Use when the entity_id lives on a
      *                                 join table rather than on the related model.
      * @param  array{from_date?: string, to_date?: string}  $filters
-     * @return list<array{entity_id: int, income: float, cogs: float, expense: float, profit: float}>
+     * @param  string  $entityIdCast  'int' (default, backward-compat) or 'string'.
+     *                                 Set to 'string' when $entityColumn is a free-text
+     *                                 code (e.g. `online_transactions.provider_code`)
+     *                                 so the resulting `entity_id` survives the
+     *                                 final cast. Existing callers leave it as 'int'
+     *                                 and continue receiving integer entity_ids.
+     * @return list<array{entity_id: int|string, income: float, cogs: float, expense: float, profit: float}>
      */
     public function getProfitByEntity(
         string $module,
         string $relatedType,
         string $entityColumn,
         ?array $joinChain = null,
-        array $filters = []
+        array $filters = [],
+        string $entityIdCast = 'int'
     ): array {
         $moduleKey = $this->normalizeModuleKey($module);
         $maps = $this->clearingAccounts->moduleAccountMaps();
@@ -1091,8 +1098,13 @@ class ProfitLossReportService
             // with net refunds > revenue surfaces as negative profit —
             // the drill-down modal's "أعلى الكيانات" tab renders these
             // via the >= 0 conditional class (red text).
+            //
+            // $entityIdCast is honoured here only — the buckets themselves
+            // are keyed by the raw $id (PHP arrays accept string or int
+            // keys), so aggregation is unaffected.
+            $entityId = $entityIdCast === 'string' ? (string) $id : (int) $id;
             $result[] = [
-                'entity_id' => (int) $id,
+                'entity_id' => $entityId,
                 'income' => round($b['income'], 2),
                 'cogs' => round($b['cogs'], 2),
                 'expense' => round($b['expense'], 2),

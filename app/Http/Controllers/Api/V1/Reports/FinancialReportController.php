@@ -106,8 +106,17 @@ class FinancialReportController extends Controller
         ],
         'online' => [
             'provider' => [
+                // FIX (provider_id → provider_code, 2026-08-30):
+                //   `online_transactions.provider_id` was dropped by migration
+                //   2026_08_28_000000_convert_online_service_type_and_provider_to_text
+                //   and replaced with the free-text column `provider_code`
+                //   (joined against `online_service_providers.code`).
                 'related_type'  => 'App\\Models\\Online\\OnlineTransaction',
-                'entity_column' => 'provider_id',
+                'entity_column' => 'provider_code',
+                // The provider "id" surfaced to the UI is actually the
+                // string `provider_code`, so the label lookup must match
+                // `online_service_providers.code` — not the model's PK.
+                'lookup_column' => 'code',
                 'join_chain'    => null,
                 'label_model'   => OnlineServiceProvider::class,
                 'label_column'  => 'name_ar',
@@ -504,7 +513,8 @@ class FinancialReportController extends Controller
                     $cfg['related_type'],
                     $cfg['entity_column'],
                     $cfg['join_chain'],
-                    $filters
+                    $filters,
+                    isset($cfg['lookup_column']) ? 'string' : 'int'
                 );
 
                 // Sort: 'profit' = highest profit first (default, mirrors
@@ -517,22 +527,38 @@ class FinancialReportController extends Controller
                 $rows = array_slice($rows, 0, $limit);
 
                 // Resolve human labels in a single batch query per type.
+                //
+                // Default behaviour (kept for every existing module):
+                //   the value selected from the related table equals the
+                //   PK of the label model, so we cast to int and pluck by
+                //   getKeyName().
+                //
+                // Override: when `lookup_column` is set on the cfg, the
+                //   value on the related table is matched against that
+                //   column on the label model (used by the online module
+                //   where `online_transactions.provider_code` is a string
+                //   code, joined against `online_service_providers.code`).
                 $labelMap = [];
+                $lookupColumn = null;
+                $entityIdCast = 'int';
                 if ($rows !== []) {
-                    $ids = array_map(fn ($r) => (int) $r['entity_id'], $rows);
                     /** @var \Illuminate\Database\Eloquent\Model $instance */
                     $instance = new $cfg['label_model'];
+                    $lookupColumn = $cfg['lookup_column'] ?? $instance->getKeyName();
+                    $entityIdCast = ($cfg['lookup_column'] ?? null) === null ? 'int' : 'string';
+                    $ids = array_map(fn ($r) => $entityIdCast === 'int' ? (int) $r['entity_id'] : (string) $r['entity_id'], $rows);
                     $labelMap = $instance->newQuery()
-                        ->whereIn($instance->getKeyName(), $ids)
-                        ->pluck($cfg['label_column'], $instance->getKeyName())
+                        ->whereIn($lookupColumn, $ids)
+                        ->pluck($cfg['label_column'], $lookupColumn)
                         ->all();
                 }
 
                 $items = [];
                 foreach ($rows as $r) {
+                    $entityId = $entityIdCast === 'int' ? (int) $r['entity_id'] : (string) $r['entity_id'];
                     $items[] = [
-                        'entity_id'    => (int) $r['entity_id'],
-                        'entity_label' => (string) ($labelMap[(int) $r['entity_id']] ?? ('#' . $r['entity_id'])),
+                        'entity_id'    => $entityId,
+                        'entity_label' => (string) ($labelMap[$entityId] ?? ('#' . $r['entity_id'])),
                         'income'       => (float) $r['income'],
                         'cogs'         => (float) $r['cogs'],
                         'expense'      => (float) $r['expense'],
