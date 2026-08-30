@@ -458,7 +458,7 @@
           <label for="filtersModule" class="stmt-filter-label">الموديول / القسم</label>
           <select id="filtersModule" name="filtersModule" v-model="filters.module" class="stmt-filter-select flight-select w-full" @change="fetchStatement">
             <option value="">كل التفاصيل</option>
-            <option v-for="m in financeStore.meta.transactionModules" :key="m.value" :value="m.value">{{ m.label }}</option>
+            <option v-for="m in availableStatementModules" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </div>
 
@@ -1726,6 +1726,22 @@ function accountBelongsToDivision(acc, division) {
   return list.includes(acc.module_type) || list.includes(acc.module);
 }
 
+// Inverse of accountBelongsToDivision — derives the division an account is
+// attached to (based on its module_type / module). Returns '' when the
+// account doesn't map to a known division (no filtering applied then).
+function divisionFromAccount(acc) {
+  if (!acc) return '';
+  const moduleType = acc.module_type || '';
+  const module = acc.module || '';
+  if (DIVISION_TOURISM_MODULES.includes(moduleType) || DIVISION_TOURISM_MODULES.includes(module)) {
+    return 'tourism';
+  }
+  if (DIVISION_OFFICE_MODULES.includes(moduleType) || DIVISION_OFFICE_MODULES.includes(module)) {
+    return 'office';
+  }
+  return '';
+}
+
 // Module dropdown — derive from the ACCOUNTS that actually belong to the
 // selected division rather than from a hard-coded module list. This is the
 // "new system" the user wants for BOTH tourism and office: the dropdown
@@ -1746,6 +1762,23 @@ const availableAccountModules = computed(() => {
   });
 
   return modules.filter((m) => usedModuleValues.has(m.value));
+});
+
+// Module dropdown inside "تصفية كشف الحساب" — filters by the division of
+// the CURRENTLY LOADED account, not the discovery form selection. Same
+// single source of truth (DIVISION_*_MODULES) as the discovery dropdown,
+// but driven by `account.module_type` / `account.module` so the user only
+// sees modules that could realistically apply to the account they opened.
+// Falls back to the full module list when no account is loaded yet.
+const availableStatementModules = computed(() => {
+  const modules = financeStore.meta.transactionModules || [];
+  if (!account.value) return modules;
+
+  const division = divisionFromAccount(account.value);
+  if (!division) return modules;
+
+  const list = division === 'tourism' ? DIVISION_TOURISM_MODULES : DIVISION_OFFICE_MODULES;
+  return modules.filter((m) => list.includes(m.value));
 });
 
 const availableAccounts = computed(() => {
