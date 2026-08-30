@@ -1708,38 +1708,54 @@ const layoutMode = computed(() => {
   return 'commercial';
 });
 
+// Shared division → module mapping. Single source of truth for BOTH
+// `availableAccountModules` (the module dropdown) AND `availableAccounts`
+// (the account list). Mirrors the canonical lists in
+// `App\Support\Finance\AccountModuleDivision::TOURISM` / `::OFFICE` and
+// adds the legacy singular aliases that older rows still carry in
+// `accounts.module` / `accounts.module_type`.
+const DIVISION_TOURISM_MODULES = ['tourism', 'flights', 'hajj_umra', 'visas', 'flight', 'visa', 'hajj'];
+const DIVISION_OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general', 'wallet', 'service'];
+
+// Returns true iff the account is considered part of the selected division
+// (tourism vs office). Pure helper, no Vue dependencies, so the same logic
+// can power both the module dropdown and the account list.
+function accountBelongsToDivision(acc, division) {
+  if (!division || division === '') return true;
+  const list = division === 'tourism' ? DIVISION_TOURISM_MODULES : DIVISION_OFFICE_MODULES;
+  return list.includes(acc.module_type) || list.includes(acc.module);
+}
+
+// Module dropdown — derive from the ACCOUNTS that actually belong to the
+// selected division rather than from a hard-coded module list. This is the
+// "new system" the user wants for BOTH tourism and office: the dropdown
+// shows only modules that have at least one account linked to the chosen
+// division. Empty divisions correctly collapse to an empty dropdown
+// instead of leaking legacy entries (e.g. "general" appearing under office
+// when no office subject-accounts exist).
 const availableAccountModules = computed(() => {
   const modules = financeStore.meta.transactionModules || [];
   if (!accountModuleTypeFilter.value) return modules;
 
-  const tourismModules = ['flight', 'hajj_umra', 'visa'];
-  const officeModules = ['bus', 'wallet', 'online', 'fawry', 'general', 'service'];
+  const usedModuleValues = new Set();
+  accounts.value.forEach((acc) => {
+    if (!acc.is_active) return;
+    if (!accountBelongsToDivision(acc, accountModuleTypeFilter.value)) return;
+    if (acc.module) usedModuleValues.add(acc.module);
+    if (acc.module_type) usedModuleValues.add(acc.module_type);
+  });
 
-  if (accountModuleTypeFilter.value === 'tourism') {
-    return modules.filter((m) => tourismModules.includes(m.value));
-  }
-  if (accountModuleTypeFilter.value === 'office') {
-    return modules.filter((m) => officeModules.includes(m.value));
-  }
-  return modules;
+  return modules.filter((m) => usedModuleValues.has(m.value));
 });
 
 const availableAccounts = computed(() => {
   if (!Array.isArray(accounts.value)) return [];
-  
-  const TOURISM_MODULES = ['tourism', 'flights', 'hajj_umra', 'visas', 'flight', 'visa', 'hajj'];
-  const OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general', 'wallet', 'service'];
 
   return accounts.value.filter(acc => {
     const matchActive = acc.is_active;
-    
-    let matchModuleType = true;
-    if (accountModuleTypeFilter.value === 'tourism') {
-      matchModuleType = TOURISM_MODULES.includes(acc.module_type) || TOURISM_MODULES.includes(acc.module);
-    } else if (accountModuleTypeFilter.value === 'office') {
-      matchModuleType = OFFICE_MODULES.includes(acc.module_type) || OFFICE_MODULES.includes(acc.module);
-    }
-    
+
+    const matchModuleType = accountBelongsToDivision(acc, accountModuleTypeFilter.value);
+
     let matchModule = true;
     if (accountModuleFilter.value) {
       if (accountModuleFilter.value === 'general') {
@@ -1751,18 +1767,18 @@ const availableAccounts = computed(() => {
         const accModuleType = acc.module_type || '';
         const normAccModule = accModule.endsWith('s') ? accModule.slice(0, -1) : accModule;
         const normAccModuleType = accModuleType.endsWith('s') ? accModuleType.slice(0, -1) : accModuleType;
-        
+
         matchModule = normAccModule === normalizedVal || normAccModuleType === normalizedVal;
-        
+
         // Specially handle wallet modules
         if (normalizedVal === 'wallet') {
-          matchModule = matchModule || 
-                       accModule.includes('wallet') || 
+          matchModule = matchModule ||
+                       accModule.includes('wallet') ||
                        accModuleType.includes('wallet');
         }
       }
     }
-    
+
     return matchActive && matchModuleType && matchModule;
   });
 });
