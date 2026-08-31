@@ -756,9 +756,23 @@ class WalletTransactionService
         // surfaced to P&L via the settlement transfer in postSettlementSend()
         // when the cashier actually collects the cash.
 
+        // FIX (2026-08-30): SEND must debit ONLY the wallet provider account
+        // by `amount` (NOT amount+fee) — the wallet provider only debits the
+        // sender's wallet by the principal amount. The fee is kept by the
+        // wallet provider separately and surfaces as cashier commission
+        // (via settlement). Treasury / cashbox stays untouched at the moment
+        // of sending; any cash movement from the customer to the cashbox
+        // happens later via postSettlementSend() (transfer, not income/expense).
+        //
+        // The fee stays attached to the WT row
+        // (record->service_fee / total_amount / amount_paid) and surfaces
+        // to P&L via the settlement transfer in postSettlementSend() when
+        // the cashier actually collects the cash.
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
+            // Customer مسجّل: wallet → customerAccount بـ amount (المبلغ فقط).
+            // الـ settlement بعدها يخصم amount_paid من العميل ويضيفه للخزنة.
             $transfer = $this->transactionService->recordJournalTransfer([
                 'amount' => $amount,                                // المبلغ فقط — الرسوم على الـ settlement
                 'from_account_id' => $record->wallet_account_id,    // المحفظة (يخصم منها)
@@ -768,7 +782,7 @@ class WalletTransactionService
                 'related_type' => WalletTransaction::class,
                 'related_id' => $record->id,
                 'type' => TransactionType::Transfer->value,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة لمديونية العميل",
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة، رسوم {$fee} على التسوية",
                 'created_by' => $createdBy,
                 'currency' => $record->walletAccount?->currency,
             ]);
@@ -779,17 +793,19 @@ class WalletTransactionService
             return [$transfer, $transfer];
         }
 
-        // Anonymous customer (نقدي فوري): المحفظة → الخزنة مباشرة
+        // Anonymous customer (نقدي فوري): المحفظة → الخزنة بـ amount (المبلغ فقط).
+        // لو العميل دفع رسوم نقدي للخزنة عند الارسال (بدون amount_paid)، الـ fee
+        // يبقى في الخزنة كعمولة على الـ WT row فقط بدون حركة دفترية هنا.
         $transfer = $this->transactionService->recordJournalTransfer([
             'amount' => $amount,
             'from_account_id' => $record->wallet_account_id,  // المحفظة (يخصم)
-            'to_account_id' => $record->cash_account_id,      // الخزنة (العميل دفع cash)
+            'to_account_id' => $record->cash_account_id,      // الخزنة
             'allow_from_negative' => true,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
             'type' => TransactionType::Transfer->value,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة، أضيف للخزنة",
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للخزنة، رسوم {$fee} على الـ WT",
             'created_by' => $createdBy,
             'currency' => $record->walletAccount?->currency,
         ]);
