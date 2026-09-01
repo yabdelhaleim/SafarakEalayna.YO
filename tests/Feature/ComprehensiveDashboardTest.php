@@ -1233,6 +1233,189 @@ class ComprehensiveDashboardTest extends TestCase
         $this->assertEquals(0.0, (float) $treasury['wallet']);
     }
 
+    /**
+     * Regression: dashboard treasury_summary MUST convert foreign-currency balances to EGP.
+     *
+     * Before the fix, DashboardService summed raw `Account::balance` (so a 100 USD
+     * cashbox with rate 50 EGP/USD counted as 100 instead of 5,000). The treasury
+     * page's total_liquidity was therefore systematically lower than what the
+     * dashboard reported for any USD/SAR-denominated liquidity account.
+     *
+     * After the fix, dashboard totals must equal TreasuryService::getAveragePurchaseRate()
+     * × balance for every liquidity account, matching /finance/treasury.
+     */
+    public function test_g5_treasury_summary_converts_foreign_currency_to_egp(): void
+    {
+        // Seed a USD cashbox with 100 USD; we'll later assert it shows as 5000 EGP.
+        $this->seedLiquidityAccount(
+            'G5 USD Cashbox',
+            AccountType::Cashbox,
+            balance: 100.0,
+            moduleType: 'tourism',
+            currency: 'USD',
+        );
+        // Seed an EGP bank for the 1.0-rate baseline.
+        $this->seedLiquidityAccount(
+            'G5 EGP Bank',
+            AccountType::Bank,
+            balance: 7000.0,
+            moduleType: 'office',
+            currency: 'EGP',
+        );
+
+        // Provision a flight booking so getAveragePurchaseRate('USD') can derive
+        // a non-default rate from real bookings (purchase_price_egp / purchase_price_foreign).
+        $customer = $this->seedCustomer('G5 FX');
+        FlightBooking::query()->create([
+            'booking_number' => 'FL-G5-FX',
+            'booking_reference' => 'FLT-REF-G5',
+            'booking_channel_type' => 'manual',
+            'booking_channel_provider' => 'Direct',
+            'system_type' => 'manual',
+            'customer_id' => $customer->id,
+            'agent_name' => 'Direct Agent',
+            'airline' => 'EK',
+            'airline_name' => 'Emirates',
+            'origin' => 'CAI',
+            'from_airport' => 'CAI',
+            'destination' => 'DXB',
+            'to_airport' => 'DXB',
+            'departure_date' => now()->addDays(7)->toDateString(),
+            'departure_time' => now()->addDays(7)->setTime(12, 0),
+            'trip_type' => 'one_way',
+            'passenger_count' => 1,
+            'baggage_allowance_kg' => 23,
+            'trip_details' => 'FX rate provisioning flight booking',
+            'purchase_price' => 5000.00,
+            'purchase_price_foreign' => 100.00,
+            'purchase_price_egp' => 5000.00,
+            'selling_price' => 5500.00,
+            'profit' => 500.00,
+            'foreign_currency' => 'USD',
+            'currency' => 'USD',
+            'status' => 'CONFIRMED',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $response = $this->fetchDashboard('nocache=1');
+        $response->assertOk();
+
+        $treasury = $response->json('data.treasury_summary');
+
+        // Expected USD→EGP rate from the flight booking: 5000/100 = 50 EGP per USD.
+        $expectedUsdRate = 50.0;
+        $expectedUsdInEgp = 100.0 * $expectedUsdRate; // = 5000 EGP
+        $expectedTotal = $expectedUsdInEgp + 7000.0; // = 12000 EGP
+
+        $this->assertEqualsWithDelta(
+            $expectedTotal,
+            (float) $treasury['total'],
+            0.01,
+            'Dashboard treasury_summary.total must include EGP-converted USD balances, not raw foreign amounts'
+        );
+        $this->assertEqualsWithDelta(
+            $expectedUsdInEgp,
+            (float) $treasury['cashbox'],
+            0.01,
+            'Dashboard treasury_summary.cashbox must contain the EGP-converted USD cashbox'
+        );
+        $this->assertEqualsWithDelta(
+            7000.0,
+            (float) $treasury['bank'],
+            0.01,
+            'Dashboard treasury_summary.bank must contain the EGP bank (rate=1.0)'
+        );
+    }
+
+    /**
+     * Regression: dashboard treasury_summary.total MUST equal TreasuryService::getConsolidatedTrialBalance()
+     * ['total_liquidity']. Both views must show the same company liquidity.
+     */
+    public function test_g6_dashboard_treasury_summary_matches_consolidated_trial_balance(): void
+    {
+        // Spread balances across the three AccountTypes AND across both divisions
+        // (tourism + office) so that the consolidated (sum) calculation is exercised.
+        $this->seedLiquidityAccount(
+            'G6 Tourism Cashbox',
+            AccountType::Cashbox,
+            balance: 5000.0,
+            moduleType: 'tourism',
+            currency: 'EGP',
+        );
+        $this->seedLiquidityAccount(
+            'G6 Office Bank',
+            AccountType::Bank,
+            balance: 12_000.0,
+            moduleType: 'office',
+            currency: 'EGP',
+        );
+        $this->seedLiquidityAccount(
+            'G6 Office Wallet',
+            AccountType::Wallet,
+            balance: 1500.0,
+            moduleType: 'office',
+            currency: 'EGP',
+        );
+        // Subject account (Customer) — must NOT appear in liquidity totals even
+        // though it has a positive balance, because it's not a cashbox/bank/wallet.
+        $this->seedLiquidityAccount(
+            'G6 Fawry Customer',
+            AccountType::Customer,
+            balance: 99_999.0,
+            moduleType: 'fawry',
+            currency: 'EGP',
+        );
+        // Inactive account — must NOT count.
+        LedgerBalanceMutationGuard::run(function () {
+            $inactive = Account::query()->create([
+                'name' => 'G6 Inactive Cashbox',
+                'type' => AccountType::Cashbox->value,
+                'currency' => 'EGP',
+                'balance' => 0.0,
+                'is_active' => false,
+                'owner_type' => Account::OWNER_TYPE_OFFICE,
+                'module_type' => 'office',
+                'created_by' => $this->admin->id,
+            ]);
+            $inactive->update(['balance' => 50_000.0]);
+        });
+
+        $response = $this->fetchDashboard('nocache=1');
+        $response->assertOk();
+
+        $treasury = $response->json('data.treasury_summary');
+        $dashboardTotal = (float) $treasury['total'];
+
+        // 5000 (tourism cashbox) + 12000 (office bank) + 1500 (office wallet) = 18500
+        // The 99_999 customer balance and 50_000 inactive cashbox MUST be excluded.
+        $expected = 18_500.0;
+        $this->assertEqualsWithDelta(
+            $expected,
+            $dashboardTotal,
+            0.01,
+            'Dashboard treasury total must aggregate ONLY active cashbox/bank/wallet in tourism+office divisions'
+        );
+
+        // The consolidated trial balance (the source-of-truth used by /finance/treasury)
+        // MUST agree with the dashboard, otherwise the user sees two different totals.
+        $consolidatedTotal = (float) app(\App\Services\Finance\TreasuryService::class)
+            ->getConsolidatedTrialBalance()['total_liquidity'];
+        $this->assertEqualsWithDelta(
+            $consolidatedTotal,
+            $dashboardTotal,
+            0.01,
+            'Dashboard treasury total must equal TreasuryService::getConsolidatedTrialBalance() total_liquidity'
+        );
+
+        // Breakdown sanity: total = cashbox + bank + wallet.
+        $this->assertEqualsWithDelta(
+            $expected,
+            (float) $treasury['cashbox'] + (float) $treasury['bank'] + (float) $treasury['wallet'],
+            0.01,
+            'Dashboard treasury breakdown (cashbox+bank+wallet) must sum to total'
+        );
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     //  Group H — Recent Activities & Alerts (3 tests)
     // ═════════════════════════════════════════════════════════════════════

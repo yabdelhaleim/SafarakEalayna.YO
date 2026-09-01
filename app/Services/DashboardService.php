@@ -319,27 +319,50 @@ class DashboardService
         $busLedgerProfit = (float) ($plByModule->get('bus')['profit'] ?? 0);
         $busLedgerRevenue = (float) ($plByModule->get('bus')['income'] ?? 0);
 
-        // Treasury: liquidity accounts only (exclude customer/supplier ledgers)
-        $liquidityQuery = Account::query()->where('is_active', true);
-        AccountModuleDivision::applyLiquidityTreasuryScope($liquidityQuery);
-        $accounts = $liquidityQuery
+        // Treasury: liquidity accounts only (exclude customer/supplier ledgers).
+        //
+        // Mirror the filter + EGP conversion of TreasuryService::getConsolidatedTrialBalance()
+        // so the dashboard's "الخزائن والسيولة" total matches /finance/treasury exactly.
+        //
+        // Previously this summed raw `Account::balance` (no EGP conversion) with an
+        // owner_type-based filter, producing a number 100k+ EGP lower than the treasury
+        // whenever any USD/SAR/EUR-denominated liquidity account existed.
+        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+
+        $liquidityQuery = Account::query()
+            ->where('is_active', true)
+            ->whereIn('module_type', array_merge(
+                AccountModuleDivision::TOURISM,
+                AccountModuleDivision::OFFICE
+            ))
             ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
-            ->get();
+            ->where('name', 'not like', '%عميل%')
+            ->where('name', 'not like', '%شركة%')
+            ->where('name', 'not like', '%مورد%')
+            ->where('name', 'not like', '%إقفال%')
+            ->where('name', 'not like', '%(نظام)%')
+            ->where('name', 'not like', '%ذممة%')
+            ->where('name', 'not like', '%رصيد مسبق%');
+        $accounts = $liquidityQuery->get();
 
         $cashboxBalance = 0.0;
         $bankBalance = 0.0;
         $walletBalance = 0.0;
 
         foreach ($accounts as $acc) {
-            $val = (float) $acc->balance;
+            $currency = strtoupper((string) ($acc->currency ?? 'EGP'));
+            $rate = $currency === 'EGP'
+                ? 1.0
+                : (float) $treasuryService->getAveragePurchaseRate($currency);
+            $valEgp = (float) $acc->balance * $rate;
             $type = $acc->type instanceof AccountType
                 ? $acc->type
                 : AccountType::tryFrom((string) $acc->type);
 
             match ($type) {
-                AccountType::Bank => $bankBalance += $val,
-                AccountType::Wallet => $walletBalance += $val,
-                default => $cashboxBalance += $val,
+                AccountType::Bank => $bankBalance += $valEgp,
+                AccountType::Wallet => $walletBalance += $valEgp,
+                default => $cashboxBalance += $valEgp,
             };
         }
 
