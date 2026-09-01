@@ -321,28 +321,20 @@ class DashboardService
 
         // Treasury: liquidity accounts only (exclude customer/supplier ledgers).
         //
-        // Mirror the filter + EGP conversion of TreasuryService::getConsolidatedTrialBalance()
-        // so the dashboard's "الخزائن والسيولة" total matches /finance/treasury exactly.
+        // Mirror TreasuryService::getTreasuryOverview() exactly so the dashboard's
+        // "الخزائن والسيولة" total matches the /finance/treasury page to the piastre.
         //
-        // Previously this summed raw `Account::balance` (no EGP conversion) with an
-        // owner_type-based filter, producing a number 100k+ EGP lower than the treasury
-        // whenever any USD/SAR/EUR-denominated liquidity account existed.
+        // The treasury page uses AccountModuleDivision::applyLiquidityTreasuryScope()
+        // (owner_type-based, NOT module_type-based) plus EGP conversion via
+        // TreasuryService::getAveragePurchaseRate().  Previously the dashboard used
+        // a different filter and summed raw `Account::balance` with no FX conversion,
+        // producing numbers 100k+ EGP lower than the treasury whenever any
+        // USD/SAR/EUR-denominated liquidity account existed.
         $treasuryService = app(\App\Services\Finance\TreasuryService::class);
 
         $liquidityQuery = Account::query()
-            ->where('is_active', true)
-            ->whereIn('module_type', array_merge(
-                AccountModuleDivision::TOURISM,
-                AccountModuleDivision::OFFICE
-            ))
-            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
-            ->where('name', 'not like', '%عميل%')
-            ->where('name', 'not like', '%شركة%')
-            ->where('name', 'not like', '%مورد%')
-            ->where('name', 'not like', '%إقفال%')
-            ->where('name', 'not like', '%(نظام)%')
-            ->where('name', 'not like', '%ذممة%')
-            ->where('name', 'not like', '%رصيد مسبق%');
+            ->where('is_active', true);
+        AccountModuleDivision::applyLiquidityTreasuryScope($liquidityQuery);
         $accounts = $liquidityQuery->get();
 
         $cashboxBalance = 0.0;

@@ -1396,15 +1396,20 @@ class ComprehensiveDashboardTest extends TestCase
             'Dashboard treasury total must aggregate ONLY active cashbox/bank/wallet in tourism+office divisions'
         );
 
-        // The consolidated trial balance (the source-of-truth used by /finance/treasury)
+        // The treasury overview (the source-of-truth used by /finance/treasury page)
         // MUST agree with the dashboard, otherwise the user sees two different totals.
-        $consolidatedTotal = (float) app(\App\Services\Finance\TreasuryService::class)
-            ->getConsolidatedTrialBalance()['total_liquidity'];
+        // getTreasuryOverview() returns stats.by_category.{office, tourism}, each in
+        // EGP-converted form using applyLiquidityTreasuryScope (owner_type-based).
+        $treasuryOverview = app(\App\Services\Finance\TreasuryService::class)->getTreasuryOverview();
+        $treasuryPageTotal = (float) (
+            ($treasuryOverview['stats']['by_category']['office']['total_liquidity'] ?? 0.0)
+            + ($treasuryOverview['stats']['by_category']['tourism']['total_liquidity'] ?? 0.0)
+        );
         $this->assertEqualsWithDelta(
-            $consolidatedTotal,
+            $treasuryPageTotal,
             $dashboardTotal,
             0.01,
-            'Dashboard treasury total must equal TreasuryService::getConsolidatedTrialBalance() total_liquidity'
+            'Dashboard treasury total must equal TreasuryService::getTreasuryOverview() stats.by_category.{office,tourism}.total_liquidity'
         );
 
         // Breakdown sanity: total = cashbox + bank + wallet.
