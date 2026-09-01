@@ -490,12 +490,26 @@ class LedgerClearingAccounts
     /**
      * Resolve all income/expense clearing account IDs in a single query (no response caching).
      *
+     * Includes both the single-currency `income`/`expense` config keys AND
+     * the per-currency `income_per_currency`/`expense_per_currency` keys
+     * introduced in Phase 7. Without the per-currency block below, USD/SAR
+     * visa and hajj bookings that route into the per-currency clearing
+     * buckets (`إقفال إيرادات التأشيرات (USD)` etc.) were silently
+     * missing from the P&L engine's incomeClearing/expenseClearing maps
+     * — the dashboard reported zero revenue/COGS for those bookings while
+     * the rest of the system (statements, balances, account tree) showed
+     * them correctly. The per-currency accounts already existed in the
+     * `accounts` table and the rest of the GL flow treated them right;
+     * only this resolver was incomplete.
+     *
      * @return array{income: array<int, string>, expense: array<int, string>}
      */
     public function moduleAccountMaps(): array
     {
         $incomeNames = config('accounting.clearing.income', []);
         $expenseNames = config('accounting.clearing.expense', []);
+        $incomePerCurrency = config('accounting.clearing.income_per_currency', []);
+        $expensePerCurrency = config('accounting.clearing.expense_per_currency', []);
 
         $nameToModule = [];
         foreach ($incomeNames as $module => $name) {
@@ -506,6 +520,26 @@ class LedgerClearingAccounts
         foreach ($expenseNames as $module => $name) {
             if (is_string($name) && $name !== '') {
                 $nameToModule[$name] = ['kind' => 'expense', 'module' => $this->normalizeModuleKey($module)];
+            }
+        }
+        // Per-currency clearing buckets (Phase 7, multi-currency visa/hajj).
+        // Same module key as the single-currency account — the resolver
+        // already collapses them, and per-currency buckets are posted in
+        // the SAME currency as the cashbox so FX safety is preserved.
+        foreach ($incomePerCurrency as $module => $byCurrency) {
+            $moduleKey = $this->normalizeModuleKey($module);
+            foreach ((array) $byCurrency as $name) {
+                if (is_string($name) && $name !== '') {
+                    $nameToModule[$name] = ['kind' => 'income', 'module' => $moduleKey];
+                }
+            }
+        }
+        foreach ($expensePerCurrency as $module => $byCurrency) {
+            $moduleKey = $this->normalizeModuleKey($module);
+            foreach ((array) $byCurrency as $name) {
+                if (is_string($name) && $name !== '') {
+                    $nameToModule[$name] = ['kind' => 'expense', 'module' => $moduleKey];
+                }
             }
         }
 

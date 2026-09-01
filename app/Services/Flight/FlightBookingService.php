@@ -2852,7 +2852,7 @@ class FlightBookingService
      * the top of cancelBooking() rejects repeat cancellations of the
      * same booking anyway, so this guard is defensive only.
      */
-    protected function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): void
+    public function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): void
     {
         // Refresh in case Step 3 modified any cache.
         $booking->refresh();

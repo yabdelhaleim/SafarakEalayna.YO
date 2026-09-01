@@ -451,7 +451,7 @@ class RefundService
 
                 $glTransaction = null;
 
-                // ── Step A: عكس قيد البيع (customer → clearing, amount=refund_amount) ──
+// ── Step A: عكس قيد البيع (customer → clearing, amount=refund_amount) ──
                 //
                 // نعكس الـ sale بـ refund_amount (مش selling_price بالكامل) عشان:
                 //   - الـ clearing (income) يرجع لـ -(cancellation_fee) = رسوم الإلغاء المتبقية كإيراد
@@ -463,8 +463,33 @@ class RefundService
                 if ($booking->sale_gl_transaction_id && $refundAmount > 0) {
                     $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                     if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                        // FIX (2026-09-01): استخدم الـ EGP equivalent
+                        // (base_currency_refund) بدل $refundAmount الخام.
+                        // الـ refund_amount بيتسجل بعملة الحجز (مثل USD)
+                        // لكن الـ GL entries والـ customer AR لازم تكون
+                        // متناسقة بعملة EGP عشان الـ ledger يفضل متوازن.
+                        //
+                        // مثال على الـ bug قبل الإصلاح:
+                        //   booking.selling_price = 1000 EGP (= 20 USD)
+                        //   sale_gl_transaction = customer AR ← pending_sales_receivable, amount=1000 EGP
+                        //   refund_amount = 20 USD (= 1000 EGP equivalent)
+                        //   Step A قبل: amount=20 (USD خام) → customer AR -20 بس
+                        //     ← الـ customer AR يفضل بـ +980 رصيد
+                        //   Step A بعد:  amount=1000 (EGP) → customer AR متوازن
+                        //
+                        // Fallback chain زي الـ partial companion:
+                        //   1. base_currency_refund (من createRefundRequest)
+                        //   2. refundAmount * refundExchangeRate (لو الـ
+                        //      request اتعمل يدوي بدون service)
+                        //   3. refundAmount (لو EGP، الـ conversion = 1.0)
+                        $stepAmountEgp = (float) ($refundRequest->base_currency_refund ?? 0);
+                        if ($stepAmountEgp <= 0) {
+                            $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                            $stepAmountEgp = $refundAmount * $refundExchangeRate;
+                        }
+
                         $reversalGl = $this->transactionService->recordJournalTransfer([
-                            'amount' => $refundAmount,
+                            'amount' => $stepAmountEgp,
                             'from_account_id' => (int) $orig->to_account_id,    // customer (DR — يرجع له رصيد البيع)
                             'to_account_id' => (int) $orig->from_account_id,    // clearing (CR — يمسح الإيراد)
                             'allow_from_negative' => true,
@@ -480,9 +505,120 @@ class RefundService
                             'refund_request_id' => $refundRequest->id,
                             'original_sale_gl_id' => $booking->sale_gl_transaction_id,
                             'reversal_gl_id' => $reversalGl->id,
-                            'amount' => $refundAmount,
+                            'amount_egp' => $stepAmountEgp,
+                            'amount_booking_currency' => $refundAmount,
                             'cancellation_fee_kept' => $cancellationFee,
                         ]);
+                    }
+                }
+
+// ── Step A-REVENUE: عكس إيراد الدفعات المسجَّل في P&L ──────
+                //
+                // FIX (2026-09-01): RefundService كان بيعكس قيد البيع (Step A)
+                // بس لو $booking->sale_gl_transaction_id موجود، وفي حالة FIN-2
+                // (credit booking) ده بيبقى null والإيراد بيتعرف بس وقت
+                // addPayment عبر recordIncome (type='income'). بدون الـ call ده،
+                // الـ P&L بيفضل يعد الـ +revenue بعد الـ refund والداش بورد
+                // بيظهر ربح وهمي.
+                //
+                // منطق مختلف للـ full vs partial refund:
+                //
+                //   FULL refund (refund_amount == total payments):
+                //     reverseFlightBookingRevenue() بيعمل markTransactionReversed
+                //     على كل صف type='income' مربوط بـ FlightPayment + Customer
+                //     (FIN-3 BUG-2 payDebt path) → الـ P&L بيـ skip الصفوف دي
+                //     (الـ 'عكس:' prefix في H1 fix). الـ revenue الكامل بينخصم.
+                //
+                //   PARTIAL refund (refund_amount < total payments):
+                //     الـ logic ده بيـ skip reverseFlightBookingRevenue (لأنه
+                //     بيعكس الـ revenue بالكامل) وبيضيف companion row بس بمبلغ
+                //     الاسترداد. الـ companion row من نوع 'transfer' بـ notes
+                //     prefix 'عكس ' (مسافة بدون نقطتين) → الـ P&L engine (H1 fix)
+                //     بيـ reclassify كـ revenue_reversal وبيخصم بس المبلغ ده.
+                //
+                // Idempotent: لو already-reversed، بيرجع no-op. آمن للتشغيل
+                // المتكرر على نفس الحجز.
+                $totalRecognisedRevenue = (float) $booking->payments()
+                    ->whereNotNull('transaction_id')
+                    ->sum('amount');
+                $isFullRefund = $totalRecognisedRevenue > 0
+                    && abs($totalRecognisedRevenue - $refundAmount) < 0.01;
+
+if ($isFullRefund) {
+                    $this->flightBookingService->reverseFlightBookingRevenue(
+                        $booking,
+                        $userId
+                    );
+                } else {
+                    // PARTIAL REFUND: أضف companion row بمبلغ الاسترداد بس.
+                    // امسح الـ +revenue المعترف به جزئياً باستخدام الـ same
+                    // legs (customer AR ← cashbox) الـ addPayment استخدمها، مع
+                    // عكس الاتجاه: from=income_clearing → to=customer AR
+                    // (عكس sales GL) ومبلغ = refund_amount.
+                    //
+                    // الـ income clearing هو الـ contra account الـ addPayment
+                    // استخدمته: `recordIncome(contra_account_id=$customerAR)` —
+                    // فالـ customer AR هو الـ from للـ income row. للـ reversal
+                    // companion، الـ legs are: cashbox → customer AR مع notes
+                    // prefix 'عكس ' عشان H1 fix يخصمه من revenue.
+                    //
+                    // بنستخدم أول payment المرتبط كـ anchor للـ contra legs
+                    // (cashbox + customer AR). هذا يطابق الـ pattern العام:
+                    // revenue reversal companion = mirror of original income
+                    // posting, مع نفس الـ related_type.
+                    $firstPayment = $booking->payments()
+                        ->whereNotNull('transaction_id')
+                        ->with('transaction')
+                        ->first();
+
+                    if ($firstPayment && $firstPayment->transaction) {
+                        $origIncome = $firstPayment->transaction;
+                        $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
+                        $incomeClearingId = $clearingAccounts->incomeContraIdForFlightBooking();
+                        $customerARId = (int) $origIncome->from_account_id;
+
+                        if ($incomeClearingId && $customerARId) {
+                            // FIX (2026-09-01): استخدم EGP equivalent
+                            // (base_currency_refund) بدل $refundAmount الخام.
+                            // الـ refund_amount بيتسجل بعملة الحجز (مثل USD)
+                            // لكن الـ P&L بيقرا t.amount كـ EGP. الـ
+                            // base_currency_refund مخزن على الـ RefundRequest
+                            // وقت الإنشاء (سطر 307) ويبقى الـ EGP equivalent
+                            // الصحيح للاستخدام في الـ reversal companion.
+                            //
+                            // Fallback chain:
+                            //   1. base_currency_refund (لو تم إنشاؤه عبر
+                            //      createRefundRequest في الـ service)
+                            //   2. احسبه من refundAmount * refundExchangeRate
+                            //      (لو الـ request اتعمل مباشرة في DB بدون
+                            //      service — زي الـ tests)
+                            //   3. $refundAmount الخام (لو الحجز والـ refund
+                            //      الاتنين EGP فالـ conversion = 1.0)
+                            $reversalAmountEgp = (float) ($refundRequest->base_currency_refund ?? 0);
+                            if ($reversalAmountEgp <= 0) {
+                                $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                                $reversalAmountEgp = $refundAmount * $refundExchangeRate;
+                            }
+
+                            $this->transactionService->recordJournalTransfer([
+                                'amount' => $reversalAmountEgp,
+                                'from_account_id' => $customerARId,
+                                'to_account_id' => $incomeClearingId,
+                                'allow_from_negative' => true,
+                                'module' => TransactionModule::Flight->value,
+                                'related_type' => FlightBooking::class,
+                                'related_id' => $booking->id,
+                                'notes' => "عكس إيراد مدفوعات جزئي ضمن الاسترداد (مخصوماً منه رسوم الإلغاء {$cancellationFee}) — حجز #{$booking->booking_number}",
+                                'created_by' => $userId,
+                            ]);
+
+                            Log::info('تم عكس إيراد الحجز جزئياً ضمن عملية الاسترداد', [
+                                'refund_request_id' => $refundRequest->id,
+                                'reversal_amount_egp' => $reversalAmountEgp,
+                                'cancellation_fee_kept' => $cancellationFee,
+                                'mode' => 'partial_companion',
+                            ]);
+                        }
                     }
                 }
 

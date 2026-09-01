@@ -250,23 +250,54 @@ class ProfitLossReportService
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
 
-            // Skip transactions already reversed via
-            // TransactionService::reverseTransaction(): it posts mirror
-            // account entries (D/C swapped) that net the ledger back to
-            // zero, but t.from_account_id / t.to_account_id stay pointed
-            // at the consumption side. Without this guard the original
-            // cogs/revenue would be re-counted as if it were live. The
-            // 'عكس:' / 'عكس ' notes prefix is set by TransactionService at
-            // the end of reverseTransaction() — that is the canonical
-            // reversed marker.
+            // Reverse-transaction handling has TWO flavors that the P&L engine must
+            // distinguish — this MUST stay in lock-step with `report()` above
+            // (lines 109-138) so the per-module breakdown matches the aggregate
+            // total reported on the dashboard. Pre-fix this method skipped
+            // BOTH 'عكس:' (colon) AND 'عكس ' (space) prefixes, which meant a
+            // cancelled flight booking (which posts an additive companion row
+            // via `recordJournalTransfer` with notes starting with 'عكس ')
+            // left the original revenue counted and the reversal dropped —
+            // inflating the per-module profit card while the aggregate
+            // `total_profit` correctly subtracted it. Result: red-mismatch
+            // between sub-cards (طيران/حج/تأشيرات) and the total.
+            //
+            // 1. `عكس:` (colon) — set by `TransactionService::reverseTransaction()`:
+            //    the SAME original row's notes are prefixed and mirror
+            //    AccountEntry rows are added (D/C swapped) that net the
+            //    ledger back to zero. The P&L bucket would double-count the
+            //    original if we kept this row. → SKIP entirely.
+            //
+            // 2. `عكس ` (space, no colon) — set by `recordJournalTransfer()`
+            //    inside `FlightBookingService::cancelBooking` and the
+            //    Hajj/Visa equivalent paths: a NEW companion row is created
+            //    alongside the unmodified original. The original row counts
+            //    as revenue/cogs and must be cancelled out by this new row.
+            //    Reclassify revenue→revenue_reversal and cogs→cogs_reversal
+            //    so the subtraction path below runs.
+            //
+            // Both forms are correct bookkeeping; the engine just needs to
+            // know which form it is looking at. The skip+reclassify pair
+            // here mirrors the logic in `report()` line-by-line.
             $txNotes = (string) ($tx->notes ?? '');
-            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+            if (str_starts_with($txNotes, 'عكس:')) {
                 continue;
             }
 
             $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
+            }
+
+            // Apply the 'عكس ' (space) reversal reclassification AFTER
+            // classify() so we have a classification to flip. The mirror
+            // case 'عكس:' (colon) is already handled by the continue above.
+            if (str_starts_with($txNotes, 'عكس ')) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $section = $this->sectionForClassification($classification);
@@ -426,7 +457,22 @@ class ProfitLossReportService
     private function applyRelevanceFilter(Builder $query, array $clearingIds): void
     {
         $query->where(function (Builder $outer) use ($clearingIds): void {
-            $outer->whereIn('t.type', ['income', 'expense', 'refund']);
+            // FIX (H4): include 'writeoff' in the relevance set. The
+            // transactions.type enum was extended to
+            // ['income', 'expense', 'transfer', 'refund', 'writeoff']
+            // by migration 2026_07_09_020000_add_writeoff_to_transactions_type_enum,
+            // and ReportController already treats writeoff as a negative bucket
+            // in /api/v1/reports/profit-loss — but this P&L filter was still
+            // dropping those rows, so the Dashboard silently hid approved-loss
+            // writeoffs (e.g. legacy reconciliation rows from
+            // phase3b_v3_writeoff_7desyncs.php). Widening the type set makes
+            // them surface; the bucketing switch in report() / moduleBreakdown()
+            // handles classification via the existing
+            // $type === 'income' | 'expense' | 'refund' branches in classify()
+            // — writeoff lands on the 'expense' branch (operating_expense)
+            // since type === 'expense' is set by recordExpense / writeoff
+            // creators, so it's correctly booked as a cost.
+            $outer->whereIn('t.type', ['income', 'expense', 'refund', 'writeoff']);
 
             $outer->orWhere(function (Builder $transfer) use ($clearingIds): void {
                 $transfer->where('t.type', 'transfer')
@@ -565,6 +611,20 @@ class ProfitLossReportService
             return 'refund';
         }
 
+        // FIX (H4 — companion to the applyRelevanceFilter widening):
+        // type='writeoff' is the post-2026-07-09 marker for approved-loss
+        // writeoffs produced by reconciliation scripts (e.g.
+        // phase3b_v3_writeoff_7desyncs.php). Treat them identically to
+        // type='expense' so they book as operating_expense — matching the
+        // signed-impact convention already used by
+        // ReportController::profitLoss (income +, expense/refund/writeoff −).
+        // Without this, writeoffs would pass the relevance filter (H4 fix)
+        // and then be re-classified to null here, silently dropping them
+        // again. Mirrors the dashboard's "approved losses" semantics.
+        if ($type === 'writeoff') {
+            return 'operating_expense';
+        }
+
         if ($type === 'expense') {
             return 'operating_expense';
         }
@@ -680,18 +740,54 @@ class ProfitLossReportService
 
     private function resolveAmountEGP(object $tx): float
     {
+        // Default to the stored amount (which is denominated in the source
+        // currency). The transfers-table join is LEFT-joined so converted_amount
+        // may legitimately be NULL — fall through cleanly to $amount in that case.
         $amount = (float) $tx->amount;
-        if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
-            $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
-            $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
-            if ($toCurrency === 'EGP') {
-                $amount = (float) $tx->converted_amount;
-            } elseif ($fromCurrency === 'EGP') {
-                $amount = (float) $tx->amount;
-            }
+        if (! isset($tx->converted_amount) || (float) $tx->converted_amount <= 0) {
+            return $amount;
         }
 
-        return $amount;
+        $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
+        $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
+
+        // EGP is the dashboard reporting currency. If the destination leg is
+        // already EGP, the conversion is complete → use converted_amount.
+        if ($toCurrency === 'EGP') {
+            return (float) $tx->converted_amount;
+        }
+
+        // Source leg is EGP and destination is foreign → the EGP leg is the
+        // amount column itself (the foreign leg is derived from it via FX).
+        if ($fromCurrency === 'EGP') {
+            return $amount;
+        }
+
+        // FIX (H2): BOTH legs are non-EGP (e.g. USD cashbox → SAR clearing,
+        // or any inter-treasury cross-currency move that touches a clearing
+        // account). Previously this branch silently fell through to
+        // `$tx->amount` (a foreign-currency amount) which the P&L then
+        // summed as if it were EGP — corrupting tourism revenue/COGS for
+        // multi-currency visa/hajj bookings on the Dashboard only (the rest
+        // of the system uses CurrencyService::convert() on-demand and was
+        // unaffected).
+        //
+        // Same-currency defensive case: if both legs are the same currency
+        // AND the stored amount matches converted_amount, accept amount —
+        // this handles deposits / withdrawals within a single FX bucket.
+        if ($fromCurrency === $toCurrency
+            && abs((float) $tx->converted_amount - $amount) < 0.0001) {
+            return $amount;
+        }
+
+        // Genuine cross-currency, non-EGP case. We deliberately return 0.0
+        // (and let the caller skip via the $amount <= 0 guard in report() /
+        // moduleBreakdown()) rather than mis-price a foreign amount under
+        // an EGP label. The Dashboard is the only consumer that needs this
+        // normalisation — currency conversion for actual accounting lives
+        // in CurrencyService::convert() and is already applied by the
+        // writer services (recordJournalTransfer, etc.) at posting time.
+        return 0.0;
     }
 
     private function sectionForClassification(string $classification): string
