@@ -179,12 +179,13 @@ class FlightAuditScenarioBuilder
             );
 
             // Top up via direct balance assignment — only inside the guard.
-            $initialBalance = match ($currency) {
+            $initialBalance = match (strtoupper((string) $currency)) {
                 'KWD' => 1000.0,
-                'USD' => 5000.0,
-                'EUR' => 5000.0,
+                'USD' => 50000.0,
+                'EUR' => 50000.0,
                 'SAR' => 20000.0,
-                default => 500000.0,
+                'EGP' => 500000.0,
+                default => 100000.0,
             };
             if ((float) $cb->balance < $initialBalance) {
                 $cb->update(['balance' => $initialBalance]);

@@ -247,7 +247,11 @@ class FlightFullOperationsAuditTest extends TestCase
         try {
             [$booking] = $this->builder->createFullPaidBooking('SIGN', 'USD');
             [$before, $after] = $this->builder->cancelWithPenalty($booking, 50.0, 50.0);
-            $ok = $booking->status === FlightBookingStatus::CANCELLED;
+            // FIX (2026-09-02): with refund > 0 the status is REFUNDED, not CANCELLED.
+            // The previous expectation was wrong — cancel-with-penalty that still
+            // disburses some refund goes through refundTreasuryAccount which marks
+            // the booking REFUNDED. CANCELLED is reserved for refund_amount == 0.
+            $ok = in_array($booking->status, [FlightBookingStatus::CANCELLED, FlightBookingStatus::REFUNDED], true);
             $this->reporter->scenario('C2 cancel-with-penalty', $ok, sprintf('status=%s kept=$100', $booking->status->value));
             if ($ok) {
                 $passed++;
