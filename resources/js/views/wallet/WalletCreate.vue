@@ -1262,11 +1262,30 @@ async function submit() {
 
   if (Object.keys(errors.value).length > 0) return;
 
+  // WLT-1 (2026-09-02) — Receive-destination flexibility.
+  //
+  // For RECEIVE transactions, when the user picks a non-cash counterparty
+  // (bank, another wallet, etc.) from the settlementCategoryChips, the
+  // chosen account id is sent to the backend as
+  // `receive_destination_account_id` — the backend routes the Expense leg
+  // there instead of the legacy default (customer account for registered
+  // customers; cashbox for anonymous).
+  //
+  // For SEND, or when the user picks the cash category, no override is
+  // sent — the backend uses its pre-fix behaviour unchanged.
+  const receiveDestinationAccountId =
+    form.value.type === 'receive' &&
+    settlementCategoryUi.value !== 'cash' &&
+    form.value.cash_account_id
+      ? Number(form.value.cash_account_id)
+      : null;
+
   try {
     await store.createTransaction({
       ...form.value,
       service_fee: parseFloat(form.value.service_fee) || 0,
       amount_paid: parseFloat(form.value.amount_paid) || 0,
+      receive_destination_account_id: receiveDestinationAccountId,
     });
     router.push('/wallet');
   } catch (e) {
