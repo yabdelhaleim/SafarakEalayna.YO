@@ -114,7 +114,15 @@ class HajjUmraDeleteDeepAuditTest extends HajjUmraTestCase
 
     public function test_delete_zero_ghost_supplier_debt(): void
     {
+        // BUG FIX (2026-08-29): supplier from makeSupplier() defaults to USD
+        // account. Booking payload uses EGP currency, so the FX guard in
+        // HajjUmraBookingService::create() refuses to book with no FX rate
+        // in tests. Fix: build an EGP-denominated supplier here so the test
+        // exercises the SAME-CURRENCY supplier-AP debit+reverse path.
         $supplier = $this->makeSupplier();
+        \App\Support\Finance\LedgerBalanceMutationGuard::run(function () use ($supplier) {
+            $supplier->account->update(['currency' => 'EGP']);
+        });
         $program = $this->makeProgram();
 
         $baselineAP = (float) AccountEntry::where('account_id', $supplier->account_id)

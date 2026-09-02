@@ -1,0 +1,57 @@
+   FAILED  Tests\Feature\Finance\TourismTrialBalanceIntegrityTest > flight group receivable appears in tourism due t…   
+   FAILED  Tests\Feature\FinancialReportTest > debts report correctly maps flight to touri…  InvalidArgumentException   
+   FAILED  Tests\Feature\FinancialReportTest > debts report retrieves flight groups          InvalidArgumentException   
+   FAILED  Tests\Feature\FlightBookingApiCrudTest > flight bookings api crud response shapes                            
+   FAILED  Tests\Feature\FlightBookingApiCrudTest > update with empty departure time does not null column               
+   FAILED  Tests\Feature\FlightBookingDisplayConsistencyTest > foreign purchase currency does not change…   Exception   
+   FAILED  Tests\Feature\FlightBookingFlowTest > cancels booking with complete accounting rollback                      
+   FAILED  Tests\Feature\FlightBookingFlowTest > handles foreign currency booking                                       
+   FAILED  Tests\Feature\FlightBookingFlowTest > handles foreign currency booking payment conversion                    
+   FAILED  Tests\Feature\FlightBookingFlowTest > kwd booking cancel restores carrier sign and refunds cus…  Exception   
+   FAILED  Tests\Feature\FlightBookingFlowTest > prevents booking when insufficient carrier balance                     
+   FAILED  Tests\Feature\FlightCreditBookingTest > backfill fixes missing sale journal after partial paym…  Exception   
+   FAILED  Tests\Feature\FlightCreditBookingTest > partial payment records correct customer debt            Exception   
+   FAILED  Tests\Feature\FlightRemainingCrudTest > flight refunds                                                       
+   FAILED  Tests\Feature\FlightSystemRechargeTest > can recharge flight system successfully                             
+   FAILED  Tests\Feature\FlightSystemRechargeTest > fails recharge if account belongs to other module                   
+   FAILED  Tests\Feature\FlightSystemRechargeTest > fails recharge if currency mismatch                                 
+   FAILED  Tests\Feature\FlightSystemRechargeTest > fails recharge if insufficient balance                              
+   FAILED  Tests\Feature\Flight\AviationServiceTest > update booking via aviation service              LogicException   
+   FAILED  Tests\Feature\Flight\FlightCashBasisRegressionTest > s01 egp credit booking no payment recognises no reve…   
+   FAILED  Tests\Feature\Flight\FlightDeleteCoverageExpansionTest > full pay full refund cancel with syst…  Exception   
+   FAILED  Tests\Feature\Flight\FlightDeleteCoverageExpansionTest > full pay partial refund cancel with s…  Exception   
+   FAILED  Tests\Feature\Flight\FlightDeleteCoverageExpansionTest > zero pay full penalty cancel kwd dele…  Exception   
+   FAILED  Tests\Feature\Flight\FlightDeleteCoverageExpansionTest > zero pay full penalty cancel with sys…  Exception   
+   FAILED  Tests\Feature\Flight\FlightKwdPaymentConversionTest > kwd booking paid from egp cashbox succee…  Exception   
+   FAILED  Tests\Feature\Flight\FlightKwdPaymentConversionTest > kwd booking paid from egp with partial a…  Exception   
+   FAILED  Tests\Feature\Flight\FlightKwdPaymentConversionTest > kwd booking paid from mismatched foreign…  Exception   
+   FAILED  Tests\Feature\Flight\FlightModuleDeepE2ETest > scenario 13 kwd three installments full penalty…  Exception   
+   FAILED  Tests\Feature\Flight\FlightModuleDeepE2ETest > scenario 14 usd pay from wallet cancel delete     Exception   
+   FAILED  Tests\Feature\Flight\FlightModuleDeepE2ETest > scenario 17 cross currency payment no negative    Exception   
+   FAILED  Tests\Feature\Flight\FlightMultiCurrencyProductionTest > booking payment cancel delete cycle f…  Exception   
+   FAILED  Tests\Feature\Flight\FlightMultiCurrencyProductionTest > booking through system with currency…   Exception   
+   FAILED  Tests\Feature\Flight\FlightMultiCurrencyProductionTest > cross currency payment does not break…  Exception   
+   FAILED  Tests\Feature\Flight\FlightPaymentNoDoubleIncomeTest > n partial payments create exactly one sale and n t…   
+   FAILED  Tests\Feature\Flight\FlightPaymentNoDoubleIncomeTest > single payment creates one transfer no extra incom…   
+   FAILED  Tests\Feature\Flight\FlightPaymentReversalTest > single payment reversal restores cashbox and clearing ba…   
+   FAILED  Tests\Feature\Flight\FlightProductionFullE2ETest > scenario b kwd three installments full pena…  Exception   
+   FAILED  Tests\Feature\Flight\FlightProductionFullE2ETest > scenario c usd pay from wallet cancel delet…  Exception   
+   FAILED  Tests\Feature\Flight\FlightProductionFullE2ETest > scenario d sar pay from bank modification d…  Exception   
+   FAILED  Tests\Feature\Flight\FlightProductionFullE2ETest > scenario f cross currency payment no negati…  Exception   
+   FAILED  Tests\Feature\Flight\Phase11FeBeContractAuditTest > a2 create system booking via http contract   Exception   
+   FAILED  Tests\Feature\Flight\Phase11MandatoryGatesTest > c2 03 cancel group booking reverts group debt               
+   FAILED  Tests\Feature\Flight\RefundRequestReversalTest > refund to agency treasury reversal restores all balances    
+   FAILED  Tests\Feature\TourismAudit\FlightFullAuditTest > cancellation preserves original sale transaction            
+   FAILED  Tests\Feature\TourismAudit\FlightFullAuditTest > create booking with system source                           
+   FAILED  Tests\Feature\TourismAudit\FlightFullAuditTest > full payment moves booking to confirmed                     
+   FAILED  Tests\Feature\TourismAudit\FlightFullAuditTest > idempotency key replay returns existing payment             
+   FAILED  Tests\Feature\TourismAudit\FlightFullAuditTest > partial payment keeps booking pending                       
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeDatabaseIntegrityTest > no orphan flight payments                   
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest > employee can record payment                         
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest > employee can update booking prices                  
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest > employee cannot cancel booking                      
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest > employee cannot confirm booking                     
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeIDORTest > flight employee b can record payment on a booking        
+   FAILED  Tests\Feature\TourismEmployeeE2E\EmployeeIdempotencyTest > flight payment idempotent under same key          
+   FAILED  Tests\Feature\Tourism\TourismNoEditContractTest > flight booking service update prices throws                
+   FAILED  Tests\Feature\Tourism\TourismNoEditContractTest > flight booking service update throws                       

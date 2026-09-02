@@ -1,0 +1,817 @@
+{
+    "visa_agents": {
+        "columns": [
+            {
+                "field": "id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "PRI",
+                "default": null,
+                "extra": "auto_increment",
+                "comment": ""
+            },
+            {
+                "field": "company_name",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "contact_person",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "phone",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "email",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "country",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "visa_type",
+                "type": "varchar(50)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "default_cost_price",
+                "type": "decimal(10,2)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "account_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "notes",
+                "type": "text",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "is_active",
+                "type": "tinyint(1)",
+                "null": "NO",
+                "key": "MUL",
+                "default": "1",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "updated_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "deleted_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            }
+        ],
+        "foreign_keys": [
+            {
+                "COLUMN_NAME": "account_id",
+                "CONSTRAINT_NAME": "visa_agents_account_id_foreign",
+                "REFERENCED_TABLE_NAME": "accounts",
+                "REFERENCED_COLUMN_NAME": "id"
+            }
+        ]
+    },
+    "visa_bookings": {
+        "columns": [
+            {
+                "field": "id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "PRI",
+                "default": null,
+                "extra": "auto_increment",
+                "comment": ""
+            },
+            {
+                "field": "customer_id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "visa_detail_id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "module",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": "VISA",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "purchase_price",
+                "type": "decimal(15,2)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "selling_price",
+                "type": "decimal(15,2)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "service_fee",
+                "type": "decimal(15,2)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "profit",
+                "type": "decimal(15,2)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "currency",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": "EGP",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "status",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "agent_name",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "notes",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "account_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "employee_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_by",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "expense_transaction_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "income_transaction_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "updated_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "deleted_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            }
+        ],
+        "foreign_keys": [
+            {
+                "COLUMN_NAME": "account_id",
+                "CONSTRAINT_NAME": "visa_bookings_account_id_foreign",
+                "REFERENCED_TABLE_NAME": "accounts",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "created_by",
+                "CONSTRAINT_NAME": "visa_bookings_created_by_foreign",
+                "REFERENCED_TABLE_NAME": "users",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "customer_id",
+                "CONSTRAINT_NAME": "visa_bookings_customer_id_foreign",
+                "REFERENCED_TABLE_NAME": "customers",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "employee_id",
+                "CONSTRAINT_NAME": "visa_bookings_employee_id_foreign",
+                "REFERENCED_TABLE_NAME": "users",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "expense_transaction_id",
+                "CONSTRAINT_NAME": "visa_bookings_expense_transaction_id_foreign",
+                "REFERENCED_TABLE_NAME": "transactions",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "income_transaction_id",
+                "CONSTRAINT_NAME": "visa_bookings_income_transaction_id_foreign",
+                "REFERENCED_TABLE_NAME": "transactions",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "visa_detail_id",
+                "CONSTRAINT_NAME": "visa_bookings_visa_detail_id_foreign",
+                "REFERENCED_TABLE_NAME": "visa_details",
+                "REFERENCED_COLUMN_NAME": "id"
+            }
+        ]
+    },
+    "visa_details": {
+        "columns": [
+            {
+                "field": "id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "PRI",
+                "default": null,
+                "extra": "auto_increment",
+                "comment": ""
+            },
+            {
+                "field": "visa_type",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "country",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "duration",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "visa_duration_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "entry_type",
+                "type": "varchar(50)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "validity_from",
+                "type": "date",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "validity_to",
+                "type": "date",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "executing_company",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "executing_agent",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "executing_agent_contact",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "visa_agent_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "submission_date",
+                "type": "date",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "expected_result_date",
+                "type": "date",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "visa_number",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "status",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "updated_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "deleted_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            }
+        ],
+        "foreign_keys": [
+            {
+                "COLUMN_NAME": "visa_agent_id",
+                "CONSTRAINT_NAME": "visa_details_visa_agent_id_foreign",
+                "REFERENCED_TABLE_NAME": "visa_agents",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "visa_duration_id",
+                "CONSTRAINT_NAME": "visa_details_visa_duration_id_foreign",
+                "REFERENCED_TABLE_NAME": "visa_durations",
+                "REFERENCED_COLUMN_NAME": "id"
+            }
+        ]
+    },
+    "visa_durations": {
+        "columns": [
+            {
+                "field": "id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "PRI",
+                "default": null,
+                "extra": "auto_increment",
+                "comment": ""
+            },
+            {
+                "field": "code",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "UNI",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "label_ar",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "label_en",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "months",
+                "type": "smallint unsigned",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "entry_type",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "sort_order",
+                "type": "smallint unsigned",
+                "null": "NO",
+                "key": "",
+                "default": "0",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "is_active",
+                "type": "tinyint(1)",
+                "null": "NO",
+                "key": "",
+                "default": "1",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "updated_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            }
+        ],
+        "foreign_keys": []
+    },
+    "visa_payments": {
+        "columns": [
+            {
+                "field": "id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "PRI",
+                "default": null,
+                "extra": "auto_increment",
+                "comment": ""
+            },
+            {
+                "field": "visa_booking_id",
+                "type": "bigint unsigned",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "account_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "transaction_id",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "payment_method",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "amount",
+                "type": "decimal(15,2)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "currency",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": "EGP",
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "treasury_account",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "transaction_reference",
+                "type": "varchar(255)",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "payment_date",
+                "type": "datetime",
+                "null": "NO",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "paid_by",
+                "type": "varchar(255)",
+                "null": "NO",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_by",
+                "type": "bigint unsigned",
+                "null": "YES",
+                "key": "MUL",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "created_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "updated_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            },
+            {
+                "field": "deleted_at",
+                "type": "timestamp",
+                "null": "YES",
+                "key": "",
+                "default": null,
+                "extra": "",
+                "comment": ""
+            }
+        ],
+        "foreign_keys": [
+            {
+                "COLUMN_NAME": "account_id",
+                "CONSTRAINT_NAME": "visa_payments_account_id_foreign",
+                "REFERENCED_TABLE_NAME": "accounts",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "created_by",
+                "CONSTRAINT_NAME": "visa_payments_created_by_foreign",
+                "REFERENCED_TABLE_NAME": "users",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "transaction_id",
+                "CONSTRAINT_NAME": "visa_payments_transaction_id_foreign",
+                "REFERENCED_TABLE_NAME": "transactions",
+                "REFERENCED_COLUMN_NAME": "id"
+            },
+            {
+                "COLUMN_NAME": "visa_booking_id",
+                "CONSTRAINT_NAME": "visa_payments_visa_booking_id_foreign",
+                "REFERENCED_TABLE_NAME": "visa_bookings",
+                "REFERENCED_COLUMN_NAME": "id"
+            }
+        ]
+    }
+}

@@ -1,0 +1,32 @@
+{
+    "load_levels": {
+        "50": {
+            "status": "EXECUTED",
+            "reason": "Executed in Read Load, Booking Load, and Mixed Soak Profiles."
+        },
+        "100": {
+            "status": "EXECUTED",
+            "reason": "Executed in Read Load and Booking Load Profiles."
+        },
+        "200": {
+            "status": "EXECUTED",
+            "reason": "Executed in Read Load Profile (High Concurrency Barrier)."
+        },
+        "500": {
+            "status": "SKIPPED",
+            "reason": "Skipped to avoid OS process limit and local MySQL connection exhaustion on single development machine. Safe max verified load level was 200 workers."
+        }
+    },
+    "scaling_curve_classification": "DEGRADING",
+    "lock_contention_primary": "bus_inventories row lock (`SELECT ... FOR UPDATE`)",
+    "deadlocks": 0,
+    "lock_timeouts": 0,
+    "overbooking_count": 0,
+    "payment_duplication_count": 0,
+    "refund_duplication_count": 0,
+    "negative_inventories": 0,
+    "orphan_records": 0,
+    "financial_variance": 0,
+    "severity_classification": "P3 PERFORMANCE",
+    "final_verdict": "PASS"
+}

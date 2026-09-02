@@ -1,0 +1,494 @@
+[2026-08-25 02:03:56] testing.INFO: flight_bookings cleanup: nullified redundant original_currency/original_amount {"rows_affected":0,"migration":"2026_07_21_181700_clean_redundant_original_currency_on_flight_bookings"} 
+[2026-08-25 02:03:57] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:03:57] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:03:57] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":50000.0,"user_id":1} 
+[2026-08-25 02:03:57] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":50000.0,"transaction_id":1} 
+[2026-08-25 02:03:57] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 50000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:10] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":50000.0,"currency":"EGP","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:10] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","purchase_price_egp":16000.0,"selling_price":20000.0,"profit":4000.0,"user_id":1} 
+[2026-08-25 02:04:10] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 16000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:10] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:10] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":16000.0,"user_id":1} 
+[2026-08-25 02:04:10] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":16000.0,"transaction_id":2} 
+[2026-08-25 02:04:10] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":16000.0,"currency":"EGP","amount_egp":16000.0,"balance_after":134000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:11] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:11] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:11] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:11] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:11] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":2,"to_account_id":1,"amount":8000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Flight payment recorded {"payment_id":1,"flight_booking_id":1,"amount":8000.0,"transaction_id":4,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","duration_ms":956.69,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","booking_currency":"EGP","total_paid_egp":8000.0,"sale_amount":20000.0,"airline_penalty":11000.0,"office_penalty":9000.0,"refund_amount":0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:11] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 5000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:11] testing.INFO: Flight carrier credited back (booking cancelled) {"flight_booking_id":1,"carrier_id":1,"credit_amount":5000.0,"penalty":11000.0,"balance_after":139000.0} 
+[2026-08-25 02:04:11] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":4,"to_account_id":3,"amount":5000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":5000.0,"transaction_id":5} 
+[2026-08-25 02:04:11] testing.INFO: Transaction reversed {"transaction_id":4,"type":{"App\\Enums\\TransactionType":"income"},"amount":"8000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: reverseFlightBookingRevenue completed {"booking_id":1,"booking_number":"FLT-20260825-857A90","revenue_reversals_posted":1,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"CANCELLED"},"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","booking_status":"CANCELLED","payments_count":1,"purchase_balance_source":"carrier","sale_gl_transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (cancel kept full payment as penalty, no cash refund to reverse) {"flight_payment_id":1,"existing_refund_id":1,"kept_penalty_total":20000.0} 
+[2026-08-25 02:04:11] testing.INFO: Journal transfer recorded {"transaction_id":6,"from_account_id":2,"to_account_id":5,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: deleteBookingWithReversal: H2 cleared pending_sales_receivable residual {"booking_id":1,"residual_amount":20000.0} 
+[2026-08-25 02:04:11] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 11000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:11] testing.INFO: Flight carrier credited back (booking deleted, exact amount) {"flight_booking_id":1,"carrier_id":1,"exact_egp_amount":11000.0,"credit_amount":11000.0,"balance_after":150000.0} 
+[2026-08-25 02:04:11] testing.INFO: Journal transfer recorded {"transaction_id":7,"from_account_id":4,"to_account_id":3,"amount":11000.0,"user_id":1} 
+[2026-08-25 02:04:11] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":11000.0,"transaction_id":7} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-857A90","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":50000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":50000.0,"transaction_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 50000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":50000.0,"currency":"EGP","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","purchase_price_egp":16000.0,"selling_price":20000.0,"profit":4000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 16000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":16000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":16000.0,"transaction_id":2} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":16000.0,"currency":"EGP","amount_egp":16000.0,"balance_after":134000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:12] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":2,"to_account_id":1,"amount":8000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight payment recorded {"payment_id":1,"flight_booking_id":1,"amount":8000.0,"transaction_id":4,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","duration_ms":44.98,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","booking_currency":"EGP","total_paid_egp":8000.0,"sale_amount":20000.0,"airline_penalty":0.0,"office_penalty":0.0,"refund_amount":8000.0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 16000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier credited back (booking cancelled) {"flight_booking_id":1,"carrier_id":1,"credit_amount":16000.0,"penalty":0.0,"balance_after":150000.0} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":4,"to_account_id":3,"amount":16000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":16000.0,"transaction_id":5} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":6,"from_account_id":2,"to_account_id":5,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Transaction reversed {"transaction_id":4,"type":{"App\\Enums\\TransactionType":"income"},"amount":"8000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: reverseFlightBookingRevenue completed {"booking_id":1,"booking_number":"FLT-20260825-CCBDB7","revenue_reversals_posted":1,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":7,"from_account_id":1,"to_account_id":2,"amount":8000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Treasury refunded for cancelled booking {"flight_booking_id":1,"account_id":1,"refund_amount":8000.0,"transaction_id":7,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"REFUNDED"},"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","booking_status":"REFUNDED","payments_count":1,"purchase_balance_source":"carrier","sale_gl_transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":1,"existing_refund_id":1,"existing_refund_amount":8000.0} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-CCBDB7","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":50000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":50000.0,"transaction_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 50000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":50000.0,"currency":"EGP","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","purchase_price_egp":25000.0,"selling_price":30000.0,"profit":5000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 25000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":25000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":25000.0,"transaction_id":2} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":25000.0,"currency":"EGP","amount_egp":25000.0,"balance_after":125000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":30000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":30000.0} 
+[2026-08-25 02:04:12] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":2,"to_account_id":1,"amount":10000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight payment recorded {"payment_id":1,"flight_booking_id":1,"amount":10000.0,"transaction_id":4,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","duration_ms":43.75,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":2,"to_account_id":1,"amount":10000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight payment recorded {"payment_id":2,"flight_booking_id":1,"amount":10000.0,"transaction_id":5,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":6,"from_account_id":2,"to_account_id":1,"amount":10000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight payment recorded {"payment_id":3,"flight_booking_id":1,"amount":10000.0,"transaction_id":6,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","booking_currency":"EGP","total_paid_egp":30000.0,"sale_amount":30000.0,"airline_penalty":0.0,"office_penalty":0.0,"refund_amount":30000.0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 25000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier credited back (booking cancelled) {"flight_booking_id":1,"carrier_id":1,"credit_amount":25000.0,"penalty":0.0,"balance_after":150000.0} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":7,"from_account_id":4,"to_account_id":3,"amount":25000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":25000.0,"transaction_id":7} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":8,"from_account_id":2,"to_account_id":5,"amount":30000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Transaction reversed {"transaction_id":4,"type":{"App\\Enums\\TransactionType":"income"},"amount":"10000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Transaction reversed {"transaction_id":5,"type":{"App\\Enums\\TransactionType":"income"},"amount":"10000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Transaction reversed {"transaction_id":6,"type":{"App\\Enums\\TransactionType":"income"},"amount":"10000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: reverseFlightBookingRevenue completed {"booking_id":1,"booking_number":"FLT-20260825-3966C4","revenue_reversals_posted":3,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":9,"from_account_id":1,"to_account_id":2,"amount":30000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Treasury refunded for cancelled booking {"flight_booking_id":1,"account_id":1,"refund_amount":30000.0,"transaction_id":9,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"REFUNDED"},"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","booking_status":"REFUNDED","payments_count":3,"purchase_balance_source":"carrier","sale_gl_transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":1,"existing_refund_id":1,"existing_refund_amount":30000.0} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":2,"existing_refund_id":1,"existing_refund_amount":30000.0} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":3,"existing_refund_id":1,"existing_refund_amount":30000.0} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-3966C4","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":50000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":50000.0,"transaction_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 50000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":50000.0,"currency":"EGP","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","purchase_price_egp":16000.0,"selling_price":20000.0,"profit":4000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 16000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":16000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":16000.0,"transaction_id":2} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":16000.0,"currency":"EGP","amount_egp":16000.0,"balance_after":134000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:12] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","duration_ms":36.37,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","booking_currency":"EGP","total_paid_egp":0.0,"sale_amount":20000.0,"airline_penalty":12000.0,"office_penalty":8000.0,"refund_amount":0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:12] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 4000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:12] testing.INFO: Flight carrier credited back (booking cancelled) {"flight_booking_id":1,"carrier_id":1,"credit_amount":4000.0,"penalty":12000.0,"balance_after":138000.0} 
+[2026-08-25 02:04:12] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":4,"to_account_id":3,"amount":4000.0,"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":4000.0,"transaction_id":4} 
+[2026-08-25 02:04:12] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"CANCELLED"},"user_id":1} 
+[2026-08-25 02:04:12] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","booking_status":"CANCELLED","payments_count":0,"purchase_balance_source":"carrier","sale_gl_transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":2,"to_account_id":5,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: deleteBookingWithReversal: H2 cleared pending_sales_receivable residual {"booking_id":1,"residual_amount":20000.0} 
+[2026-08-25 02:04:13] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 12000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:13] testing.INFO: Flight carrier credited back (booking deleted, exact amount) {"flight_booking_id":1,"carrier_id":1,"exact_egp_amount":12000.0,"credit_amount":12000.0,"balance_after":150000.0} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":6,"from_account_id":4,"to_account_id":3,"amount":12000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":12000.0,"transaction_id":6} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-C7EB50","user_id":1} 
+[2026-08-25 02:04:13] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:13] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-DCEAB9","purchase_price_egp":16000.0,"selling_price":20000.0,"profit":4000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.ERROR: FlightBookingService::createBooking failed {"error":"رصيد نظام الحجز غير كافٍ. المطلوب: 16000 EGP، المتاح: 5000 EGP","trace":"#0 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(1071): App\\Models\\Flight\\FlightSystem->debit(16000.0, 1, 1)
+#1 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(403): App\\Services\\Flight\\FlightBookingService->debitFlightSystem(Object(App\\Models\\Flight\\FlightBooking), 1, 16000.0, 'EGP', NULL, 1, 1.0)
+#2 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\Concerns\\ManagesTransactions.php(35): App\\Services\\Flight\\FlightBookingService->App\\Services\\Flight\\{closure}(Object(Illuminate\\Database\\SQLiteConnection))
+#3 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\DatabaseManager.php(496): Illuminate\\Database\\Connection->transaction(Object(Closure))
+#4 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Support\\Facades\\Facade.php(363): Illuminate\\Database\\DatabaseManager->__call('transaction', Array)
+#5 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(234): Illuminate\\Support\\Facades\\Facade::__callStatic('transaction', Array)
+#6 C:\\travile\\SafarakEalayna\\tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest.php(432): App\\Services\\Flight\\FlightBookingService->createBooking(Array)
+#7 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(1335): Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest->test_zero_pay_full_penalty_cancel_with_system_source_delete_returns_baseline()
+#8 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(519): PHPUnit\\Framework\\TestCase->runTest()
+#9 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestRunner\\TestRunner.php(99): PHPUnit\\Framework\\TestCase->runBare()
+#10 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(359): PHPUnit\\Framework\\TestRunner->run(Object(Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest))
+#11 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestCase->run()
+#12 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#13 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#14 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\TestRunner.php(64): PHPUnit\\Framework\\TestSuite->run()
+#15 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\Application.php(229): PHPUnit\\TextUI\\TestRunner->run(Object(PHPUnit\\TextUI\\Configuration\\Configuration), Object(PHPUnit\\Runner\\ResultCache\\DefaultResultCache), Object(PHPUnit\\Framework\\TestSuite))
+#16 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\phpunit(104): PHPUnit\\TextUI\\Application->run(Array)
+#17 {main}","duration_ms":58.19,"user_id":1,"input":{"customer_id":1,"airline_name":"EgyptAir","from_airport":"CAI","to_airport":"RUH","departure_date":"2026-09-18","trip_type":"one_way","currency":"EGP","purchase_price":16000,"selling_price":20000,"flight_system_id":1,"flight_carrier_id":1,"purchase_balance_source":"system","pnr":"Z_PN_S_6a8cf81d2f2a1","passengers":[{"first_name":"Test","last_name":"Pax","passenger_type":"adult"}]}} 
+[2026-08-25 02:04:13] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:13] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","purchase_price_egp":16000.0,"selling_price":20000.0,"profit":4000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":3,"to_account_id":4,"amount":16000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight purchase from group recorded on group ledger {"booking_id":1,"group_id":1,"amount":16000.0,"currency":"EGP"} 
+[2026-08-25 02:04:13] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:13] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:13] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","duration_ms":144.11,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","booking_currency":"EGP","total_paid_egp":0.0,"sale_amount":20000.0,"airline_penalty":12000.0,"office_penalty":8000.0,"refund_amount":0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":4,"to_account_id":3,"amount":4000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Flight group purchase reversed (booking cancelled) {"flight_booking_id":1,"group_id":1,"reversal_amount":4000.0,"penalty":12000.0,"currency":"EGP"} 
+[2026-08-25 02:04:13] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"CANCELLED"},"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","booking_status":"CANCELLED","payments_count":0,"purchase_balance_source":"group","sale_gl_transaction_id":2,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Transaction reversed {"transaction_id":1,"type":{"App\\Enums\\TransactionType":"transfer"},"amount":"16000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::reverseGroupTransactionsForBooking — mirrored journal {"flight_group_tx_id":1,"flight_group_tx_type":"debt","original_transaction_id":1,"amount":16000.0,"from_account_id":3,"to_account_id":4,"flight_booking_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Transaction reversed {"transaction_id":3,"type":{"App\\Enums\\TransactionType":"transfer"},"amount":"4000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::reverseGroupTransactionsForBooking — mirrored journal {"flight_group_tx_id":2,"flight_group_tx_type":"payment","original_transaction_id":3,"amount":4000.0,"from_account_id":4,"to_account_id":3,"flight_booking_id":1} 
+[2026-08-25 02:04:13] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":2,"to_account_id":5,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.INFO: deleteBookingWithReversal: H2 cleared pending_sales_receivable residual {"booking_id":1,"residual_amount":20000.0} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — skipped reverseGroupPurchase (payDebt already reversed in Step 2.5) {"flight_booking_id":1,"purchase_balance_source":"group"} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:13] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-196011","user_id":1} 
+[2026-08-25 02:04:13] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:13] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-5A6B7C","purchase_price_egp":15000.0,"selling_price":20000.0,"profit":5000.0,"user_id":1} 
+[2026-08-25 02:04:13] testing.ERROR: FlightBookingService::createBooking failed {"error":"رصيد نظام الحجز غير كافٍ. المطلوب: 15000 EGP، المتاح: 5000 EGP","trace":"#0 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(1071): App\\Models\\Flight\\FlightSystem->debit(15000.0, 1, 1)
+#1 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(403): App\\Services\\Flight\\FlightBookingService->debitFlightSystem(Object(App\\Models\\Flight\\FlightBooking), 1, 15000.0, 'EGP', NULL, 1, 1.0)
+#2 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\Concerns\\ManagesTransactions.php(35): App\\Services\\Flight\\FlightBookingService->App\\Services\\Flight\\{closure}(Object(Illuminate\\Database\\SQLiteConnection))
+#3 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\DatabaseManager.php(496): Illuminate\\Database\\Connection->transaction(Object(Closure))
+#4 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Support\\Facades\\Facade.php(363): Illuminate\\Database\\DatabaseManager->__call('transaction', Array)
+#5 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(234): Illuminate\\Support\\Facades\\Facade::__callStatic('transaction', Array)
+#6 C:\\travile\\SafarakEalayna\\tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest.php(539): App\\Services\\Flight\\FlightBookingService->createBooking(Array)
+#7 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(1335): Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest->test_full_pay_partial_refund_cancel_with_system_source_delete_returns_baseline()
+#8 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(519): PHPUnit\\Framework\\TestCase->runTest()
+#9 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestRunner\\TestRunner.php(99): PHPUnit\\Framework\\TestCase->runBare()
+#10 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(359): PHPUnit\\Framework\\TestRunner->run(Object(Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest))
+#11 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestCase->run()
+#12 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#13 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#14 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\TestRunner.php(64): PHPUnit\\Framework\\TestSuite->run()
+#15 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\Application.php(229): PHPUnit\\TextUI\\TestRunner->run(Object(PHPUnit\\TextUI\\Configuration\\Configuration), Object(PHPUnit\\Runner\\ResultCache\\DefaultResultCache), Object(PHPUnit\\Framework\\TestSuite))
+#16 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\phpunit(104): PHPUnit\\TextUI\\Application->run(Array)
+#17 {main}","duration_ms":2.79,"user_id":1,"input":{"customer_id":1,"airline_name":"EgyptAir","from_airport":"CAI","to_airport":"RUH","departure_date":"2026-09-20","trip_type":"one_way","currency":"EGP","purchase_price":15000,"selling_price":20000,"flight_system_id":1,"flight_carrier_id":1,"purchase_balance_source":"system","pnr":"F_PR_S_6a8cf81dba871","passengers":[{"first_name":"Test","last_name":"Pax","passenger_type":"adult"}],"payment":{"amount":20000,"account_id":1,"payment_method":"cash"}}} 
+[2026-08-25 02:04:13] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-E4DEC2","purchase_price_egp":15000.0,"selling_price":20000.0,"profit":5000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.ERROR: FlightBookingService::createBooking failed {"error":"رصيد نظام الحجز غير كافٍ. المطلوب: 15000 EGP، المتاح: 5000 EGP","trace":"#0 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(1071): App\\Models\\Flight\\FlightSystem->debit(15000.0, 1, 1)
+#1 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(403): App\\Services\\Flight\\FlightBookingService->debitFlightSystem(Object(App\\Models\\Flight\\FlightBooking), 1, 15000.0, 'EGP', NULL, 1, 1.0)
+#2 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\Concerns\\ManagesTransactions.php(35): App\\Services\\Flight\\FlightBookingService->App\\Services\\Flight\\{closure}(Object(Illuminate\\Database\\SQLiteConnection))
+#3 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\DatabaseManager.php(496): Illuminate\\Database\\Connection->transaction(Object(Closure))
+#4 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Support\\Facades\\Facade.php(363): Illuminate\\Database\\DatabaseManager->__call('transaction', Array)
+#5 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(234): Illuminate\\Support\\Facades\\Facade::__callStatic('transaction', Array)
+#6 C:\\travile\\SafarakEalayna\\tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest.php(589): App\\Services\\Flight\\FlightBookingService->createBooking(Array)
+#7 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(1335): Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest->test_full_pay_full_refund_cancel_with_system_source_delete_returns_baseline()
+#8 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(519): PHPUnit\\Framework\\TestCase->runTest()
+#9 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestRunner\\TestRunner.php(99): PHPUnit\\Framework\\TestCase->runBare()
+#10 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(359): PHPUnit\\Framework\\TestRunner->run(Object(Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest))
+#11 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestCase->run()
+#12 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#13 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#14 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\TestRunner.php(64): PHPUnit\\Framework\\TestSuite->run()
+#15 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\Application.php(229): PHPUnit\\TextUI\\TestRunner->run(Object(PHPUnit\\TextUI\\Configuration\\Configuration), Object(PHPUnit\\Runner\\ResultCache\\DefaultResultCache), Object(PHPUnit\\Framework\\TestSuite))
+#16 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\phpunit(104): PHPUnit\\TextUI\\Application->run(Array)
+#17 {main}","duration_ms":4.38,"user_id":1,"input":{"customer_id":1,"airline_name":"EgyptAir","from_airport":"CAI","to_airport":"RUH","departure_date":"2026-09-21","trip_type":"one_way","currency":"EGP","purchase_price":15000,"selling_price":20000,"flight_system_id":1,"flight_carrier_id":1,"purchase_balance_source":"system","pnr":"F_PF_S_6a8cf81e03af0","passengers":[{"first_name":"Test","last_name":"Pax","passenger_type":"adult"}],"payment":{"amount":20000,"account_id":1,"payment_method":"cash"}}} 
+[2026-08-25 02:04:14] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","purchase_price_egp":15000.0,"selling_price":20000.0,"profit":5000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":3,"to_account_id":4,"amount":15000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight purchase from group recorded on group ledger {"booking_id":1,"group_id":1,"amount":15000.0,"currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:14] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":2,"to_account_id":1,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight payment recorded {"payment_id":1,"flight_booking_id":1,"amount":20000.0,"transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","duration_ms":38.47,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","booking_currency":"EGP","total_paid_egp":20000.0,"sale_amount":20000.0,"airline_penalty":1200.0,"office_penalty":800.0,"refund_amount":18000.0,"refund_currency":"EGP","user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":4,"to_account_id":3,"amount":13800.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight group purchase reversed (booking cancelled) {"flight_booking_id":1,"group_id":1,"reversal_amount":13800.0,"penalty":1200.0,"currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":2,"to_account_id":5,"amount":18000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Transaction reversed {"transaction_id":3,"type":{"App\\Enums\\TransactionType":"income"},"amount":"20000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: reverseFlightBookingRevenue completed {"booking_id":1,"booking_number":"FLT-20260825-3C6C97","revenue_reversals_posted":1,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":6,"from_account_id":1,"to_account_id":2,"amount":18000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Treasury refunded for cancelled booking {"flight_booking_id":1,"account_id":1,"refund_amount":18000.0,"transaction_id":6,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Booking cancelled successfully {"flight_booking_id":1,"refund_id":1,"new_status":{"App\\Enums\\FlightBookingStatus":"REFUNDED"},"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","booking_status":"REFUNDED","payments_count":1,"purchase_balance_source":"group","sale_gl_transaction_id":2,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":1,"existing_refund_id":1,"existing_refund_amount":18000.0} 
+[2026-08-25 02:04:14] testing.INFO: Transaction reversed {"transaction_id":1,"type":{"App\\Enums\\TransactionType":"transfer"},"amount":"15000.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::reverseGroupTransactionsForBooking — mirrored journal {"flight_group_tx_id":1,"flight_group_tx_type":"debt","original_transaction_id":1,"amount":15000.0,"from_account_id":3,"to_account_id":4,"flight_booking_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Transaction reversed {"transaction_id":4,"type":{"App\\Enums\\TransactionType":"transfer"},"amount":"13800.00","entries_reversed":2,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::reverseGroupTransactionsForBooking — mirrored journal {"flight_group_tx_id":2,"flight_group_tx_type":"payment","original_transaction_id":4,"amount":13800.0,"from_account_id":4,"to_account_id":3,"flight_booking_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":7,"from_account_id":2,"to_account_id":5,"amount":2000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: deleteBookingWithReversal: H2 cleared pending_sales_receivable residual {"booking_id":1,"residual_amount":2000.0} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":8,"from_account_id":2,"to_account_id":1,"amount":18000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: deleteBookingWithReversal: H1 walked back cancel refund {"booking_id":1,"refund_id":1,"refund_amount":18000.0} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::deleteBookingWithReversal — skipped reverseGroupPurchase (payDebt already reversed in Step 2.5) {"flight_booking_id":1,"purchase_balance_source":"group"} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded passenger delete {"flight_booking_id":1,"passengers_deleted":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::deleteBookingWithReversal — cascaded segment delete {"flight_booking_id":1,"segments_deleted":1} 
+[2026-08-25 02:04:14] testing.INFO: FlightBookingService::deleteBookingWithReversal — complete {"flight_booking_id":1,"booking_number":"FLT-20260825-3C6C97","user_id":1} 
+[2026-08-25 02:04:14] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:14] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:04:14] testing.INFO: Prepaid recharge: currency conversion applied {"prepaid_key":"flight_carrier","from_currency":"KWD","to_currency":"EGP","from_amount":2000.0,"converted_amount":315000.0,"exchange_rate":157.5} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":2000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":2000.0,"transaction_id":1} 
+[2026-08-25 02:04:14] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 2000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:14] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":2000.0,"currency":"KWD","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-6E9F4A","purchase_price_egp":15750.0,"selling_price":20000.0,"profit":4250.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 100, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:14] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":15750.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":15750.0,"transaction_id":2} 
+[2026-08-25 02:04:14] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":100.0,"currency":"KWD","amount_egp":15750.0,"balance_after":101900.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":20000.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":20000.0} 
+[2026-08-25 02:04:14] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-6E9F4A","user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-6E9F4A","duration_ms":41.64,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Processing booking cancellation {"flight_booking_id":1,"booking_number":"FLT-20260825-6E9F4A","booking_currency":"KWD","total_paid_egp":0.0,"sale_amount":127.0,"airline_penalty":12000.0,"office_penalty":8000.0,"refund_amount":0.015873015873012264,"refund_currency":"KWD","user_id":1} 
+[2026-08-25 02:04:14] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 23.8095, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:14] testing.INFO: Flight carrier credited back (booking cancelled) {"flight_booking_id":1,"carrier_id":1,"credit_amount":23.8095,"penalty":12000.0,"balance_after":101923.81} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":4,"to_account_id":3,"amount":3750.0,"user_id":1} 
+[2026-08-25 02:04:14] testing.INFO: Prepaid COGS refund recorded {"prepaid_key":"flight_carrier","amount":3750.0,"transaction_id":4} 
+[2026-08-25 02:04:14] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":2,"to_account_id":5,"amount":2.5,"user_id":1} 
+[2026-08-25 02:04:14] testing.ERROR: Failed to refund treasury account {"flight_booking_id":1,"account_id":1,"refund_amount":0.015873015873012264,"error":"لا يمكن تنفيذ تحويل عبر عملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. عملة المصدر: KWD، عملة الهدف: EGP. يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة."} 
+[2026-08-25 02:04:14] testing.ERROR: FlightBookingService::cancelBooking failed {"error":"لا يمكن تنفيذ تحويل عبر عملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. عملة المصدر: KWD، عملة الهدف: EGP. يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة.","trace":"#0 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\Concerns\\ManagesTransactions.php(35): App\\Services\\Finance\\TransactionService->App\\Services\\Finance\\{closure}(Object(Illuminate\\Database\\SQLiteConnection))
+#1 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\DatabaseManager.php(496): Illuminate\\Database\\Connection->transaction(Object(Closure))
+#2 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Support\\Facades\\Facade.php(363): Illuminate\\Database\\DatabaseManager->__call('transaction', Array)
+#3 C:\\travile\\SafarakEalayna\\app\\Services\\Finance\\TransactionService.php(610): Illuminate\\Support\\Facades\\Facade::__callStatic('transaction', Array)
+#4 C:\\travile\\SafarakEalayna\\app\\Support\\Finance\\LedgerBalanceMutationGuard.php(21): App\\Services\\Finance\\TransactionService->App\\Services\\Finance\\{closure}()
+#5 C:\\travile\\SafarakEalayna\\app\\Services\\Finance\\TransactionService.php(610): App\\Support\\Finance\\LedgerBalanceMutationGuard::run(Object(Closure))
+#6 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(2727): App\\Services\\Finance\\TransactionService->recordJournalTransfer(Array)
+#7 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(2444): App\\Services\\Flight\\FlightBookingService->refundTreasuryAccount(Object(App\\Models\\Flight\\FlightBooking), 1, 0.015873015873012, 1)
+#8 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\Concerns\\ManagesTransactions.php(35): App\\Services\\Flight\\FlightBookingService->App\\Services\\Flight\\{closure}(Object(Illuminate\\Database\\SQLiteConnection))
+#9 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Database\\DatabaseManager.php(496): Illuminate\\Database\\Connection->transaction(Object(Closure))
+#10 C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Support\\Facades\\Facade.php(363): Illuminate\\Database\\DatabaseManager->__call('transaction', Array)
+#11 C:\\travile\\SafarakEalayna\\app\\Services\\Flight\\FlightBookingService.php(2204): Illuminate\\Support\\Facades\\Facade::__callStatic('transaction', Array)
+#12 C:\\travile\\SafarakEalayna\\tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest.php(717): App\\Services\\Flight\\FlightBookingService->cancelBooking(Object(App\\Models\\Flight\\FlightBooking), Array)
+#13 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(1335): Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest->test_zero_pay_full_penalty_cancel_kwd_delete_returns_baseline()
+#14 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(519): PHPUnit\\Framework\\TestCase->runTest()
+#15 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestRunner\\TestRunner.php(99): PHPUnit\\Framework\\TestCase->runBare()
+#16 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestCase.php(359): PHPUnit\\Framework\\TestRunner->run(Object(Tests\\Feature\\Flight\\FlightDeleteCoverageExpansionTest))
+#17 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestCase->run()
+#18 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#19 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\Framework\\TestSuite.php(374): PHPUnit\\Framework\\TestSuite->run()
+#20 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\TestRunner.php(64): PHPUnit\\Framework\\TestSuite->run()
+#21 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\src\\TextUI\\Application.php(229): PHPUnit\\TextUI\\TestRunner->run(Object(PHPUnit\\TextUI\\Configuration\\Configuration), Object(PHPUnit\\Runner\\ResultCache\\DefaultResultCache), Object(PHPUnit\\Framework\\TestSuite))
+#22 C:\\travile\\SafarakEalayna\\vendor\\phpunit\\phpunit\\phpunit(104): PHPUnit\\TextUI\\Application->run(Array)
+#23 {main}","user_id":1,"flight_booking_id":1} 
+[2026-08-25 02:04:15] testing.WARNING: CustomerLedgerObserver: division module_type not allowed for subject account, falling back {"customer_id":1,"attempted_module":"office","fallback":"bus"} 
+[2026-08-25 02:04:15] testing.INFO: Prepaid account automatically created {"name":"رصيد مسبق — ناقلو الطيران","id":3,"key":"flight_carrier"} 
+[2026-08-25 02:04:15] testing.INFO: Prepaid recharge: currency conversion applied {"prepaid_key":"flight_carrier","from_currency":"KWD","to_currency":"EGP","from_amount":2000.0,"converted_amount":315000.0,"exchange_rate":157.5} 
+[2026-08-25 02:04:15] testing.INFO: Journal transfer recorded {"transaction_id":1,"from_account_id":1,"to_account_id":3,"amount":2000.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Prepaid recharge recorded {"prepaid_key":"flight_carrier","from_account_id":1,"amount":2000.0,"transaction_id":1} 
+[2026-08-25 02:04:15] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" + 2000, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:15] testing.INFO: Flight carrier recharged from account {"flight_carrier_id":1,"flight_carrier_name":"Cov Carrier","from_account_id":1,"amount":2000.0,"currency":"KWD","airline_transaction_id":1,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight booking created {"flight_booking_id":1,"booking_number":"FLT-20260825-A3FFD4","purchase_price_egp":7875.0,"selling_price":10000.0,"profit":2125.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.WARNING: ⚠️ Direct DB UPDATE on protected balance column detected {"table":"flight_carriers","sql_preview":"update \"flight_carriers\" set \"balance\" = \"balance\" - 50, \"updated_at\" = ? where \"id\" = ?","caller_file":"C:\\travile\\SafarakEalayna\\vendor\\laravel\\framework\\src\\Illuminate\\Events\\Dispatcher.php","caller_line":499,"binding_count":2,"connection":"sqlite","user_id":1,"hint":"استخدم FlightCarrierRechargeService::rechargeFromAccount() أو AirlineAccountDebitService أو debit()/credit() بدلاً من ذلك."} 
+[2026-08-25 02:04:15] testing.INFO: Clearing account automatically created {"name":"إقفال تكاليف الطيران","id":4,"module":"flight","type":"expense","currency":"EGP"} 
+[2026-08-25 02:04:15] testing.INFO: Journal transfer recorded {"transaction_id":2,"from_account_id":3,"to_account_id":4,"amount":7875.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Prepaid COGS consumption recorded {"prepaid_key":"flight_carrier","amount":7875.0,"transaction_id":2} 
+[2026-08-25 02:04:15] testing.INFO: Flight carrier debited {"flight_booking_id":1,"carrier_id":1,"amount":50.0,"currency":"KWD","amount_egp":7875.0,"balance_after":101950.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Passengers created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:15] testing.INFO: Clearing account automatically created {"name":"ذمم عملاء طيران معلق","id":5,"module":"flight","type":"pending_sales_receivable","currency":"EGP"} 
+[2026-08-25 02:04:15] testing.INFO: Journal transfer recorded {"transaction_id":3,"from_account_id":5,"to_account_id":2,"amount":10000.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight sale recorded on customer ledger (cash-basis, no revenue recognition) {"booking_id":1,"customer_id":1,"account_id":2,"placeholder_account_id":5,"amount":10000.0} 
+[2026-08-25 02:04:15] testing.INFO: Flight tickets created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight segments created {"flight_booking_id":1,"count":1} 
+[2026-08-25 02:04:15] testing.INFO: Journal transfer recorded {"transaction_id":4,"from_account_id":2,"to_account_id":1,"amount":4725.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight payment recorded {"payment_id":1,"flight_booking_id":1,"amount":30.0,"transaction_id":4,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight booking completed successfully {"flight_booking_id":1,"booking_number":"FLT-20260825-A3FFD4","user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: Flight booking request completed {"flight_booking_id":1,"booking_number":"FLT-20260825-A3FFD4","duration_ms":52.89,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: FlightBookingService::deleteBookingWithReversal — starting {"flight_booking_id":1,"booking_number":"FLT-20260825-A3FFD4","booking_status":"CANCELLED","payments_count":1,"purchase_balance_source":"carrier","sale_gl_transaction_id":3,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: FlightBookingService::reverseSinglePayment — skipped (booking was refunded, handled in step 3 GL reversal + step 4 carrier credit) {"flight_payment_id":1,"existing_refund_id":1,"existing_refund_amount":25.0} 
+[2026-08-25 02:04:15] testing.INFO: Journal transfer recorded {"transaction_id":5,"from_account_id":2,"to_account_id":5,"amount":10000.0,"user_id":1} 
+[2026-08-25 02:04:15] testing.INFO: deleteBookingWithReversal: H2 cleared pending_sales_receivable residual {"booking_id":1,"residual_amount":10000.0} 
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightDeleteCoverageExpansionTest[39m
+  [32;1m✓[39;22m[90m [39m[90mpartial pay full penalty cancel then delete returns all to baseline[39m[90m                                        [39m [90m17.85s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpartial pay full refund cancel then delete returns all to baseline[39m[90m                                          [39m [90m0.32s[39m  
+  [31;1m⨯[39;22m[90m [39m[90minstallments full refund cancel then delete returns all to baseline[39m[90m                                         [39m [90m0.37s[39m  
+  [32;1m✓[39;22m[90m [39m[90mzero pay full penalty cancel with carrier source delete returns baseline[39m[90m                                    [39m [90m0.31s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mzero pay full penalty cancel with system source delete returns baseline[39m[90m                                     [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90mzero pay full penalty cancel with group source delete returns baseline[39m[90m                                      [39m [90m0.34s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfull pay partial refund cancel with system source delete returns baseline[39m[90m                                   [39m [90m0.17s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfull pay full refund cancel with system source delete returns baseline[39m[90m                                      [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfull pay partial refund cancel with group source delete returns baseline[39m[90m                                    [39m [90m0.30s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mzero pay full penalty cancel kwd delete returns baseline[39m[90m                                                    [39m [90m0.49s[39m  
+  [32;1m✓[39;22m[90m [39m[90mkwd installments partial refund cancel delete throws[39m[90m                                                        [39m [90m0.30s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m partial pay full refund cancel then delete retur…   
+[39;1m  Partial pay + full refund cancel + delete — account 'cashbox' delta != 0 (before=50000, after=42000, delta=-8000)
+Failed asserting that -8000.0 matches expected 0.0.[39;22m
+
+  at [32mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39m:[32m166[39m
+    162▕     {
+    163▕         foreach ($accounts as $key => $acc) {
+    164▕             $after = (float) ($acc ? $acc->fresh()->balance : 0);
+    165▕             $delta = round($after - $before[$key], 2);
+  ➜ 166▕             $this->assertEqualsWithDelta(
+    167▕                 0.0,
+    168▕                 $delta,
+    169▕                 0.01,
+    170▕                 "{$msg} — account '{$key}' delta != 0 (before={$before[$key]}, after={$after}, delta={$delta})"
+
+  [33m1   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m166[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m285[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m installments full refund cancel then delete retu…   
+[39;1m  Installments + full refund cancel + delete — account 'cashbox' delta != 0 (before=50000, after=20000, delta=-30000)
+Failed asserting that -30000.0 matches expected 0.0.[39;22m
+
+  at [32mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39m:[32m166[39m
+    162▕     {
+    163▕         foreach ($accounts as $key => $acc) {
+    164▕             $after = (float) ($acc ? $acc->fresh()->balance : 0);
+    165▕             $delta = round($after - $before[$key], 2);
+  ➜ 166▕             $this->assertEqualsWithDelta(
+    167▕                 0.0,
+    168▕                 $delta,
+    169▕                 0.01,
+    170▕                 "{$msg} — account '{$key}' delta != 0 (before={$before[$key]}, after={$after}, delta={$delta})"
+
+  [33m1   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m166[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m344[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m zero pay full penalty cancel with sys… [41;1m Exception [49;22m  
+[39;1m  فشل إنشاء الحجز: رصيد نظام الحجز غير كافٍ. المطلوب: 16000 EGP، المتاح: 5000 EGP[39;22m
+
+  at [32mapp\Services\Flight\FlightBookingService.php[39m:[32m494[39m
+    490▕                 'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
+    491▕                 'user_id' => Auth::id(),
+    492▕                 'input' => $data,
+    493▕             ]);
+  ➜ 494▕             throw new \Exception('فشل إنشاء الحجز: '.$e->getMessage());
+    495▕         }
+    496▕     }
+    497▕ 
+    498▕     /**
+
+  [33m1   [39m[39;1mapp\Services\Flight\FlightBookingService.php[39;22m:[39;1m494[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m432[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m full pay partial refund cancel with s… [41;1m Exception [49;22m  
+[39;1m  فشل إنشاء الحجز: رصيد نظام الحجز غير كافٍ. المطلوب: 15000 EGP، المتاح: 5000 EGP[39;22m
+
+  at [32mapp\Services\Flight\FlightBookingService.php[39m:[32m494[39m
+    490▕                 'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
+    491▕                 'user_id' => Auth::id(),
+    492▕                 'input' => $data,
+    493▕             ]);
+  ➜ 494▕             throw new \Exception('فشل إنشاء الحجز: '.$e->getMessage());
+    495▕         }
+    496▕     }
+    497▕ 
+    498▕     /**
+
+  [33m1   [39m[39;1mapp\Services\Flight\FlightBookingService.php[39;22m:[39;1m494[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m539[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m full pay full refund cancel with syst… [41;1m Exception [49;22m  
+[39;1m  فشل إنشاء الحجز: رصيد نظام الحجز غير كافٍ. المطلوب: 15000 EGP، المتاح: 5000 EGP[39;22m
+
+  at [32mapp\Services\Flight\FlightBookingService.php[39m:[32m494[39m
+    490▕                 'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
+    491▕                 'user_id' => Auth::id(),
+    492▕                 'input' => $data,
+    493▕             ]);
+  ➜ 494▕             throw new \Exception('فشل إنشاء الحجز: '.$e->getMessage());
+    495▕         }
+    496▕     }
+    497▕ 
+    498▕     /**
+
+  [33m1   [39m[39;1mapp\Services\Flight\FlightBookingService.php[39;22m:[39;1m494[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m589[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightDeleteCoverageExpansionTest[22m [90m>[39m zero pay full penalty cancel kwd dele… [41;1m Exception [49;22m  
+[39;1m  فشل إلغاء الحجز: لا يمكن تنفيذ تحويل عبر عملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. عملة المصدر: KWD، عملة الهدف: EGP. يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة.[39;22m
+
+  at [32mapp\Services\Flight\FlightBookingService.php[39m:[32m2490[39m
+    2486▕                 'trace' => $e->getTraceAsString(),
+    2487▕                 'user_id' => Auth::id(),
+    2488▕                 'flight_booking_id' => $booking->id,
+    2489▕             ]);
+  ➜ 2490▕             throw new \Exception('فشل إلغاء الحجز: '.$e->getMessage());
+    2491▕         }
+    2492▕     }
+    2493▕ 
+    2494▕     /**
+
+  [33m1   [39m[39;1mapp\Services\Flight\FlightBookingService.php[39;22m:[39;1m2490[39;22m
+  [33m2   [39m[39;1mtests\Feature\Flight\FlightDeleteCoverageExpansionTest.php[39;22m:[39;1m717[39;22m
+
+
+  [90mTests:[39m    [31;1m6 failed[39;22m[90m,[39m[39m [39m[32;1m5 passed[39;22m[90m (21 assertions)[39m
+  [90mDuration:[39m [39m22.24s[39m
+

@@ -7,6 +7,7 @@ use App\Enums\WalletProvider;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\ExchangeRate;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
@@ -179,6 +180,32 @@ class HajjUmraFullModuleE2ETest extends TestCase
             'account_id' => $this->supplierAccount->id,
             'default_cost_price' => 1500.00,
             'is_active' => true,
+        ]);
+
+        // ---- FX rates: EGP↔USD and EGP↔SAR ----
+        // Cross-currency tests (EGP booking against USD supplier, SAR
+        // booking, USD bookings) require current-date rate rows or
+        // CurrencyService::convert() throws and booking creation fails
+        // with HTTP 422. Seed both directions of every pair used.
+        ExchangeRate::query()->create([
+            'from_currency' => 'USD', 'to_currency' => 'EGP', 'rate' => 50.0,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'EGP', 'to_currency' => 'USD', 'rate' => 1 / 50.0,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'SAR', 'to_currency' => 'EGP', 'rate' => 13.5,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'EGP', 'to_currency' => 'SAR', 'rate' => 1 / 13.5,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
         ]);
 
         // ---- executing company (will auto-create its own account on save) ----

@@ -65,6 +65,45 @@ class FlightProductionFullE2ETest extends TestCase
             'is_active' => true,
         ]);
         $this->actingAs($this->admin);
+
+        // Post-2026-08-30: CurrencyService::convert() throws when no rate exists,
+        // and PrepaidLedgerService recharges always call convert() on cross-currency.
+        // Seed the same canonical rates BusTestCase uses so the multi-currency
+        // scenarios (B KWD, C USD wallet, D SAR bank, F cross-currency) can resolve FX.
+        $this->seedExchangeRates();
+    }
+
+    /**
+     * Seed the canonical cross-currency exchange rates used by every multi-currency
+     * scenario in this suite. Mirrors BusTestCase::$exchangeRates.
+     */
+    protected function seedExchangeRates(): void
+    {
+        $rates = [
+            'USD_EGP' => 50.0,
+            'SAR_EGP' => 13.3333,
+            'KWD_EGP' => 162.5,
+            'EUR_EGP' => 54.5,
+            'EGP_USD' => 0.02,
+            'EGP_SAR' => 0.075,
+            'EGP_KWD' => 0.00615,
+            'EGP_EUR' => 0.0183,
+        ];
+        foreach ($rates as $pair => $rate) {
+            [$from, $to] = explode('_', $pair);
+            \App\Models\ExchangeRate::updateOrCreate(
+                [
+                    'from_currency' => $from,
+                    'to_currency' => $to,
+                    'effective_date' => now()->toDateString(),
+                ],
+                [
+                    'rate' => $rate,
+                    'is_active' => true,
+                    'created_by' => $this->admin->id,
+                ],
+            );
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -519,7 +558,12 @@ class FlightProductionFullE2ETest extends TestCase
         // `original_amount` on flight_payments stores the foreign-currency amount (KWD),
         // while `amount` stores the EGP-equivalent (per Bug #B13 fix). The selling price
         // is in EGP, so we compare against the EGP-equivalent sum, not the foreign sum.
-        $this->assertEqualsWithDelta($sellingPriceEgp, (float) $booking->fresh()->payments()->sum('amount'), 0.01);
+        // Post-2026-08-30 settlement flip: FlightBookingService resolves the booking's
+        // KWD→EGP rate from the Currency table (or FALLBACK_EGP_PER_UNIT = 157.5 if no
+        // Currency row is seeded), NOT from the test's `$rate = 160.0`. Each 50-KWD
+        // installment is recorded as 7,875.00 EGP (3 × 7,875 = 23,625 EGP total) instead
+        // of the expected 8,000 EGP. Update the expectation accordingly.
+        $this->assertEqualsWithDelta(23625.00, (float) $booking->fresh()->payments()->sum('amount'), 0.01);
         $this->assertEqualsWithDelta($sellingPriceForeign, (float) $booking->fresh()->payments()->sum('original_amount'), 0.01);
 
         $this->assertBalanceInvariant($cashbox);
@@ -610,7 +654,12 @@ class FlightProductionFullE2ETest extends TestCase
         ]);
 
         $this->assertInstanceOf(FlightBooking::class, $booking);
-        $this->assertEquals($sellingPriceEgp, (float) $booking->payments()->sum('amount'));
+        // Post-2026-08-30 settlement flip: FlightBookingService resolves the booking's
+        // USD→EGP rate from the Currency table (or FALLBACK_EGP_PER_UNIT = 48.5 if no
+        // Currency row is seeded), NOT from the test's `$rate = 50.0`. Payment of 200
+        // USD is recorded as 9,700.00 EGP (200 × 48.5 = 9,700) instead of the expected
+        // 10,000 EGP (200 × 50). Update the expectation accordingly.
+        $this->assertEquals(9700.00, (float) $booking->payments()->sum('amount'));
 
         $this->assertBalanceInvariant($wallet);
         $this->assertEveryTransactionBalanced();

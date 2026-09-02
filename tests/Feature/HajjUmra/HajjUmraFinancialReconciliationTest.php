@@ -33,9 +33,17 @@ class HajjUmraFinancialReconciliationTest extends HajjUmraTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Record the treasury opening balance as an AccountEntry so the
-        // project's invariant (balance == SUM(credit) - SUM(debit)) holds.
-        $this->seedOpeningBalanceFor($this->treasuryEGP, 500_000.0);
+        // The FIN-1 observer (Account::created, 2026-08-21) auto-creates a
+        // paired opening-balance AccountEntry when a cashbox is created with
+        // balance > 0. The paired entry already satisfies the project
+        // invariant `balance == SUM(credit) - SUM(debit)` for the cashbox
+        // AND for the "System Opening Balances" contra account.
+        //
+        // We therefore DO NOT call `seedOpeningBalanceFor()` here — doing so
+        // would double the credit-side entry on the cashbox and break the
+        // invariant that `assertLedgerGloballyBalanced()` enforces.
+        //
+        // See: app/Models/Account.php lines 175-275 (FIN-1 REMEDIATION).
     }
 
     private function makeBooking(array $overrides = []): HajjUmraBooking
@@ -284,9 +292,13 @@ class HajjUmraFinancialReconciliationTest extends HajjUmraTestCase
             'idempotency_key' => 'P107_MC1_'.uniqid(),
         ])->assertCreated();
 
-        // USD booking — seed opening balance as an AccountEntry too
+        // USD booking — makeTreasuryAccount() creates the USD cashbox
+        // with balance=50000, and the FIN-1 Account::created observer
+        // (app/Models/Account.php lines 175-275) auto-creates the paired
+        // opening-balance AccountEntry. Calling seedOpeningBalanceFor()
+        // here would double the credit-side entry and break the
+        // balance invariant. So we omit it.
         $usdTreasury = $this->makeTreasuryAccount('USD', 50000.0);
-        $this->seedOpeningBalanceFor($usdTreasury, 50000.0);
         $usdBooking = $this->makeBooking([
             'currency' => 'USD',
             'purchase_price' => 1500.0,

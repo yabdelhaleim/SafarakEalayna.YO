@@ -1,0 +1,10 @@
+{
+    "total_probes": 12,
+    "passed_probes": 11,
+    "audit_findings": 1,
+    "final_ledger_debits": 207950,
+    "final_ledger_credits": 207950,
+    "net_financial_variance": 0,
+    "severity_classification": "P2 MEDIUM",
+    "final_verdict": "PRODUCTION READY WITH CONDITIONS"
+}

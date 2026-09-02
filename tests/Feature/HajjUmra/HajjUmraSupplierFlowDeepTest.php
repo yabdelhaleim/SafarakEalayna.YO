@@ -28,6 +28,21 @@ use App\Support\Finance\LedgerBalanceMutationGuard;
  */
 class HajjUmraSupplierFlowDeepTest extends HajjUmraTestCase
 {
+    /**
+     * Cross-currency supplier flows need current-date FX rates for
+     * EGP↔USD conversion (UmrahSupplier accounts default to USD per
+     * makeSupplier()). Seed both directions so booking creation and
+     * supplier AP settlements don't fail with
+     * "لا يوجد سعر صرف متاح من X إلى Y".
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedExchangeRate('USD', 'EGP', 50.0);
+        $this->seedExchangeRate('EGP', 'USD', 1 / 50.0);
+        $this->seedExchangeRate('SAR', 'EGP', 13.5);
+    }
+
     private function makeBookingWithExecutingCompany(): \App\Models\HajjUmraBooking
     {
         $customer = $this->makeCustomer();

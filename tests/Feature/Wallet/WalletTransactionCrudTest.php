@@ -29,18 +29,27 @@ class WalletTransactionCrudTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        // Post-2026-08-30: deny-by-default permission system requires
+        // either an admin role or explicit `permissions` for
+        // wallet.create / wallet.view. Use admin so CRUD endpoints
+        // (POST/GET/PUT/DELETE) reach the controller instead of 403ing
+        // at the permission middleware.
+        $this->user = User::factory()->create([
+            'role' => 'admin',
+        ]);
 
         $this->walletAccount = Account::factory()->create([
             'type' => AccountType::Wallet->value,
             'balance' => 10000,
             'name' => 'فودافون كاش - الوكالة',
+            'is_active' => true,
         ]);
 
         $this->cashAccount = Account::factory()->create([
             'type' => AccountType::Cashbox->value,
             'balance' => 5000,
             'name' => 'خزينة رئيسية',
+            'is_active' => true,
         ]);
 
         $this->customer = Customer::factory()->create([
@@ -111,21 +120,32 @@ class WalletTransactionCrudTest extends TestCase
 
     public function test_send_updates_accounts_correctly(): void
     {
+        // Post-2026-08-30: pin amount_paid=0 to lock in the "send WITHOUT
+        // settlement" path (the default would inject amount_paid=totalAmount
+        // via settlement). Under the new SEND behavior this means:
+        //   - wallet debited by `amount` only (500)
+        //   - customer's account credited by `amount` only (was amount+fee)
+        //   - cashbox UNCHANGED (was +amount+fee in pre-fix POST flow)
         $payload = $this->sendPayload(amount: 500, fee: 10);
+        $payload['amount_paid'] = 0.00;
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/wallet/transactions', $payload);
 
-        // wallet balance decreases by amount (500)
+        // wallet balance decreases by amount (500) — unchanged
         $this->assertDatabaseHas('accounts', [
             'id' => $this->walletAccount->id,
             'balance' => 10000 - 500,
         ]);
 
-        // cash balance increases by amount+fee (510)
+        // Post-2026-08-30: with a registered customer, the new wallet
+        // SEND behavior debits only the wallet provider by `amount`
+        // and credits the customer's account by `amount` (NOT amount+fee).
+        // The fee stays attached to the WT row and surfaces to P&L via
+        // settlement. Cashbox is therefore UNCHANGED at send time.
         $this->assertDatabaseHas('accounts', [
             'id' => $this->cashAccount->id,
-            'balance' => 5000 + 510,
+            'balance' => 5000,
         ]);
     }
 

@@ -34,6 +34,20 @@ use App\Support\Finance\LedgerBalanceMutationGuard;
  */
 class HajjUmraAdminFullLifecycleTest extends HajjUmraTestCase
 {
+    /**
+     * `makeSupplier()` (in HajjUmraTestCase) creates a USD-denominated
+     * account. Tests that wire a booking through that supplier need a
+     * current EGP↔USD rate or the cross-currency transfer throws
+     * "لا يوجد سعر صرف متاح".
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedExchangeRate('USD', 'EGP', 50.0);
+        $this->seedExchangeRate('EGP', 'USD', 1 / 50.0);
+        $this->seedExchangeRate('SAR', 'EGP', 13.5);
+    }
+
     /* ============================================================
      *  A. CREATE — minimal, no initial payment
      * ============================================================ */

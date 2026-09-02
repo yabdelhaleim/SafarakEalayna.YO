@@ -204,15 +204,23 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('online_transactions')->insert([
-            'service_type_id' => DB::table('online_service_types')->insertGetId([
+        // Post-2026-08-30: online_transactions schema renamed service_type_id → service_type_code
+        // (free-text migration 2026_08_28_000000). Insert the service-type row first to
+        // keep the test self-contained without depending on the seeding migration.
+        $serviceTypeCode = 'recharge';
+        DB::table('online_service_types')->updateOrInsert(
+            ['code' => $serviceTypeCode],
+            [
                 'name_ar' => 'شحن',
                 'name_en' => 'Recharge',
-                'code' => 'recharge',
                 'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]),
+            ],
+        );
+
+        DB::table('online_transactions')->insert([
+            'service_type_code' => $serviceTypeCode,
             'customer_name' => 'عميل أونلاين',
             'purchase_price' => 90.0,
             'selling_price' => 110.0,
@@ -225,13 +233,19 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('wallet_transactions')->insert([
-            'wallet_type_id' => WalletType::query()->create([
-                'name' => 'فودافون',
-                'code' => 'vodafone',
+        // Post-2026-08-30: wallet_types migration backfilled canonical codes (instapay, vodafone_cash, ...).
+        // Use firstOrCreate on code 'vodafone_cash' so the test does not collide with the seeded UNIQUE(code) row.
+        $walletType = WalletType::query()->firstOrCreate(
+            ['code' => 'vodafone_cash'],
+            [
+                'name' => 'فودافون كاش',
                 'is_active' => true,
                 'sort_order' => 1,
-            ])->id,
+            ],
+        );
+
+        DB::table('wallet_transactions')->insert([
+            'wallet_type_id' => $walletType->id,
             'customer_name' => 'عميل محفظة',
             'wallet_number' => '01012345678',
             'type' => WalletTransactionType::Send->value,
@@ -265,12 +279,17 @@ class OfficeTrialBalanceIntegrityTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        $walletType = WalletType::query()->create([
-            'name' => 'إنستاباي',
-            'code' => 'instapay',
-            'is_active' => true,
-            'sort_order' => 1,
-        ]);
+        // Post-2026-08-30: the canonical wallet_types migration seeded instapay/vodafone_cash
+        // rows with a UNIQUE(code) constraint. Use firstOrCreate on the seeded code so the
+        // assertion test does not trip the UniqueConstraintViolationException on duplicate INSERT.
+        $walletType = WalletType::query()->firstOrCreate(
+            ['code' => 'instapay'],
+            [
+                'name' => 'إنستاباي',
+                'is_active' => true,
+                'sort_order' => 2,
+            ],
+        );
 
         $tx = app(WalletTransactionService::class)->createTransaction([
             'wallet_type_id' => $walletType->id,

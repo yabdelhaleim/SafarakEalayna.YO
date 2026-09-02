@@ -718,9 +718,14 @@ class OnlineTransactionService
             ['from' => $arAccountId, 'to' => $tx->account_id],
         ];
 
-        // Fetch any cash-payment transfers posted on this transaction that
-        // match one of the candidate pairs. We use OR-where on the pair
-        // to handle the swap case.
+        // Fetch the most recent ACTIVE cash-payment transfer posted on this
+        // transaction that matches one of the candidate pairs. We use
+        // OR-where on the pair to handle the swap case, exclude any
+        // transfer that was already reversed (its entries carry the
+        // 'عكس القيد #…' marker written by TransactionService::reverseTransaction),
+        // and order by id DESC so multiple edits always re-target the latest
+        // live transfer — without this guard the second edit was a no-op
+        // (reversing an already-reversed row) and the customer AR drifted.
         $cashPaymentTx = Transaction::where('related_type', OnlineTransaction::class)
             ->where('related_id', $tx->id)
             ->where(function ($q) use ($candidatePairs) {
@@ -731,7 +736,8 @@ class OnlineTransactionService
                     });
                 }
             })
-            ->orderBy('id', 'asc')
+            ->whereDoesntHave('entries', fn ($q) => $q->where('notes', 'like', 'عكس القيد#%'))
+            ->orderBy('id', 'desc')
             ->first();
 
         if ($cashPaymentTx) {

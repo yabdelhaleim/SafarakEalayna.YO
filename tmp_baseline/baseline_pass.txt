@@ -1,0 +1,448 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ✓ PASS   SIGN/EGP                          — booking#1 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/USD                          — booking#2 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/SAR                          — booking#3 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/EUR                          — booking#4 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/KWD                          — booking#5 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/EGP                        — booking#6 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/USD                        — booking#7 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/SAR                        — booking#8 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/EUR                        — booking#9 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/KWD                        — booking#10 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/EGP                         — booking#11 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/USD                         — booking#12 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/SAR                         — booking#13 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/EUR                         — booking#14 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/KWD                         — booking#15 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  ✓ PASS   egp_egp (booking=EGP, pay=EGP)    — booking#16 CONFIRMED, profit=10.00, currency=EGP, paid_total=110.00
+  ✓ PASS   egp_usd (booking=EGP, pay=USD)    — booking#17 CONFIRMED, profit=10.00, currency=EGP, paid_total=110.00
+  ✓ PASS   usd_egp (booking=USD, pay=EGP)    — booking#18 CONFIRMED, profit=495.00, currency=USD, paid_total=5445.00
+  ✓ PASS   usd_usd (booking=USD, pay=USD)    — booking#19 CONFIRMED, profit=495.00, currency=USD, paid_total=5445.00
+  ✓ PASS   kwd_egp (booking=KWD, pay=EGP)    — booking#20 CONFIRMED, profit=1615.00, currency=KWD, paid_total=17765.00
+  ✓ PASS   C1 full-refund cancel             — status=REFUNDED cashbox.Δ=-220.00
+  ✓ PASS   C2 cancel-with-penalty            — status=CANCELLED kept=$100
+  ✓ PASS   C3 no-pay cancel                  — status=CANCELLED
+  ✓ PASS   C4 pay-after-cancel rejected      — rejected as expected
+  ✓ PASS   D1 partial refund                 — status=PARTIALLY_REFUNDED refund=99.00 EGP
+  ✓ PASS   D2 full refund                    — status=REFUNDED refund=5445.00 USD
+  ✓ PASS   D3 airline-credit voucher         — status=REFUNDED voucher=17765.00 KWD
+  ✓ PASS   E1 delete PENDING (no pay)        — booking#28 trashed=Y | Δ cashbox=+0.00 carrier=+2000.00 pending=+2500.00
+  ✓ PASS   E2 delete CONFIRMED direct        — booking#29 trashed=Y | Δ cashbox=-110.00 carrier=+100.00 pending=+5445.00
+  ✓ PASS   E3 delete after cancel+refund     — booking#30 trashed=Y | Δ cashbox=-1562.00 carrier=+0.00 pending=+0.00
+  ✓ PASS   E4 delete after cancel+penalty    — booking#31 trashed=Y | Δ cashbox=+48.14 carrier=+0.00 pending=+100.00
+  ✓ PASS   F1 round-trip (2 segments)        — segments=2
+  ✓ PASS   F2 multi-leg (3 segments)         — segments=3
+  ✓ INV-A balance vs entries drift            [baseline=531000.00 current=531000.00 drift=0.00]
+  ✓ INV-B every transaction balanced          [unbalanced=0]
+  ✓ INV-C no orphan account_entries           [orphans=0]
+  ✓ INV-D P&L snapshot reachable              [revenues=149710.00 cogs=134261.00 net=15449.00]
+  ✓ INV-E EGP cashbox balance > 0             [balance=323451.00]
+  [✓] A. Channel × Currency Matrix            15/15
+  [✓] B. Payment Cross-Currency                5/5
+  [✓] C. Cancellation                          4/4
+  [✓] D. RefundRequest                         3/3
+  [✓] E. Deletion                              4/4
+  [✓] F. Multi-leg                             2/2
+  [✓] G. Final Reconciliation                  5/5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

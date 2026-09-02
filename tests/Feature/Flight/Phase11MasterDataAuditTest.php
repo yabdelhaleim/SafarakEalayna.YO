@@ -63,7 +63,41 @@ class Phase11MasterDataAuditTest extends TestCase
         $this->bookingService = app(FlightBookingService::class);
 
         // Make sure each test starts with a clean active currencies list.
+        // Tests that need a working currency table can call `seedCurrencies()`
+        // (or just `Currency::updateOrCreate(...)` for a single row).
         Currency::query()->delete();
+    }
+
+    /**
+     * Seed the standard currency rates used across the Flight module.
+     * Idempotent — safe to call multiple times within one test.
+     *
+     * Phase 11.1 audit fix (2026-09-02): the C2 recharge test needs USD
+     * active; downstream cross-currency tests need KWD/SAR/GBP. Calling
+     * this helper at the top of those tests keeps the e1–e5 master-data
+     * coverage unchanged (they still expect a clean currency table).
+     */
+    protected function seedCurrencies(): void
+    {
+        foreach ([
+            ['USD', 50.0],
+            ['EUR', 54.5],
+            ['SAR', 13.33],
+            ['KWD', 162.5],
+            ['GBP', 61.2],
+        ] as [$code, $rate]) {
+            Currency::updateOrCreate(
+                ['code' => $code],
+                [
+                    'name_ar' => $code,
+                    'name_en' => $code,
+                    'symbol' => $code,
+                    'exchange_rate' => $rate,
+                    'is_active' => true,
+                    'order' => 0,
+                ],
+            );
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -337,6 +371,7 @@ class Phase11MasterDataAuditTest extends TestCase
 
     public function test_C2_system_recharge_succeeds(): void
     {
+        $this->seedCurrencies();
         $cashbox = $this->makeAccount('Cashbox USD', 'cashbox', 'USD', 200_000);
         $system = $this->makeSystem('Amadeus GDS', 'USD');
 

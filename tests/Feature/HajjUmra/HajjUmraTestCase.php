@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\WalletProvider;
 use App\Models\Account;
 use App\Models\Customer;
+use App\Models\ExchangeRate;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
 use App\Models\HajjUmra\UmrahSupplier;
 use App\Models\Program;
@@ -233,5 +234,32 @@ abstract class HajjUmraTestCase extends BaseTestCase
             'phone'          => '+20100000000',
             'is_active'      => true,
         ], $overrides));
+    }
+
+    /**
+     * Seed an ExchangeRate row for the given from→to pair.
+     *
+     * Tests that create a cross-currency booking (e.g., EGP treasury + USD
+     * supplier, or USD treasury + EGP customer payment) trigger
+     * CurrencyService::convert() in HajjUmraBookingService::create() and
+     * addPayment(). Without a current-date rate row, convert() throws
+     * "لا يوجد سعر صرف متاح من X إلى Y" and the booking/payment fails
+     * with a 422.
+     *
+     * Common usage in setUp():
+     *   $this->seedExchangeRate('USD', 'EGP', 50.0);
+     *   $this->seedExchangeRate('EGP', 'USD', 1/50.0);
+     *   $this->seedExchangeRate('SAR', 'EGP', 13.5);
+     */
+    protected function seedExchangeRate(string $from, string $to, float $rate, ?string $date = null): ExchangeRate
+    {
+        return ExchangeRate::query()->create([
+            'from_currency'  => strtoupper($from),
+            'to_currency'    => strtoupper($to),
+            'rate'           => $rate,
+            'effective_date' => $date ?? now()->toDateString(),
+            'is_active'      => true,
+            'created_by'     => $this->admin->id,
+        ]);
     }
 }

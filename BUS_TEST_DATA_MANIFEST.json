@@ -1,0 +1,45 @@
+{
+    "golden_run_id": "GOLDEN_FLOW_1786802801",
+    "environment": "local",
+    "database": "safarakealayna",
+    "verified_entities": [
+        {
+            "entity": "BusCompany",
+            "id": 52,
+            "account_id": 660,
+            "name": "GOLDEN_Bus_Lines_1786802801"
+        },
+        {
+            "entity": "BusInventory",
+            "id": 52,
+            "route": "Cairo - Alexandria Express",
+            "total_tickets": 20
+        },
+        {
+            "entity": "Customer",
+            "id": 491,
+            "name": "Golden Passenger 652"
+        },
+        {
+            "entity": "BusBooking",
+            "id": 430,
+            "total_price": "300.00",
+            "profit": "100.00"
+        },
+        {
+            "entity": "BusPayment",
+            "id": 25,
+            "amount": 300
+        },
+        {
+            "entity": "BusCompanyPayment",
+            "id": 2,
+            "amount": 200
+        },
+        {
+            "entity": "BusRefundRequest",
+            "id": 9,
+            "refund_amount": "120.00"
+        }
+    ]
+}

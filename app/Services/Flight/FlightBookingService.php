@@ -702,8 +702,18 @@ class FlightBookingService
 
     /**
      * سعر الصرف المحفوظ للعملة: عدد وحدات الجنيه المصري لكل 1 وحدة من العملة الأجنبية (مثل إعدادات العملات في Filament).
+     *
+     * Public + static (was private pre-2026-09-02, Phase11 audit fix):
+     * required by Phase11MasterDataAuditTest to verify currency resolution
+     * behaviour for active/inactive/undefined currencies. The method is
+     * stateless (reads only from `currencies` table + the FALLBACK map) so
+     * making it static is safe — callers that already have a service
+     * instance can still call it as `$this->egpPerUnitOfCurrency(...)`.
+     *
+     * Static call sites: Phase11MasterDataAuditTest e1–e5, CurrencyService
+     * compatibility wrappers.
      */
-    private function egpPerUnitOfCurrency(string $currencyCode): float
+    public static function egpPerUnitOfCurrency(string $currencyCode): float
     {
         $code = strtoupper(trim($currencyCode));
         if ($code === '' || $code === 'EGP') {
@@ -2456,47 +2466,46 @@ class FlightBookingService
                     );
                 }
 
-                // BUG-7 fix (2026-08-29): post office_penalty as an income
-                // transaction so the office's cancellation fee is recognized
-                // in the P&L dashboard.
+                // office_penalty accounting (Phase 11 audit, 2026-09-02):
                 //
-                // Pre-fix, office_penalty was recorded in
-                // flight_refunds.office_penalty column but never posted as a
-                // transaction. The cancel flow only:
-                //   - reverseFlightBookingRevenue (marks income rows 'عكس:')
-                //   - creditBackFlightCarrier/System/Group (reverses cogs)
-                //   - refundTreasuryAccount (cash refund to customer)
-                // The 100 EGP office kept from cancellation was invisible to
-                // ProfitLossReportService — leaving the dashboard showing
-                // -100 (net of -100 airline_penalty still on books as cogs)
-                // instead of 0 (cancellation is wash: lost revenue + kept
-                // margin by office).
+                // The office_penalty of N EGP represents the office keeping
+                // N EGP of the customer's already-paid cash as a cancellation
+                // fee. It is NOT a separate revenue transaction for these
+                // reasons:
                 //
-                // Post office_penalty as a type='income' row with the cashbox
-                // (or whatever account_id the user picked) as the destination
-                // and the customer's AR account as the contra. Same shape as
-                // the FIN-3 pay-debt fix (CustomerController::payDebt) which
-                // posts a type='income' row keyed to the Customer model.
+                //   1) The money is already in the cashbox from the original
+                //      customer payment (tx#4). It does not need a second
+                //      cash movement to "appear" there.
                 //
-                // Idempotency: we guard on office_penalty > 0.001 AND an
-                // account_id being supplied (the refund path always supplies
-                // one when office_penalty > 0, per the validation at Step
-                // 3.5). The flight_refunds row also acts as a dedup key —
-                // this code path runs once per cancellation.
-                if ($officePenalty > 0.001 && ! empty($data['account_id'])) {
-                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
-                    $this->transactionService->recordIncome([
-                        'amount' => $officePenalty,
-                        'to_account_id' => (int) $data['account_id'],
-                        'contra_account_id' => (int) $customerAccount->id,
-                        'allow_contra_negative' => true,
-                        'module' => TransactionModule::Flight->value,
-                        'related_type' => FlightBooking::class,
-                        'related_id' => $booking->id,
-                        'notes' => 'office_penalty kept from cancelled booking #'.$booking->booking_number,
-                        'created_by' => $userId,
-                    ]);
-                }
+                //   2) The customer's AR must net to 0 after cancel (the sale
+                //      is reversed, the refund returns cash, and the office
+                //      keeps a portion — the kept portion has no AR impact
+                //      because the customer already paid it). Debiting AR by
+                //      office_penalty (the BUG-7 fix from 2026-08-29) breaks
+                //      this invariant: AR would be -office_penalty instead
+                //      of 0, and customer balances would silently drift.
+                //
+                //   3) Per the CancellationAccountingRegressionTest::case4
+                //      economic interpretation (kept in commit history),
+                //      the office_penalty manifests in P&L as "smaller
+                //      sale-reversal + kept COGS" — not as a separate income
+                //      row. After cancel:
+                //        revenue  = 0   (sale reversed via 'عكس:' prefix)
+                //        cogs     = airline_penalty_kept (e.g. 4000)
+                //        netP&L   = -airline_penalty_kept (e.g. -4000)
+                //
+                // We still record office_penalty in flight_refunds.office_penalty
+                // (the column below) for audit + reporting. The financial
+                // movement is implicit in the refundTreasuryAccount() call
+                // above (which only returned `refundAmount = totalPaid -
+                // penalties` to the customer, leaving the office_penalty in
+                // the cashbox).
+                //
+                // Pre-fix code (BUG-7 from 2026-08-29) posted an
+                // `Income` transaction here crediting the cashbox and
+                // debiting customer AR by office_penalty. That double-counted
+                // the cash and left AR at -office_penalty after cancel.
+                // Removed in this audit.
 
                 // Step 5: Create refund record
                 $refund = FlightRefund::create([
@@ -2762,7 +2771,14 @@ class FlightBookingService
     }
 
     /**
-     * Refund treasury account (undo previous credit)
+     * Refund treasury account (undo previous credit).
+     *
+     * Cross-currency support (Phase 11 audit fix, 2026-09-02):
+     * The customer AR is ALWAYS EGP (see ensureCustomerAccount), but the
+     * refund cashbox may be in a foreign currency (USD/SAR/KWD) for foreign
+     * bookings. `recordJournalTransfer` rejects cross-currency journals that
+     * lack `converted_amount`/`exchange_rate`, so we compute them here using
+     * the booking's stored exchange rate (locked at createBooking time).
      */
     protected function refundTreasuryAccount(
         FlightBooking $booking,
@@ -2772,8 +2788,9 @@ class FlightBookingService
     ): Transaction {
         try {
             $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+            $cashbox = Account::query()->find($accountId);
 
-            $transaction = $this->transactionService->recordJournalTransfer([
+            $transferParams = [
                 'amount' => $refundAmount,
                 'from_account_id' => $accountId,
                 'to_account_id' => $customerAccount->id,
@@ -2783,7 +2800,38 @@ class FlightBookingService
                 'related_id' => $booking->id,
                 'notes' => "استرداد حجز تذكرة - {$booking->booking_number}",
                 'created_by' => $userId,
-            ]);
+            ];
+
+            // Cross-currency cash-out: cashbox (foreign) → customer AR (EGP).
+            // The refund_amount is in BOOKING currency (per the cancel-time
+            // cap check); convert it to EGP-equivalent via the snapshot rate
+            // recorded on the booking. Falls back to live currency lookup
+            // when no snapshot exists (legacy bookings).
+            if ($cashbox && strtoupper((string) $cashbox->currency) !== strtoupper((string) $customerAccount->currency)) {
+                $bookingCurrency = strtoupper((string) $booking->currency);
+                $cashboxCurrency = strtoupper((string) $cashbox->currency);
+                $customerCurrency = strtoupper((string) $customerAccount->currency);
+
+                $rate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 0));
+                if ($rate <= 0) {
+                    $rate = $this->egpPerUnitOfCurrency($cashboxCurrency);
+                }
+
+                if ($rate > 0) {
+                    // amount stays in cashbox currency (foreign); converted_amount
+                    // is the EGP-equivalent for the customer AR credit leg.
+                    if ($cashboxCurrency !== 'EGP' && $customerCurrency === 'EGP') {
+                        $transferParams['converted_amount'] = round($refundAmount * $rate, 2);
+                        $transferParams['exchange_rate'] = round($rate, 6);
+                    } elseif ($cashboxCurrency === 'EGP' && $customerCurrency !== 'EGP') {
+                        // Symmetric inverse (rare, but supported): EGP → foreign AR.
+                        $transferParams['converted_amount'] = round($refundAmount / $rate, 4);
+                        $transferParams['exchange_rate'] = round($rate, 6);
+                    }
+                }
+            }
+
+            $transaction = $this->transactionService->recordJournalTransfer($transferParams);
 
             TreasuryLedgerMirror::mirrorFlightOutboundFromCash(
                 $transaction,
@@ -2795,7 +2843,11 @@ class FlightBookingService
             Log::info('Treasury refunded for cancelled booking', [
                 'flight_booking_id' => $booking->id,
                 'account_id' => $accountId,
+                'cashbox_currency' => $cashbox?->currency,
+                'customer_currency' => $customerAccount->currency,
                 'refund_amount' => $refundAmount,
+                'converted_amount' => $transferParams['converted_amount'] ?? null,
+                'exchange_rate' => $transferParams['exchange_rate'] ?? null,
                 'transaction_id' => $transaction->id,
                 'user_id' => $userId,
             ]);
@@ -3423,6 +3475,22 @@ class FlightBookingService
                     }
                 }
             }
+
+            // 4.5) [Removed in Phase 11 audit, 2026-09-02]
+            //
+            // Previous BUG-7 cancellation code posted an `Income` row crediting
+            // the cashbox with the kept office_penalty. The delete flow then
+            // had to call reverseTransaction() to mirror that row and bring
+            // AR + cashbox back to snapshot.
+            //
+            // After this audit, the cancel flow no longer posts that income
+            // row (see comments at the office_penalty site in cancelBooking()).
+            // office_penalty is now tracked ONLY in flight_refunds.office_penalty
+            // for reporting, and is implicitly preserved in the cashbox
+            // because refundTreasuryAccount only returned the smaller
+            // (refundAmount = totalPaid - penalties) to the customer.
+            //
+            // Therefore no reversal step is needed here.
 
             // 5) Mark tickets as cancelled (we don't soft-delete tickets; status update is enough)
             FlightTicket::query()

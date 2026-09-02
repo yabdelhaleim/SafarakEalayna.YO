@@ -147,12 +147,13 @@ class HajjUmraBookingLifecycleFinancialTest extends TestCase
         $this->assertSame(TransactionType::Income, $income->type);
         $this->assertEqualsWithDelta(50000.0, (float) $income->amount, 0.01);
 
-        // The "expense" transaction is internally recorded as a Transfer because
-        // TransactionService::recordExpense() auto-resolves a clearing account
-        // and routes through recordJournalTransfer() (Transfer is the default
-        // type for inter-account movements). This is a designed behaviour
-        // documented in TransactionService.php lines 73-87.
-        $this->assertSame(TransactionType::Transfer, $expense->type);
+        // FIN-3 REMEDIATION (2026-08-21): TransactionService::recordExpense()
+        // now explicitly tags the transaction as type=Expense even when it
+        // routes through recordJournalTransfer() (the clearing-account path).
+        // This keeps the expense semantic in reports that filter on
+        // `type='expense'`. Pre-fix the type silently became Transfer,
+        // masking expense rows from financial reports.
+        $this->assertSame(TransactionType::Expense, $expense->type);
         $this->assertEqualsWithDelta(40000.0, (float) $expense->amount, 0.01);
     }
 
