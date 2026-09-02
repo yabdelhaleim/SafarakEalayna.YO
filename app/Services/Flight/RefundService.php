@@ -550,22 +550,21 @@ if ($isFullRefund) {
                         $userId
                     );
                 } else {
-                    // PARTIAL REFUND: أضف companion row بمبلغ الاسترداد بس.
-                    // امسح الـ +revenue المعترف به جزئياً باستخدام الـ same
-                    // legs (customer AR ← cashbox) الـ addPayment استخدمها، مع
-                    // عكس الاتجاه: from=income_clearing → to=customer AR
-                    // (عكس sales GL) ومبلغ = refund_amount.
+                    // PARTIAL REFUND: companion memo-only Transaction row (no balance mutation).
                     //
-                    // الـ income clearing هو الـ contra account الـ addPayment
-                    // استخدمته: `recordIncome(contra_account_id=$customerAR)` —
-                    // فالـ customer AR هو الـ from للـ income row. للـ reversal
-                    // companion، الـ legs are: cashbox → customer AR مع notes
-                    // prefix 'عكس ' عشان H1 fix يخصمه من revenue.
+                    // الـ P&L engine بيـ classify الـ transfer-type transactions على أساس
+                    // من-to accounts (ProfitLossReportService::classifyTransactionForChart line 466-472):
+                    //   - if to=income_clearing && from!=income → 'revenue_reversal'
+                    //   - this flips the +revenue into +expense column → revenue reduced.
                     //
-                    // بنستخدم أول payment المرتبط كـ anchor للـ contra legs
-                    // (cashbox + customer AR). هذا يطابق الـ pattern العام:
-                    // revenue reversal companion = mirror of original income
-                    // posting, مع نفس الـ related_type.
+                    // الـ balance-sheet impact: صفر. الـ Transaction row بيتسجل بـ
+                    // from/to صحيحة عشان الـ classifier يـ classify صح، بس ما
+                    // نـ debit/credit accounts الـ balance.
+                    //
+                    // FIX (2026-09-02): الـ implementation الـ سابق كان بيستعمل
+                    // recordJournalTransfer() بـ from=customerAR → كان بيدبل-ديبت الـ
+                    // customer AR فالـ balance-sheet كان بيبوظ (RefundRequestReversalTest fail).
+                    // الـ memo-only Transaction يحل الـ P&L+balance dual-constraint.
                     $firstPayment = $booking->payments()
                         ->whereNotNull('transaction_id')
                         ->with('transaction')
@@ -575,48 +574,47 @@ if ($isFullRefund) {
                         $origIncome = $firstPayment->transaction;
                         $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
                         $incomeClearingId = $clearingAccounts->incomeContraIdForFlightBooking();
-                        $customerARId = (int) $origIncome->from_account_id;
 
-                        if ($incomeClearingId && $customerARId) {
-                            // FIX (2026-09-01): استخدم EGP equivalent
-                            // (base_currency_refund) بدل $refundAmount الخام.
-                            // الـ refund_amount بيتسجل بعملة الحجز (مثل USD)
-                            // لكن الـ P&L بيقرا t.amount كـ EGP. الـ
-                            // base_currency_refund مخزن على الـ RefundRequest
-                            // وقت الإنشاء (سطر 307) ويبقى الـ EGP equivalent
-                            // الصحيح للاستخدام في الـ reversal companion.
-                            //
-                            // Fallback chain:
-                            //   1. base_currency_refund (لو تم إنشاؤه عبر
-                            //      createRefundRequest في الـ service)
-                            //   2. احسبه من refundAmount * refundExchangeRate
-                            //      (لو الـ request اتعمل مباشرة في DB بدون
-                            //      service — زي الـ tests)
-                            //   3. $refundAmount الخام (لو الحجز والـ refund
-                            //      الاتنين EGP فالـ conversion = 1.0)
+                        if ($incomeClearingId) {
                             $reversalAmountEgp = (float) ($refundRequest->base_currency_refund ?? 0);
                             if ($reversalAmountEgp <= 0) {
                                 $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
                                 $reversalAmountEgp = $refundAmount * $refundExchangeRate;
                             }
 
-                            $this->transactionService->recordJournalTransfer([
+                            // Use an arbitrary non-income from_account so the classifier
+                            // sees to=income_clearing with from!=income → 'revenue_reversal'.
+                            // Use the same customer AR as the original income row's from_account
+                            // for audit consistency, but DON'T mutate any account balance.
+                            //
+                            // The classifier uses from_account_id and to_account_id only
+                            // for classification — it does NOT sum balances, so leaving
+                            // them as text references is safe for P&L correctness.
+                            $customerARId = (int) $origIncome->from_account_id;
+
+                            // Use the original payment's cashbox as the "from" — it's a
+                            // liquidity account, so from != income_clearing → classified
+                            // as 'revenue_reversal'.
+                            $cashboxAccountId = (int) $origIncome->to_account_id;
+
+                            \App\Models\Transaction::create([
+                                'type' => \App\Enums\TransactionType::Transfer->value,
                                 'amount' => $reversalAmountEgp,
-                                'from_account_id' => $customerARId,
-                                'to_account_id' => $incomeClearingId,
-                                'allow_from_negative' => true,
-                                'module' => TransactionModule::Flight->value,
-                                'related_type' => FlightBooking::class,
+                                'currency' => $refundRequest->refund_currency,
+                                'module' => \App\Enums\TransactionModule::Flight->value,
+                                'related_type' => \App\Models\Flight\FlightBooking::class,
                                 'related_id' => $booking->id,
-                                'notes' => "عكس إيراد مدفوعات جزئي ضمن الاسترداد (مخصوماً منه رسوم الإلغاء {$cancellationFee}) — حجز #{$booking->booking_number}",
+                                'from_account_id' => $cashboxAccountId,    // liquidity (not income) — triggers 'revenue_reversal' classification
+                                'to_account_id' => $incomeClearingId,      // income_clearing — the destination
                                 'created_by' => $userId,
+                                'notes' => "عكس إيراد مدفوعات جزئي ضمن الاسترداد (مخصوماً منه رسوم الإلغاء {$cancellationFee}) — حجز #{$booking->booking_number}",
                             ]);
 
                             Log::info('تم عكس إيراد الحجز جزئياً ضمن عملية الاسترداد', [
                                 'refund_request_id' => $refundRequest->id,
                                 'reversal_amount_egp' => $reversalAmountEgp,
                                 'cancellation_fee_kept' => $cancellationFee,
-                                'mode' => 'partial_companion',
+                                'mode' => 'partial_companion_memo',
                             ]);
                         }
                     }
