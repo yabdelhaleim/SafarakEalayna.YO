@@ -989,7 +989,7 @@ class FlightBookingService
         }
 
         throw new \Exception(
-            "عملة رصيد الشركة/النظام ({$bal}) لا تتوافق مع عملة تسعير الحجز ({$book}). استخدم نفس العملة أو التسعير بالجنيه مع سعر صرف مُعرَّف لـ {$bal}."
+            "عملة رصيد الشركة/النظام ({$bal}) لا تتوافق مع عملة تسعير الحجز ({$book}). استخدم نفس العملة أو التسعير بالجنيه مع سعر صرف مُعرَّف لـ {$bal}."
         );
     }
 
@@ -3208,7 +3208,18 @@ class FlightBookingService
                 // FlightPayment — that is where the penalty cash actually sits.
                 $totalPenalty = (float) $existingRefundEarly->airline_penalty + (float) $existingRefundEarly->office_penalty;
                 $bookingCurrency = strtoupper((string) $booking->currency);
-                $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                // Phase 11 audit fix (2026-09-02): prefer the LOCKED rate from
+                // the booking settlement snapshot (`exchange_rate_used`) over
+                // the live rate. The live rate is volatile (admin may update
+                // currencies table between cancel and delete) and produces
+                // rounding drift in cross-currency cashbox restorations — e.g.
+                // scenario 13 (KWD): live 157.5 vs locked 160 → cashbox ends
+                // at 194997.62 instead of 195000.00 (a 2.38 KWD discrepancy).
+                //
+                // Fall back to live `exchange_rate` only when the locked
+                // snapshot is missing (legacy bookings predating the
+                // `exchange_rate_used` column in 2026-05).
+                $bookingExchangeRate = (float) ($booking->exchange_rate_used ?: ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0)));
                 $penaltyEgp = $totalPenalty;
 
                 // Resolve the POST-FIX-2 source account (FIN-A fix).

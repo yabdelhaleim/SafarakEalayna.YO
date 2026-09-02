@@ -1313,15 +1313,22 @@ class FlightModuleDeepE2ETest extends TestCase
         $this->assertBalanceInvariant($cashbox);
         $this->assertCarrierInvariant($carrier);
         $this->assertEveryTransactionBalanced();
-        // Post-2026-08-30 settlement flip: with the new settlement direction
-        // (customer → cashbox), the cancel refund of 1,000 EGP (office_penalty
-        // delta from the partial refund flow) now persists into the cashbox
-        // instead of being reversed by the booking delete. Net effect on the
-        // cashbox after book → partial refund → delete: +1,000 EGP from
-        // pre-booking balance. Update snapshot expectation accordingly (was
-        // 400,000.00 before the flip).
-        $this->assertEqualsWithDelta(401000.00, $cashbox->fresh()->balance, 0.01);
-        $this->rec('5.2', 'Delete refunded booking', '✅', 'cashbox net +1,000 EGP after refund persistence');
+        // Phase 11 audit (2026-09-02): office_penalty is no longer posted as
+        // a separate GL transaction (see CancellationAccountingRegressionTest::case4
+        // and FlightBookingService::cancelBooking comments). The cancel-then-delete
+        // lifecycle therefore restores the cashbox to its pre-booking snapshot:
+        //   - payment: +20000
+        //   - cancel refund: -15000 (= 20000 - 4000 airline - 1000 office)
+        //   - delete residual clearing: -5000 (airline+office penalty → pending)
+        // Net cashbox delta: 0 — balances return to pre-booking baseline.
+        //
+        // (Pre-audit, the BUG-7 office_penalty income transaction posted
+        // cashbox +1000 at cancel; the old Step 4.5 in deleteBookingWithReversal
+        // then reversed it, producing a final cashbox of 400000. With BUG-7
+        // removed, the cashbox still ends at 400000 — same final answer, simpler
+        // ledger.)
+        $this->assertEqualsWithDelta(400000.00, $cashbox->fresh()->balance, 0.01);
+        $this->rec('5.2', 'Delete refunded booking', '✅', 'cashbox restored to pre-booking snapshot');
     }
 
     public function test_part5_booking_no_payment_then_delete(): void

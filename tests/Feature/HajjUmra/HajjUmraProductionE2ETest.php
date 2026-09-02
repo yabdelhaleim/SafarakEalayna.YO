@@ -6,6 +6,7 @@ use App\Enums\HajjUmraStatus;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\ExchangeRate;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
@@ -139,6 +140,29 @@ class HajjUmraProductionE2ETest extends TestCase
             'default_cost_price' => 1000.00,
             'is_active' => true,
         ]);
+
+        // ---- FX rates: EGP↔USD and EGP↔SAR ----
+        // The E2E suite creates USD supplier + SAR executing-company
+        // accounts and books across currencies. CurrencyService::convert()
+        // throws on missing rates, which surfaces as 422 on
+        // /bookings and /bookings/{id}/payments. Seed every pair used.
+        foreach ([
+            ['USD', 'EGP', 50.0],
+            ['EGP', 'USD', 1 / 50.0],
+            ['SAR', 'EGP', 13.5],
+            ['EGP', 'SAR', 1 / 13.5],
+            ['USD', 'SAR', 50.0 / 13.5],
+            ['SAR', 'USD', 13.5 / 50.0],
+        ] as [$from, $to, $rate]) {
+            ExchangeRate::query()->create([
+                'from_currency' => $from,
+                'to_currency' => $to,
+                'rate' => $rate,
+                'effective_date' => now()->toDateString(),
+                'is_active' => true,
+                'created_by' => $this->user->id,
+            ]);
+        }
 
         /* Executing company — booted() should auto-create SAR AP account */
         $this->executingCompany = HajjUmraExecutingCompany::query()->create([
@@ -504,10 +528,20 @@ class HajjUmraProductionE2ETest extends TestCase
      */
     public function test_8_update_selling_price_LOCKED_is_rejected(): void
     {
-        // PHASE 4.6 LOCK-DOWN (2026-08-14): selling_price is FROZEN.
-        // This scenario used to test the (broken) Path C repost flow.
-        // Now we assert that the API explicitly rejects the mutation
-        // and the original Income transaction remains untouched.
+        // PHASE 10.5 NO-EDIT CONTRACT (2026-08-17):
+        //   The PUT/PATCH routes for HajjUmra bookings were REMOVED entirely
+        //   (see routes/api.php line 628). The strongest lock-down guarantee
+        //   is therefore "route returns 405 before any controller runs".
+        //
+        //   PHASE 4.6 used to return 422 from the Form Request's
+        //   prepareForValidation() with an `errors.selling_price` envelope
+        //   containing the Arabic locked-field message. That validation
+        //   branch is now unreachable because the route itself is gone.
+        //
+        //   This test asserts both:
+        //     (a) the API rejects the mutation with a non-2xx status
+        //         (current contract: 405; legacy 422 still documented),
+        //     (b) the booking row remains untouched.
         $result = $this->createBooking([
             'purchase_price' => 10000,
             'selling_price' => 15000,
@@ -520,11 +554,18 @@ class HajjUmraProductionE2ETest extends TestCase
             'selling_price' => 18000,
         ]);
 
-        $this->assertContains($update->status(), [422, 405],
-            'Phase 8.5 no-edit makes PATCH return 405; pre-Phase-8.5 returned 422.');
-        $errors = $update->json('errors') ?? [];
-        $this->assertArrayHasKey('selling_price', $errors);
-        $this->assertStringContainsString('سعر البيع', $errors['selling_price'][0]);
+        $status = $update->status();
+        $this->assertContains($status, [422, 405],
+            "PATCH must be rejected (Phase 4.6 returns 422; Phase 10.5 returns 405). Got: {$status}");
+
+        // The 422 branch carries an `errors.{field}` envelope. The 405
+        // branch has no body, so we only assert on the field envelope when
+        // the API reached the Form Request (422).
+        if ($status === 422) {
+            $errors = $update->json('errors') ?? [];
+            $this->assertArrayHasKey('selling_price', $errors);
+            $this->assertStringContainsString('سعر البيع', $errors['selling_price'][0]);
+        }
 
         $booking = HajjUmraBooking::findOrFail($bookingId);
         $this->assertSame($originalIncome, $booking->income_transaction_id,
@@ -554,9 +595,9 @@ class HajjUmraProductionE2ETest extends TestCase
      */
     public function test_9_update_purchase_price_reposts_expense(): void
     {
-        // PHASE 4.6 LOCK-DOWN (2026-08-14): purchase_price is FROZEN.
-        // Previously this test verified Path A (purchase repost). Now we
-        // verify the API explicitly rejects the mutation.
+        // PHASE 10.5 NO-EDIT CONTRACT: see test_8 for full rationale. The
+        // 422 envelope assertions only apply to the legacy branch; under the
+        // current contract the route is removed and returns 405 directly.
         $result = $this->createBooking([
             'purchase_price' => 8000,
             'selling_price' => 12000,
@@ -571,11 +612,15 @@ class HajjUmraProductionE2ETest extends TestCase
             'purchase_price' => 6000,
         ]);
 
-        $this->assertContains($update->status(), [422, 405],
-            'Phase 8.5 no-edit makes PATCH return 405; pre-Phase-8.5 returned 422.');
-        $errors = $update->json('errors') ?? [];
-        $this->assertArrayHasKey('purchase_price', $errors);
-        $this->assertStringContainsString('سعر الشراء', $errors['purchase_price'][0]);
+        $status = $update->status();
+        $this->assertContains($status, [422, 405],
+            "PATCH must be rejected (Phase 4.6 returns 422; Phase 10.5 returns 405). Got: {$status}");
+
+        if ($status === 422) {
+            $errors = $update->json('errors') ?? [];
+            $this->assertArrayHasKey('purchase_price', $errors);
+            $this->assertStringContainsString('سعر الشراء', $errors['purchase_price'][0]);
+        }
 
         $booking = HajjUmraBooking::findOrFail($bookingId);
         $this->assertSame($originalExpense, $booking->expense_transaction_id,
@@ -1073,11 +1118,11 @@ public function test_23_concurrent_payments_are_atomic(): void
      */
     public function test_25_profit_sign_is_correct_after_edit(): void
     {
-        // PHASE 4.6 LOCK-DOWN (2026-08-14): the price-edit step is gone.
-        // Profit is computed once at create time and locked. This test
-        // now verifies:
+        // PHASE 10.5 NO-EDIT CONTRACT: the price-edit step is gone (PUT/PATCH
+        // routes removed entirely). Profit is computed once at create time
+        // and frozen. This test now verifies:
         //   1. Profit is correctly computed at creation (companions + accommodation).
-        //   2. A subsequent price-edit attempt is rejected with 422.
+        //   2. A subsequent price-edit attempt is rejected (422 or 405).
         //   3. Profit remains unchanged after the rejected attempt.
         $result = $this->createBooking([
             'purchase_price' => 10000,
@@ -1096,10 +1141,15 @@ public function test_23_concurrent_payments_are_atomic(): void
         $resp = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
             'selling_price' => 16000,
         ]);
-        $resp->assertStatus(422);
-        $errors = $resp->json('errors') ?? [];
-        $this->assertArrayHasKey('selling_price', $errors);
-        $this->assertStringContainsString('سعر البيع', $errors['selling_price'][0]);
+        $status = $resp->status();
+        $this->assertContains($status, [422, 405],
+            "PATCH must be rejected (422 under Phase 4.6; 405 under Phase 10.5). Got: {$status}");
+
+        if ($status === 422) {
+            $errors = $resp->json('errors') ?? [];
+            $this->assertArrayHasKey('selling_price', $errors);
+            $this->assertStringContainsString('سعر البيع', $errors['selling_price'][0]);
+        }
 
         $booking->refresh();
         $this->assertEqualsWithDelta($lockedProfitAtCreate, (float) $booking->profit, 0.01,
@@ -1261,9 +1311,21 @@ public function test_23_concurrent_payments_are_atomic(): void
         // ★ INVARIANT 2: for each account, Δbalance == Σ credit - Σ debit
         //   (i.e. the module's accounting is internally consistent even if
         //   absolute balance has an opening-balance component).
+        //
+        // Post FIN-1 (2026-08-21): each Account::created observer posts an
+        // opening-balance AccountEntry with is_opening=true (one credit row
+        // on the cashbox + one debit row on the System Opening Balances
+        // contra account). The baseline snapshot is taken AFTER this row
+        // lands, so it is included in both:
+        //   - baseline entries sum
+        //   - baseline balance
+        // Filtering on is_opening=false gives us the DELTA-only sums we need
+        // for the lifecycle Δ-vs-entries comparison.
         foreach ($baselineBalances as $accId => $baseBal) {
             $account = Account::find($accId);
-            $entries = AccountEntry::where('account_id', $accId)->get();
+            $entries = AccountEntry::where('account_id', $accId)
+                ->where('is_opening', false)
+                ->get();
             $deltaCredit = (float) $entries->sum('credit');
             $deltaDebit = (float) $entries->sum('debit');
             $expectedDelta = round($deltaCredit - $deltaDebit, 2);
