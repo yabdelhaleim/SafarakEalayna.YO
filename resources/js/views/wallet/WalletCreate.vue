@@ -1135,7 +1135,7 @@ const balancePreview = computed(() => {
   if (tot <= 0) {
     return { current, after: current, delta: 0, currency: acc.currency || 'EGP' };
   }
-  const delta = form.value.type === 'send' ? -tot : tot;
+  const delta = form.value.type === 'send' ? tot : -tot;
   return {
     current,
     after: roundMoney(current + delta),
