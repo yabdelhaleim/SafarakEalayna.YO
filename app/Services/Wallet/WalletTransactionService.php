@@ -781,36 +781,30 @@ class WalletTransactionService
         string $customerName,
         int $createdBy
     ): array {
-        // FIX: SEND must debit ONLY the wallet provider account at send time —
-        // not the wallet income/expense clearing accounts that
-        // recordIncome()/recordExpense() auto-route through. Treasury /
-        // cashbox must stay untouched at the moment of sending; any cash
-        // movement from the customer to the cashbox happens later via
-        // postSettlementSend() (transfer, not income/expense).
+        // FIX (2026-08-30) + WLT-FEE-LEG (2026-09-03):
         //
-        // We replace the prior income+expense pair with a single journal
-        // transfer between the two real accounts involved:
-        //   - source:  wallet_account_id  (the wallet provider balance)
-        //   - dest:    customerAccount     (registered customer)
-        //              OR cash_account_id   (anonymous cash customer)
+        // SEND must debit ONLY the wallet provider account by `amount`
+        // (NOT amount+fee) — the wallet provider debits the sender's wallet
+        // by the principal amount only. The fee is the agency's commission
+        // and surfaces in cash / P&L according to whether the customer
+        // is registered:
         //
-        // The fee is NOT lumped into the transfer — it stays attached to the
-        // WT row (record->service_fee / total_amount / amount_paid) and is
-        // surfaced to P&L via the settlement transfer in postSettlementSend()
-        // when the cashier actually collects the cash.
-
-        // FIX (2026-08-30): SEND must debit ONLY the wallet provider account
-        // by `amount` (NOT amount+fee) — the wallet provider only debits the
-        // sender's wallet by the principal amount. The fee is kept by the
-        // wallet provider separately and surfaces as cashier commission
-        // (via settlement). Treasury / cashbox stays untouched at the moment
-        // of sending; any cash movement from the customer to the cashbox
-        // happens later via postSettlementSend() (transfer, not income/expense).
+        //   - registered customer: wallet → customer_account بـ amount فقط
+        //     (مديونية على العميل). الـ fees بتدخل الخزنة في
+        //     postSettlementSend() لما العميل يدفع الـ amount_paid (totalAmount)
+        //     نقدياً — الخزنة بتزيد بـ 60 كاملة.
         //
-        // The fee stays attached to the WT row
-        // (record->service_fee / total_amount / amount_paid) and surfaces
-        // to P&L via the settlement transfer in postSettlementSend() when
-        // the cashier actually collects the cash.
+        //   - anonymous walk-in:   wallet → cash_account بـ `amount` فقط
+        //     (50) + income leg منفصل للرسوم (`fee`) على نفس الخزنة. ده
+        //     بيعمل correct double-entry: cash +50 من transfer + cash +10
+        //     من income = cash +60 إجمالي. الـ fees بتدخل الخزنة فوراً
+        //     كعمولة للوكالة (revenue).
+        //
+        // الـ WT row بيحتفظ بـ service_fee / total_amount / amount_paid
+        // كـ audit metadata، لكن الـ ledger legs دايماً بتتطابق مع الـ cash
+        // flow الفعلي (قبل WLT-FEE-LEG: الـ fees كانت «phantom» — موجودة
+        // في الـ WT بس مش بتتحرك في الحسابات، يعني كان في فرق بين
+        // الـ treasury summary والـ WT summary).
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
@@ -836,24 +830,63 @@ class WalletTransactionService
             return [$transfer, $transfer];
         }
 
-        // Anonymous customer (نقدي فوري): المحفظة → الخزنة بـ amount (المبلغ فقط).
-        // لو العميل دفع رسوم نقدي للخزنة عند الارسال (بدون amount_paid)، الـ fee
-        // يبقى في الخزنة كعمولة على الـ WT row فقط بدون حركة دفترية هنا.
-        $transfer = $this->transactionService->recordJournalTransfer([
-            'amount' => $amount,
-            'from_account_id' => $record->wallet_account_id,  // المحفظة (يخصم)
+        // Anonymous customer (نقدي فوري): المحفظة → الخزنة بـ المبلغ الأصلي فقط،
+// والرسوم تتسجل كـ income leg منفصل على نفس الخزنة.
+        //
+        // WLT-FEE-LEG (2026-09-03) — إصلاح فقدان الرسوم في الـ ledger.
+        // قبل الإصلاح: الـ cash كانت بتزيد بـ `amount` فقط (50). الـ 10 رسومات
+        // كانت بتتسجل في الـ WT row كـ service_fee بس مفيش ledger leg ليها —
+        // يعني بتضيع من دفاتر الوكالة (phantom — موجود في الـ WT بس مش في الحسابات).
+        //
+        // بعد الإصلاح: الحساب الفعلي يكون correct double-entry:
+        //   1. main_transfer: wallet → cash بـ `amount` (50)
+        //      - الـ wallet provider (vodafone) رصيدها ينقص 50 (اللي اتخصم من العميل)
+        //      - الخزنة تزيد 50
+        //   2. fee_income:   revenue → cash بـ `fee` (10)
+        //      - الخزنة تزيد 10 (دخل الرسوم اللي العميل دفعها للوكالة)
+        //
+        // النتيجة الإجمالية: wallet -50، cash +60، revenue +10 (دخل الرسوم).
+        // ده متسق مع registered customer path:
+        //   - wallet -50 (main transfer لمديونية العميل)
+        //   - cash +60 (settlement من العميل: الـ 50 للمدفوع + الـ 10 للرسوم)
+        //
+        // أمثلة على الأثر في الميزانية:
+        //   - 50 + 10 رسوم: wallet ينقص 50، cash يزيد 60 (10 عمولة الوكالة).
+        //   - 940 + 10 رسوم: wallet ينقص 940، cash يزيد 950 (10 عمولة الوكالة).
+        $mainTransfer = $this->transactionService->recordJournalTransfer([
+            'amount' => $amount,                              // المبلغ فقط — الـ wallet ما بتتخصمش بالرسوم
+            'from_account_id' => $record->wallet_account_id,  // المحفظة (vodafone provider balance)
             'to_account_id' => $record->cash_account_id,      // الخزنة
             'allow_from_negative' => true,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
             'type' => TransactionType::Transfer->value,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للخزنة، رسوم {$fee} على الـ WT",
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للخزنة (الرسوم على الـ leg الثاني)",
             'created_by' => $createdBy,
             'currency' => $record->walletAccount?->currency,
         ]);
 
-        return [$transfer, $transfer];
+        // الـ fee income: سجّل رسوم الخدمة كدخل للوكالة على نفس الخزنة.
+        // ده بيخلي cash +fee (10) و revenue -fee — الـ revenue هو agency earnings
+        // من رسوم خدمات المحفظة. Double-entry صحيح.
+        $feeIncome = null;
+        if ($fee >= 0.005) {
+            $feeIncome = $this->transactionService->recordIncome([
+                'amount' => $fee,
+                'to_account_id' => $record->cash_account_id,
+                'module' => TransactionModule::Wallet->value,
+                'related_type' => WalletTransaction::class,
+                'related_id' => $record->id,
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: رسوم خدمة {$fee} (عمولة الوكالة)",
+                'created_by' => $createdBy,
+            ]);
+        }
+
+        // الـ returned tuple بيمشي مع signed contract بتاع الـ caller:
+        //   - first  = income_transaction_id (الـ feeIncome لو فيه fees، وإلا الـ mainTransfer)
+        //   - second = expense_transaction_id (الـ mainTransfer — wallet debit)
+        return [$feeIncome ?? $mainTransfer, $mainTransfer];
     }
 
     /**
