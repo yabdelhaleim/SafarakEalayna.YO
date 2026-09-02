@@ -84,32 +84,52 @@ final class AccountFormSchema
             ->required()
             ->native(false);
 
-        $shouldLockModule = $lockModuleType || $defaultModule !== 'general';
+// Liquidity types (cashbox / wallet / bank) MUST NOT carry
+        // `module_type='general'` — the Account boot guard rejects that
+        // combination (Account.php line ~341). When the form is created
+        // from a Resource dedicated to a single liquidity type (e.g. the
+        // WalletAccounts resource passes fixedType=Wallet), we lock
+        // module_type automatically with 'office' as the default — the
+        // cashier has nothing to choose and can't pick a value the model
+        // would reject.
+        $isLiquidityFixedType = $fixedType instanceof AccountType
+            && in_array($fixedType->value, \App\Support\Finance\AccountModuleContract::LIQUIDITY_TYPES, true);
+        $shouldLockModule = $lockModuleType
+            || $defaultModule !== 'general'
+            || $isLiquidityFixedType;
 
         if ($shouldLockModule) {
+            // When fixedType is a liquidity type and the caller didn't
+            // supply an explicit $defaultModule, fall back to 'office' so
+            // the locked value passes the Account boot guard out of the box.
+            $resolvedDefault = $defaultModule;
+            if ($defaultModule === 'general' && $isLiquidityFixedType) {
+                $resolvedDefault = AccountModuleDivision::defaultModuleTypeForAccountType($fixedType->value);
+            }
+
             $definitionFields[] = TextInput::make('module_type_display')
                 ->label('وحدة العمل (القسم)')
-                ->helperText('يُحدَّد تلقائياً من القسم الذي أنشأت الحساب منه — يظهر في خزينة نفس الوحدة في البرنامج.')
-                ->afterStateHydrated(function (TextInput $component, $state, ?Model $record) use ($defaultModule): void {
-                    $moduleType = (string) ($record?->module_type ?? $defaultModule);
+                ->helperText('يُحدَّد تلقائياً من القسم الذي أنشأت الحساب منه — يظهر في خزينة نفس الوحدة في البرنامج.')
+                ->afterStateHydrated(function (TextInput $component, $state, ?Model $record) use ($resolvedDefault): void {
+                    $moduleType = (string) ($record?->module_type ?? $resolvedDefault);
                     $component->state(AccountModuleDivision::moduleLabel($moduleType));
                 })
                 ->disabled()
                 ->dehydrated(false);
 
             $definitionFields[] = Hidden::make('module_type')
-                ->default($defaultModule)
+                ->default($resolvedDefault)
                 ->required()
                 ->dehydrated();
 
             $definitionFields[] = Hidden::make('module')
-                ->default(AccountModuleDivision::legacyModuleColumn($defaultModule))
+                ->default(AccountModuleDivision::legacyModuleColumn($resolvedDefault))
                 ->dehydrated();
         } else {
             $definitionFields[] = Select::make('module_type')
                 ->label('وحدة العمل (القسم)')
-                ->options(AccountModuleDivision::moduleTypeOptions())
-                ->default($defaultModule)
+                ->options(fn ($get) => AccountModuleDivision::moduleTypeOptionsForAccountType($get('type')))
+                ->default(fn ($get) => AccountModuleDivision::defaultModuleTypeForAccountType($get('type')))
                 ->required()
                 ->live()
                 ->afterStateUpdated(function ($state, callable $set): void {
@@ -119,8 +139,14 @@ final class AccountFormSchema
                 })
                 ->native(false);
 
+            // Default the legacy `module` column from whatever the
+            // computed default for the current type is — mirrors the
+            // dynamic behaviour of the Select so the value sent on save
+            // is consistent.
             $definitionFields[] = Hidden::make('module')
-                ->default(AccountModuleDivision::legacyModuleColumn($defaultModule))
+                ->default(fn ($get) => AccountModuleDivision::legacyModuleColumn(
+                    AccountModuleDivision::defaultModuleTypeForAccountType($get('type'))
+                ))
                 ->dehydrated();
         }
 

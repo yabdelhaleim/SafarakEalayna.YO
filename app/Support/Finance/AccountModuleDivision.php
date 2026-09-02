@@ -74,7 +74,87 @@ final class AccountModuleDivision
 
     public static function moduleLabel(string $moduleType): string
     {
-        return match ($moduleType) {            'general' => 'الإدارة العامة',            'office' => 'المكتب / الإداري',            'flights' => 'الطيران',            'tourism' => 'السياحة',            'hajj_umra' => 'الحج والعمرة',            'visas' => 'التأشيرات',            'bus' => 'الباصات',            'fawry' => 'فوري',            'online' => 'الخدمات الإلكترونية',            'wallet_transfer' => 'المحافظ والتحويلات',            default => ucfirst(str_replace('_', ' ', $moduleType)),        };    }    /** @return array<string, string> */    public static function moduleTypeOptions(): array    {        return [            'general' => self::moduleLabel('general'),            'office' => self::moduleLabel('office'),            'flights' => self::moduleLabel('flights'),            'bus' => self::moduleLabel('bus'),            'hajj_umra' => self::moduleLabel('hajj_umra'),            'visas' => self::moduleLabel('visas'),            'fawry' => self::moduleLabel('fawry'),            'online' => self::moduleLabel('online'),            'wallet_transfer' => self::moduleLabel('wallet_transfer'),            'tourism' => self::moduleLabel('tourism'),        ];    }    /** Legacy `accounts.module` column value for API/Vue compatibility. */    public static function legacyModuleColumn(string $moduleType): string    {        return match ($moduleType) {            'flights' => 'flight',            'visas' => 'visa',            default => $moduleType,        };    }    public static function applyModuleFilter(Builder $query, string $module): void
+        return match ($moduleType) {            'general' => 'الإدارة العامة',            'office' => 'المكتب / الإداري',            'flights' => 'الطيران',            'tourism' => 'السياحة',            'hajj_umra' => 'الحج والعمرة',            'visas' => 'التأشيرات',            'bus' => 'الباصات',            'fawry' => 'فوري',            'online' => 'الخدمات الإلكترونية',            'wallet_transfer' => 'المحافظ والتحويلات',            default => ucfirst(str_replace('_', ' ', $moduleType)),        };    }    /** @return array<string, string> */    public static function moduleTypeOptions(): array    {        return [            'general' => self::moduleLabel('general'),            'office' => self::moduleLabel('office'),            'flights' => self::moduleLabel('flights'),            'bus' => self::moduleLabel('bus'),            'hajj_umra' => self::moduleLabel('hajj_umra'),            'visas' => self::moduleLabel('visas'),            'fawry' => self::moduleLabel('fawry'),            'online' => self::moduleLabel('online'),            'wallet_transfer' => self::moduleLabel('wallet_transfer'),            'tourism' => self::moduleLabel('tourism'),        ];    }    /** Legacy `accounts.module` column value for API/Vue compatibility. */    public static function legacyModuleColumn(string $moduleType): string    {        return match ($moduleType) {            'flights' => 'flight',            'visas' => 'visa',            default => $moduleType,
+        };
+    }
+
+    /**
+     * Filtered dropdown options for Filament — drops 'general' (and any
+     * non-division value) when the account type is operational liquidity
+     * (cashbox/wallet/bank).
+     *
+     * Background:
+     *   The Account model boot guard (Account.php line ~341) hard-rejects
+     *   liquidity accounts that carry `module_type='general'` because
+     *   `general` is not part of any division contract — see
+     *   {@see \App\Support\Finance\AccountModuleContract}. The Filament
+     *   create form previously offered `general` as a default for every
+     *   type, which caused 500s when the cashier saved a cashbox/wallet/
+     *   bank without changing the dropdown.
+     *
+     * Effect:
+     *   - type ∈ LIQUIDITY_TYPES → options restricted to division members
+     *     (office/tourism + their subordinate modules: flights/bus/
+     *     hajj_umra/visas/fawry/online/wallet_transfer). 'general' is
+     *     excluded.
+     *   - type ∈ INTERNAL_TYPES (expense/revenue/liability/owner) or
+     *     SUBJECT_TYPES (customer/supplier) → all options including
+     *     'general' remain allowed, because those rows aren't constrained
+     *     by the liquidity division contract.
+     *   - type === null (form not yet dirty) → all options; the default
+     *     value below still takes care of the common case.
+     *
+     * @param  string|null  $typeValue  AccountType::value or null
+     * @return array<string, string>
+     */
+    public static function moduleTypeOptionsForAccountType(?string $typeValue): array
+    {
+        if ($typeValue !== null
+            && in_array($typeValue, AccountModuleContract::LIQUIDITY_TYPES, true)
+        ) {
+            // Liquidity accounts may only carry a DIVISION or a subordinate
+            // module belonging to that division. Strip 'general' so the
+            // cashier can't pick a value the Account boot guard will reject.
+            return [
+                'office' => self::moduleLabel('office'),
+                'tourism' => self::moduleLabel('tourism'),
+                'flights' => self::moduleLabel('flights'),
+                'bus' => self::moduleLabel('bus'),
+                'hajj_umra' => self::moduleLabel('hajj_umra'),
+                'visas' => self::moduleLabel('visas'),
+                'fawry' => self::moduleLabel('fawry'),
+                'online' => self::moduleLabel('online'),
+                'wallet_transfer' => self::moduleLabel('wallet_transfer'),
+            ];
+        }
+
+        return self::moduleTypeOptions();
+    }
+
+    /**
+     * Default `module_type` value for the create form, respecting the
+     * Account boot guard constraint:
+     *
+     *   - liquidity → 'office' (the most common division for
+     *     wallet_transfer/bus/fawry/online — all Office-division modules)
+     *   - other     → 'general' (legacy default preserved for
+     *     internal/subject rows; not constrained by the division contract)
+     *
+     * Single source of truth so the AccountFormSchema default and the
+     * Account boot guard can never drift again.
+     */
+    public static function defaultModuleTypeForAccountType(?string $typeValue): string
+    {
+        if ($typeValue !== null
+            && in_array($typeValue, AccountModuleContract::LIQUIDITY_TYPES, true)
+        ) {
+            return AccountModuleContract::OFFICE_MODULE_TYPE;
+        }
+
+        return 'general';
+    }
+
+    public static function applyModuleFilter(Builder $query, string $module): void
     {
         if ($module === 'general') {
             $query->where(function (Builder $q): void {
