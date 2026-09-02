@@ -49,6 +49,21 @@ class StoreWalletTransactionRequest extends FormRequest
             'amount_paid' => 'nullable|numeric|min:0',
             'wallet_account_id' => 'required|integer|exists:accounts,id',
             'cash_account_id' => 'required|integer|exists:accounts,id|different:wallet_account_id',
+            // WLT-1 (2026-09-02): optional destination override for RECEIVE.
+            // Only meaningful when type='receive'. If supplied, the Expense
+            // leg is routed here instead of the legacy default (customer
+            // account for registered customers; cash_account_id for anonymous).
+            // Ignored for type='send' — wallet SEND already debits the
+            // wallet_account_id by `amount` only and uses the customer
+            // account / cashbox as the contra leg, not a user-chosen
+            // destination.
+            'receive_destination_account_id' => [
+                'nullable',
+                'integer',
+                'exists:accounts,id',
+                'different:wallet_account_id',
+                'different:cash_account_id',
+            ],
             'employee_id' => 'nullable|integer|exists:employees,id',
             'notes' => 'nullable|string|max:1000',
         ];
@@ -115,6 +130,45 @@ class StoreWalletTransactionRequest extends FormRequest
                         $wallet->currency
                     )
                 );
+            }
+
+            // WLT-1 (2026-09-02): destination-override cross-field rules.
+            // The destination account is ONLY meaningful for RECEIVE.
+            // On SEND we reject any non-null destination outright — the
+            // wallet SEND already debits the wallet provider only (WLT-
+            // pre-fix) and the destination field has no semantic.
+            $rawType = $this->input('type');
+            $typeStr = $rawType instanceof \BackedEnum ? $rawType->value : (string) $rawType;
+            $destId = $this->input('receive_destination_account_id');
+            if ($typeStr === 'send' && ! empty($destId)) {
+                $v->errors()->add(
+                    'receive_destination_account_id',
+                    'حساب الاستقبال مسموح فقط في عمليات الاستقبال (receive) — لا يمكن استخدامه في الإرسال.'
+                );
+            } elseif ($typeStr === 'receive' && ! empty($destId)) {
+                // The destination account MUST be active (FIN-7 invariant).
+                $dest = Account::find($destId);
+                if ($dest && ! $dest->is_active) {
+                    $v->errors()->add(
+                        'receive_destination_account_id',
+                        'الحساب المختار للاستقبال غير نشط — لا يمكن إجراء عمليات عليه.'
+                    );
+                }
+                // VAL-1: destination currency MUST match wallet currency.
+                // The wallet_provider and the destination both move the
+                // same currency (one leg into the wallet, the other out
+                // of the destination); cross-currency without an FX path
+                // is silently rejected pre-fix.
+                if ($dest && $dest->currency !== $wallet->currency) {
+                    $v->errors()->add(
+                        'receive_destination_account_id',
+                        sprintf(
+                            'عملة حساب الاستقبال (%s) لا تطابق عملة حساب المحفظة (%s).',
+                            $dest->currency,
+                            $wallet->currency
+                        )
+                    );
+                }
             }
         });
     }

@@ -104,6 +104,7 @@ class WalletTransactionController extends Controller
         $user = $request->user();
         $transaction->load([
             'walletType', 'customer', 'walletAccount', 'cashAccount',
+            'receiveDestinationAccount',
             'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
         ]);
 

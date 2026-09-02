@@ -22,6 +22,17 @@ class UpdateWalletTransactionRequest extends FormRequest
             'amount_paid' => 'sometimes|nullable|numeric|min:0',
             'wallet_account_id' => 'sometimes|required|integer|exists:accounts,id',
             'cash_account_id' => 'sometimes|required|integer|exists:accounts,id|different:wallet_account_id',
+            // WLT-1 (2026-09-02): optional destination override for RECEIVE.
+            // Allowed to change ONLY when the existing transaction is a
+            // receive — sending a destination on a send is a 422.
+            'receive_destination_account_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                'exists:accounts,id',
+                'different:wallet_account_id',
+                'different:cash_account_id',
+            ],
         ];
     }
 
@@ -110,6 +121,52 @@ class UpdateWalletTransactionRequest extends FormRequest
                         $wallet->currency
                     )
                 );
+            }
+
+            // WLT-1 (2026-09-02): receive_destination_account_id is only
+            // meaningful for RECEIVE transactions. The bound transaction
+            // tells us the persisted type (cast to WalletTransactionType
+            // enum by the model); we forbid a non-null destination on a SEND.
+            $existingType = $this->route('transaction')?->type;
+            $existingTypeValue = $existingType instanceof \BackedEnum
+                ? $existingType->value
+                : (string) $existingType;
+            if ($this->has('receive_destination_account_id')
+                && ! empty($this->input('receive_destination_account_id'))
+                && $existingType !== null
+                && $existingTypeValue !== 'receive'
+                && $existingTypeValue !== \App\Enums\WalletTransactionType::Receive->value
+            ) {
+                $v->errors()->add(
+                    'receive_destination_account_id',
+                    'حساب الاستبدال مسموح فقط في عمليات الاستقبال (receive).'
+                );
+            }
+
+            // If a destination override is supplied, it must be active
+            // and must share the wallet's currency (same invariants as
+            // store). Mirror the store-side rules for symmetry.
+            $destId = $this->input('receive_destination_account_id');
+            if (! empty($destId)) {
+                $dest = Account::find($destId);
+                if ($dest) {
+                    if (! $dest->is_active) {
+                        $v->errors()->add(
+                            'receive_destination_account_id',
+                            'الحساب المختار للاستقبال غير نشط — لا يمكن إجراء عمليات عليه.'
+                        );
+                    }
+                    if ($dest->currency !== $wallet->currency) {
+                        $v->errors()->add(
+                            'receive_destination_account_id',
+                            sprintf(
+                                'عملة حساب الاستقبال (%s) لا تطابق عملة حساب المحفظة (%s).',
+                                $dest->currency,
+                                $wallet->currency
+                            )
+                        );
+                    }
+                }
             }
         });
     }

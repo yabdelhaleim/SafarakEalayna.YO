@@ -43,6 +43,18 @@ class WalletTransactionResource extends JsonResource
                 'id' => $this->whenLoaded('cashAccount', fn () => $this->cashAccount?->id),
                 'name' => $this->whenLoaded('cashAccount', fn () => $this->cashAccount?->name),
             ],
+            // WLT-1 (2026-09-02): receive-only destination override.
+            // `id` is null for legacy rows and for all SEND transactions.
+            'receive_destination_account' => [
+                'id' => $this->whenLoaded(
+                    'receiveDestinationAccount',
+                    fn () => $this->receiveDestinationAccount?->id ?? $this->receive_destination_account_id
+                ),
+                'name' => $this->whenLoaded(
+                    'receiveDestinationAccount',
+                    fn () => $this->receiveDestinationAccount?->name
+                ),
+            ],
             'employee' => [
                 'id' => $this->whenLoaded('employee', fn () => $this->employee?->id),
                 'name' => $this->whenLoaded('employee.user', fn () => $this->employee?->user?->name),

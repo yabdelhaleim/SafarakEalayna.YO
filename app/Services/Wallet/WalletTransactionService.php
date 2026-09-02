@@ -284,6 +284,13 @@ class WalletTransactionService
                         'amount_paid' => $amountPaid,
                         'wallet_account_id' => $data['wallet_account_id'],
                         'cash_account_id' => $data['cash_account_id'],
+                        // WLT-1 (2026-09-02): optional receive-only
+                        // destination override. Persisted verbatim;
+                        // semantics are enforced in postMainReceivePair()
+                        // and postSettlementReceive().
+                        'receive_destination_account_id' => $type === WalletTransactionType::Receive
+                            ? ($data['receive_destination_account_id'] ?? null)
+                            : null,
                         'employee_id' => $data['employee_id'] ?? null,
                         'created_by' => $createdBy,
                         'notes' => $data['notes'] ?? null,
@@ -316,12 +323,18 @@ class WalletTransactionService
                 // Outer try only catches \Exception, but accountForSend/accountForReceive
                 // may throw \TypeError or \Error which silently bypass the catch.
                 try {
+                    // WLT-1 (2026-09-02): re-read the record so the freshly-
+                    // persisted `receive_destination_account_id` is visible
+                    // to the helper methods (the in-memory $record instance
+                    // is the original INSERT result and does NOT auto-reflect
+                    // the columns we wrote into the same call).
+                    $fresh = $record->fresh();
                     [$incomeTransaction, $expenseTransaction] = match ($type) {
                         WalletTransactionType::Send => $this->accountForSend(
-                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                            $fresh, $amount, $fee, $walletTypeName, $customerName, $createdBy
                         ),
                         WalletTransactionType::Receive => $this->accountForReceive(
-                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                            $fresh, $amount, $fee, $walletTypeName, $customerName, $createdBy
                         ),
                     };
                 } catch (\Throwable $inner) {
@@ -354,6 +367,7 @@ class WalletTransactionService
 
                 return $record->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'receiveDestinationAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
                 ]);
             });
@@ -408,10 +422,17 @@ class WalletTransactionService
                     && (int) $data['wallet_account_id'] !== (int) $transaction->wallet_account_id;
                 $cashAccountChanged = array_key_exists('cash_account_id', $data)
                     && (int) $data['cash_account_id'] !== (int) $transaction->cash_account_id;
+                // WLT-1 (2026-09-02): the receive-destination override moves
+                // the Expense leg between accounts — must trigger a ledger
+                // repost so the old leg is reversed and the new leg is posted
+                // against the new destination account.
+                $receiveDestinationChanged = array_key_exists('receive_destination_account_id', $data)
+                    && (int) ($data['receive_destination_account_id'] ?? 0) !== (int) ($transaction->receive_destination_account_id ?? 0);
 
                 $amountOrFeeChanged = $amountChanged || $serviceFeeChanged;
                 $anyLedgerAffectingChange = $amountOrFeeChanged || $amountPaidChanged
-                    || $walletAccountChanged || $cashAccountChanged;
+                    || $walletAccountChanged || $cashAccountChanged
+                    || $receiveDestinationChanged;
 
                 // Compute the new totals BEFORE the model update so we can
                 // re-derive total_amount (Send: amount+fee, Receive: amount-fee).
@@ -467,6 +488,7 @@ class WalletTransactionService
 
                 return $transaction->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'receiveDestinationAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
                 ]);
             });
@@ -615,7 +637,8 @@ class WalletTransactionService
             : WalletTransactionType::from((string) $transaction->type);
 
         // For both Send and Receive, the settlement involves the cash
-        // account and the customer account. The pair uniquely identifies
+        // account and the customer account (or the destination override
+        // account, when WLT-1 was used). The pair uniquely identifies
         // the settlement row (the main income/expense use wallet_account
         // or customer_account alone, never cash+customer together).
         //
@@ -629,14 +652,30 @@ class WalletTransactionService
         // reversals are excluded by `notes NOT LIKE 'عكس%'` so the
         // chain of "reverse of reverse of reverse" does not pollute
         // the match.
+        //
+        // WLT-1 (2026-09-02): the settlement may have been posted with
+        // either the customer_account or the receive_destination_account_id
+        // as the contra side. We match BOTH pairs so the right settlement
+        // is reversed regardless of which destination was used originally.
+        $destinationOverride = (int) ($transaction->receive_destination_account_id ?? 0) ?: null;
+        $settlementContraId = $destinationOverride ?: $customerAccount->id;
+
         $settlement = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $transaction->id)
-            ->where(function ($q) use ($transaction, $customerAccount) {
+            ->where(function ($q) use ($transaction, $customerAccount, $settlementContraId) {
                 $q->where(function ($sub) use ($transaction, $customerAccount) {
+                    // Legacy pair: cash_account ↔ customer_account
                     $sub->where('from_account_id', $transaction->cash_account_id)
                         ->where('to_account_id', $customerAccount->id);
                 })->orWhere(function ($sub) use ($transaction, $customerAccount) {
                     $sub->where('from_account_id', $customerAccount->id)
+                        ->where('to_account_id', $transaction->cash_account_id);
+                })->orWhere(function ($sub) use ($transaction, $settlementContraId) {
+                    // WLT-1 pair: cash_account ↔ destination override
+                    $sub->where('from_account_id', $transaction->cash_account_id)
+                        ->where('to_account_id', $settlementContraId);
+                })->orWhere(function ($sub) use ($transaction, $settlementContraId) {
+                    $sub->where('from_account_id', $settlementContraId)
                         ->where('to_account_id', $transaction->cash_account_id);
                 });
             })
@@ -681,15 +720,19 @@ class WalletTransactionService
                 'currency' => $transaction->walletAccount?->currency,
             ]);
         } else {
-            // Receive
+            // Receive — WLT-1: contra side may be the destination override
+            // or the legacy customer account.
+            $contraNotes = $destinationOverride
+                ? "إعادة تسجيل دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}"
+                : "إعادة تسجيل دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}";
             $this->transactionService->recordExpense([
                 'amount' => $amountPaid,
                 'from_account_id' => $transaction->cash_account_id,
-                'contra_account_id' => $customerAccount->id,
+                'contra_account_id' => $settlementContraId,
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $transaction->id,
-                'notes' => "إعادة تسجيل دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
+                'notes' => $contraNotes,
                 'created_by' => $createdBy,
             ]);
         }
@@ -913,50 +956,65 @@ class WalletTransactionService
     ): array {
         $totalAmount = $amount - $fee;
 
-        if ($record->customer_id) {
-            $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+        // WLT-1 (2026-09-02) — Receive destination override.
+        //
+        // Pre-fix, the destination of the Expense leg was hard-coded:
+        //   - registered customer → customerAccount (the customer debt/AP)
+        //   - anonymous customer  → cash_account_id (the cashbox)
+        //
+        // The user requested the ability to receive INTO any account type
+        // they choose (e.g. a bank account, another wallet provider, a
+        // card-clearing account). The optional `receive_destination_account_id`
+        // column on the WT row records the override. When present, the
+        // Expense leg is routed there instead of the legacy default.
+        // When NULL, the legacy default applies unchanged — fully backward
+        // compatible with existing rows and API clients.
+        //
+        // The chosen destination is also stored in the WT row so the
+        // settlement path (postSettlementReceive) can route cash
+        // collections to the same destination when amount_paid > 0.
+        $destinationOverride = (int) ($record->receive_destination_account_id ?? 0) ?: null;
 
-            $income = $this->transactionService->recordIncome([
-                'amount' => $amount,
-                'to_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام رصيد بقيمة {$amount} في المحفظة",
-                'created_by' => $createdBy,
-            ]);
-
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $totalAmount,
-                'from_account_id' => $customerAccount->id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: مستحق للعميل بقيمة {$totalAmount} (صافي بعد رسوم {$fee})",
-                'created_by' => $createdBy,
-            ]);
-
-            return [$income, $expense];
-        }
-
-        // Anonymous customer
+        // Income leg is ALWAYS into the wallet provider account — the
+        // wallet provider receives `amount` regardless of where the cash
+        // physically lands.
         $income = $this->transactionService->recordIncome([
             'amount' => $amount,
             'to_account_id' => $record->wallet_account_id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام محفظة {$amount}",
+            'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام رصيد بقيمة {$amount} في المحفظة",
             'created_by' => $createdBy,
         ]);
 
+        // Resolve the destination for the Expense leg. Priority:
+        //   1. explicit override (any active account the user picked)
+        //   2. registered customer's account (legacy default)
+        //   3. cash_account_id for anonymous (legacy default)
+        if ($destinationOverride) {
+            $expenseFromAccountId = $destinationOverride;
+            $destinationLabel = 'حساب الاستقبال المختار';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: تحويل {$totalAmount} إلى الحساب المختار (صافي بعد رسوم {$fee})";
+        } elseif ($record->customer_id) {
+            $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+            $expenseFromAccountId = $customerAccount->id;
+            $destinationLabel = 'حساب العميل';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: مستحق للعميل بقيمة {$totalAmount} (صافي بعد رسوم {$fee})";
+        } else {
+            // Anonymous walk-in — default to the cashbox.
+            $expenseFromAccountId = (int) $record->cash_account_id;
+            $destinationLabel = 'الخزينة';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}";
+        }
+
         $expense = $this->transactionService->recordExpense([
             'amount' => $totalAmount,
-            'from_account_id' => $record->cash_account_id,
+            'from_account_id' => $expenseFromAccountId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}",
+            'notes' => $expenseNotes,
             'created_by' => $createdBy,
         ]);
 
@@ -985,14 +1043,27 @@ class WalletTransactionService
 
         $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
+        // WLT-1 (2026-09-02): the settlement leg mirrors the destination
+        // choice of the main receive pair. If the user picked an override
+        // account, the cash settlement flows from the cashbox INTO that
+        // override account (the cashier is paying out to wherever the
+        // customer/agency chose). If the user did NOT pick an override,
+        // the cash settlement flows from cashbox to the customer account
+        // (legacy behavior — the cashier is paying the customer back).
+        $destinationOverride = (int) ($record->receive_destination_account_id ?? 0) ?: null;
+        $contraAccountId = $destinationOverride ?: $customerAccount->id;
+        $settlementNotes = $destinationOverride
+            ? "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid}"
+            : "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}";
+
         $this->transactionService->recordExpense([
             'amount' => $amountPaid,
             'from_account_id' => $record->cash_account_id,
-            'contra_account_id' => $customerAccount->id,
+            'contra_account_id' => $contraAccountId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}",
+            'notes' => $settlementNotes,
             'created_by' => $createdBy,
         ]);
     }

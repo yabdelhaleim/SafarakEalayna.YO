@@ -26,6 +26,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'amount_paid',
     'wallet_account_id',
     'cash_account_id',
+    // WLT-1 (2026-09-02): optional override for the RECEIVE cash leg's
+    // destination account. When set, the Expense leg is routed to this
+    // account instead of the legacy default (customer account for
+    // registered customers; cash_account_id for anonymous). Nullable for
+    // full backward compatibility — existing rows + API clients keep the
+    // pre-fix behavior.
+    'receive_destination_account_id',
     'income_transaction_id',
     'expense_transaction_id',
     'employee_id',
@@ -70,6 +77,20 @@ class WalletTransaction extends Model
     public function cashAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'cash_account_id');
+    }
+
+    /**
+     * WLT-1 (2026-09-02) — Receive-only destination override.
+     *
+     * When the user picks a non-default account to receive cash INTO
+     * (e.g. a bank account, a different wallet provider, or a card
+     * clearing account), the Expense leg of the RECEIVE pair is routed
+     * here. The relation is `null` for SEND transactions and for legacy
+     * RECEIVE rows that did not use the override.
+     */
+    public function receiveDestinationAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'receive_destination_account_id');
     }
 
     public function incomeTransaction(): BelongsTo
