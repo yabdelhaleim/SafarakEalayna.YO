@@ -294,6 +294,15 @@ class DashboardService
         $onlineCount = (int) $onlineStats->count;
         $onlineRevenue = (float) ($plByModule->get('online')['income'] ?? $onlineStats->revenue);
         $onlineProfit = (float) ($plByModule->get('online')['profit'] ?? 0);
+        // Fallback for office modules when no GL postings exist — match the
+        // TreasuryService::calculateDynamicProfits logic so the dashboard tab
+        // and the /finance/treasury office section show identical numbers.
+        if ($onlineProfit === 0.0 && (float) ($plByModule->get('online')['profit'] ?? 0) === 0.0) {
+            $onlineProfit = (float) DB::table('online_transactions')
+                ->whereNotIn('status', ['cancelled', 'failed'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Fawry Stats
         $fawryStats = FawryTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
@@ -302,6 +311,11 @@ class DashboardService
         $fawryCount = (int) $fawryStats->count;
         $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
         $fawryProfit = (float) ($plByModule->get('fawry')['profit'] ?? 0);
+        if ($fawryProfit === 0.0 && (float) ($plByModule->get('fawry')['profit'] ?? 0) === 0.0) {
+            $fawryProfit = (float) DB::table('fawry_transactions')
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Visa Stats
         $visaStats = VisaBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
@@ -318,6 +332,13 @@ class DashboardService
         // Bus profit from ledger
         $busLedgerProfit = (float) ($plByModule->get('bus')['profit'] ?? 0);
         $busLedgerRevenue = (float) ($plByModule->get('bus')['income'] ?? 0);
+        // Fallback to booking model when GL is empty (matches TreasuryService).
+        if ($busLedgerProfit === 0.0 && (float) ($plByModule->get('bus')['profit'] ?? 0) === 0.0) {
+            $busLedgerProfit = (float) DB::table('bus_bookings')
+                ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Treasury: liquidity accounts only (exclude customer/supplier ledgers).
         //
@@ -388,22 +409,45 @@ class DashboardService
         $walletCount = (int) $walletStats->count;
         $walletRevenue = (float) ($plByModule->get('wallet')['income'] ?? $walletStats->revenue);
         $walletProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+        // Fallback to wallet_transactions.service_fee when GL has no wallet rows
+        // (matches TreasuryService::calculateDynamicProfits for office division).
+        if ($walletProfit === 0.0 && (float) ($plByModule->get('wallet')['profit'] ?? 0) === 0.0) {
+            $walletProfit = (float) DB::table('wallet_transactions')
+                ->whereNull('deleted_at')
+                ->sum('service_fee');
+        }
 
-        // Office category buckets online services alongside bus/fawry/wallet.
-        // Excluding 'online' from the dashboard "صافي أرباح حسابات المكتب" total
-        // prevents cancelled/soft-deleted online GL postings from inflating the
-        // office P&L when the /online screen reports zero. Online is shown
-        // separately in its own card below.
-        $officeModules = ['bus', 'fawry', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
-        $officeLedgerRevenue = 0.0;
-        $officeLedgerProfit = 0.0;
-        foreach ($officeModules as $mod) {
-            $row = $plByModule->get($mod);
-            if ($row === null) {
-                continue;
-            }
-            $officeLedgerRevenue += (float) ($row['income'] ?? 0);
-            $officeLedgerProfit += (float) ($row['profit'] ?? 0);
+        // Office per-module sums (with GL → booking-model fallback applied above
+        // for fawry / online / wallet / bus — see earlier `if ($XProfit === 0.0 ...)`.
+        //
+        // We deliberately reuse those fallback-aware per-module values (rather than
+        // a fresh PL-moduleBreakdown loop) so the dashboard tab and the
+        // /finance/treasury office trial balance agree to the piastre:
+        //
+        //   Dashboard "صافي أرباح حسابات المكتب"  ==  TreasuryService::calculateDivisionNetProfits('office')
+        //
+        // If we ever want to drop the fallback, every per-module card here will
+        // need the exact same fallback injected — otherwise a user will see the
+        // total show 10 with all sub-cards reading 0 (or vice-versa).
+        $officeLedgerProfit = (float) $busLedgerProfit
+            + (float) $fawryProfit
+            + (float) $onlineProfit
+            + (float) $walletProfit;
+        $officeLedgerRevenue = (float) ($busLedgerRevenue ?? 0)
+            + (float) ($fawryRevenue ?? 0)
+            + (float) ($onlineRevenue ?? 0)
+            + (float) ($walletRevenue ?? 0);
+
+        // Sanity-check: verify the total lines up with the treasury service. If
+        // divergence ever creeps in, log a warning so this can be fixed centrally
+        // — do NOT silently replace the calculated value, that would hide bugs.
+        $treasuryOfficeProfit = $treasuryService->calculateDivisionNetProfits('office');
+        if (abs($officeLedgerProfit - $treasuryOfficeProfit) > 0.01) {
+            \Illuminate\Support\Facades\Log::warning('DashboardService office profit divergence', [
+                'dashboard_office_total' => round($officeLedgerProfit, 2),
+                'treasury_office_total' => round($treasuryOfficeProfit, 2),
+                'diff' => round($officeLedgerProfit - $treasuryOfficeProfit, 2),
+            ]);
         }
 
         $officeSummary = [
