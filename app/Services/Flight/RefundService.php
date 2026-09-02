@@ -215,7 +215,13 @@ class RefundService
             'currency' => 'EGP',
             'is_active' => true,
             'owner_type' => 'customer',
-            'module_type' => 'tourism',
+            // FIX (2026-09-02): subject accounts (customer/supplier) require
+            // module_type to be a SPECIFIC module name (e.g. 'flights'), not
+            // a division ('office' / 'tourism'). The division names are
+            // RESERVED for liquidity vaults (cashbox/wallet/bank). See
+            // App\Support\Finance\AccountModuleContract. The customer AR
+            // backing flight bookings is a flights-module subject account.
+            'module_type' => 'flights',
             'created_by' => $customer->created_by ?? 1,
         ]);
         $customer->update(['account_id' => $account->id]);
