@@ -49,6 +49,7 @@ use Illuminate\Support\Facades\DB;
     'trip_details',
     'purchase_price',
     'selling_price',
+    'selling_price_foreign',
     'profit',
     'currency',
     'foreign_currency',

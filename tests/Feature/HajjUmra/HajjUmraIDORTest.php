@@ -101,24 +101,41 @@ class HajjUmraIDORTest extends HajjUmraTestCase
 
     public function test_employee_without_explicit_perms_gets_default_manage_hajj(): void
     {
-        // Documented behavior: UserPermissions::defaultEmployeeModules() includes
-        // `manage_hajj`. So an employee with permissions=[] still passes the
-        // `permission:manage_hajj` route guard. The test documents this
-        // contract (Phase 8.5 A2 decision).
+        // PHASE 10.11 / SEC-1 CONTRACT (2026-08-21): the SEC-1 deny-by-default
+        // patch changed this rule. Pre-fix, an employee with `permissions=[]`
+        // silently received `UserPermissions::defaultEmployeeModules()` (which
+        // includes `manage_hajj`), letting any newly-created employee post
+        // Hajj payments without an admin granting the permission.
+        //
+        // Post-fix, employees with empty stored permissions are DENIED — they
+        // must be granted `manage_hajj` explicitly by an admin. The new
+        // contract is asserted below: empty-perms employee → 403, explicitly
+        // granted employee → 201.
         $booking = $this->makeBooking();
 
-        $emp = $this->makeEmployee(perms: []); // no explicit permissions
-        Sanctum::actingAs($emp, ['*']);
+        $empNoPerms = $this->makeEmployee(perms: []);
+        Sanctum::actingAs($empNoPerms, ['*']);
 
+        // Deny-by-default: 403.
         $this->postJson("/api/v1/hajj-umra/bookings/{$booking->id}/payments", [
             'amount' => 1000.0,
             'payment_method' => 'cash',
             'account_id' => $this->treasuryEGP->id,
-            'idempotency_key' => 'P111_B_'.uniqid(),
+            'idempotency_key' => 'P111_B_DENY_'.uniqid(),
+        ])->assertStatus(403);
+
+        // Explicit grant: 201.
+        $empGranted = $this->makeEmployee(perms: ['manage_hajj']);
+        Sanctum::actingAs($empGranted, ['*']);
+        $this->postJson("/api/v1/hajj-umra/bookings/{$booking->id}/payments", [
+            'amount' => 1000.0,
+            'payment_method' => 'cash',
+            'account_id' => $this->treasuryEGP->id,
+            'idempotency_key' => 'P111_B_OK_'.uniqid(),
         ])->assertCreated();
 
         $this->assertSame(1, $booking->payments()->count(),
-            'employee (any role) gets default modules including manage_hajj');
+            'only the explicitly-granted employee can post a payment.');
     }
 
     public function test_admin_with_no_perms_gets_all_permissions(): void

@@ -143,6 +143,37 @@ class FlightModuleDeepE2ETest extends TestCase
                 ],
             );
         }
+
+        // Phase 11 audit (2026-09-02): ALSO seed the `currencies` table.
+        // FlightBookingService::egpPerUnitOfCurrency() reads from
+        // `currencies` (NOT `exchange_rates`); without these rows, the
+        // booking falls back to FALLBACK_EGP_PER_UNIT (USD=48.5 instead of
+        // the canonical 50, KWD=157.5 instead of the canonical 160). That
+        // mismatch corrupts selling_price_foreign and refund math in
+        // scenarios 13/14.
+        //
+        // NOTE: KWD uses 160.0 here (not the 162.5 from BusTestCase) to
+        // match scenario 13's test variable `$rate = 160.0`. Using 162.5
+        // would make 50-KWD installments record as 8125 EGP each, pushing
+        // the 3-installment total above the 24000 EGP selling price.
+        $currencies = [
+            'USD' => ['name_ar' => 'دولار أمريكي', 'name_en' => 'US Dollar', 'rate' => 50.0],
+            'SAR' => ['name_ar' => 'ريال سعودي', 'name_en' => 'Saudi Riyal', 'rate' => 13.3333],
+            'KWD' => ['name_ar' => 'دينار كويتي', 'name_en' => 'Kuwaiti Dinar', 'rate' => 160.0],
+            'EUR' => ['name_ar' => 'يورو', 'name_en' => 'Euro', 'rate' => 54.5],
+        ];
+        foreach ($currencies as $code => $info) {
+            \App\Models\Setting\Currency::updateOrCreate(
+                ['code' => $code],
+                [
+                    'name_ar' => $info['name_ar'],
+                    'name_en' => $info['name_en'],
+                    'symbol' => $code,
+                    'exchange_rate' => $info['rate'],
+                    'is_active' => true,
+                ],
+            );
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -593,14 +624,11 @@ class FlightModuleDeepE2ETest extends TestCase
         }
 
         $totalPaidEgp = (float) $booking->fresh()->payments()->sum('amount');
-        // Post-2026-08-30 settlement flip: the FlightBookingService resolves the
-        // booking's USD→EGP rate from the Currency table (or FALLBACK_EGP_PER_UNIT
-        // if no Currency row is seeded), NOT from `$data['exchange_rate']` as the
-        // test variable assumes. KWD fallback = 157.5, so each 50-KWD installment
-        // is recorded as 7,875 EGP (3 × 7,875 = 23,625 EGP total) instead of the
-        // expected 8,000 EGP (3 × 8,000 = 24,000 EGP). Update the expectation to
-        // match the actual stored EGP-equivalent per installment.
-        $this->assertEqualsWithDelta(23625.00, $totalPaidEgp, 0.01);
+        // Phase 11 audit (2026-09-02): with KWD seeded at 160.0 in the
+        // `currencies` table (seedExchangeRates()), each 50-KWD installment
+        // records as 8,000 EGP (3 × 8,000 = 24,000 EGP total). Update the
+        // expectation accordingly (was 23,625 when KWD fell back to 157.5).
+        $this->assertEqualsWithDelta(24000.00, $totalPaidEgp, 0.01);
 
         // Confirm
         $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
@@ -696,16 +724,19 @@ class FlightModuleDeepE2ETest extends TestCase
         $this->assertBalanceInvariant($wallet);
         $this->assertCarrierInvariant($carrier);
         $this->assertEveryTransactionBalanced();
-        // Post-2026-08-30 settlement flip: with the new settlement direction
-        // (customer → cashbox, NOT cashbox → wallet), the cancel's refund to
-        // the wallet is NOT subsequently reversed by the booking delete — the
-        // cancel penalty refund of 158.76 USD stays in the wallet. Net effect
-        // on the USD wallet after book → cancel → delete: -200 (book) + 158.76
-        // (cancel refund) + 200 (delete reverses the original payment) =
-        // +158.76 from the pre-booking balance. Update snapshot expectation
-        // accordingly (was 5,000.00 before the flip).
-        $this->assertEqualsWithDelta(5158.76, $wallet->fresh()->balance, 0.01);
-        $this->rec('14', 'Delete + reversal', '✅', 'wallet net +158.76 USD after cancel refund persistence');
+        // Phase 11 audit (2026-09-02): with USD rate seeded at 50.0 (the
+        // canonical rate), the cancel-then-delete lifecycle returns the
+        // wallet to its pre-booking snapshot of 5,000 USD:
+        //   - book pay (USD wallet, converted_amount=200):   wallet +200
+        //   - cancel refund (foreign→EGP AR cross-currency):  wallet -160
+        //   - delete residual clearing (foreign→EGP):         wallet -40
+        //   net: 0 → balance returns to 5000.
+        //
+        // (Pre-audit, the test expected 5158.76 based on a "settlement flip"
+        // that was never actually implemented. With USD rate = 50 (not the
+        // 48.5 fallback), the math resolves cleanly to 5000.)
+        $this->assertEqualsWithDelta(5000.00, $wallet->fresh()->balance, 0.01);
+        $this->rec('14', 'Delete + reversal', '✅', 'wallet restored to pre-booking snapshot (5000 USD)');
     }
 
     public function test_scenario_16_egp_multi_payment_three_sources(): void

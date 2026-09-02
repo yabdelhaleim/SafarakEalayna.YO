@@ -530,11 +530,23 @@ class HajjUmraMasterDataTest extends TestCase
      */
     public function test_3_4_executing_company_auto_creates_account_on_create(): void
     {
-        $this->assertDatabaseCount('accounts', 1); // only treasury
+        // Account::created observer (FIN-1, 2026-08-21, app/Models/Account.php
+        // lines 175-275) auto-posts an opening-balance AccountEntry and
+        // materialises the singleton "System Opening Balances" contra row
+        // (1 entry). Additionally, the project's base seeders / module
+        // account setup add a few rows (seed_online_module_accounts +
+        // finance clearing accounts = 3 baseline accounts on a fresh DB).
+        //
+        // So the starting count for a setUp that creates only the Hajj
+        // treasury (1 cashbox with balance > 0) is:
+        //   1 treasury + 3 seed-module accounts + 1 system-opening contra = 5
+        $this->assertDatabaseCount('accounts', 5);
 
         $company = $this->makeExecutingCompany();
 
-        $this->assertDatabaseCount('accounts', 2);
+        // ExecutingCompany::saving() should create exactly ONE new account
+        // for this company.
+        $this->assertDatabaseCount('accounts', 6);
         $this->assertNotNull($company->account_id);
 
         $this->assertDatabaseHas('accounts', [

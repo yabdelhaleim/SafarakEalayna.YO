@@ -155,8 +155,11 @@ class HajjUmraEmployeeDeepE2ETest extends EmployeeTestCase
     public function test_other_employee_can_pay_booking_created_by_first_employee(): void
     {
         $program = $this->createHajjProgram();
-        $emp1 = $this->makeEmployee('Emp A');
-        $emp2 = $this->makeEmployee('Emp B');
+        // Post-SEC-1 (2026-08-21) deny-by-default: both employees must be
+        // explicitly granted `manage_hajj` to (a) create a booking and
+        // (b) post a payment. Without this grant the test fails with 403.
+        $emp1 = $this->makeEmployee('Emp A', ['manage_hajj']);
+        $emp2 = $this->makeEmployee('Emp B', ['manage_hajj']);
 
         $this->actAs($emp1);
         $response = $this->postJson('/api/v1/hajj-umra/bookings', $this->bookingPayload([
@@ -166,7 +169,7 @@ class HajjUmraEmployeeDeepE2ETest extends EmployeeTestCase
         ]));
         $bookingId = $response->json('data.id');
 
-        // Different employee pays — should succeed
+        // Different employee pays — should succeed (no owner-scoping in Tourism)
         $this->actAs($emp2);
         $pay = $this->postJson("/api/v1/hajj-umra/bookings/{$bookingId}/payments", [
             'amount' => 10000.0,
