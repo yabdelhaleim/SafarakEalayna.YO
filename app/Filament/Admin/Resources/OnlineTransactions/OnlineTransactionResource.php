@@ -14,6 +14,7 @@ use App\Models\Online\OnlineServiceType;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Setting\PaymentMethod;
 use App\Services\Online\OnlineTransactionService;
+use App\Support\Finance\AccountModuleContract;
 use BackedEnum;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteAction;
@@ -25,6 +26,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Placeholder;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -166,6 +168,23 @@ class OnlineTransactionResource extends Resource
                 Section::make('الدفع والحالة')
                     ->icon(Heroicon::OutlinedCreditCard)
                     ->schema([
+                        // ⬇️ جديد 2026-09-03: يظهر فقط لو مفيش حسابات سيولة في قسم المكتب/الأونلاين.
+                        //    يحلّ مشكلة dropdown فاضي بعد تعطيل migration 2026_08_28_130000_seed_online_module_accounts.
+                        Placeholder::make('no_office_accounts_warning')
+                            ->label('لا توجد حسابات تحصيل')
+                            ->content(new \Illuminate\Support\HtmlString(
+                                'لا توجد حسابات تحصيل نشطة في قسم المكتب. '
+                                .'أضف حساباً من <a href="/admin/online-wallets" class="underline font-semibold">محافظ الأونلاين</a> '
+                                .'أو <a href="/admin/online-bank-accounts" class="underline font-semibold">البنوك</a> أولاً، '
+                                .'ثم أكمل تسجيل المعاملة.'
+                            ))
+                            ->visible(fn (): bool => ! Account::query()
+                                ->where('is_active', true)
+                                ->whereIn('module_type', ['online', AccountModuleContract::OFFICE_MODULE_TYPE])
+                                ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+                                ->exists()),
+                        // ⬆️ جديد
+
                         Grid::make(2)->schema([
                             Select::make('payment_method')
                                 ->label('طريقة الدفع')
