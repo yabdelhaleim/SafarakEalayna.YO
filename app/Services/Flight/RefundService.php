@@ -265,7 +265,18 @@ class RefundService
         }
 
         $originalCurrency = strtoupper($booking->original_currency ?: ($booking->currency ?: 'EGP'));
-        $originalAmount = (float) ($booking->original_amount ?: $booking->selling_price);
+
+        // FIX (2026-09-03): for non-EGP bookings the fallback must use
+        // `selling_price_foreign`, NOT `selling_price` (which is stored in
+        // EGP per the 2026-07-23 contract). The previous fallback returned
+        // the EGP-equivalent, causing `refund_amount` to be ~50x too large
+        // for USD/KWD/etc. bookings and over-debiting the foreign cashbox
+        // by the EGP-equivalent instead of the foreign refund amount.
+        $originalAmount = (float) ($booking->original_amount ?: (
+            $originalCurrency !== 'EGP' && $booking->selling_price_foreign > 0
+                ? $booking->selling_price_foreign
+                : $booking->selling_price
+        ));
         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
 
         $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
