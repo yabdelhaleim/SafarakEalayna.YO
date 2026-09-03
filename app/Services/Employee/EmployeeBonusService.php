@@ -287,6 +287,16 @@ class EmployeeBonusService
      * Shows how many operations each employee performed.
      * Used for performance reporting.
      *
+     * IMPORTANT (FIX 2026-09-03):
+     *   All three source tables use SoftDeletes, so soft-deleted records MUST
+     *   be excluded from the commission count — otherwise cancelled/deleted
+     *   bookings still earn the employee commission. Also exclude non-active
+     *   statuses (CANCELLED, REFUNDED, PENDING, WAITLIST, Failed, etc.) so
+     *   commission is only earned on COMPLETED operations:
+     *     - flight_bookings.status  = 'CONFIRMED'
+     *     - bus_bookings.status     = 'paid'
+     *     - online_transactions.status = 'completed'
+     *
      * @param  array  $filters  Keys: from_date, to_date, employee_id
      * @return Collection
      */
@@ -296,8 +306,10 @@ class EmployeeBonusService
         $toDate = $filters['to_date'] ?? null;
         $employeeId = $filters['employee_id'] ?? null;
 
-        // Flight bookings
-        $flightQuery = DB::table('flight_bookings');
+        // Flight bookings (CONFIRMED only, soft-delete excluded)
+        $flightQuery = DB::table('flight_bookings')
+            ->whereNull('deleted_at')
+            ->where('status', \App\Enums\FlightBookingStatus::CONFIRMED->value);
         if ($fromDate) {
             $flightQuery->where('created_at', '>=', $fromDate.' 00:00:00');
         }
@@ -312,8 +324,10 @@ class EmployeeBonusService
             ->pluck('count', 'employee_id')
             ->toArray();
 
-        // Bus bookings
-        $busQuery = DB::table('bus_bookings');
+        // Bus bookings (Paid only, soft-delete excluded)
+        $busQuery = DB::table('bus_bookings')
+            ->whereNull('deleted_at')
+            ->where('status', \App\Enums\BusBookingStatus::Paid->value);
         if ($fromDate) {
             $busQuery->where('created_at', '>=', $fromDate.' 00:00:00');
         }
@@ -328,8 +342,14 @@ class EmployeeBonusService
             ->pluck('count', 'employee_id')
             ->toArray();
 
-        // Online transactions (replaces legacy service_orders)
-        $serviceQuery = DB::table('online_transactions');
+        // Online transactions — service_count bucket (completed only, soft-delete excluded).
+        // NOTE: there is no separate `service_orders` table — that table was
+        // renamed to `online_transactions`. We still return both `service_count`
+        // and `online_count` so the existing UI (`EmployeeCommissions.vue`)
+        // doesn't break; both now apply the same filters.
+        $serviceQuery = DB::table('online_transactions')
+            ->whereNull('deleted_at')
+            ->where('status', \App\Enums\OnlineTransactionStatus::Completed->value);
         if ($fromDate) {
             $serviceQuery->where('created_at', '>=', $fromDate.' 00:00:00');
         }
@@ -344,8 +364,10 @@ class EmployeeBonusService
             ->pluck('count', 'employee_id')
             ->toArray();
 
-        // Online transactions
-        $onlineQuery = DB::table('online_transactions');
+        // Online transactions — online_count bucket (same filters as above).
+        $onlineQuery = DB::table('online_transactions')
+            ->whereNull('deleted_at')
+            ->where('status', \App\Enums\OnlineTransactionStatus::Completed->value);
         if ($fromDate) {
             $onlineQuery->where('created_at', '>=', $fromDate.' 00:00:00');
         }
