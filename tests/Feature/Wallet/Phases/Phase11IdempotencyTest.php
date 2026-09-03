@@ -178,10 +178,9 @@ class Phase11IdempotencyTest extends WalletTestCase
         $ledgerCount = Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->count();
-        // Post-2026-08-30: SEND now posts a single journal transfer (wallet → customer),
-        // not the legacy income+expense pair. Ledger count for one SEND = 1.
-        $this->assertEquals(1, $ledgerCount,
-            '3 replays with same key = 1 ledger row (1 journal transfer) — the financial effect happens exactly once.');
+        // WLT-FEE-LEG-REG (2026-09-03): SEND posts 1 main transfer + 1 fee income = 2 rows.
+        $this->assertEquals(2, $ledgerCount,
+            '3 replays with same key = 2 ledger rows (1 main transfer + 1 fee income) — the financial effect happens exactly once.');
     }
 
     public function test_creating_transaction_with_amount_too_high_after_first_wallet_drain(): void

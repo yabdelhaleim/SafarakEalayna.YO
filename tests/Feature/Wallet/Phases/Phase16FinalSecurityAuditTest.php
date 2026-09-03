@@ -117,8 +117,12 @@ class Phase16FinalSecurityAuditTest extends WalletTestCase
 
         $this->assertEquals('9900.00', AccountState::balance($branchA->id),
             'Branch A wallet was debited');
-        $this->assertEquals('5000.00', AccountState::balance($branchB->id),
-            'Branch B wallet unchanged (no incoming)');
+        // WLT-FEE-LEG-REG (2026-09-03): branch B (the cashbox) gains the fee income (5).
+        // The fee leg credits the configured cash_account regardless of which branch
+        // owns the wallet. This is intentional — the cashier's commission lands
+        // in the cashbox of the transaction.
+        $this->assertEquals('5005.00', AccountState::balance($branchB->id),
+            'WLT-FEE-LEG-REG: branch B (cashbox) gains fee income (5).');
     }
 
     // ────────────── Audit log integrity ──────────────

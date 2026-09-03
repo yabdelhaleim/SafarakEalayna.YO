@@ -130,11 +130,13 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
         $txId = (int) $response->json('data.id');
         $this->assertGreaterThan(0, $txId);
 
-        // Post-2026-08-30: exactly 2 ledger transactions — 1 main transfer
-        // (wallet → customer) + 1 settlement transfer (customer → cashbox).
-        // The legacy income+expense pair is gone.
-        $this->assertEquals(2, $this->relatedTxCount($txId),
-            'V2-01 (post-2026-08-30): 2 ledger rows expected (1 main transfer + 1 settlement transfer).');
+        // WLT-FEE-LEG-REG (2026-09-03): 3 ledger rows:
+        //   (1) transfer of `amount` (main; wallet → customer)
+        //   (2) income of `fee`     (agency commission; clearing → cash)
+        //   (3) transfer of `amount` (settlement; customer → cash) — NOT amount_paid
+        $this->assertEquals(3, $this->relatedTxCount($txId),
+            'V2-01 (WLT-FEE-LEG-REG 2026-09-03): 3 ledger rows expected '
+            . '(1 main transfer + 1 fee income + 1 settlement transfer).');
 
         $types = Transaction::query()
             ->where('related_type', WalletTransaction::class)
@@ -144,37 +146,32 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
             ->sort()
             ->values()
             ->all();
-        $this->assertEquals(['transfer', 'transfer'], $types,
-            'V2-01 (post-2026-08-30): both ledger rows are journal transfers (no income/expense).');
+        $this->assertEquals(['income', 'transfer', 'transfer'], $types,
+            'V2-01 (WLT-FEE-LEG-REG): ledger types are 1× Income (fee) + 2× Transfer (main + settlement).');
 
-        // Settlement transfer amount = amount_paid. Post-2026-08-30 there are
-        // TWO transfers on this WT (main + settlement), so we must filter to
-        // the settlement specifically. The settlement is uniquely identified
-        // by amount = amount_paid (the main transfer carries `amount` only).
+        // Settlement transfer amount = `amount` (NOT amount_paid).
+        // WLT-FEE-LEG-REG: the settlement clears the principal only.
         $settlementSum = (float) Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Transfer->value)
-            ->where('amount', $amountPaid)
+            ->where('amount', $amount) // both transfers carry `amount`
             ->sum('amount');
-        $this->assertEquals($amountPaid, $settlementSum,
-            'V2-01 (post-2026-08-30): settlement transfer amount equals amount_paid.');
+        $this->assertEquals($amount + $amount, $settlementSum,
+            'V2-01 (WLT-FEE-LEG-REG): both transfers carry `amount` (main + settlement = 2 × amount).');
 
-        // NEW BEHAVIOUR (post-uncommitted + post-2026-08-30):
-        //   wallet loses 100 (the main transfer principal — no fee),
-        //   cashbox GAINS 105 (the full settlement amount_paid),
-        //   customer is credited +100 (main) then debited -105 (settlement) = -5.
+        // WLT-FEE-LEG-REG: cashbox gains amount + fee (settlement of principal + fee income).
+        // Customer ends at 0 (the fee is agency revenue, not customer debt).
         Assertions::assertBalanceEquals($this->walletAccountEgp->id, '9900.00', 'V2-01 wallet');
-        Assertions::assertBalanceEquals($this->cashboxEgp->id, '5105.00', 'V2-01 cashbox');
+        Assertions::assertBalanceEquals($this->cashboxEgp->id, '5105.00', 'V2-01 cashbox (5000 + 100 settlement + 5 fee income)');
 
-        // Customer account must exist. Post-2026-08-30 the main transfer credits
-        // the customer by `amount` (not total_amount). Settlement then debits
-        // the customer by `amount_paid`. For amount_paid = amount + fee, the
-        // customer ends at -fee = -5.00 (the customer owes the service fee).
+        // Customer account must exist. Post-WLT-FEE-LEG-REG the customer ends at 0
+        // because the settlement clears the principal only.
         $this->customerEgp->refresh();
         $customerAccountId = $this->customerEgp->account_id;
         $this->assertNotNull($customerAccountId, 'V2-01: customer account must exist for registered customer.');
-        Assertions::assertBalanceEquals($customerAccountId, '-5.00', 'V2-01 customer (owes fee portion: +100 - 105 = -5)');
+        Assertions::assertBalanceEquals($customerAccountId, '0.00',
+            'V2-01 customer (WLT-FEE-LEG-REG: +amount - amount = 0, the fee is agency revenue, not customer debt).');
         $customerAccount = Account::find($customerAccountId);
 
         // Every transaction balanced.
@@ -195,15 +192,16 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
      * V2-02: repostSettlementTransaction (Send) now calls recordJournalTransfer (NOT recordIncome).
      * This means re-emit after an update uses type=Transfer and bypasses the duplicate-income guard.
      *
-     * Build (post-2026-08-30 NEW behavior): create a Send with amount_paid=0,
+     * Build (WLT-FEE-LEG-REG 2026-09-03): create a Send with amount_paid=0,
      * then UPDATE it to amount_paid=50.
-     *   - Create: 1 ledger TX (1 journal transfer, wallet → customer for `amount`).
-     *   - Update: repostMainTransactions reverses the old transfer (1 reversal row),
-     *             reposts the new transfer (1 active row),
-     *             repostSettlementTransaction: the (absent) settlement has nothing to
-     *             reverse, then posts a NEW type=Transfer settlement row.
-     *   - Final: 1 (active transfer) + 1 (reversal) + 1 (settlement transfer) = 3 ledger TX
-     *             on related_id = $txId. All three rows have type=Transfer.
+     *   - Create: 1 transfer (main, wallet → customer, amount) + 1 income (fee leg).
+     *             = 2 ledger TX.
+     *   - Update: repostMainTransactions reverses the old transfer + old income (2 reversal rows),
+     *             reposts the new transfer + new income (2 active rows).
+     *             repostSettlementTransaction: posts a NEW type=Transfer settlement row.
+     *   - Final: 2 (active: main + fee income) + 2 (reversals) + 1 (settlement transfer)
+     *             = 5 ledger TX on related_id = $txId.
+     *             Active rows: 2× Transfer (main + settlement) + 1× Income (fee).
      */
     public function test_v2_02_settlement_send_repost_uses_journal_transfer_not_income(): void
     {
@@ -219,35 +217,36 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
         $putResponse->assertStatus(200,
             'V2-02: update with amount_paid must succeed (per new UpdateWalletTransactionRequest rules).');
 
-        // After update (post-2026-08-30): 3 ledger rows on this WT — 1 active transfer,
-        // 1 reversal of the original, 1 settlement transfer. No income/expense rows exist.
-        $this->assertEquals(3, $this->relatedTxCount($txId),
-            'V2-02 (post-2026-08-30): 3 ledger rows expected (1 active + 1 reversal + 1 settlement transfer).');
+        // WLT-FEE-LEG-REG: 5 ledger rows on this WT — 2 active transfers + 1 active income + 2 reversals.
+        $this->assertEquals(5, $this->relatedTxCount($txId),
+            'V2-02 (WLT-FEE-LEG-REG 2026-09-03): 5 ledger rows expected '
+            . '(2 active transfers + 1 active income + 2 reversals).');
 
-        // All 3 ledger rows are type=Transfer (post-2026-08-30 — no income/expense rows).
+        // 3 active rows are type=Transfer (main + reversal of main + settlement).
+        // 2 reversals (of main and fee income) are also type=Transfer / type=Income depending on
+        // what was reversed. Total transfer count = 1 (active main) + 1 (reversal main) + 1 (settlement) = 3.
         $transferCount = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Transfer->value)
             ->count();
         $this->assertEquals(3, $transferCount,
-            'V2-02 (post-2026-08-30): all 3 ledger rows are type=Transfer (active + reversal + settlement).');
+            'V2-02 (WLT-FEE-LEG-REG): 3 ledger rows are type=Transfer (active main + reversal of main + settlement).');
 
-        // Post-2026-08-30: no type=Income rows are created by the Send flow at all.
+        // WLT-FEE-LEG-REG: 2 rows are type=Income (1 active fee income + 1 reversal of fee income).
         $incomeCount = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Income->value)
             ->count();
-        $this->assertEquals(0, $incomeCount,
-            'V2-02 (post-2026-08-30): no type=Income rows exist (Send uses journal transfers, not recordIncome).');
+        $this->assertEquals(2, $incomeCount,
+            'V2-02 (WLT-FEE-LEG-REG): 2 income rows exist (1 active fee income + 1 reversal).');
 
-        // Post-2026-08-30: no type=Expense rows are created by the Send flow either
-        // (the expense leg of the legacy income+expense pair is gone too).
+        // No type=Expense rows are created by the Send flow.
         $expenseCount = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Expense->value)
             ->count();
         $this->assertEquals(0, $expenseCount,
-            'V2-02 (post-2026-08-30): no type=Expense rows exist (Send uses journal transfers, not recordExpense).');
+            'V2-02 (WLT-FEE-LEG-REG): no type=Expense rows exist.');
 
         // Refresh the customer so the in-memory account_id reflects the
         // account that was created by ensureCustomerAccount during the
@@ -878,10 +877,11 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
             $this->assertAccountReconciled($w->id, 'V2-17');
         }
 
-        // Each cashbox unchanged (amount_paid=0 → no settlement; cashbox is not touched on a
-        // registered-customer send without settlement — only the customer AR is debited).
+        // WLT-FEE-LEG-REG (2026-09-03): each cashbox gains `fee` (agency commission income)
+        // even though amount_paid=0 (no settlement). The fee is recognized at creation time.
+        // cashbox: 1000 + 10 = 1010
         foreach ($cashboxes as $c) {
-            Assertions::assertBalanceEquals($c->id, '1000.00', "V2-17 cashbox #{$c->id}");
+            Assertions::assertBalanceEquals($c->id, '1010.00', "V2-17 cashbox #{$c->id}");
             $this->assertAccountReconciled($c->id, 'V2-17');
         }
 
@@ -1115,10 +1115,9 @@ class PhaseFinancialRetestV2Test extends WalletTestCase
         // No duplicate ledger rows.
         $ledgerCount = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $id1)->count();
-        // Post-2026-08-30: a Send with no settlement posts exactly 1 ledger
-        // row (1 journal transfer, wallet → customer). Replays do NOT
-        // re-post the financial effect.
-        $this->assertEquals(1, $ledgerCount,
-            'V2-25 (post-2026-08-30): exactly 1 ledger row (1 journal transfer), no duplicates from replays.');
+        // WLT-FEE-LEG-REG (2026-09-03): a Send with no settlement posts exactly 2 ledger
+        // rows (1 main transfer + 1 fee income). Replays do NOT re-post the financial effect.
+        $this->assertEquals(2, $ledgerCount,
+            'V2-25 (WLT-FEE-LEG-REG 2026-09-03): exactly 2 ledger rows (1 main transfer + 1 fee income), no duplicates from replays.');
     }
 }

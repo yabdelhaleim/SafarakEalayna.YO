@@ -84,12 +84,17 @@ class Phase07PositiveTest extends WalletTestCase
      * settlement does NOT collide with the main income, and the Send
      * succeeds.
      *
-     * The test asserts (post-2026-08-30 wallet-no-clearing fix):
+     * WLT-FEE-LEG-REG (2026-09-03):
+     * Registered SEND now posts THREE ledger rows:
+     *   (1) transfer of `amount` (main; wallet → customer)
+     *   (2) income of `fee`     (agency commission; clearing → cash)
+     *   (3) transfer of `amount` (settlement; customer → cash) — NOT amount_paid
+     *
+     * The test asserts:
      *   - HTTP 201 (the Send is accepted end-to-end).
-     *   - Exactly 2 ledger transactions on this WalletTransaction:
-     *       (1) transfer of `amount` (the main Send pair; wallet → customer)
-     *       (2) transfer of `amount_paid` (the settlement; customer → cashbox)
-     *   - Money conservation holds (no creation, no loss).
+     *   - Exactly 3 ledger transactions on this WalletTransaction.
+     *   - Customer balance = 0 (the fee is agency revenue, NOT customer debt).
+     *   - Cashbox gains amount+fee (settlement of principal + fee income).
      */
     public function test_send_with_amount_paid_positive_creates_transfer_settlement_fi_n_2_fixed(): void
     {
@@ -108,16 +113,16 @@ class Phase07PositiveTest extends WalletTestCase
         $txId = $response->json('data.id');
         $this->assertNotNull($txId);
 
-        // 2026-08-30 fix: two ledger transactions (main transfer + settlement transfer).
-        // No more income+expense pair that auto-routed through wallet clearing accounts.
+        // WLT-FEE-LEG-REG: 3 ledger rows (main transfer + fee income + settlement).
         $ledgerCount = Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->count();
-        $this->assertEquals(2, $ledgerCount,
-            'Post-2026-08-30: Send with amount_paid > 0 creates 2 ledger rows (main transfer + settlement transfer; no clearing accounts).');
+        $this->assertEquals(3, $ledgerCount,
+            'WLT-FEE-LEG-REG (2026-09-03): Send with amount_paid > 0 creates 3 ledger rows '
+            . '(main transfer + fee income + settlement transfer).');
 
-        // Verify each row's type (both are Transfer now, not income/expense).
+        // Verify types: 2× Transfer (main + settlement) + 1× Income (fee leg).
         $types = Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
@@ -127,46 +132,61 @@ class Phase07PositiveTest extends WalletTestCase
             ->values()
             ->all();
         $this->assertEquals(
-            ['transfer', 'transfer'],
+            ['income', 'transfer', 'transfer'],
             $types,
-            'Post-2026-08-30: ledger types are 2× Transfer (main + settlement); no clearing-account artifacts.'
+            'WLT-FEE-LEG-REG: ledger types are Income (fee leg) + 2× Transfer (main + settlement).'
         );
 
-        // The settlement transfer amount equals amount_paid.
+        // The two transfers sum to: amount (main) + amount (settlement) = 200.
         $transferAmount = (float) Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Transfer->value)
             ->sum('amount');
         $this->assertEquals(
-            (float) $amount + (float) $amountPaid,
+            2 * (float) $amount,
             $transferAmount,
-            'Post-2026-08-30: sum of both transfers = amount (main) + amount_paid (settlement).'
+            'WLT-FEE-LEG-REG: sum of both transfers = amount (main) + amount (settlement, principal only).'
+        );
+
+        // The income row equals `fee`.
+        $incomeAmount = (float) Transaction::query()
+            ->where('related_type', WalletTransaction::class)
+            ->where('related_id', $txId)
+            ->where('type', TransactionType::Income->value)
+            ->sum('amount');
+        $this->assertEquals(
+            (float) $fee,
+            $incomeAmount,
+            'WLT-FEE-LEG-REG: fee income leg = fee.'
         );
 
         // Money conservation under the new model:
         //   - Wallet loses `amount` EGP (main Send transfer: wallet → customer, 100).
-        //   - Cashbox GAINS `amount_paid` EGP (settlement transfer: customer → cashbox, 105).
-        //   - Customer AR ends at `amount - amount_paid = -5` (the fee overpayment
-        //     becomes a customer credit because the cashier keeps the fee as commission).
+        //   - Cashbox gains `amount + fee` = settlement of principal (100) + fee income (5) = 105.
+        //   - Customer AR ends at `amount - amount = 0` (the fee is agency revenue, not customer debt).
         $this->assertEquals('9900.00', AccountState::balance($this->walletAccountEgp->id),
-            'Post-2026-08-30: wallet loses amount=100 (main Send transfer only).');
+            'WLT-FEE-LEG-REG: wallet loses amount=100 (main Send transfer only).');
 
-        // Cashbox GAINS amount_paid=105 EGP — the cashier's collected cash lands here via settlement.
+        // Cashbox GAINS amount_paid=105 EGP — settlement of 100 + fee income of 5.
         $this->assertEquals('5105.00', AccountState::balance($this->cashboxEgp->id),
-            'Post-2026-08-30: cashbox gains amount_paid=105 EGP via settlement transfer (customer → cashbox).');
+            'WLT-FEE-LEG-REG: cashbox gains amount+fee via settlement + fee income.');
+
+        // Customer balance must be 0 (wiped clean) — NOT -fee.
+        $reloaded = Customer::find($this->customerEgp->id);
+        $customerAccount = Account::find($reloaded->account_id);
+        $this->assertEquals('0.00', AccountState::balance($customerAccount->id),
+            'WLT-FEE-LEG-REG: customer balance is 0 after full settlement (the fee is agency revenue, not customer credit).');
     }
 
 /**
-     * Post-2026-08-30 fix (no clearing accounts for SEND):
-     * The main Send pair is now a SINGLE journal transfer (wallet → customer)
-     * for `amount` (NOT amount+fee). The fee is tracked on the WT row only
-     * and surfaces to P&L via settlement when the cashier collects the cash.
+     * WLT-FEE-LEG-REG (2026-09-03):
+     * Registered SEND with amount_paid=0 posts TWO ledger rows:
+     *   (1) transfer of `amount` (main; wallet → customer_account) — 500
+     *   (2) income of `fee`     (agency commission; clearing → cash) — 10
      *
-     * Therefore:
-     *   - Exactly ONE ledger transaction is created (the main transfer).
-     *   - Type is Transfer (NOT income + expense).
-     *   - Amount equals `amount` (500), not amount+fee.
+     * There is NO settlement because amount_paid=0. The fee is recognized
+     * as income at creation time per user requirement (WLT-FEE-LEG-REG).
      */
     public function test_send_creates_one_journal_transfer_with_expected_types(): void
     {
@@ -179,22 +199,31 @@ class Phase07PositiveTest extends WalletTestCase
         $txId = $response->json('data.id');
         $this->assertNotNull($txId, 'Wallet transaction id must be returned');
 
-        // Exactly ONE transaction should be created (the main transfer; no settlement).
+        // WLT-FEE-LEG-REG: TWO transactions should be created (main transfer + fee income).
         $ledgerCount = Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->count();
-        $this->assertEquals(1, $ledgerCount,
-            'Post-2026-08-30: exactly 1 ledger transaction (main transfer; no settlement, no clearing accounts).');
+        $this->assertEquals(2, $ledgerCount,
+            'WLT-FEE-LEG-REG: exactly 2 ledger transactions (main transfer + fee income; no settlement).');
 
-        // The single transaction is a Transfer.
+        // The transfer exists.
         $transferExists = Transaction::query()
             ->where('related_type', WalletTransaction::class)
             ->where('related_id', $txId)
             ->where('type', TransactionType::Transfer->value)
             ->exists();
         $this->assertTrue($transferExists,
-            'Post-2026-08-30: the single ledger row is type=Transfer (wallet → customerAccount).');
+            'WLT-FEE-LEG-REG: main transfer is type=Transfer (wallet → customerAccount).');
+
+        // The income leg exists.
+        $incomeExists = Transaction::query()
+            ->where('related_type', WalletTransaction::class)
+            ->where('related_id', $txId)
+            ->where('type', TransactionType::Income->value)
+            ->exists();
+        $this->assertTrue($incomeExists,
+            'WLT-FEE-LEG-REG: fee income leg is type=Income (clearing → cash).');
 
         $transferAmount = (float) Transaction::query()
             ->where('related_type', WalletTransaction::class)
@@ -202,7 +231,15 @@ class Phase07PositiveTest extends WalletTestCase
             ->where('type', TransactionType::Transfer->value)
             ->sum('amount');
         $this->assertEquals(500.00, $transferAmount,
-            'Post-2026-08-30: main transfer amount = amount (500). The fee stays on the WT row.');
+            'WLT-FEE-LEG-REG: main transfer amount = amount (500).');
+
+        $incomeAmount = (float) Transaction::query()
+            ->where('related_type', WalletTransaction::class)
+            ->where('related_id', $txId)
+            ->where('type', TransactionType::Income->value)
+            ->sum('amount');
+        $this->assertEquals(10.00, $incomeAmount,
+            'WLT-FEE-LEG-REG: fee income leg amount = fee (10).');
 
         // All transactions are module='wallet'.
         $moduleValues = [];
@@ -229,9 +266,9 @@ class Phase07PositiveTest extends WalletTestCase
         $walletNew = AccountState::balance($this->walletAccountEgp->id);
         $this->assertEquals('9500.00', $walletNew, 'Wallet balance must decrease by amount');
 
-        // Cashbox balance unchanged (amount_paid=0 → no settlement cash)
+        // WLT-FEE-LEG-REG: cashbox gains fee income even when amount_paid=0 (commission recognized at creation).
         $cashNew = AccountState::balance($this->cashboxEgp->id);
-        $this->assertEquals('5000.00', $cashNew, 'Cashbox balance must be unchanged when amount_paid=0');
+        $this->assertEquals('5010.00', $cashNew, 'WLT-FEE-LEG-REG: cashbox gains fee income even without settlement (5010 = 5000 + 10 fee).');
 
         // Customer ledger account is auto-created and re-tagged to module_type='wallet_transfer'.
         $reloaded = Customer::find($this->customerEgp->id);
@@ -243,7 +280,7 @@ class Phase07PositiveTest extends WalletTestCase
             'Customer ledger account must be tagged module_type=wallet_transfer');
         $customerBalance = AccountState::balance($customerAccount->id);
         $this->assertEquals('500.00', $customerBalance,
-            'Post-2026-08-30: customer balance reflects +amount (the fee is tracked on the WT row, not the ledger).');
+            'WLT-FEE-LEG-REG: customer balance = +amount (500). No settlement yet (amount_paid=0).');
     }
 
     public function test_send_walk_in_with_amount_paid_zero_succeeds(): void
@@ -270,12 +307,14 @@ class Phase07PositiveTest extends WalletTestCase
         $this->asAdmin()->postJson('/api/v1/wallet/transactions', $payload)
             ->assertStatus(201);
 
-        // Post-2026-08-30: walk-in send: cashbox receives `amount` = 750 (NOT total_amount).
-        // The fee is kept by the cashier as commission and stays on the WT row.
-        $this->assertEquals('5750.00', AccountState::balance($this->cashboxEgp->id),
-            'Post-2026-08-30: walk-in send credits cashbox with amount (NOT total_amount). Fee stays on WT.');
+        // WLT-FEE-LEG (2026-09-03): walk-in send credits cashbox with amount + fee (agency commission).
+        //   - main transfer (wallet → cash): +750
+        //   - fee income (clearing → cash):  +15
+        // = cashbox: 5000 + 750 + 15 = 5765
+        $this->assertEquals('5765.00', AccountState::balance($this->cashboxEgp->id),
+            'WLT-FEE-LEG: walk-in send credits cashbox with amount + fee (commission income recognized at creation).');
 
-        // Wallet decreased by amount (750)
+        // Wallet decreased by amount (750) — fee is agency revenue, not wallet outflow.
         $this->assertEquals('9250.00', AccountState::balance($this->walletAccountEgp->id),
             'Wallet balance must decrease by amount');
     }

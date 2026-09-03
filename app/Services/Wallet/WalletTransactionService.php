@@ -696,46 +696,56 @@ class WalletTransactionService
         }
 
         $amountPaid = self::normalizeAmount($transaction->amount_paid);
-        if ($amountPaid < 0.001) {
-            return;
-        }
 
         $walletTypeName = $transaction->walletType?->name ?? '';
         $customerName = $transaction->customer_name ?: '—';
         $createdBy = $transaction->created_by ?? Auth::id() ?? 1;
 
-        // Re-emit the same settlement entry that the original
-        // accountForSend / accountForReceive would have posted.
+        // WLT-FEE-LEG-REG (2026-09-03): متسق مع postSettlementSend() — التسوية
+        // بتسدد الـ principal فقط للـ SEND (العمولة بقيد دخل منفصل).
+        // للـ RECEIVE التسوية بتسدد كامل amount_paid لأن طبيعة العملية مختلفة
+        // (الـ cash رايح للعميل مباشرة كدفعة من قيمة الاستقبال).
         if ($type === WalletTransactionType::Send) {
+            $principal = self::normalizeAmount((float) $transaction->amount);
+            $settlementAmount = min($amountPaid, $principal);
+            if ($settlementAmount < 0.005) {
+                return;
+            }
             $this->transactionService->recordJournalTransfer([
-                'amount' => $amountPaid,
+                'amount' => $settlementAmount,
                 'from_account_id' => $customerAccount->id,
                 'to_account_id' => $transaction->cash_account_id,
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $transaction->id,
                 'type' => TransactionType::Transfer->value,
-                'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
+                'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$settlementAmount} — {$walletTypeName} - {$customerName}",
                 'created_by' => $createdBy,
                 'currency' => $transaction->walletAccount?->currency,
             ]);
-        } else {
-            // Receive — WLT-1: contra side may be the destination override
-            // or the legacy customer account.
-            $contraNotes = $destinationOverride
-                ? "إعادة تسجيل دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}"
-                : "إعادة تسجيل دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}";
-            $this->transactionService->recordExpense([
-                'amount' => $amountPaid,
-                'from_account_id' => $transaction->cash_account_id,
-                'contra_account_id' => $settlementContraId,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $transaction->id,
-                'notes' => $contraNotes,
-                'created_by' => $createdBy,
-            ]);
+            return;
         }
+
+        // Receive branch — unchanged: full amount_paid moves from cashbox to customer/destination.
+        if ($amountPaid < 0.001) {
+            return;
+        }
+
+        // Receive — WLT-1: contra side may be the destination override
+        // or the legacy customer account.
+        $contraNotes = $destinationOverride
+            ? "إعادة تسجيل دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}"
+            : "دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}";
+        $this->transactionService->recordExpense([
+            'amount' => $amountPaid,
+            'from_account_id' => $transaction->cash_account_id,
+            'contra_account_id' => $settlementContraId,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $transaction->id,
+            'notes' => $contraNotes,
+            'created_by' => $createdBy,
+        ]);
     }
 
     /**
@@ -808,10 +818,13 @@ class WalletTransactionService
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-            // Customer مسجّل: wallet → customerAccount بـ amount (المبلغ فقط).
-            // الـ settlement بعدها يخصم amount_paid من العميل ويضيفه للخزنة.
+            // WLT-FEE-LEG-REG (2026-09-03):
+            // العميل المسجّل: wallet → customerAccount بـ amount (المبلغ الأصلي فقط).
+            // العمولة (fee) تتسجل كـ income leg منفصل على الخزنة (تحت).
+            // الـ settlement بعدها بيسدد الـ principal فقط من العميل للخزنة — ده
+            // بيخلي رصيد العميل = 0 بعد السداد الكامل، بدل ما كان -fee.
             $transfer = $this->transactionService->recordJournalTransfer([
-                'amount' => $amount,                                // المبلغ فقط — الرسوم على الـ settlement
+                'amount' => $amount,                                // المبلغ فقط — الرسوم بقيد دخل منفصل
                 'from_account_id' => $record->wallet_account_id,    // المحفظة (يخصم منها)
                 'to_account_id' => $customerAccount->id,            // حساب العميل (مديونية تزيد)
                 'allow_from_negative' => true,                      // allow negative on prepaid wallets
@@ -819,15 +832,36 @@ class WalletTransactionService
                 'related_type' => WalletTransaction::class,
                 'related_id' => $record->id,
                 'type' => TransactionType::Transfer->value,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة، رسوم {$fee} على التسوية",
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للعميل (تسوية العميل لاحقاً)",
                 'created_by' => $createdBy,
                 'currency' => $record->walletAccount?->currency,
             ]);
 
-            // Return the same transfer as both legs for backward compat with
-            // the caller that stores $record->income_transaction_id /
-            // $record->expense_transaction_id (both point at this transfer).
-            return [$transfer, $transfer];
+            // WLT-FEE-LEG-REG (2026-09-03): agency commission income leg.
+            // العمولة بتدخل الخزنة كدخل منفصل وقت إنشاء العملية (نفس نمط
+            // anonymous walk-in path في الأسطر 873-884). متسق مع ما يفعله
+            // الموظف في الـ Phase 9 financial retest للعملاء غير المسجلين.
+            $feeIncome = null;
+            if ($fee >= 0.005) {
+                $feeIncome = $this->transactionService->recordIncome([
+                    'amount' => $fee,
+                    'to_account_id' => $record->cash_account_id,
+                    'module' => TransactionModule::Wallet->value,
+                    'related_type' => WalletTransaction::class,
+                    'related_id' => $record->id,
+                    'notes' => "إرسال {$walletTypeName} - {$customerName}: رسوم خدمة {$fee} (عمولة الوكالة)",
+                    'created_by' => $createdBy,
+                    // WLT-FX-1 (2026-09-03): تمرير عملة المحفظة. بدونها الـ
+                    // incomeContraIdForModuleAndCurrency() بيوقع على حساب
+                    // الإقفال بالـ EGP افتراضياً، بيكسر الـ multi-currency.
+                    'currency' => $record->walletAccount?->currency,
+                ]);
+            }
+
+            // الـ returned tuple بيمشي مع signed contract بتاع الـ caller:
+            //   - first  = income_transaction_id (الـ feeIncome لو فيه fees، وإلا الـ mainTransfer)
+            //   - second = expense_transaction_id (الـ mainTransfer — wallet debit للعميل)
+            return [$feeIncome ?? $transfer, $transfer];
         }
 
         // Anonymous customer (نقدي فوري): المحفظة → الخزنة بـ المبلغ الأصلي فقط،
@@ -880,6 +914,10 @@ class WalletTransactionService
                 'related_id' => $record->id,
                 'notes' => "إرسال {$walletTypeName} - {$customerName}: رسوم خدمة {$fee} (عمولة الوكالة)",
                 'created_by' => $createdBy,
+                // WLT-FX-1 (2026-09-03): تمرير عملة المحفظة لقيد الدخل —
+                // متسق مع mainTransfer اللي فوق. بدونها كان بيقع على
+                // حساب إقفال EGP افتراضياً.
+                'currency' => $record->walletAccount?->currency,
             ]);
         }
 
@@ -926,20 +964,29 @@ class WalletTransactionService
 
         $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-        // Settlement is a TRANSFER from the customer account to the cash account,
-        // reducing customer debt and increasing cashbox balance.
+        // WLT-FEE-LEG-REG (2026-09-03): التسوية بتسدد أصل الدين (amount) فقط،
+        // مش الـ amount_paid بكامله. العمولة (fee) اتسجلت كقيد دخل منفصل في
+        // postMainSendPair()، فالـ cashbox بتاعتها جاي من هناك.
+        //   - لو amount_paid = amount + fee: settlement = amount → رصيد العميل = 0
+        //   - لو amount_paid < amount (جزئي): settlement = amount_paid → العميل لسه عليه الباقي
+        //   - لو amount_paid > amount (دفع زيادة): settlement = amount → الباقي زيادة في الخزنة
         // D-V2-009: normalize the settlement amount so WT.amount_paid and the
         // settlement ledger leg carry the SAME canonical 2-decimal value.
         $amountPaid = self::normalizeAmount($amountPaid);
+        $principal = self::normalizeAmount((float) $record->amount);
+        $settlementAmount = min($amountPaid, $principal);
+        if ($settlementAmount < 0.005) {
+            return;
+        }
         $this->transactionService->recordJournalTransfer([
-            'amount' => $amountPaid,
+            'amount' => $settlementAmount,
             'from_account_id' => $customerAccount->id,
             'to_account_id' => $record->cash_account_id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
             'type' => TransactionType::Transfer->value,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$settlementAmount}",
             'created_by' => $createdBy,
             'currency' => $record->walletAccount?->currency,
         ]);

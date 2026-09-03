@@ -256,21 +256,18 @@ class PhaseFinancialRetestComprehensiveTest extends WalletTestCase
         $this->postTx($p)->assertStatus(422, 'C-5: Negative amount must be rejected.');
     }
 
-    /** C-6: Cashbox unaffected when wallet is debited (registered send, no settlement). */
+    /** C-6: Cashbox gains fee income even without settlement (registered send, amount_paid=0). */
     public function test_c6_cashbox_not_affected_by_registered_send_without_settlement(): void
     {
         $cashBefore = AccountState::balance($this->cashboxEgp->id);
         $p = $this->sendPayloadRegistered($this->customerEgp, amount: 500.00, fee: 10.00);
         $p['amount_paid'] = 0;
         $this->postTx($p)->assertStatus(201);
-        // Cashbox credited by income (clearing), but original cashbox balance for customer
-        // debt-based send does not touch cashbox directly for the main debit.
-        // The key assertion: total wallet − 500, cashbox unchanged from cash perspective.
-        // (Accounting may touch clearing — we verify no "real" cashbox movement.)
+        // WLT-FEE-LEG-REG (2026-09-03): the fee is recognized as cashbox income at creation
+        // time even when amount_paid=0 (no settlement). Cashbox gains `fee` (10).
         $cashAfter = AccountState::balance($this->cashboxEgp->id);
-        // For registered send without settlement: cashbox is NOT touched at all.
-        $this->assertEquals($cashBefore, $cashAfter,
-            'C-6: Cashbox untouched on registered send without settlement.');
+        $this->assertEquals((float) $cashBefore + 10.00, (float) $cashAfter,
+            'C-6 (WLT-FEE-LEG-REG 2026-09-03): Cashbox gains `fee` income even without settlement.');
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -293,45 +290,48 @@ class PhaseFinancialRetestComprehensiveTest extends WalletTestCase
             'D-1 (Post-2026-08-30): Customer account credited 500 (the amount). Fee stays on WT row.');
     }
 
-    /** D-2: Send registered (full settlement = amount+fee) → customer balance = -fee. */
+    /** D-2: Send registered (full settlement = amount+fee) → customer balance = 0. */
     public function test_d2_send_registered_full_settlement_zeroes_customer_balance(): void
     {
-        // Post-2026-08-30 math:
-        //   - Main transfer: wallet (-500) → customer (+500)
-        //   - Settlement transfer: customer (-510) → cashbox (+510)
-        //   - Net customer = 500 - 510 = -10 = -fee (the fee is over-collected
-        //     and stays with the cashier as commission).
+        // WLT-FEE-LEG-REG (2026-09-03) math:
+        //   - Main transfer:   wallet (-500) → customer (+500)
+        //   - Fee income leg:  clearing (-10) → cashbox (+10)
+        //   - Settlement:      customer (-500) → cashbox (+500)  (principal only, NOT amount_paid)
+        //   - Net customer = 500 - 500 = 0
+        //   - Net cashbox = 0 + 10 + 500 = 510 (= amount_paid)
         $p = $this->sendPayloadRegistered($this->customerEgp, amount: 500.00, fee: 10.00);
         $p['amount_paid'] = 510.00;
         $this->postTx($p)->assertStatus(201);
 
         $customer = Customer::find($this->customerEgp->id);
-        $this->assertEquals('-10.00', AccountState::balance($customer->account_id),
-            'D-2 (Post-2026-08-30): Full settlement leaves customer at -10 (= -fee over-collection).');
+        $this->assertEquals('0.00', AccountState::balance($customer->account_id),
+            'D-2 (WLT-FEE-LEG-REG 2026-09-03): Full settlement zeroes customer balance (the fee is agency revenue, not customer credit).');
         $this->assertEquals('9500.00', AccountState::balance($this->walletAccountEgp->id),
             'D-2: Wallet debited by 500 amount.');
         $this->assertEquals('5510.00', AccountState::balance($this->cashboxEgp->id),
-            'D-2: Cashbox credited by 510 amount_paid.');
+            'D-2 (WLT-FEE-LEG-REG): Cashbox gains amount_paid (500 settlement + 10 fee income).');
     }
 
-    /** D-3: Send registered (partial settlement) → correct residual debt. */
+    /** D-3: Send registered (partial settlement) → correct residual debt + fee income. */
     public function test_d3_send_registered_partial_settlement_correct_debt(): void
     {
-        // Post-2026-08-30 math:
+        // WLT-FEE-LEG-REG (2026-09-03) math:
         //   - Main transfer:   wallet (-1000) → customer (+1000)
+        //   - Fee income leg:  clearing (-20) → cashbox (+20)
         //   - Settlement:      customer (-500) → cashbox (+500)
-        //   - Net customer = 1000 - 500 = +500 (the customer still owes `amount - amount_paid`)
+        //   - Net customer = 1000 - 500 = +500 (still owes principal)
+        //   - Net cashbox = 0 + 20 + 500 = 520 (= amount_paid + fee)
         $p = $this->sendPayloadRegistered($this->customerEgp, amount: 1000.00, fee: 20.00);
         $p['amount_paid'] = 500.00;
         $this->postTx($p)->assertStatus(201);
 
         $customer = Customer::find($this->customerEgp->id);
         $this->assertEquals('500.00', AccountState::balance($customer->account_id),
-            'D-3 (Post-2026-08-30): 1000 amount - 500 paid = 500 residual.');
+            'D-3 (WLT-FEE-LEG-REG): 1000 amount - 500 paid = 500 residual.');
         $this->assertEquals('9000.00', AccountState::balance($this->walletAccountEgp->id),
             'D-3: Wallet debited by 1000 amount.');
-        $this->assertEquals('5500.00', AccountState::balance($this->cashboxEgp->id),
-            'D-3: Cashbox credited by 500 amount_paid.');
+        $this->assertEquals('5520.00', AccountState::balance($this->cashboxEgp->id),
+            'D-3 (WLT-FEE-LEG-REG): Cashbox gains amount_paid (500) + fee (20).');
     }
 
     /** D-4: Send creates exactly 1 ledger TX (single journal transfer, no settlement). */
@@ -361,33 +361,34 @@ class PhaseFinancialRetestComprehensiveTest extends WalletTestCase
             'D-4 (Post-2026-08-30): Send with no settlement creates exactly 1 ledger TX.');
     }
 
-    /** D-5: Send with partial settlement → 2 ledger TX (main transfer + settlement transfer). */
+    /** D-5: Send with partial settlement → 3 ledger TX (main transfer + fee income + settlement transfer). */
     public function test_d5_send_with_settlement_creates_three_ledger_tx(): void
     {
-        // Post-2026-08-30: Send with settlement produces exactly 2 ledger TX —
+        // WLT-FEE-LEG-REG (2026-09-03): Send with settlement produces exactly 3 ledger TX —
         //   1) Main transfer (wallet → customer, amount=300)
-        //   2) Settlement transfer (customer → cashbox, amount=200 = amount_paid)
-        // The old income+expense pair through clearing accounts is gone.
+        //   2) Fee income (clearing → cash, amount=10)
+        //   3) Settlement transfer (customer → cashbox, amount=200)
         $p = $this->sendPayloadRegistered($this->customerEgp, amount: 300.00, fee: 10.00);
         $p['amount_paid'] = 200.00;
         $r = $this->postTx($p);
         $r->assertStatus(201);
 
-        $this->assertEquals(2, $this->relatedTxCount($r->json('data.id')),
-            'D-5 (Post-2026-08-30): Send with settlement produces exactly 2 ledger TX (main + settlement transfers).');
+        $this->assertEquals(3, $this->relatedTxCount($r->json('data.id')),
+            'D-5 (WLT-FEE-LEG-REG 2026-09-03): Send with settlement produces exactly 3 ledger TX (main + fee income + settlement).');
     }
 
-    /** D-6: Walk-in send → cashbox credited by amount only (fee stays on WT row). */
+    /** D-6: Walk-in send → cashbox credited by total amount (amount + fee). */
     public function test_d6_walkin_send_cashbox_credited_by_total_amount(): void
     {
-        // Post-2026-08-30: walk-in send posts recordJournalTransfer(wallet → cashbox, amount=200).
-        // The fee (10) is NOT routed into the cashbox — it is kept by the cashier as commission
-        // and surfaces only on the WT row, not on the ledger.
+        // WLT-FEE-LEG (2026-09-03): walk-in send credits cashbox with amount + fee.
+        //   - Main transfer: wallet → cash with `amount` (200)
+        //   - Fee income:   clearing → cash with `fee` (10)
+        // = cashbox: +210
         $before = (float) AccountState::balance($this->cashboxEgp->id);
         $this->postTx($this->sendPayloadWalkIn(amount: 200.00, fee: 10.00))->assertStatus(201);
         $after = (float) AccountState::balance($this->cashboxEgp->id);
-        $this->assertEquals($before + 200.00, $after,
-            'D-6 (Post-2026-08-30): Walk-in send credits cashbox by 200 (amount only, NOT total 210).');
+        $this->assertEquals($before + 210.00, $after,
+            'D-6 (WLT-FEE-LEG 2026-09-03): Walk-in send credits cashbox by total (amount + fee).');
     }
 
     // ═════════════════════════════════════════════════════════════════════

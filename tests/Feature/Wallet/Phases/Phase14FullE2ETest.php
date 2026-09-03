@@ -125,14 +125,12 @@ class Phase14FullE2ETest extends WalletTestCase
 
         $this->asAdmin()->postJson('/api/v1/wallet/transactions', $payload)->assertStatus(201);
 
-        // Walk-in: cashbox receives `amount` (not total_amount) under the new behavior.
-        // Post-2026-08-30: walk-in SEND posts a single journal transfer wallet → cashbox
-        // for `amount` only (1000). The fee (25) stays on the WT row and surfaces
-        // to P&L via settlement — not as an immediate cashbox credit at SEND time.
-        // Pre-change cashbox balance: 5000 + (1000 + 25) = 6025.00.
-        // Post-change cashbox balance: 5000 + 1000 = 6000.00.
-        $this->assertEquals('6000.00', AccountState::balance($this->cashboxEgp->id),
-            'Walk-in send: cashbox receives 1000 (amount only, fee stays on WT row)');
+        // WLT-FEE-LEG (2026-09-03): walk-in SEND posts:
+        //   1) main transfer (wallet → cash): +1000
+        //   2) fee income (clearing → cash):   +25
+        // = cashbox gains 1025.
+        $this->assertEquals('6025.00', AccountState::balance($this->cashboxEgp->id),
+            'Walk-in send: cashbox receives amount + fee (commission income at creation).');
         $this->assertEquals('9000.00', AccountState::balance($this->walletAccountEgp->id),
             'Wallet -1000');
     }
@@ -146,18 +144,21 @@ class Phase14FullE2ETest extends WalletTestCase
         $egp['amount_paid'] = 0;
         $this->asAdmin()->postJson('/api/v1/wallet/transactions', $egp)->assertStatus(201);
 
-        // After 1 send: wallet=9900, cashbox=5000, USD=1000, SAR=1000.
+        // After 1 send: wallet=9900, cashbox=5005 (initial 5000 + fee 5 income),
+        // USD=1000, SAR=1000. WLT-FEE-LEG-REG: fee income credits cashbox at creation.
         $this->assertEquals('9900.00', AccountState::balance($this->walletAccountEgp->id));
-        $this->assertEquals('5000.00', AccountState::balance($this->cashboxEgp->id));
+        $this->assertEquals('5005.00', AccountState::balance($this->cashboxEgp->id),
+            'WLT-FEE-LEG-REG: EGP cashbox gains fee income (5) at creation.');
         $this->assertEquals('1000.00', AccountState::balance($this->cashboxUsd->id));
         $this->assertEquals('1000.00', AccountState::balance($this->cashboxSar->id));
 
         // Customer balance: 100 (amount only).
-        // Post-2026-08-30: registered SEND credits customer only `amount`.
-        // Pre-change: customer received amount+fee = 100 + 5 = 105.
-        // Post-change: customer receives amount only = 100 (fee stays on WT row).
+        // WLT-FEE-LEG-REG: registered SEND credits customer only `amount`.
+        // The fee is agency revenue (NOT customer debt), recognized via the
+        // fee income leg (clearing → cash).
         $reloaded = Customer::find($this->customerEgp->id);
-        $this->assertEquals('100.00', AccountState::balance($reloaded->account_id));
+        $this->assertEquals('100.00', AccountState::balance($reloaded->account_id),
+            'WLT-FEE-LEG-REG: customer balance = +amount (100). Fee is agency revenue, not customer debt.');
     }
 
     // ────────────── E2E-5: Reconciliation ──────────────

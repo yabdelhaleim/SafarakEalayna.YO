@@ -120,32 +120,28 @@ class WalletTransactionCrudTest extends TestCase
 
     public function test_send_updates_accounts_correctly(): void
     {
-        // Post-2026-08-30: pin amount_paid=0 to lock in the "send WITHOUT
-        // settlement" path (the default would inject amount_paid=totalAmount
-        // via settlement). Under the new SEND behavior this means:
+        // WLT-FEE-LEG-REG (2026-09-03): pin amount_paid=0 to lock in the
+        // "send WITHOUT settlement" path. Under the new SEND behavior:
         //   - wallet debited by `amount` only (500)
-        //   - customer's account credited by `amount` only (was amount+fee)
-        //   - cashbox UNCHANGED (was +amount+fee in pre-fix POST flow)
+        //   - customer's account credited by `amount` only (500)
+        //   - cashbox GAINS `fee` (10) — agency commission income at creation
         $payload = $this->sendPayload(amount: 500, fee: 10);
         $payload['amount_paid'] = 0.00;
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/wallet/transactions', $payload);
 
-        // wallet balance decreases by amount (500) — unchanged
+        // wallet balance decreases by amount (500)
         $this->assertDatabaseHas('accounts', [
             'id' => $this->walletAccount->id,
             'balance' => 10000 - 500,
         ]);
 
-        // Post-2026-08-30: with a registered customer, the new wallet
-        // SEND behavior debits only the wallet provider by `amount`
-        // and credits the customer's account by `amount` (NOT amount+fee).
-        // The fee stays attached to the WT row and surfaces to P&L via
-        // settlement. Cashbox is therefore UNCHANGED at send time.
+        // WLT-FEE-LEG-REG: cashbox gains `fee` (10) as agency commission income,
+        // even without settlement (amount_paid=0). The fee is recognized at creation.
         $this->assertDatabaseHas('accounts', [
             'id' => $this->cashAccount->id,
-            'balance' => 5000,
+            'balance' => 5000 + 10,
         ]);
     }
 
