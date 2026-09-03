@@ -408,14 +408,21 @@ class DashboardService
             ->first();
         $walletCount = (int) $walletStats->count;
         $walletRevenue = (float) ($plByModule->get('wallet')['income'] ?? $walletStats->revenue);
-        $walletProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
-        // Fallback to wallet_transactions.service_fee when GL has no wallet rows
-        // (matches TreasuryService::calculateDynamicProfits for office division).
-        if ($walletProfit === 0.0 && (float) ($plByModule->get('wallet')['profit'] ?? 0) === 0.0) {
-            $walletProfit = (float) DB::table('wallet_transactions')
-                ->whereNull('deleted_at')
-                ->sum('service_fee');
-        }
+
+        // Wallet "profit" = sum of service_fee (الرسوم = earnings الوكالة من خدمة
+        // المحفظة). مبنعتمدش على GL net movement للـ wallet module لأن الـ
+        // wallet→cash هو balance transfer (مش revenue/expense) — احتسابه كـ
+        // expense بيرجّع رقم سالب وهمي.
+        //
+        // ملحوظة: الـ fallback القديم كان بيشتغل بس لما الـ GL فاضي.
+        // بعد الـ WLT-FEE-LEG fix (commit 00325b9) بقى فيه GL income leg للـ
+        // fee، فالـ GL profit بقى مش صفر والـ fallback ما كانش بيشتغل — الـ
+        // الداش بورد كان بيعرض رقم سالب (fee_income - amount_expense).
+        // الإصلاح: نستخدم sum(service_fee) مباشرة للـ wallet module
+        // (ده بيطابق TreasuryService::calculateDynamicProfits للـ office division).
+        $walletProfit = (float) DB::table('wallet_transactions')
+            ->whereNull('deleted_at')
+            ->sum('service_fee');
 
         // Office per-module sums (with GL → booking-model fallback applied above
         // for fawry / online / wallet / bus — see earlier `if ($XProfit === 0.0 ...)`.
