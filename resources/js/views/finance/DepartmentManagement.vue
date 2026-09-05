@@ -256,6 +256,7 @@
                 <option value="bus_company">شركات باصات</option>
                 <option value="supplier">موردون / شركات</option>
                 <option value="walkin_fawry">عملاء فوري غير مسجّلين</option>
+                <option value="walkin_online">عملاء خدمات إلكترونية غير مسجّلين</option>
               </template>
             </select>
           </div>
@@ -278,9 +279,9 @@
                     <div class="flex items-center gap-2">
                       <div class="font-bold text-white">{{ item.name }}</div>
                       <span
-                        v-if="item.walk_in || item.entity_type === 'walkin_fawry'"
+                        v-if="item.walk_in || item.entity_type === 'walkin_fawry' || item.entity_type === 'walkin_online'"
                         class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-400 border border-amber-500/20"
-                        title="عميل فوري غير مسجّل — مديونيته في حساب 'ذمم عملاء فوري غير مسجلين'"
+                        :title="item.entity_type === 'walkin_online' ? 'عميل خدمات إلكترونية غير مسجّل — مديونيته في حساب ذمم عملاء الخدمات الإلكترونية غير مسجلين' : 'عميل فوري غير مسجّل — مديونيته في حساب ذمم عملاء فوري غير مسجلين'"
                       >
                         غير مسجّل
                       </span>
@@ -293,7 +294,7 @@
                       </span>
                     </div>
                     <div class="text-[10px] text-muted">{{ item.department_label }}</div>
-                    <div v-if="item.entity_type === 'walkin_fawry' && item.tx_count" class="text-[10px] text-muted/70 mt-0.5">
+                    <div v-if="(item.entity_type === 'walkin_fawry' || item.entity_type === 'walkin_online') && item.tx_count" class="text-[10px] text-muted/70 mt-0.5">
                       {{ item.tx_count }} معاملة — مبيعات {{ formatMoney(item.total_sales) }} — مدفوع {{ formatMoney(item.total_paid) }}
                     </div>
                   </td>
@@ -302,7 +303,7 @@
                       :class="[
                         'entity-badge',
                         item.entity_type === 'customer' ? 'entity-badge--customer' :
-                        item.entity_type === 'walkin_fawry' ? 'entity-badge--walkin' :
+                        (item.entity_type === 'walkin_fawry' || item.entity_type === 'walkin_online') ? 'entity-badge--walkin' :
                         'entity-badge--group'
                       ]"
                     >

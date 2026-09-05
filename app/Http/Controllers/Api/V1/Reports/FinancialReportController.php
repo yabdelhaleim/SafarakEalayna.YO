@@ -12,6 +12,7 @@ use App\Models\Flight\FlightSystem;
 use App\Models\HajjUmra\Program;
 use App\Models\LedgerReconciliationRun;
 use App\Models\Online\OnlineServiceProvider;
+use App\Models\Wallet\WalletType;
 use App\Services\Reports\FinancialReportService;
 use App\Services\Reports\ProfitLossReportService;
 use Illuminate\Http\JsonResponse;
@@ -123,6 +124,13 @@ class FinancialReportController extends Controller
             ],
         ],
         'wallet' => [
+            'wallet_type' => [
+                'related_type'  => 'App\\Models\\Wallet\\WalletTransaction',
+                'entity_column' => 'wallet_type_id',
+                'join_chain'    => null,
+                'label_model'   => WalletType::class,
+                'label_column'  => 'name',
+            ],
             'customer' => [
                 'related_type'  => 'App\\Models\\Wallet\\WalletTransaction',
                 'entity_column' => 'customer_id',
@@ -144,6 +152,7 @@ class FinancialReportController extends Controller
             $module === 'visa'  && $entityType === 'customer' => 'عميل (معرّف العميل المرتبط بالحجز)',
             $module === 'fawry' && $entityType === 'customer' => 'عميل',
             $module === 'wallet' && $entityType === 'customer' => 'عميل',
+            $module === 'wallet' && $entityType === 'wallet_type' => 'نوع المحفظة',
             default => match ($entityType) {
                 'flight_system' => 'نظام طيران',
                 'flight_carrier' => 'شركة طيران',
@@ -151,6 +160,7 @@ class FinancialReportController extends Controller
                 'program' => 'برنامج حج/عمرة',
                 'provider' => 'مزود خدمة',
                 'customer' => 'عميل',
+                'wallet_type' => 'نوع المحفظة',
                 default => $entityType,
             },
         };

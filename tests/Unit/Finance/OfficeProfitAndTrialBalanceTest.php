@@ -6,6 +6,8 @@ use App\Models\User;
 use App\Models\Employee;
 use App\Services\DashboardService;
 use App\Services\Finance\TreasuryService;
+use App\Services\Reports\ProfitLossReportService;
+use App\Services\Reports\FinancialReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -294,4 +296,63 @@ class OfficeProfitAndTrialBalanceTest extends TestCase
         $this->assertEquals(0.00, $office['operating_expenses']);
         $this->assertEquals(565.00, $office['total_profit']);
     }
+
+    public function test_wallet_transfer_alias_is_included_in_daily_profit_breakdown(): void
+    {
+        $clearingIncomeId = app(\App\Services\Finance\LedgerClearingAccounts::class)->incomeContraIdForModule('wallet');
+
+        // Insert a transaction tagged as 'wallet_transfer'
+        DB::table('transactions')->insert([
+            'type' => 'income',
+            'module' => 'wallet_transfer',
+            'amount' => 50,
+            'from_account_id' => $clearingIncomeId,
+            'to_account_id' => $this->cashAccountId,
+            'created_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $pl = app(ProfitLossReportService::class);
+        $daily = $pl->getDailyProfitByModule('wallet', [
+            'from_date' => now()->toDateString(),
+            'to_date' => now()->toDateString(),
+        ]);
+
+        $this->assertNotEmpty($daily);
+        $totalProfit = array_sum(array_column($daily, 'profit'));
+        $this->assertEquals(50.0, $totalProfit);
+    }
+
+    public function test_walkin_online_receivable_is_included_in_debts_report(): void
+    {
+        DB::table('online_transactions')->insert([
+            'service_type_code' => 'TEST_SERVICE',
+            'customer_id' => null,
+            'customer_name' => 'Walkin Online User',
+            'customer_phone' => '01234567890',
+            'purchase_price' => 200,
+            'selling_price' => 300,
+            'amount_paid' => 100,
+            'profit' => 100,
+            'status' => 'completed',
+            'payment_method' => 'cash',
+            'account_id' => $this->cashAccountId,
+            'created_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $rep = app(FinancialReportService::class)->getDebtsReport([
+            'department' => 'office',
+            'direction' => 'all',
+        ]);
+
+        $items = collect($rep['items'])->where('entity_type', 'walkin_online');
+        $this->assertTrue($items->isNotEmpty());
+        $found = $items->first();
+        $this->assertEquals('Walkin Online User', $found['name']);
+        $this->assertEquals(200.0, (float) $found['balance']); // 300 - 100 = 200 receivable
+    }
 }
+

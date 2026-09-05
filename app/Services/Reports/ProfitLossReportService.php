@@ -749,6 +749,16 @@ class ProfitLossReportService
         };
     }
 
+    private function expandModuleForQuery(string $moduleKey): array
+    {
+        return match ($moduleKey) {
+            'wallet' => ['wallet', 'wallet_transfer', 'wallets'],
+            'flight' => ['flight', 'flights'],
+            'visa' => ['visa', 'visas'],
+            default => [$moduleKey],
+        };
+    }
+
     private function resolveAmountEGP(object $tx): float
     {
         // Default to the stored amount (which is denominated in the source
@@ -984,7 +994,7 @@ class ProfitLossReportService
 
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
-        $query->where('t.module', $moduleKey);
+        $query->whereIn('t.module', $this->expandModuleForQuery($moduleKey));
         $this->applySoftDeleteExclusion($query);
 
         $daily = [];
@@ -1124,7 +1134,7 @@ class ProfitLossReportService
 
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
-        $query->where('t.module', $moduleKey)
+        $query->whereIn('t.module', $this->expandModuleForQuery($moduleKey))
             ->where('t.related_type', $relatedType)
             ->whereNotNull('t.related_id');
         // Skip transactions whose related booking has been soft-deleted —

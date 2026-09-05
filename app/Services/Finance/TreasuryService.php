@@ -718,6 +718,15 @@ class TreasuryService
             if ($walkInTotal > 0.005) {
                 $dueToUs += $walkInTotal;
             }
+
+            $onlineWalkInTotal = (float) DB::table('online_transactions')
+                ->whereNull('customer_id')
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', ['cancelled', 'failed'])
+                ->sum(DB::raw('selling_price - amount_paid'));
+            if ($onlineWalkInTotal > 0.005) {
+                $dueToUs += $onlineWalkInTotal;
+            }
         }
 
         // 3) Fallback: iterate raw ledger accounts (Customer / Supplier /

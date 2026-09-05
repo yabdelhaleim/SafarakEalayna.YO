@@ -870,6 +870,76 @@ class FinancialReportService
             }
         }
 
+        // 1c. WALK-IN ONLINE CLIENTS (no Customer record; customer_id IS NULL).
+        if ($entityType === 'all' || $entityType === 'walkin_online') {
+            $walkInIncluded = ($department === null || $department === 'office')
+                && ($module === null || $module === 'online');
+
+            if ($walkInIncluded) {
+                $onlineWalkInQuery = DB::table('online_transactions')
+                    ->whereNull('customer_id')
+                    ->whereNull('deleted_at')
+                    ->whereNotIn('status', ['cancelled', 'failed'])
+                    ->select('customer_name', 'customer_phone')
+                    ->selectRaw('COALESCE(SUM(selling_price), 0) as total_sales')
+                    ->selectRaw('COALESCE(SUM(amount_paid), 0) as total_paid')
+                    ->selectRaw('COALESCE(SUM(selling_price - amount_paid), 0) as balance')
+                    ->selectRaw('COUNT(*) as tx_count')
+                    ->selectRaw('MAX(created_at) as last_tx')
+                    ->groupBy('customer_name', 'customer_phone')
+                    ->havingRaw('SUM(selling_price - amount_paid) > 0.005');
+
+                if ($search) {
+                    $onlineWalkInQuery->where(function ($q) use ($search) {
+                        $q->where('customer_name', 'like', '%'.$search.'%')
+                            ->orWhere('customer_phone', 'like', '%'.$search.'%');
+                    });
+                }
+
+                $onlineWalkInArAccountId = null;
+                if (class_exists(LedgerClearingAccounts::class)) {
+                    try {
+                        $onlineWalkInArAccountId = app(LedgerClearingAccounts::class)
+                            ->onlineWalkInArAccountId();
+                    } catch (\Throwable $e) {
+                        $onlineWalkInArAccountId = null;
+                    }
+                }
+
+                foreach ($onlineWalkInQuery->get() as $w) {
+                    $balance = (float) $w->balance;
+                    if ($balance == 0.0) {
+                        continue;
+                    }
+
+                    $dir = $balance > 0 ? 'receivables' : 'payables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => 'walkin_online_'.md5((string) ($w->customer_name . $w->customer_phone)),
+                        'name' => (string) ($w->customer_name ?: 'عميل إلكتروني غير مسجل'),
+                        'phone' => (string) ($w->customer_phone ?: '—'),
+                        'entity_type' => 'walkin_online',
+                        'entity_type_label' => 'عميل خدمات إلكترونية غير مسجل',
+                        'department' => 'office',
+                        'department_label' => 'قسم مكتب',
+                        'module' => 'online',
+                        'module_label' => 'خدمات إلكترونية',
+                        'balance' => $balance,
+                        'currency' => 'EGP',
+                        'account_id' => $onlineWalkInArAccountId,
+                        'statement_url' => $onlineWalkInArAccountId ? "/finance/account-statement/{$onlineWalkInArAccountId}" : null,
+                        'walk_in' => true,
+                        'tx_count' => (int) $w->tx_count,
+                        'total_sales' => (float) $w->total_sales,
+                        'total_paid' => (float) $w->total_paid,
+                    ];
+                }
+            }
+        }
+
         if ($entityType === 'all' || $entityType === 'supplier') {
             // 2. QUERY SUPPLIERS
             $supplierQuery = Supplier::query()->with('account');
