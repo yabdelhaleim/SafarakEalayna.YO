@@ -1,0 +1,1 @@
+import{A as e,l as t}from"./runtime-core.esm-bundler-BF9UlHb4.js";import{t as n}from"./DepartmentManagement-BCycqNQE.js";var r={__name:`TourismManagement`,setup(r){return(r,i)=>(e(),t(n,{type:`tourism`,modules:[`flight`,`hajj_umra`,`visa`],title:`إدارة قسم السياحة`,"department-name":`السياحة`}))}};export{r as default};

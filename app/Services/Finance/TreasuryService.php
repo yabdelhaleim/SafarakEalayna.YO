@@ -350,18 +350,30 @@ class TreasuryService
      * حساب إجمالي الأرباح حسب القسم (tourism أو office).
      * يجب تمرير القسم دائماً لضمان عدم خلط أرباح الأقسام في المعادلة المحاسبية.
      */
-    public function calculateDynamicProfits(string $division = 'tourism'): float
+    public function calculateDynamicProfits(string $division = 'tourism', ?string $from = null, ?string $to = null): float
     {
+        $applyDate = function ($query) use ($from, $to) {
+            if ($from !== null) {
+                $query->where('created_at', '>=', $from.' 00:00:00');
+            }
+            if ($to !== null) {
+                $query->where('created_at', '<=', $to.' 23:59:59');
+            }
+            return $query;
+        };
+
         if ($division === 'tourism') {
             // طيران + حج وعمرة + تأشيرات فقط
-            $flightProfits = DB::table('flight_bookings')
+            $flightQuery = DB::table('flight_bookings')
                 ->whereNull('deleted_at')
                 ->whereNotIn('status', [
                     'CANCELLED', 'PENDING',
                     'cancelled', 'pending',
                     'PARTIALLY_REFUNDED', 'partially_refunded',
-                ])
-                ->get()
+                ]);
+            $applyDate($flightQuery);
+
+            $flightProfits = $flightQuery->get()
                 ->sum(function ($booking) {
                     $status = strtoupper((string) $booking->status);
 
@@ -385,68 +397,63 @@ class TreasuryService
                     return (float) $booking->profit;
                 });
 
-            $hajjUmraProfits = DB::table('hajj_umra_bookings')
+            $hajjQuery = DB::table('hajj_umra_bookings')
                 ->whereIn('status', ['confirmed', 'completed', 'in_progress'])
-                ->whereNull('deleted_at')
-                ->sum('profit');
+                ->whereNull('deleted_at');
+            $applyDate($hajjQuery);
+            $hajjUmraProfits = $hajjQuery->sum('profit');
 
-            $visaProfits = DB::table('visa_bookings')
+            $visaQuery = DB::table('visa_bookings')
                 ->whereIn('status', ['approved', 'issued', 'submitted', 'under_review', 'completed'])
-                ->whereNull('deleted_at')
-                ->sum('profit');
+                ->whereNull('deleted_at');
+            $applyDate($visaQuery);
+            $visaProfits = $visaQuery->sum('profit');
 
             return (float) ($flightProfits + $hajjUmraProfits + $visaProfits);
         }
 
         // Office: باص + فوري + أونلاين + محافظ — نفس منطق السياحة: نحسب كل العمليات النشطة وليس الملغاة فقط
-        $busProfits = DB::table('bus_bookings')
+        $busQuery = DB::table('bus_bookings')
             ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
-            ->whereNull('deleted_at')
-            ->sum('profit');
+            ->whereNull('deleted_at');
+        $applyDate($busQuery);
+        $busProfits = $busQuery->sum('profit');
 
-        $onlineProfits = DB::table('online_transactions')
+        $onlineQuery = DB::table('online_transactions')
             ->whereNotIn('status', ['cancelled', 'failed'])
-            ->whereNull('deleted_at')
-            ->sum('profit');
+            ->whereNull('deleted_at');
+        $applyDate($onlineQuery);
+        $onlineProfits = $onlineQuery->sum('profit');
 
-        $fawryProfits = DB::table('fawry_transactions')
-            ->whereNull('deleted_at')
-            ->sum('profit');
+        $fawryQuery = DB::table('fawry_transactions')
+            ->whereNull('deleted_at');
+        $applyDate($fawryQuery);
+        $fawryProfits = $fawryQuery->sum('profit');
 
-        $walletProfits = DB::table('wallet_transactions')
-            ->whereNull('deleted_at')
-            ->sum('service_fee');
+        $walletQuery = DB::table('wallet_transactions')
+            ->whereNull('deleted_at');
+        $applyDate($walletQuery);
+        $walletProfits = $walletQuery->sum('service_fee');
 
         return (float) ($busProfits + $onlineProfits + $fawryProfits + $walletProfits);
     }
 
     /**
-     * صافي أرباح القسم لميزان المراجعة: إيرادات العمليات − المصروفات التشغيلية.
-     * السياحة: جداول الحجوزات + مصروفات الدفتر.
-     * المكتب: القيد المزدوج (P&L) عند وجود حركات دفترية، وإلا جداول العمليات كاحتياط.
+     * صافي أرباح القسم لميزان المراجعة: إجمالي أرباح العمليات − المصروفات التشغيلية.
+     * تطابق المعادلة المحاسبية: Expected Capital = Base Capital + (Gross Profits - Operating Expenses)
      */
-    public function calculateDivisionNetProfits(string $division): float
+    public function calculateDivisionNetProfits(string $division, ?string $from = null, ?string $to = null): float
     {
-        if ($division === 'office') {
-            $report = app(ProfitLossReportService::class)->report([
-                'category' => 'office',
-            ]);
-
-            if (($report['meta']['transactions_included'] ?? 0) > 0) {
-                return round((float) $report['netProfit'], 2);
-            }
-        }
-
-        $grossProfits = $this->calculateDynamicProfits($division);
-        $operatingExpenses = $this->calculateOperatingExpenses($division);
+        $grossProfits = $this->calculateDynamicProfits($division, $from, $to);
+        $operatingExpenses = $this->calculateOperatingExpenses($division, $from, $to);
 
         return round($grossProfits - $operatingExpenses, 2);
     }
 
     /**
-     * حساب إجمالي المصروفات التشغيلية للقسم (EGP)
+     * حساب إجمالي المصروفات التشغيلية للقسم (EGP) مع دعم فلترة التاريخ اختيارياً
      */
-    public function calculateOperatingExpenses(string $division = 'tourism'): float
+    public function calculateOperatingExpenses(string $division = 'tourism', ?string $from = null, ?string $to = null): float
     {
         $expenseClearingIds = array_keys(app(LedgerClearingAccounts::class)->moduleAccountMaps()['expense']);
         $liquidityTypes = AccountModuleDivision::LIQUIDITY_TYPES;
@@ -467,6 +474,13 @@ class TreasuryService
                     ->orWhere('to_acc.type', 'expense')
                     ->orWhereIn('t.to_account_id', $expenseClearingIds);
             });
+
+        if ($from !== null) {
+            $query->where('t.created_at', '>=', $from.' 00:00:00');
+        }
+        if ($to !== null) {
+            $query->where('t.created_at', '<=', $to.' 23:59:59');
+        }
 
         $total = 0.0;
         foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency'])->cursor() as $tx) {
