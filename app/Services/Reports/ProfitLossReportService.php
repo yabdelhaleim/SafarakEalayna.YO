@@ -626,6 +626,17 @@ class ProfitLossReportService
         }
 
         if ($type === 'expense') {
+            // When the expense leg routes into a known expense-clearing account
+            // (e.g. إقفال تكاليف المحافظ, إقفال تكاليف الباص …) it represents
+            // the cost-of-service posted via recordExpense() — semantically
+            // identical to a type=transfer entry that lands in the same
+            // clearing account, which the transfer path already classifies as
+            // 'cogs' (line ~665). Re-classify here for consistency so both
+            // P&L and moduleBreakdown() report this as تكلفة الحجوزات rather
+            // than مصروفات تشغيلية.
+            if ($toId > 0 && isset($expenseClearing[$toId])) {
+                return 'cogs';
+            }
             return 'operating_expense';
         }
 
