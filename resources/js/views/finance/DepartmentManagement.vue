@@ -25,6 +25,20 @@
 
     <!-- Top KPI Bar -->
     <div class="kpi-bar">
+      <div class="kpi-card kpi-card--gold">
+        <p class="kpi-label">إجمالي الإيرادات</p>
+        <h3 class="kpi-value text-gold">{{ formatCurrency(moduleStats.total_income) }}</h3>
+        <span class="kpi-sub">{{ props.modules.length }} موديولات</span>
+      </div>
+      <div class="kpi-card" :class="moduleStats.total_profit >= 0 ? 'kpi-card--green' : 'kpi-card--red'">
+        <p class="kpi-label">صافي أرباح العمليات</p>
+        <h3 class="kpi-value" :class="moduleStats.total_profit >= 0 ? 'text-success' : 'text-error'">
+          {{ moduleStats.total_profit >= 0 ? '+' : '' }}{{ formatCurrency(moduleStats.total_profit) }}
+        </h3>
+        <span class="kpi-sub" :class="moduleStats.total_profit >= 0 ? 'text-success' : 'text-error'">
+          {{ moduleStats.total_profit >= 0 ? 'أرباح تشغيلية' : 'خسائر تشغيلية' }}
+        </span>
+      </div>
       <div class="kpi-card kpi-card--green">
         <p class="kpi-label">إجمالي المستحقات لنا</p>
         <h3 class="kpi-value text-success">{{ formatCurrency(summary.total_receivables) }}</h3>
@@ -36,18 +50,13 @@
         <span class="kpi-sub">{{ payableItems.length }} جهة</span>
       </div>
       <div class="kpi-card" :class="summary.net_balance >= 0 ? 'kpi-card--green' : 'kpi-card--red'">
-        <p class="kpi-label">صافي الميزان</p>
+        <p class="kpi-label">صافي الديون</p>
         <h3 class="kpi-value" :class="summary.net_balance >= 0 ? 'text-success' : 'text-error'">
           {{ formatCurrency(Math.abs(summary.net_balance)) }}
         </h3>
         <span class="kpi-sub" :class="summary.net_balance >= 0 ? 'text-success' : 'text-error'">
           {{ summary.net_balance >= 0 ? 'لصالحنا' : 'علينا' }}
         </span>
-      </div>
-      <div class="kpi-card kpi-card--gold">
-        <p class="kpi-label">إجمالي الإيرادات</p>
-        <h3 class="kpi-value text-gold">{{ formatCurrency(moduleStats.total_income) }}</h3>
-        <span class="kpi-sub">{{ props.modules.length }} موديولات</span>
       </div>
     </div>
 
@@ -380,7 +389,7 @@ const period = ref({
 const allItems = ref([]);        // from debts report
 const moduleBreakdown = ref([]); // from profit-by-module
 const summary = ref({ total_receivables: 0, total_payables: 0, net_balance: 0 });
-const moduleStats = ref({ total_income: 0, total_expense: 0 });
+const moduleStats = ref({ total_income: 0, total_expense: 0, total_profit: 0 });
 
 // Derived lists
 // المورد (flight_group) عنده منطق معكوس: موجب = المستحق علينا، سالب = المستحق لنا.
@@ -489,6 +498,10 @@ const fetchModuleStats = async (signal) => {
     (s, m) => s + (m.cogs || 0) + (m.expense || 0),
     0,
   );
+  moduleStats.value.total_profit = moduleBreakdown.value.reduce(
+    (s, m) => s + (m.profit || 0),
+    0,
+  );
 };
 
 const refreshAll = async () => {
@@ -584,7 +597,9 @@ onBeforeUnmount(() => {
    KPI BAR
    ========================================= */
 .kpi-bar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
-@media (min-width: 768px) { .kpi-bar { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 640px) { .kpi-bar { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 768px) { .kpi-bar { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1200px) { .kpi-bar { grid-template-columns: repeat(5, 1fr); } }
 .kpi-card { background: var(--card-bg, #1e293b); border: 1px solid rgba(255,255,255,.08); border-radius: 1rem; padding: 1.25rem; position: relative; overflow: hidden; border-right: 4px solid transparent; }
 .kpi-card--green { border-right-color: #22c55e; }
 .kpi-card--red { border-right-color: #ef4444; }

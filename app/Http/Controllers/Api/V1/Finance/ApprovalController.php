@@ -73,6 +73,7 @@ class ApprovalController extends Controller
         $validated = $request->validate([
             'approvable_type' => 'required|string',
             'approvable_id' => 'required|integer',
+            'action_type' => 'required|string|in:booking,transfer,currency_conversion,payment',
             'status' => 'nullable|string',
             'notes' => 'nullable|string',
         ]);

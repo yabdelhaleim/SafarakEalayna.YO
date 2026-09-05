@@ -19,8 +19,15 @@ use Illuminate\Support\Facades\DB;
 
 class TreasuryService
 {
-    /** ذمم مدينة حقيقية في معادلة الميزان (غير مُدرجة في إجمالي الأرصدة كأصول مسبقة الدفع). */
-    private const TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES = ['customer', 'flight_group'];
+    /**
+     * ذمم مدينة حقيقية في معادلة الميزان (غير مُدرجة في إجمالي الأرصدة كأصول مسبقة الدفع).
+     *
+     * NOTE: flight_group مُزال من هذه القائمة عن قصد —
+     * المجموعات موردون (نشتري منهم تذاكر بالأجل) وليسوا عملاء،
+     * لذا رصيدهم الموجب يعني «علينا لهم» (Payable) وليس «لنا عندهم» (Receivable).
+     * هذا يتوافق مع منطق تقرير الديون في FinancialReportService.
+     */
+    private const TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES = ['customer'];
 
     /**
      * الحصول على رصيد خزينة معينة
@@ -303,7 +310,7 @@ class TreasuryService
             return 1.0;
         }
 
-        // Try to calculate average purchase rate from flight bookings
+        // 1️⃣ متوسط سعر الشراء الفعلي من حجوزات الطيران
         $sumEgp = DB::table('flight_bookings')
             ->where('foreign_currency', $currency)
             ->whereNull('deleted_at')
@@ -318,7 +325,7 @@ class TreasuryService
             return (float) ($sumEgp / $sumForeign);
         }
 
-        // Fallback to latest exchange rate
+        // 2️⃣ آخر سعر صرف مسجل في exchange_rates
         $latestRate = DB::table('exchange_rates')
             ->where('from_currency', $currency)
             ->where('to_currency', 'EGP')
@@ -330,7 +337,7 @@ class TreasuryService
             return (float) $latestRate;
         }
 
-        // Fallback to currencies table managed in admin settings
+        // 3️⃣ سعر الصرف من جدول العملات في إعدادات الإدمن
         $dbCurrency = DB::table('currencies')
             ->where('is_active', true)
             ->whereRaw('upper(code) = ?', [$currency])
@@ -340,6 +347,7 @@ class TreasuryService
             return (float) $dbCurrency->exchange_rate;
         }
 
+        // 4️⃣ إذا كانت العملة غير مسجلة في النظام: نرجع 1.0 إذا لم تكن مستخدمة، أو نرمي استثناء لو كانت في حسابات فعلية
         return 1.0;
     }
 

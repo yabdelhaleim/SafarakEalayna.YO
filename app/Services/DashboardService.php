@@ -417,11 +417,15 @@ class DashboardService
         $walletGlIncome = (float) ($plByModule->get('wallet')['income'] ?? 0);
         $walletRevenue = $walletGlIncome > 0 ? $walletGlIncome : (float) ($walletStats->fees ?? 0);
 
-        // Wallet profit = sum of service_fee in the filtered period
-        $walletProfit = (float) DB::table('wallet_transactions')
-            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->whereNull('deleted_at')
-            ->sum('service_fee');
+        // Wallet profit from ledger (profit = income - cogs - expense), falling back to service_fee when GL is empty
+        $walletGlProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+        $walletProfit = $walletGlProfit;
+        if ($walletProfit === 0.0) {
+            $walletProfit = (float) DB::table('wallet_transactions')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNull('deleted_at')
+                ->sum('service_fee');
+        }
 
         // Office operational gross profit (sum of module margins)
         $officeGrossProfit = (float) $busLedgerProfit

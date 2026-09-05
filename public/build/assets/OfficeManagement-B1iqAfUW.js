@@ -1,1 +1,0 @@
-import{A as e,l as t}from"./runtime-core.esm-bundler-BF9UlHb4.js";import{t as n}from"./DepartmentManagement-Cmn1QQkc.js";var r={__name:`OfficeManagement`,setup(r){return(r,i)=>(e(),t(n,{type:`office`,modules:[`bus`,`wallet`,`online`,`fawry`,`general`],title:`إدارة قسم المكتب`,"department-name":`المكتب`}))}};export{r as default};
