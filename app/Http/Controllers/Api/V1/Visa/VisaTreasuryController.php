@@ -48,10 +48,33 @@ class VisaTreasuryController extends Controller
             ->limit(40)
             ->get(['id', 'type', 'amount', 'from_account_id', 'to_account_id', 'notes', 'related_type', 'related_id', 'created_at']);
 
+        // ── ملخص السيولة مقسّم حسب العملة ──────────────────────────────
+        // Visa module: only Account entities (no FlightSystem/FlightCarrier equivalent).
+        // Each currency is aggregated separately to avoid mixing EGP with KWD/SAR.
+        $liquidityByCurrency = [];
+        foreach ($accounts as $acc) {
+            $cur = strtoupper((string) ($acc->currency ?? 'EGP'));
+            $liquidityByCurrency[$cur]['accounts_balance'] = ($liquidityByCurrency[$cur]['accounts_balance'] ?? 0) + (float) $acc->balance;
+        }
+
+        $summaryByCurrency = [];
+        foreach ($liquidityByCurrency as $currency => $vals) {
+            $accountsBalance = $vals['accounts_balance'] ?? 0;
+            $summaryByCurrency[] = [
+                'currency' => $currency,
+                'accounts_balance' => round($accountsBalance, 2),
+                'total_actual' => round($accountsBalance, 2),
+            ];
+        }
+
+        // ترتيب: EGP أولاً ثم باقي العملات
+        usort($summaryByCurrency, fn ($a, $b) => $a['currency'] === 'EGP' ? -1 : ($b['currency'] === 'EGP' ? 1 : strcmp($a['currency'], $b['currency'])));
+
         return ApiResponse::success('Visa treasury overview', [
             'settlement_accounts' => $accounts,
             'agents' => $agents,
             'recent_visa_transactions' => $recentTransactions,
+            'liquidity_by_currency' => $summaryByCurrency,
         ]);
     }
 
