@@ -1,0 +1,1 @@
+import{A as e,l as t}from"./runtime-core.esm-bundler-BF9UlHb4.js";import{t as n}from"./OperationsTemplate-DvZzVYvW.js";var r={__name:`OfficeOperations`,setup(r){return(r,i)=>(e(),t(n,{title:`عمليات المكتب`,subtitle:`الباص والكاش وفوري والخدمات الإلكترونية`,"allowed-modules":[`bus`,`wallet`,`online`,`fawry`,`general`]}))}};export{r as default};

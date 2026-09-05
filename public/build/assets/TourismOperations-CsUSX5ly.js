@@ -1,0 +1,1 @@
+import{A as e,l as t}from"./runtime-core.esm-bundler-BF9UlHb4.js";import{t as n}from"./OperationsTemplate-DvZzVYvW.js";var r={__name:`TourismOperations`,setup(r){return(r,i)=>(e(),t(n,{title:`عمليات السياحة`,subtitle:`الطيران والحج والعمرة والتأشيرات`,"allowed-modules":[`flight`,`hajj_umra`,`visa`]}))}};export{r as default};
