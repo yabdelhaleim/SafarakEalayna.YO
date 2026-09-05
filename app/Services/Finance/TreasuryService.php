@@ -452,6 +452,23 @@ class TreasuryService
      */
     public function calculateDivisionNetProfits(string $division, ?string $from = null, ?string $to = null): float
     {
+        // أولوية P&L للمكتب (الدفتر العام GL) لتتطابق أرقام الأرباح 100% عبر كافة الشاشات
+        if ($division === 'office') {
+            $filters = ['category' => 'office'];
+            if ($from !== null) {
+                $filters['from_date'] = $from;
+            }
+            if ($to !== null) {
+                $filters['to_date'] = $to;
+            }
+            $officePl = app(ProfitLossReportService::class)->report($filters);
+            $glNet = (float) ($officePl['netProfit'] ?? 0);
+            $glRevenues = (float) ($officePl['totalRevenues'] ?? 0);
+            if ($glNet !== 0.0 || $glRevenues > 0) {
+                return round($glNet, 2);
+            }
+        }
+
         $grossProfits = $this->calculateDynamicProfits($division, $from, $to);
         $operatingExpenses = $this->calculateOperatingExpenses($division, $from, $to);
 
@@ -909,10 +926,20 @@ class TreasuryService
 
         $totalBalances = $busCompanyTotal + $fawryMachinesTotal;
 
-        // 3. الأرباح — عرض إجمالي/مصروفات للواجهة؛ صافي الميزان عبر calculateDivisionNetProfits (أولوية P&L للمكتب)
-        $grossProfits = round($this->calculateDynamicProfits('office'), 2);
-        $operatingExpenses = round($this->calculateOperatingExpenses('office'), 2);
-        $profits = $this->calculateDivisionNetProfits('office');
+        // 3. الأرباح — أولوية P&L للمكتب (الدفتر العام GL) لتتطابق تماماً مع finance/profit-loss و dashboard و finance/department/office
+        $officePl = app(ProfitLossReportService::class)->report(['category' => 'office']);
+        $glRevenues = (float) ($officePl['totalRevenues'] ?? 0);
+        $glNet = (float) ($officePl['netProfit'] ?? 0);
+
+        if ($glNet !== 0.0 || $glRevenues > 0) {
+            $grossProfits = round((float) ($officePl['grossProfit'] ?? 0), 2);
+            $operatingExpenses = round((float) ($officePl['totalExpenses'] ?? 0), 2);
+            $profits = round($glNet, 2);
+        } else {
+            $grossProfits = round($this->calculateDynamicProfits('office'), 2);
+            $operatingExpenses = round($this->calculateOperatingExpenses('office'), 2);
+            $profits = $this->calculateDivisionNetProfits('office');
+        }
 
         // 4. الذمم المدينة والدائنة — المكتب فقط
         $receivablesPayables = $this->calculateReceivablesAndPayables('office');
