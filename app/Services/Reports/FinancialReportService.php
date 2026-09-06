@@ -1377,7 +1377,7 @@ class FinancialReportService
                         'module' => 'flight',
                         'module_label' => 'طيران',
                         'balance' => $balance,
-                        'currency' => $g->carrier ? $g->carrier->currency : 'EGP',
+                        'currency' => $g->currency ?: ($g->carrier ? $g->carrier->currency : ($g->account ? $g->account->currency : 'EGP')),
                         'account_id' => $g->account_id,
                         'statement_url' => '/flights/customers',
                     ];
@@ -1634,7 +1634,7 @@ foreach ($results as $item) {
         $payables = 0.0;
         $groups = FlightGroup::with('carrier')->get();
         foreach ($groups as $g) {
-            $gCurrency = $g->carrier?->currency ?: 'EGP';
+            $gCurrency = $g->currency ?: ($g->carrier?->currency ?: 'EGP');
             if (strtoupper($gCurrency) !== strtoupper($currency)) {
                 continue;
             }

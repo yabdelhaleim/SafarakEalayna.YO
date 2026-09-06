@@ -359,8 +359,17 @@ class HajjUmraBookingService
             ]);
 
             // تسجيل دفعة أولية إن وُجدت
-            if (! empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
-                $this->addPayment($booking, $data['initial_payment']);
+            $initialPayment = $data['initial_payment'] ?? null;
+            if (! $initialPayment && ! empty($data['paid_amount']) && (float) $data['paid_amount'] > 0) {
+                $initialPayment = [
+                    'amount' => (float) $data['paid_amount'],
+                    'account_id' => $data['account_id'] ?? null,
+                    'payment_method' => $data['payment_method'] ?? 'cash',
+                    'notes' => 'الدفعة الأولى للعمرة',
+                ];
+            }
+            if (! empty($initialPayment) && (float) ($initialPayment['amount'] ?? 0) > 0) {
+                $this->addPayment($booking, $initialPayment);
             }
 
             Log::info('HajjUmra booking created', [

@@ -147,7 +147,7 @@ class VisaBookingService
         return DB::transaction(function () use ($data) {
             $customer = $this->resolveCustomer($data['customer'] ?? null, $data['customer_id'] ?? null);
 
-            $detailData = $data['visa_details'] ?? [];
+            $detailData = $data['visa_details'] ?? $data;
             $detail = VisaDetail::create([
                 'visa_type' => $detailData['visa_type'] ?? null,
                 'country' => $detailData['country'] ?? null,
@@ -283,8 +283,17 @@ class VisaBookingService
                 'income_transaction_id' => $income->id,
             ]);
 
-            if (! empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
-                $this->addPayment($booking, $data['initial_payment']);
+            $initialPayment = $data['initial_payment'] ?? null;
+            if (! $initialPayment && ! empty($data['paid_amount']) && (float) $data['paid_amount'] > 0) {
+                $initialPayment = [
+                    'amount' => (float) $data['paid_amount'],
+                    'account_id' => $data['account_id'] ?? null,
+                    'payment_method' => $data['payment_method'] ?? 'cash',
+                    'notes' => 'الدفعة الأولى للتأشيرة',
+                ];
+            }
+            if (! empty($initialPayment) && (float) ($initialPayment['amount'] ?? 0) > 0) {
+                $this->addPayment($booking, $initialPayment);
             }
 
             Log::info('Visa booking created', [

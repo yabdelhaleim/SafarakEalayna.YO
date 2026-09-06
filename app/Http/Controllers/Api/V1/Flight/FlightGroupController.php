@@ -292,7 +292,7 @@ public function thresholdSummary(Request $request)
                 $transactionService = app(TransactionService::class);
                 if ($group->account_id === null) {
                     $group->loadMissing('carrier');
-                    $currency = $group->carrier?->currency ?: 'EGP';
+                    $currency = $group->currency ?: ($group->carrier?->currency ?: 'EGP');
                     $account = \App\Models\Account::create([
                         'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),
                         'type' => \App\Enums\AccountType::Supplier->value,

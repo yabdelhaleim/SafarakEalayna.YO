@@ -486,7 +486,7 @@ class RefundService
                 $refundAmount = (float) $refundRequest->refund_amount;
                 $cancellationFee = (float) $refundRequest->cancellation_fee;
                 $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
-                $purchaseNet = max(0.0, $purchaseEgp - $cancellationFee);
+                $purchaseNet = $purchaseEgp;
 
                 $glTransaction = null;
 
@@ -668,7 +668,7 @@ if ($isFullRefund) {
                         // `FlightBookingService::` produced "cannot be called statically".
                         $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $carrier->currency,
-                            $bookingCurrency,
+                            'EGP',
                             $purchaseNet,
                             null,
                             $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $carrier->currency)
@@ -698,7 +698,7 @@ if ($isFullRefund) {
                         // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
                         $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $system->currency,
-                            $bookingCurrency,
+                            'EGP',
                             $purchaseNet,
                             null,
                             $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $system->currency)
@@ -924,9 +924,8 @@ if ($isFullRefund) {
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
                 $refundAmount = (float) $refundRequest->refund_amount;
-                $cancellationFee = (float) $refundRequest->cancellation_fee;
                 $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
-                $purchaseNet = max(0.0, $purchaseEgp - $cancellationFee);
+                $purchaseNet = $purchaseEgp;
 
                 $treasury = $refundRequest->treasury_id ? Treasury::lockForUpdate()->find($refundRequest->treasury_id) : null;
                 $glTransaction = null;
@@ -936,8 +935,16 @@ if ($isFullRefund) {
                     $cashboxAccount = $this->resolveCashboxAccount($treasury, $refundRequest->refund_currency, $userId);
                     $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
 
-                    $reverseCashoutGl = $this->transactionService->recordJournalTransfer([
-                        'amount' => $refundAmount,
+                    $glAmounts = $this->glTransferAmounts(
+                        $customerAccount->currency,
+                        $cashboxAccount->currency,
+                        $refundAmount,
+                        (float) $refundRequest->base_currency_refund,
+                        (float) $refundRequest->refund_exchange_rate
+                    );
+
+                    $cashoutReverseParams = [
+                        'amount' => $glAmounts['amount'],
                         'from_account_id' => $customerAccount->id,         // customer (DR)
                         'to_account_id' => $cashboxAccount->id,            // cashbox (CR) — يرجع له الرصيد اللي اتخصم منه الاسترداد
                         'allow_from_negative' => true,
@@ -946,7 +953,13 @@ if ($isFullRefund) {
                         'related_id' => $refundRequest->id,
                         'notes' => "عكس صرف استرداد نقدي للعميل — حذف طلب #{$refundRequest->id} — حجز #{$booking->booking_number}",
                         'created_by' => $userId,
-                    ]);
+                    ];
+                    if ($glAmounts['converted_amount'] !== null) {
+                        $cashoutReverseParams['converted_amount'] = $glAmounts['converted_amount'];
+                        $cashoutReverseParams['exchange_rate'] = $glAmounts['exchange_rate'];
+                    }
+
+                    $reverseCashoutGl = $this->transactionService->recordJournalTransfer($cashoutReverseParams);
                     $glTransaction = $reverseCashoutGl;
 
                     // ⚠️ لا نعدّل $treasury->current_balance — الـ Treasury model منفصل عن الـ GL Account.
@@ -968,20 +981,8 @@ if ($isFullRefund) {
                         'description' => 'إيداع عكسي لاسترداد نقدي محذوف — طلب #'.$refundRequest->id,
                         'agent_name' => $booking->agent_name ?: 'System',
                     ]);
+
                     $treasuryTransaction->linkToGl($reverseCashoutGl, $cashboxAccount->id);
-
-                    TreasuryLedgerMirror::mirrorFlightInboundReceipt(
-                        $reverseCashoutGl,
-                        $booking->id,
-                        "عكس صرف استرداد نقدي للعميل — حذف طلب #{$refundRequest->id}",
-                        User::find($userId)?->name ?? 'System'
-                    );
-
-                    Log::info('RefundService::reverseRefundRequest — GL treasury cashout reversal posted', [
-                        'refund_request_id' => $refundRequestId,
-                        'gl_transaction_id' => $reverseCashoutGl->id,
-                        'amount' => $refundAmount,
-                    ]);
                 }
 
                 // ── Undo Step B: عكس إرجاع التكلفة (carrier/system/group) ──
@@ -991,7 +992,7 @@ if ($isFullRefund) {
                         // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
                         $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $carrier->currency,
-                            $bookingCurrency,
+                            'EGP',
                             $purchaseNet,
                             null,
                             $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $carrier->currency)
@@ -1016,7 +1017,7 @@ if ($isFullRefund) {
                         // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
                         $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
                             (string) $system->currency,
-                            $bookingCurrency,
+                            'EGP',
                             $purchaseNet,
                             null,
                             $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $system->currency)
@@ -1054,13 +1055,17 @@ if ($isFullRefund) {
                     }
                 }
 
-                // ── Undo Step A: إعادة قيد البيع (clearing → customer, amount=refund_amount) ──
+                // ── Undo Step A: إعادة قيد البيع (clearing → customer, amount=base_currency_refund) ──
                 //
-                // عكس الـ Step A (اللي عكس البيع بـ refund_amount).
-                // فالـ reverse لازم يعيد البيع بـ refund_amount عشان:
+                // عكس الـ Step A (اللي عكس البيع بـ stepAmountEgp).
+                // فالـ reverse لازم يعيد البيع بـ EGP عشان:
                 //   - clearing يرجع لقيمته الأصلية (-selling_price)
                 //   - customer يرجع لقيمته الأصلية بعد الـ payment (0)
-                $saleRestoreAmount = $refundAmount;
+                $saleRestoreAmount = (float) ($refundRequest->base_currency_refund ?? 0);
+                if ($saleRestoreAmount <= 0) {
+                    $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                    $saleRestoreAmount = $refundAmount * $refundExchangeRate;
+                }
                 if ($booking->sale_gl_transaction_id && $saleRestoreAmount > 0) {
                     $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                     if ($orig && $orig->from_account_id && $orig->to_account_id) {
@@ -1084,10 +1089,43 @@ if ($isFullRefund) {
                         ]);
                     }
                 }
+            // 3.5) Undo Step A-REVENUE & restore booking status (GAP 6 FIX)
+            // Remove companion partial-refund transaction row if any
+            Transaction::query()
+                ->where('related_type', FlightBooking::class)
+                ->where('related_id', $booking->id)
+                ->where('notes', 'like', 'عكس إيراد مدفوعات جزئي ضمن الاسترداد%')
+                ->delete();
+
+            // Unmark reversed payments if full refund was applied
+            $payments = $booking->payments()->whereNotNull('transaction_id')->get();
+            foreach ($payments as $payment) {
+                $originalTx = Transaction::query()
+                    ->where('related_type', FlightPayment::class)
+                    ->where('related_id', $payment->id)
+                    ->where('type', 'income')
+                    ->first();
+                if ($originalTx && (str_starts_with((string) $originalTx->notes, 'عكس:') || str_starts_with((string) $originalTx->notes, 'عكس '))) {
+                    $originalTx->notes = preg_replace('/^عكس:\s*|^عكس\s+/u', '', (string) $originalTx->notes);
+                    $originalTx->save();
+                }
             }
 
-            // 4) Soft delete the refund request itself
-            $refundRequest->delete();
+            // Restore booking status back to CONFIRMED if there are no other active/processed refunds
+            $hasOtherActiveRefunds = RefundRequest::query()
+                ->where('flight_booking_id', $booking->id)
+                ->where('id', '!=', $refundRequest->id)
+                ->where('status', 'processed')
+                ->exists();
+
+            if (! $hasOtherActiveRefunds) {
+                $booking->status = FlightBookingStatus::CONFIRMED;
+                $booking->save();
+            }
+        }
+
+        // 4) Soft delete the refund request itself
+        $refundRequest->delete();
 
             Log::info('RefundService::reverseRefundRequest — complete', [
                 'refund_request_id' => $refundRequestId,

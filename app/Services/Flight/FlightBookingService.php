@@ -3900,7 +3900,7 @@ $this->transactionService->reverseTransaction($original);
     ): void {
         $group = FlightGroup::findOrFail($groupId);
         $carrier = $group->carrier;
-        $groupCurrency = $carrier?->currency ?: 'EGP';
+        $groupCurrency = $group->currency ?: ($carrier?->currency ?: 'EGP');
 
         $debitAmount = $this->purchaseAmountInBalanceCurrency(
             (string) $groupCurrency,
@@ -4045,7 +4045,7 @@ $this->transactionService->reverseTransaction($original);
         }
 
         $carrier = $group->carrier;
-        $groupCurrency = $carrier?->currency ?: 'EGP';
+        $groupCurrency = $group->currency ?: ($carrier?->currency ?: 'EGP');
 
         $netReversal = $this->purchaseAmountInBalanceCurrency(
             (string) $groupCurrency,

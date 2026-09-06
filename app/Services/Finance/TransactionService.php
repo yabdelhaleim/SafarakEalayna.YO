@@ -72,10 +72,24 @@ class TransactionService
             ?: $this->ledgerClearingAccounts->expenseContraIdForModuleAndCurrency((string) $moduleValue, $txCurrency);
 
         if ($resolvedContra !== null && $resolvedContra !== $fromId) {
+            $fromAcc = Account::find($fromId);
+            $toAcc = Account::find($resolvedContra);
+            $convertedAmount = $data['converted_amount'] ?? null;
+            $exchangeRate = $data['exchange_rate'] ?? null;
+
+            if ($fromAcc && $toAcc && strtoupper((string) $fromAcc->currency) !== strtoupper((string) $toAcc->currency)) {
+                if ($convertedAmount === null || $exchangeRate === null) {
+                    $currencyService = app(CurrencyService::class);
+                    $fx = $currencyService->convert($amount, (string) $fromAcc->currency, (string) $toAcc->currency);
+                    $convertedAmount = $convertedAmount ?? round((float) $fx['to_amount'], 4);
+                    $exchangeRate = $exchangeRate ?? round((float) $fx['rate'], 6);
+                }
+            }
+
             return $this->recordJournalTransfer([
                 'amount' => $amount,
-                'converted_amount' => $data['converted_amount'] ?? null,
-                'exchange_rate' => $data['exchange_rate'] ?? null,
+                'converted_amount' => $convertedAmount,
+                'exchange_rate' => $exchangeRate,
                 'from_account_id' => $fromId,
                 'to_account_id' => $resolvedContra,
                 'allow_from_negative' => $data['allow_from_negative'] ?? $this->ledgerClearingAccounts->isPrepaidAccountId($fromId),
@@ -202,10 +216,24 @@ class TransactionService
         }
 
         if ($resolvedContra !== null && $resolvedContra !== $toId) {
+            $fromAcc = Account::find($resolvedContra);
+            $toAcc = Account::find($toId);
+            $convertedAmount = $data['converted_amount'] ?? null;
+            $exchangeRate = $data['exchange_rate'] ?? null;
+
+            if ($fromAcc && $toAcc && strtoupper((string) $fromAcc->currency) !== strtoupper((string) $toAcc->currency)) {
+                if ($convertedAmount === null || $exchangeRate === null) {
+                    $currencyService = app(CurrencyService::class);
+                    $fx = $currencyService->convert($amount, (string) $fromAcc->currency, (string) $toAcc->currency);
+                    $convertedAmount = $convertedAmount ?? round((float) $fx['to_amount'], 4);
+                    $exchangeRate = $exchangeRate ?? round((float) $fx['rate'], 6);
+                }
+            }
+
             return $this->recordJournalTransfer([
                 'amount' => $amount,
-                'converted_amount' => $data['converted_amount'] ?? null,
-                'exchange_rate' => $data['exchange_rate'] ?? null,
+                'converted_amount' => $convertedAmount,
+                'exchange_rate' => $exchangeRate,
                 'from_account_id' => $resolvedContra,
                 'to_account_id' => $toId,
                 'allow_from_negative' => (bool) ($data['allow_contra_negative'] ?? true),

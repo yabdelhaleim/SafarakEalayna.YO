@@ -375,9 +375,7 @@ class TreasuryService
             $flightQuery = DB::table('flight_bookings')
                 ->whereNull('deleted_at')
                 ->whereNotIn('status', [
-                    'CANCELLED', 'PENDING',
-                    'cancelled', 'pending',
-                    'PARTIALLY_REFUNDED', 'partially_refunded',
+                    'PENDING', 'pending',
                 ]);
             $applyDate($flightQuery);
 
@@ -385,21 +383,25 @@ class TreasuryService
                 ->sum(function ($booking) {
                     $status = strtoupper((string) $booking->status);
 
-                    // حجز مسترد بالكامل: الربح المحتفظ به = غرامة المكتب فقط
-                    if ($status === 'REFUNDED') {
-                        return (float) DB::table('flight_refunds')
+                    if (in_array($status, ['CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'], true)) {
+                        $flightRefundFee = (float) DB::table('flight_refunds')
                             ->where('flight_booking_id', $booking->id)
                             ->sum('office_penalty');
-                    }
 
-                    $hasB2cRefund = DB::table('flight_refunds')
-                        ->where('flight_booking_id', $booking->id)
-                        ->exists();
-
-                    if ($hasB2cRefund) {
-                        return (float) DB::table('flight_refunds')
+                        $refundRequestFee = (float) DB::table('refund_requests')
                             ->where('flight_booking_id', $booking->id)
-                            ->sum('office_penalty');
+                            ->where('status', 'processed')
+                            ->whereNull('deleted_at')
+                            ->get()
+                            ->sum(function ($req) {
+                                $rate = (float) ($req->refund_exchange_rate ?: 1.0);
+                                if ($rate <= 0) {
+                                    $rate = 1.0;
+                                }
+                                return (float) $req->cancellation_fee * $rate;
+                            });
+
+                        return $flightRefundFee + $refundRequestFee;
                     }
 
                     return (float) $booking->profit;
@@ -409,13 +411,23 @@ class TreasuryService
                 ->whereIn('status', ['confirmed', 'completed', 'in_progress'])
                 ->whereNull('deleted_at');
             $applyDate($hajjQuery);
-            $hajjUmraProfits = $hajjQuery->sum('profit');
+            $hajjUmraProfits = $hajjQuery->get()
+                ->sum(function ($booking) {
+                    $curr = strtoupper((string) ($booking->currency ?: 'EGP'));
+                    $rate = $curr === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($curr);
+                    return (float) $booking->profit * $rate;
+                });
 
             $visaQuery = DB::table('visa_bookings')
                 ->whereIn('status', ['approved', 'issued', 'submitted', 'under_review', 'completed'])
                 ->whereNull('deleted_at');
             $applyDate($visaQuery);
-            $visaProfits = $visaQuery->sum('profit');
+            $visaProfits = $visaQuery->get()
+                ->sum(function ($booking) {
+                    $curr = strtoupper((string) ($booking->currency ?: 'EGP'));
+                    $rate = $curr === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($curr);
+                    return (float) $booking->profit * $rate;
+                });
 
             return (float) ($flightProfits + $hajjUmraProfits + $visaProfits);
         }
@@ -494,6 +506,14 @@ class TreasuryService
             ->whereIn('from_acc.type', $liquidityTypes)
             ->whereIn('from_acc.module_type', $divisionModules)
             ->whereNull('t.related_type')
+            // Exclude reversed expense transactions (prefixed with 'عكس:' or 'عكس ')
+            ->where(function ($q) {
+                $q->whereNull('t.notes')
+                  ->orWhere(function ($q2) {
+                      $q2->where('t.notes', 'not like', 'عكس:%')
+                         ->where('t.notes', 'not like', 'عكس %');
+                  });
+            })
             ->where(function ($q) use ($expenseClearingIds) {
                 $q->where('t.type', 'expense')
                     ->orWhere('to_acc.type', 'expense')
@@ -508,7 +528,7 @@ class TreasuryService
         }
 
         $total = 0.0;
-        foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency'])->cursor() as $tx) {
+        foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency', 'from_acc.currency as from_acc_currency'])->cursor() as $tx) {
             $amount = (float) $tx->amount;
             if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
                 $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
@@ -517,6 +537,11 @@ class TreasuryService
                     $amount = (float) $tx->converted_amount;
                 } elseif ($fromCurrency === 'EGP') {
                     $amount = (float) $tx->amount;
+                }
+            } else {
+                $fromAccCurr = strtoupper((string) ($tx->from_acc_currency ?? 'EGP'));
+                if ($fromAccCurr !== 'EGP') {
+                    $amount = $amount * $this->getAveragePurchaseRate($fromAccCurr);
                 }
             }
             $total += $amount;
