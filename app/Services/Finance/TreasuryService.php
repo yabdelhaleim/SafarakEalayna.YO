@@ -684,22 +684,10 @@ class TreasuryService
             $balance = (float) ($item['balance'] ?? 0);
             $entityType = (string) ($item['entity_type'] ?? '');
 
-            // FIX FIN-AUDIT-2026-08-27: Removed the flight_group sign flip.
-            //
-            // Pre-fix behaviour:
-            //   The debts report emits positive balance for flight_groups as
-            //   "they owe us" (debt - payment). The trial balance was flipping
-            //   the sign, treating positive as "we owe them" instead. This
-            //   silently pushed flight_group debt OUT of `due_to_us` and INTO
-            //   `due_from_us`, producing a 3,500 EGP deficit in the tourism
-            //   trial balance whenever a group had outstanding receivables.
-            //
-            // Post-fix behaviour:
-            //   Trust the debts report's sign convention — positive balance
-            //   always means "they owe us" (receivable). flight_group with
-            //   positive balance correctly enters `due_to_us`. The fallback
-            //   in step 3 still uses $seenIds dedup, so no double-counting
-            //   occurs between (1) and (3).
+            // Align with FinancialReportService commit a2f9647ca:
+            // FlightGroup behaves like a supplier (مورد):
+            // - balance > 0 → payables (المستحق علينا / due_from_us)
+            // - balance < 0 → receivables (المستحق لنا / due_to_us)
             if ($balance === 0.0) {
                 continue;
             }
@@ -708,7 +696,13 @@ class TreasuryService
             $rate = $currency === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($currency);
             $egp = abs($balance) * $rate;
 
-            if ($balance > 0) {
+            if ($entityType === 'flight_group') {
+                if ($balance > 0) {
+                    $dueFromUs += $egp;
+                } else {
+                    $dueToUs += $egp;
+                }
+            } elseif ($balance > 0) {
                 // الأرصدة الموجبة للموردين/الشركات/الخطوط مُدرجة في total_balances كأصول مسبقة الدفع
                 if (! in_array($entityType, self::TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES, true)) {
                     continue;
