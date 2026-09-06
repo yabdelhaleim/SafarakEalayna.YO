@@ -24,7 +24,12 @@ class ProfitLossReportService
     private const TOURISM_MODULES = ['flight', 'hajj_umra', 'visa', 'tourism'];
 
     /** @var array<string, list<string>> */
-    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+    // Must stay in sync with AccountModuleDivision::OFFICE.
+    // 'wallet' is kept as a normalised alias for 'wallet_transfer' (see
+    // normalizeModuleKey). 'service' was removed — it is not an office
+    // module and was causing unrelated transactions to bleed into the
+    // office P&L, producing a false deficit in the trial balance.
+    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'general'];
 
     public function __construct(
         protected LedgerClearingAccounts $clearingAccounts
@@ -523,10 +528,24 @@ class ProfitLossReportService
             $filteredModules
         );
 
-        $incomeClearingIds = array_keys($incomeClearing);
-        $expenseClearingIds = array_keys($expenseClearing);
+        // FIX (DEFICIT-BUG): Use only the clearing account IDs that belong to
+        // THIS division (already computed above as $clearingIds). The previous
+        // code called array_keys($incomeClearing) / array_keys($expenseClearing)
+        // which returned ALL clearing IDs across ALL modules (tourism + office),
+        // so the 'general' transaction sub-query was matching tourism clearing
+        // accounts and pulling tourism P&L entries into the office report —
+        // inflating office revenues and producing a false deficit in the trial
+        // balance (variance = currentCapital − expectedCapital < 0).
+        $divisionIncomeClearingIds = array_values(array_filter(
+            array_keys($incomeClearing),
+            fn (int $id) => in_array($incomeClearing[$id], $filteredModules, true)
+        ));
+        $divisionExpenseClearingIds = array_values(array_filter(
+            array_keys($expenseClearing),
+            fn (int $id) => in_array($expenseClearing[$id], $filteredModules, true)
+        ));
 
-        $query->where(function (Builder $q) use ($filteredModules, $clearingIds, $divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+        $query->where(function (Builder $q) use ($filteredModules, $clearingIds, $divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
             if ($filteredModules !== []) {
                 $q->whereIn('t.module', $filteredModules);
             }
@@ -535,24 +554,28 @@ class ProfitLossReportService
                     ->orWhereIn('t.to_account_id', $clearingIds);
             }
             // General transactions are resolved strictly by their source/destination account's module_type
-            $q->orWhere(function (Builder $sub) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+            $q->orWhere(function (Builder $sub) use ($divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
                 $sub->whereIn('t.module', ['general', ''])
-                    ->where(function (Builder $sub2) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+                    ->where(function (Builder $sub2) use ($divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
                         // Expense path: paid from a liquidity account belonging to the division
-                        $sub2->where(function (Builder $exp) use ($divisionModules, $expenseClearingIds): void {
-                            $exp->where(function (Builder $eCond) use ($expenseClearingIds): void {
+                        $sub2->where(function (Builder $exp) use ($divisionModules, $divisionExpenseClearingIds): void {
+                            $exp->where(function (Builder $eCond) use ($divisionExpenseClearingIds): void {
                                 $eCond->where('t.type', 'expense')
-                                    ->orWhere('to_acc.type', 'expense')
-                                    ->orWhereIn('t.to_account_id', $expenseClearingIds);
+                                    ->orWhere('to_acc.type', 'expense');
+                                if ($divisionExpenseClearingIds !== []) {
+                                    $eCond->orWhereIn('t.to_account_id', $divisionExpenseClearingIds);
+                                }
                             })
                                 ->whereIn('from_acc.module_type', $divisionModules);
                         })
                         // Income path: received into a liquidity account belonging to the division
-                            ->orWhere(function (Builder $inc) use ($divisionModules, $incomeClearingIds): void {
-                                $inc->where(function (Builder $iCond) use ($incomeClearingIds): void {
+                            ->orWhere(function (Builder $inc) use ($divisionModules, $divisionIncomeClearingIds): void {
+                                $inc->where(function (Builder $iCond) use ($divisionIncomeClearingIds): void {
                                     $iCond->where('t.type', 'income')
-                                        ->orWhere('to_acc.type', 'income')
-                                        ->orWhereIn('t.from_account_id', $incomeClearingIds);
+                                        ->orWhere('to_acc.type', 'income');
+                                    if ($divisionIncomeClearingIds !== []) {
+                                        $iCond->orWhereIn('t.from_account_id', $divisionIncomeClearingIds);
+                                    }
                                 })
                                     ->whereIn('to_acc.module_type', $divisionModules);
                             });
