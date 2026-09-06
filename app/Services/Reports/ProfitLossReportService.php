@@ -29,7 +29,7 @@ class ProfitLossReportService
     // normalizeModuleKey). 'service' was removed — it is not an office
     // module and was causing unrelated transactions to bleed into the
     // office P&L, producing a false deficit in the trial balance.
-    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'general'];
+    private const OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'general'];
 
     public function __construct(
         protected LedgerClearingAccounts $clearingAccounts
@@ -659,6 +659,9 @@ class ProfitLossReportService
             // than مصروفات تشغيلية.
             if ($toId > 0 && isset($expenseClearing[$toId])) {
                 return 'cogs';
+            }
+            if ($fromId > 0 && isset($expenseClearing[$fromId])) {
+                return 'cogs_reversal';
             }
             return 'operating_expense';
         }
