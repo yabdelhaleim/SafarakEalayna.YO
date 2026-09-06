@@ -205,4 +205,67 @@ class HajjUmraDashboardControllerTest extends TestCase
         $this->assertEqualsWithDelta(150000.0, (float) $response->json('data.stats.cashboxes.balance'), 0.01);
         $this->assertSame(2, $response->json('data.stats.cashboxes.count'));
     }
+
+    /* =========================================================
+     * BUG #2 FIX — Aligned with FlightDashboardController
+     * ========================================================= */
+
+    public function test_index_excludes_refunded_bookings_from_revenue(): void
+    {
+        // Refunded bookings should NOT count toward monthly revenue (matches Flight).
+        $this->createBooking('confirmed', 15000);
+        $this->createBooking('refunded', 99999); // should NOT count
+
+        $response = $this->getJson('/api/v1/hajj-umra/dashboard');
+
+        $response->assertOk();
+        // Only the confirmed one counts toward monthly revenue
+        $this->assertEqualsWithDelta(15000.0, (float) $response->json('data.stats.monthly_revenue'), 0.01);
+    }
+
+    public function test_index_module_type_filter_includes_all_tourism_divisions(): void
+    {
+        // Create accounts under all TOURISM sub-modules — HajjUmra dashboard should include them all.
+        $subModules = ['flights', 'hajj_umra', 'visas'];
+        foreach ($subModules as $module) {
+            Account::query()->create([
+                'name' => "Cashbox tourism/{$module}",
+                'type' => 'cashbox',
+                'currency' => 'EGP',
+                'balance' => 1000.00,
+                'is_active' => true,
+                'owner_type' => Account::OWNER_TYPE_OFFICE,
+                'module_type' => 'tourism',
+                'module' => $module,
+                'created_by' => $this->user->id,
+            ]);
+        }
+
+        $response = $this->getJson('/api/v1/hajj-umra/dashboard');
+
+        $response->assertOk();
+        // 3 sub-modules + 1 from setUp = 4 cashboxes (all in TOURISM division)
+        $this->assertSame(4, $response->json('data.stats.cashboxes.count'));
+    }
+
+    public function test_index_module_type_filter_excludes_office_division(): void
+    {
+        // Create an account under office division — should NOT be counted.
+        Account::query()->create([
+            'name' => 'Office Cashbox (excluded)',
+            'type' => 'cashbox',
+            'currency' => 'EGP',
+            'balance' => 50000.00,
+            'is_active' => true,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'office',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/hajj-umra/dashboard');
+
+        $response->assertOk();
+        // Only the 1 from setUp; office account excluded
+        $this->assertSame(1, $response->json('data.stats.cashboxes.count'));
+    }
 }

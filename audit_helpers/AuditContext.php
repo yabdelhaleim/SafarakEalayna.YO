@@ -264,25 +264,44 @@ class AuditContext
 
         $duration = VisaDuration::firstOrCreate(
             ['code' => $this->prefix . 'DUR'],
-            ['name' => $this->prefix . ' 30 Days', 'days' => 30, 'is_active' => true]
+            ['label_ar' => $this->prefix . ' 30 يوم', 'label_en' => $this->prefix . ' 30 Days', 'months' => 1, 'is_active' => true]
         );
 
+        // Resolve visa_type, country, entry_type — allow top-level overrides for
+        // backward-compat but nest them into visa_details as VisaBookingService::create()
+        // expects $data['visa_details'] to build the VisaDetail record.
+        $visaType  = $overrides['visa_type']  ?? \App\Enums\VisaType::Tourist;
+        $country   = $overrides['country']    ?? 'السعودية';
+        $entryType = $overrides['entry_type'] ?? \App\Enums\VisaEntryType::Single;
+
         $defaultData = [
-            'booking_number'        => $this->prefix . 'VS' . substr(Str::uuid(), 0, 10),
             'customer_id'           => $customer->id,
             'employee_id'           => $employeeId,
-            'visa_duration_id'      => $duration->id,
             'currency'              => 'EGP',
-            'selling_price'         => 1000.00,
-            'purchase_price'        => 700.00,
-            'service_fee'           => 100.00,
-            'total_amount'          => 1100.00,
-            'paid_amount'           => 0,
-            'status'                => 'pending',
-            'notes'                 => $this->prefix . ' visa booking test',
+            'selling_price'         => $overrides['selling_price']  ?? 1000.00,
+            'purchase_price'        => $overrides['purchase_price'] ?? 700.00,
+            'service_fee'           => $overrides['service_fee']    ?? 100.00,
+            'status'                => $overrides['status']         ?? 'pending',
+            'notes'                 => $overrides['notes']          ?? $this->prefix . ' visa booking test',
+            // VisaBookingService::create() reads visa metadata from $data['visa_details']
+            'visa_details'          => [
+                'visa_type'          => $visaType instanceof \BackedEnum ? $visaType->value : (string) $visaType,
+                'country'            => $country,
+                'entry_type'         => $entryType instanceof \BackedEnum ? $entryType->value : (string) $entryType,
+                'visa_duration_id'   => $duration->id,
+                'status'             => \App\Enums\VisaStatus::Submitted->value,
+                'submission_date'    => now()->toDateString(),
+            ],
         ];
 
-        $data = array_merge($defaultData, $overrides);
+        // Strip keys already handled above to avoid conflicts
+        $filtered = array_diff_key($overrides, array_flip([
+            'customer', 'employee_id', 'visa_type', 'country', 'entry_type',
+            'selling_price', 'purchase_price', 'service_fee', 'status', 'notes',
+            'total_amount', 'paid_amount', // not columns in visa_bookings
+        ]));
+
+        $data = array_merge($defaultData, $filtered);
         $service = app(\App\Services\Visa\VisaBookingService::class);
         $booking = $service->create($data);
 

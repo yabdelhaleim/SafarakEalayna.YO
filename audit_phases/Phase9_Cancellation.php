@@ -105,7 +105,7 @@ class Phase9_Cancellation
         try {
             $b = $this->ctx->createFlightBooking(['selling_price' => 1000]);
             $bookSvc->addPayment($b->fresh(), ['amount' => 1000, 'account_id' => $cashbox?->id, 'payment_method' => 'cash']);
-            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'notes' => 'audit']);
+            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'account_id' => $cashbox?->id, 'notes' => 'audit']);
             $this->assertFlightInvariant($r, $b->id, $module, 'Create→Pay→Cancel');
         } catch (\Throwable $e) {
             $r->recordFail(
@@ -121,7 +121,7 @@ class Phase9_Cancellation
         try {
             $b = $this->ctx->createFlightBooking(['selling_price' => 1000]);
             $bookSvc->addPayment($b->fresh(), ['amount' => 400, 'account_id' => $cashbox?->id, 'payment_method' => 'cash']);
-            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'notes' => 'audit']);
+            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'account_id' => $cashbox?->id, 'notes' => 'audit']);
             $this->assertFlightInvariant($r, $b->id, $module, 'Create→Partial→Cancel');
         } catch (\Throwable $e) {
             $r->recordFail(
@@ -136,7 +136,7 @@ class Phase9_Cancellation
         // 3) Create → Debt (no payment) → Cancel → reconcile
         try {
             $b = $this->ctx->createFlightBooking();
-            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'notes' => 'audit']);
+            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'account_id' => $cashbox?->id, 'notes' => 'audit']);
             $this->assertFlightInvariant($r, $b->id, $module, 'Create→Debt→Cancel');
         } catch (\Throwable $e) {
             $r->recordFail(
@@ -194,7 +194,7 @@ class Phase9_Cancellation
         try {
             $b = $this->ctx->createFlightBooking();
             $bookSvc->addPayment($b->fresh(), ['amount' => 500, 'account_id' => $cashbox?->id, 'payment_method' => 'cash']);
-            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'notes' => 'audit']);
+            $bookSvc->cancelBooking($b->fresh(), ['airline_penalty' => 0, 'office_penalty' => 0, 'account_id' => $cashbox?->id, 'notes' => 'audit']);
             $bookSvc->deleteBookingWithReversal($b->id, $this->ctx->currentUser->id);
             $this->assertFlightInvariant($r, $b->id, $module, 'Create→Cancel→Delete');
         } catch (\Throwable $e) {

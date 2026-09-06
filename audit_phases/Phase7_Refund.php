@@ -366,6 +366,23 @@ class Phase7_Refund
     protected function resolveTreasury(): ?Treasury
     {
         $t = Treasury::where('currency', 'EGP')->where('is_active', true)->first();
-        return $t;
+        if ($t) {
+            return $t;
+        }
+
+        // No treasury exists — create a minimal audit treasury so refund flows can run.
+        // This is tagged with the audit prefix for cleanup.
+        try {
+            $t = Treasury::create([
+                'name'            => 'TOURISM_FULL_AUDIT_20260818_Treasury_EGP',
+                'currency'        => 'EGP',
+                'is_active'       => true,
+                'current_balance' => 9999999.00,
+            ]);
+            return $t;
+        } catch (\Throwable $e) {
+            // If creation fails (schema mismatch etc.), return null gracefully
+            return null;
+        }
     }
 }

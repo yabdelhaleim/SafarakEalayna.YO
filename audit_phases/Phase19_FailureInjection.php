@@ -117,9 +117,11 @@ class Phase19_FailureInjection
             ->toArray();
 
         $aeCount = empty($txIds) ? 0 : (int) DB::table('account_entries')->whereIn('transaction_id', $txIds)->count();
+        // account_entries uses separate credit/debit decimal columns (no 'type' column)
         $aeSum   = empty($txIds) ? 0.0 : (float) DB::table('account_entries')
             ->whereIn('transaction_id', $txIds)
-            ->sum(DB::raw('CASE WHEN type = "credit" THEN amount WHEN type = "debit" THEN -amount ELSE 0 END'));
+            ->selectRaw('SUM(credit) - SUM(debit) as net')
+            ->value('net');
 
         return ['paid' => $paid, 'tx' => count($txIds), 'ae_count' => $aeCount, 'ae_sum' => $aeSum];
     }

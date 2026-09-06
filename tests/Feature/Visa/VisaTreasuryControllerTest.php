@@ -154,4 +154,91 @@ class VisaTreasuryControllerTest extends TestCase
         $response->assertOk();
         $this->assertLessThanOrEqual(100, $response->json('data.per_page'));
     }
+
+    /* =========================================================
+     * LIQUIDITY BY CURRENCY (Bug #3 fix)
+     * ========================================================= */
+
+    public function test_overview_returns_liquidity_by_currency_section(): void
+    {
+        $response = $this->getJson('/api/v1/visa/treasury/overview');
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'liquidity_by_currency',
+                ],
+            ]);
+    }
+
+    public function test_liquidity_groups_accounts_per_currency(): void
+    {
+        // Existing treasury (EGP, 100000) from setUp().
+        // Add a KWD-denominated account so we get 2 currency buckets.
+        Account::query()->create([
+            'name' => 'محفظة كاش كويتي',
+            'type' => 'cashbox',
+            'currency' => 'KWD',
+            'balance' => 50.000,
+            'is_active' => true,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'tourism',
+            'module' => 'visas',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/visa/treasury/overview');
+
+        $rows = $response->json('data.liquidity_by_currency');
+        $this->assertIsArray($rows);
+        $this->assertCount(2, $rows);
+
+        $byCurrency = collect($rows)->keyBy('currency');
+        $this->assertSame(100000.0, (float) $byCurrency['EGP']['accounts_balance']);
+        $this->assertSame(50.0, (float) $byCurrency['KWD']['accounts_balance']);
+    }
+
+    public function test_liquidity_sorts_egp_first_then_alphabetically(): void
+    {
+        // EGP already exists from setUp(). Add KWD + SAR so we have 3 currencies.
+        Account::query()->create([
+            'name' => 'KWD account',
+            'type' => 'cashbox',
+            'currency' => 'KWD',
+            'balance' => 100,
+            'is_active' => true,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'tourism',
+            'module' => 'visas',
+            'created_by' => $this->user->id,
+        ]);
+        Account::query()->create([
+            'name' => 'SAR account',
+            'type' => 'bank',
+            'currency' => 'SAR',
+            'balance' => 200,
+            'is_active' => true,
+            'owner_type' => Account::OWNER_TYPE_OFFICE,
+            'module_type' => 'tourism',
+            'module' => 'visas',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->getJson('/api/v1/visa/treasury/overview');
+
+        $rows = $response->json('data.liquidity_by_currency');
+        $currencies = array_column($rows, 'currency');
+        $this->assertSame(['EGP', 'KWD', 'SAR'], $currencies);
+    }
+
+    public function test_liquidity_excludes_inactive_accounts(): void
+    {
+        // EGP account from setUp is active. Mark it inactive → liquidity must be empty.
+        $this->treasury->update(['is_active' => false]);
+
+        $response = $this->getJson('/api/v1/visa/treasury/overview');
+
+        $rows = $response->json('data.liquidity_by_currency');
+        $this->assertSame([], $rows);
+    }
 }

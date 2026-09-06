@@ -126,6 +126,7 @@ class Phase3_AdminJourney
                     'reason'          => $this->ctx->prefix . 'audit cancel',
                     'cancellation_fee'=> 0,
                     'treasury_id'     => $cashboxId,
+                    'account_id'      => $cashboxId,
                     'currency'        => 'EGP',
                 ]);
                 $r->recordPass();

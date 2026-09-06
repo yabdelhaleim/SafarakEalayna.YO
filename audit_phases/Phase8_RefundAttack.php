@@ -498,6 +498,19 @@ class Phase8_RefundAttack
 
     protected function resolveTreasury(): ?Treasury
     {
-        return Treasury::where('currency', 'EGP')->where('is_active', true)->first();
+        $t = Treasury::where('currency', 'EGP')->where('is_active', true)->first();
+        if ($t) {
+            return $t;
+        }
+        try {
+            return Treasury::create([
+                'name'            => 'TOURISM_FULL_AUDIT_20260818_Treasury_EGP',
+                'currency'        => 'EGP',
+                'is_active'       => true,
+                'current_balance' => 9999999.00,
+            ]);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

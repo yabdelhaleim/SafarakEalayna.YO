@@ -158,6 +158,7 @@ class Phase13_Concurrency
                 'idempotency_key' => 'audit-pay-' . uniqid($module . 'r_', true),
             ]);
 
+            $booking->update(['status' => 'confirmed']);
             $txCountBefore = $this->countTx($booking->id, $modelClass);
 
             if ($module === 'flight') {
@@ -248,6 +249,7 @@ class Phase13_Concurrency
                 'account_id' => $cashboxId,
                 'idempotency_key' => 'audit-pay-' . uniqid($module . 'rc_', true),
             ]);
+            $booking->update(['status' => 'confirmed']);
 
             if ($module === 'flight') {
                 $refSvc = app(\App\Services\Flight\RefundService::class);
@@ -272,7 +274,7 @@ class Phase13_Concurrency
             try {
                 $bookSvc->{$cancelFn}(
                     $booking,
-                    $module === 'flight' ? ['reason' => $this->ctx->prefix . 'after-refund'] : ($this->ctx->prefix . 'after-refund'),
+                    $module === 'flight' ? ['reason' => $this->ctx->prefix . 'after-refund', 'account_id' => $cashboxId] : ($this->ctx->prefix . 'after-refund'),
                 );
                 $r->recordFail(
                     scenario: "{$module}: cancel after refund",
@@ -304,6 +306,7 @@ class Phase13_Concurrency
                 'account_id' => $cashboxId,
                 'idempotency_key' => 'audit-pay-' . uniqid($module . 'pr_', true),
             ]);
+            $booking->update(['status' => 'confirmed']);
 
             if ($module === 'flight') {
                 $refSvc = app(\App\Services\Flight\RefundService::class);
@@ -351,7 +354,7 @@ class Phase13_Concurrency
             ]);
             $cancelFn = $module === 'flight' ? 'cancelBooking' : 'cancel';
             $cancelArg = $module === 'flight'
-                ? ['reason' => $this->ctx->prefix . 'audit']
+                ? ['reason' => $this->ctx->prefix . 'audit', 'account_id' => $cashboxId]
                 : $this->ctx->prefix . 'audit';
             $bookSvc->{$cancelFn}($booking, $cancelArg);
 

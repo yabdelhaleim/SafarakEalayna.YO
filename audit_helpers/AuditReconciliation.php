@@ -35,9 +35,8 @@ class AuditReconciliation
             return false;
         }
 
-        $entries = DB::table('account_entries')->where('account_id', $accountId)->get();
-        $creditSum = (float) $entries->where('type', 'credit')->sum('amount');
-        $debitSum = (float) $entries->where('type', 'debit')->sum('amount');
+        $creditSum = (float) DB::table('account_entries')->where('account_id', $accountId)->sum('credit');
+        $debitSum = (float) DB::table('account_entries')->where('account_id', $accountId)->sum('debit');
         $computed = $creditSum - $debitSum;
         $actual = (float) $account->balance;
         $diff = abs($computed - $actual);
@@ -131,9 +130,9 @@ class AuditReconciliation
      */
     public function recomputeAccountBalance(int $accountId): float
     {
-        $entries = DB::table('account_entries')->where('account_id', $accountId)->get();
-        return (float) $entries->where('type', 'credit')->sum('amount')
-             - (float) $entries->where('type', 'debit')->sum('amount');
+        $creditSum = (float) DB::table('account_entries')->where('account_id', $accountId)->sum('credit');
+        $debitSum = (float) DB::table('account_entries')->where('account_id', $accountId)->sum('debit');
+        return $creditSum - $debitSum;
     }
 
     /** Count transactions of a given type for a booking */
