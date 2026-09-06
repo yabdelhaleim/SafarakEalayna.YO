@@ -736,15 +736,17 @@ class WalletTransactionService
         $contraNotes = $destinationOverride
             ? "إعادة تسجيل دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}"
             : "دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}";
-        $this->transactionService->recordExpense([
+        $this->transactionService->recordJournalTransfer([
             'amount' => $amountPaid,
             'from_account_id' => $transaction->cash_account_id,
-            'contra_account_id' => $settlementContraId,
+            'to_account_id' => $settlementContraId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $transaction->id,
+            'type' => TransactionType::Transfer->value,
             'notes' => $contraNotes,
             'created_by' => $createdBy,
+            'currency' => $transaction->walletAccount?->currency,
         ]);
     }
 
@@ -1136,15 +1138,17 @@ class WalletTransactionService
             ? "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid}"
             : "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}";
 
-        $this->transactionService->recordExpense([
+        $this->transactionService->recordJournalTransfer([
             'amount' => $amountPaid,
             'from_account_id' => $record->cash_account_id,
-            'contra_account_id' => $contraAccountId,
+            'to_account_id' => $contraAccountId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
+            'type' => TransactionType::Transfer->value,
             'notes' => $settlementNotes,
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
     }
 
