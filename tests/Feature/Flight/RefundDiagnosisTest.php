@@ -370,4 +370,121 @@ class RefundDiagnosisTest extends TestCase
         $this->assertEqualsWithDelta($before['carrier'], $this->carrier->fresh()->balance, 0.01,
             'carrier بعد reverse: رجع لـ before.carrier');
     }
+
+    /**
+     * REGRESSION TEST — Installment Refund Bug (2026-09-07).
+     *
+     * Bug: When a booking is paid in installments (e.g. 5000 + 2000 + 3000),
+     * booking.original_amount is set to the FIRST payment (5000) at booking-creation
+     * time. Subsequent addPayment() calls do NOT update original_amount.
+     *
+     * createRefundRequest() was using `original_amount ?: selling_price` — so it
+     * picked 5000 as the refundable cap, silently short-changing the customer.
+     *
+     * Fix: for EGP bookings ALWAYS use selling_price (10000) as the base.
+     *
+     * Setup:  selling=10000, purchase=8000 → profit=2000
+     *         paid: 5000 (at booking) + 2000 (installment) + 3000 (installment)
+     * Expect: refund_amount = 10000 (NOT 5000)
+     */
+    public function test_installment_payment_full_refund_uses_selling_price_not_first_payment(): void
+    {
+        // حجز بدون دفعة أولية مباشرة (سيتم إضافة الدفعات منفصلة)
+        $booking = $this->bookingService->createBooking([
+            'customer_id'             => $this->customer->id,
+            'booking_number'          => 'INST-' . uniqid(),
+            'pnr'                     => 'PNR-INST',
+            'flight_carrier_id'       => $this->carrier->id,
+            'purchase_balance_source' => 'carrier',
+            'selling_price'           => 10000.0,
+            'purchase_price'          => 8000.0,
+            'currency'                => 'EGP',
+            'original_currency'       => 'EGP',
+            'trip_date'               => now()->addDays(30)->toDateString(),
+            'departure_date'          => now()->addDays(30)->toDateString(),
+            'booking_exchange_rate'   => 1.0,
+            // لا payment هنا — سنضيف الأقساط بشكل منفصل
+        ], $this->admin->id);
+
+        // إضافة 3 أقساط
+        $this->bookingService->addPayment($booking, [
+            'amount'     => 5000.0,
+            'account_id' => $this->cashbox->id,
+            'notes'      => 'قسط أول',
+        ]);
+        $booking->refresh();
+
+        $this->bookingService->addPayment($booking, [
+            'amount'     => 2000.0,
+            'account_id' => $this->cashbox->id,
+            'notes'      => 'قسط ثان',
+        ]);
+        $booking->refresh();
+
+        $this->bookingService->addPayment($booking, [
+            'amount'     => 3000.0,
+            'account_id' => $this->cashbox->id,
+            'notes'      => 'قسط ثالث',
+        ]);
+        $booking->refresh();
+
+        // تأكيد: مجموع المدفوع = 10000
+        $totalPaid = (float) $booking->payments()->whereNotNull('transaction_id')->sum('amount');
+        $this->assertEqualsWithDelta(10000.0, $totalPaid, 0.01,
+            'مجموع الأقساط الثلاثة يجب أن يساوي 10000');
+
+        // إنشاء طلب الاسترداد
+        $refundRequest = $this->refundService->createRefundRequest([
+            'flight_booking_id' => $booking->id,
+            'cancellation_fee'  => 0,
+            'destination'       => 'agency_treasury',
+            'treasury_id'       => $this->treasury->id,
+            'refund_currency'   => 'EGP',
+        ], $this->admin->id);
+
+        // *** الاختبار الأساسي: مبلغ الاسترداد يجب أن يكون 10000 وليس 5000 ***
+        $this->assertEqualsWithDelta(
+            10000.0,
+            (float) $refundRequest->refund_amount,
+            0.01,
+            'BUG FIX (2026-09-07): refund_amount يجب أن يكون selling_price=10000 وليس original_amount الذي قد يحتوي على أول قسط فقط (5000)'
+        );
+
+        // أيضاً: original_amount في الـ request يجب أن يعكس 10000
+        $this->assertEqualsWithDelta(
+            10000.0,
+            (float) $refundRequest->original_amount,
+            0.01,
+            'original_amount في RefundRequest يجب أن يكون 10000'
+        );
+
+        // معالجة الاسترداد
+        $processed = $this->refundService->processRefundRequest($refundRequest->id, $this->admin->id);
+        $this->assertEquals('processed', $processed->status);
+
+
+        // التحقق من عكس كل إيرادات الأقساط الثلاثة
+        // نحصل على الـ IDs للـ FlightPayments الثلاثة
+        $paymentIds = \App\Models\Flight\FlightPayment::query()
+            ->where('flight_booking_id', $booking->id)
+            ->whereNotNull('transaction_id')
+            ->pluck('id')
+            ->toArray();
+
+        $unreversedIncome = \App\Models\Transaction::query()
+            ->where('type', 'income')
+            ->where('module', 'flights')
+            ->where('related_type', \App\Models\Flight\FlightPayment::class)
+            ->whereIn('related_id', $paymentIds)
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                  ->orWhere(fn ($q2) => $q2
+                      ->where('notes', 'not like', 'عكس:%')
+                      ->where('notes', 'not like', 'عكس %'));
+            })
+            ->count();
+
+        $this->assertEquals(0, $unreversedIncome,
+            'كل معاملات الإيراد الثلاثة (5000 + 2000 + 3000) يجب أن تُعكس بعد الاسترداد الكامل');
+    }
 }

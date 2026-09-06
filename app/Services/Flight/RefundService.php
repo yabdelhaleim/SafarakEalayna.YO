@@ -272,11 +272,33 @@ class RefundService
         // the EGP-equivalent, causing `refund_amount` to be ~50x too large
         // for USD/KWD/etc. bookings and over-debiting the foreign cashbox
         // by the EGP-equivalent instead of the foreign refund amount.
-        $originalAmount = (float) ($booking->original_amount ?: (
-            $originalCurrency !== 'EGP' && $booking->selling_price_foreign > 0
-                ? $booking->selling_price_foreign
-                : $booking->selling_price
-        ));
+        //
+        // FIX (2026-09-07): INSTALLMENT BUG — for EGP bookings, ALWAYS use
+        // `selling_price` as the refundable base, NOT `original_amount`.
+        //
+        // `original_amount` is set at booking-creation time to the first payment
+        // amount (e.g. 5,000) when the customer pays a deposit at booking time.
+        // Subsequent installment payments via addPayment() (e.g. 2,000 + 3,000)
+        // do NOT update `original_amount`, so it stays at 5,000 even though the
+        // full selling_price (10,000) has been collected.
+        //
+        // Using `original_amount` as the refund cap would then limit the refund
+        // to 5,000 instead of 10,000 — silently short-changing the customer.
+        //
+        // `original_amount` is only semantically meaningful for cross-currency
+        // bookings (booking.currency ≠ EGP) where it records the customer's actual
+        // foreign-currency amount. For EGP bookings it is either NULL (same-currency
+        // path, cleared by the model's saving guard) or stale (first-payment amount).
+        // `selling_price` is the authoritative total for EGP bookings.
+        if ($originalCurrency === 'EGP') {
+            $originalAmount = (float) $booking->selling_price;
+        } else {
+            $originalAmount = (float) ($booking->original_amount ?: (
+                $booking->selling_price_foreign > 0
+                    ? $booking->selling_price_foreign
+                    : $booking->selling_price
+            ));
+        }
         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
 
         $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
