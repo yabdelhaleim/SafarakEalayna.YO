@@ -388,7 +388,30 @@ class TransactionService
                 ]);
             }
 
+
             $transaction->notes = 'عكس: '.($transaction->notes ?? '');
+            // 🛡️ income_unique_key fix (2026-09-07):
+            // The DB has a STORED generated column:
+            //   income_unique_key = IF(type='income' AND related_type<>'App\Models\Customer', related_id, NULL)
+            // with a UNIQUE index on (related_type, income_unique_key).
+            //
+            // After reverseTransaction, the app-level guard in recordJournalTransfer
+            // (lines ~751-775) correctly detects the reversed row via its 'عكس:' notes
+            // prefix and allows a new income posting. BUT the DB-level UNIQUE constraint
+            // still sees type='income' on the reversed row → income_unique_key is still
+            // populated → INSERT of the new income row fails with SQLSTATE[23000] 1062.
+            //
+            // Fix: flip type to TransactionType::Refund on the reversed row. This makes
+            // income_unique_key evaluate to NULL (freeing the UNIQUE slot) while
+            // preserving the 'عكس:' notes prefix for all downstream consumers
+            // (FinancialReportService, ProfitLossReportService, etc.) that use
+            // notes to identify reversals — they are unaffected.
+            $rawType = $transaction->type instanceof TransactionType
+                ? $transaction->type->value
+                : (string) $transaction->type;
+            if (strtolower($rawType) === 'income') {
+                $transaction->type = TransactionType::Refund;
+            }
             $transaction->save();
 
             Log::info('Transaction reversed', [
