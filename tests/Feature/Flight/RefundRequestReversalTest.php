@@ -188,7 +188,7 @@ class RefundRequestReversalTest extends TestCase
         $cancellationFee = 1000.0;
         $refundAmount = $sellingPrice - $cancellationFee;        // 17000 (cash to customer)
         $purchaseEgp = 15000.0;
-        $purchaseNet = $purchaseEgp - $cancellationFee;          // 14000 (credit back to carrier)
+        $purchaseNet = $purchaseEgp;                            // 15000 (credit back to carrier, office retains cancellation fee)
 
         $booking = $this->createPaidBooking((int) $sellingPrice, (int) $purchaseEgp);
         $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
