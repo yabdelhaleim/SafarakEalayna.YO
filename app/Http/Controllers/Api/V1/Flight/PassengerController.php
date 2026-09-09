@@ -79,21 +79,50 @@ class PassengerController extends Controller
             // Filter by trip status: upcoming, past, all.
             // When the user is searching by text, ignore the date filter so an
             // exact-PNR or name lookup always finds the row regardless of date.
+            // The booking matches if ANY leg (outbound/return/segment) is in
+            // the requested status — so a round-trip whose outbound is past
+            // but whose return is still upcoming is correctly shown in upcoming.
             $tripStatus = $request->input('trip_status', 'all');
             if ($search === '' && ($tripStatus === 'upcoming' || $tripStatus === 'past')) {
-                $query->whereDate(
-                    'flight_bookings.departure_date',
-                    $tripStatus === 'upcoming' ? '>=' : '<',
-                    $today
-                );
+                $op = $tripStatus === 'upcoming' ? '>=' : '<';
+                $query->where(function ($q) use ($today, $op) {
+                    $q->whereDate('flight_bookings.departure_date', $op, $today)
+                        ->orWhereDate('flight_bookings.return_date', $op, $today)
+                        ->orWhereHas('booking.segments', fn ($s) => $s->whereDate('departure_date', $op, $today));
+                });
             }
 
-            // Filter by departure date range
-            if ($from = $request->input('departure_date_from')) {
-                $query->whereDate('flight_bookings.departure_date', '>=', $from);
-            }
-            if ($to = $request->input('departure_date_to')) {
-                $query->whereDate('flight_bookings.departure_date', '<=', $to);
+            // Filter by departure date range.
+            // Match if any leg (outbound/return/segment) falls in [from, to] so
+            // that searching by the return date surfaces the round-trip rows
+            // even though the booking's outbound date is outside the window.
+            $from = $request->input('departure_date_from');
+            $to   = $request->input('departure_date_to');
+            if ($from || $to) {
+                $query->where(function ($q) use ($from, $to) {
+                    $q->where(function ($q2) use ($from, $to) {
+                        if ($from) {
+                            $q2->whereDate('flight_bookings.departure_date', '>=', $from);
+                        }
+                        if ($to) {
+                            $q2->whereDate('flight_bookings.departure_date', '<=', $to);
+                        }
+                    })->orWhere(function ($q2) use ($from, $to) {
+                        if ($from) {
+                            $q2->whereDate('flight_bookings.return_date', '>=', $from);
+                        }
+                        if ($to) {
+                            $q2->whereDate('flight_bookings.return_date', '<=', $to);
+                        }
+                    })->orWhereHas('booking.segments', function ($s) use ($from, $to) {
+                        if ($from) {
+                            $s->whereDate('departure_date', '>=', $from);
+                        }
+                        if ($to) {
+                            $s->whereDate('departure_date', '<=', $to);
+                        }
+                    });
+                });
             }
 
             // Sorting: Upcoming first, then past

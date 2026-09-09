@@ -401,7 +401,12 @@
                       <div class="notif-content">
                         <div class="notif-item-top">
                           <span class="notif-passenger-name">{{ notif.data.passenger_name }}</span>
-                          <span class="notif-days-badge">{{ getDaysBeforeLabel(notif.data.days_before) }}</span>
+                          <div class="notif-badges">
+                            <span class="notif-leg-badge" :class="`notif-leg-badge--${notif.data.leg_type || 'outbound'}`">
+                              {{ notif.data.leg_label_ar || 'ذهاب' }}
+                            </span>
+                            <span class="notif-days-badge">{{ getDaysBeforeLabel(notif.data.days_before) }}</span>
+                          </div>
                         </div>
                         <p class="notif-message">{{ notif.data.message }}</p>
                         <div class="notif-meta">
@@ -455,7 +460,16 @@
 
               <div class="notif-detail-body">
                 <div class="notif-detail-alert">
-                  <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
+                  <div class="notif-detail-badges">
+                    <span class="notif-days-badge notif-days-badge--lg">{{ getDaysBeforeLabel(selectedNotif.data.days_before) }}</span>
+                    <span
+                      v-if="selectedNotif.data.leg_label_ar"
+                      class="notif-leg-badge notif-leg-badge--lg"
+                      :class="`notif-leg-badge--${selectedNotif.data.leg_type || 'outbound'}`"
+                    >
+                      {{ selectedNotif.data.leg_label_ar }}
+                    </span>
+                  </div>
                   <p>{{ selectedNotif.data.message }}</p>
                 </div>
 
@@ -1667,6 +1681,50 @@ html { direction: rtl; height: 100%; }
 .notif-days-badge--lg {
   font-size: 12px;
   padding: 4px 10px;
+}
+
+/* Leg-type badge — distinguishes outbound / return / segment alerts in the bell. */
+.notif-leg-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid rgba(56, 189, 248, .25);
+  background: rgba(56, 189, 248, .12);
+  color: #7dd3fc;
+  white-space: nowrap;
+}
+
+.notif-leg-badge--return {
+  border-color: rgba(168, 85, 247, .3);
+  background: rgba(168, 85, 247, .14);
+  color: #c4b5fd;
+}
+
+.notif-leg-badge--segment {
+  border-color: rgba(34, 197, 94, .3);
+  background: rgba(34, 197, 94, .14);
+  color: #86efac;
+}
+
+.notif-leg-badge--lg {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.notif-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.notif-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .notif-message {
