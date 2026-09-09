@@ -156,18 +156,23 @@
               <tbody class="divide-y divide-white/5">
                 <tr v-for="(pax, index) in passengers" :key="passengerKey(pax, index)" class="group transition-colors hover:bg-white/[0.035]">
                   <td class="px-5 py-4">
-                    <div class="flex min-w-[210px] items-center gap-3">
-                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">
-                        {{ initials(pax) }}
+                    <div class="flex min-w-[220px] items-center gap-3">
+                      <div class="relative shrink-0">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">
+                          {{ initials(pax) }}
+                        </div>
+                        <span v-if="pax.traveled" class="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-card-bg bg-success text-white" title="تم السفر">
+                          <Check class="h-2.5 w-2.5" stroke-width="3" />
+                        </span>
                       </div>
                       <div class="min-w-0">
-                        <button type="button" class="group/name flex max-w-[190px] items-center gap-1.5 text-right" title="نسخ اسم المسافر" @click="copyToClipboard(fullName(pax), 'تم نسخ اسم المسافر')">
+                        <button type="button" class="group/name flex max-w-[200px] items-center gap-1.5 text-right" title="نسخ اسم المسافر" @click="copyToClipboard(fullName(pax), 'تم نسخ اسم المسافر')">
                           <span class="truncate text-sm font-extrabold text-text-main">{{ fullName(pax) }}</span>
                           <Copy class="h-3 w-3 shrink-0 text-text-muted opacity-0 transition group-hover/name:opacity-100" />
                         </button>
                         <div class="mt-1 flex flex-wrap gap-x-2 text-[10px] text-text-muted">
                           <span>جواز: <b class="font-mono text-text-main/75">{{ pax.passport_number || '—' }}</b></span>
-                          <span>قومي: <b class="font-mono text-text-main/75">{{ pax.national_id || '—' }}</b></span>
+                          <span class="hidden lg:inline">قومي: <b class="font-mono text-text-main/75">{{ pax.national_id || '—' }}</b></span>
                         </div>
                       </div>
                     </div>
@@ -186,18 +191,25 @@
                   </td>
 
                   <td class="px-5 py-4">
-                    <div class="min-w-[150px]">
-                      <div class="flex items-center gap-2 font-mono text-xs font-black text-text-main">
-                        <span>{{ pax.booking?.from_airport || '—' }}</span>
-                        <ArrowLeft class="h-3.5 w-3.5 text-sky-400" />
-                        <span>{{ pax.booking?.to_airport || '—' }}</span>
+                    <div class="min-w-[210px]">
+                      <span class="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-black" :class="legBadgeClass(pax)">
+                        <component :is="legIcon(pax)" class="h-3 w-3" />
+                        {{ legLabel(pax) }}
+                      </span>
+                      <div class="mt-2 flex items-center gap-2">
+                        <span class="rounded-lg bg-white/5 px-2 py-1 font-mono text-xs font-black text-text-main">{{ pax.booking?.from_airport || '—' }}</span>
+                        <div class="relative flex flex-1 items-center justify-center">
+                          <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-l from-sky-400/60 via-sky-400/20 to-transparent"></div>
+                          <Plane class="relative h-3.5 w-3.5 -rotate-12 text-sky-400" />
+                        </div>
+                        <span class="rounded-lg bg-white/5 px-2 py-1 font-mono text-xs font-black text-text-main">{{ pax.booking?.to_airport || '—' }}</span>
                       </div>
-                      <p class="mt-1.5 max-w-[170px] truncate text-[11px] text-text-muted">{{ pax.booking?.airline_name || 'شركة الطيران غير محددة' }}</p>
+                      <p class="mt-2 max-w-[200px] truncate text-[11px] text-text-muted">{{ pax.booking?.airline_name || 'شركة الطيران غير محددة' }}</p>
                     </div>
                   </td>
 
                   <td class="px-5 py-4">
-                    <div class="min-w-[165px]">
+                    <div class="min-w-[150px]">
                       <span class="inline-flex items-center gap-1.5 text-xs font-bold" :class="isUpcoming(pax.departure_date) ? 'text-success' : 'text-text-muted'">
                         <CalendarDays class="h-3.5 w-3.5" />
                         {{ formatDepartureDate(pax.departure_date) }}
@@ -206,6 +218,7 @@
                         <Clock3 class="h-3 w-3" />
                         {{ formatTime(pax.departure_time) }}
                       </p>
+                      <p v-if="pax.date_label" class="mt-1 text-[10px] font-bold text-warning">{{ pax.date_label }}</p>
                     </div>
                   </td>
 
@@ -222,10 +235,18 @@
                     </div>
                   </td>
 
-                  <td class="px-5 py-4 text-center">
-                    <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 p-2.5 text-text-muted transition hover:border-sky-400/30 hover:bg-sky-500/10 hover:text-sky-300" title="عرض الحجز" aria-label="عرض الحجز">
-                      <Eye class="h-4 w-4" />
-                    </router-link>
+                  <td class="px-5 py-4">
+                    <div class="flex items-center justify-center gap-1.5">
+                      <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-sky-400/40 hover:bg-sky-500/15 hover:text-sky-300" title="عرض الحجز" aria-label="عرض الحجز">
+                        <Eye class="h-4 w-4" />
+                      </router-link>
+                      <button v-if="pax.passenger_id && !pax.traveled" type="button" class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-success/40 hover:bg-success/15 hover:text-success" title="تسجيل السفر" aria-label="تسجيل السفر" @click="$emit('mark-traveled', pax)">
+                        <CheckCircle2 class="h-4 w-4" />
+                      </button>
+                      <button v-else-if="pax.passenger_id && pax.traveled" type="button" class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-success/40 bg-success/15 text-success transition hover:bg-success/25" title="إلغاء تسجيل السفر" aria-label="إلغاء تسجيل السفر" @click="$emit('unmark-traveled', pax)">
+                        <CheckCircle2 class="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -236,7 +257,12 @@
             <article v-for="(pax, index) in passengers" :key="passengerKey(pax, index)" class="space-y-4 p-5 transition hover:bg-white/[0.025]">
               <div class="flex items-start justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-3">
-                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">{{ initials(pax) }}</div>
+                  <div class="relative shrink-0">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-500/10 text-xs font-black uppercase text-sky-300">{{ initials(pax) }}</div>
+                    <span v-if="pax.traveled" class="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-card-bg bg-success text-white">
+                      <Check class="h-2.5 w-2.5" stroke-width="3" />
+                    </span>
+                  </div>
                   <div class="min-w-0">
                     <button type="button" class="flex max-w-full items-center gap-1.5 text-right" @click="copyToClipboard(fullName(pax), 'تم نسخ اسم المسافر')">
                       <span class="truncate text-sm font-black text-text-main">{{ fullName(pax) }}</span>
@@ -245,7 +271,13 @@
                     <p class="mt-1 truncate text-[10px] text-text-muted">جواز: {{ pax.passport_number || '—' }} · قومي: {{ pax.national_id || '—' }}</p>
                   </div>
                 </div>
-                <span class="shrink-0 rounded-full border px-2 py-1 text-[9px] font-bold" :class="affiliationClass(pax)">{{ pax.affiliation || 'فردي' }}</span>
+                <div class="flex shrink-0 flex-col items-end gap-1.5">
+                  <span class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[9px] font-black" :class="legBadgeClass(pax)">
+                    <component :is="legIcon(pax)" class="h-2.5 w-2.5" />
+                    {{ legLabel(pax) }}
+                  </span>
+                  <span class="rounded-full border px-2 py-0.5 text-[9px] font-bold" :class="affiliationClass(pax)">{{ pax.affiliation || 'فردي' }}</span>
+                </div>
               </div>
 
               <div class="grid grid-cols-2 gap-2">
@@ -257,16 +289,19 @@
                   <span class="block text-[9px] font-bold text-text-muted">موعد السفر</span>
                   <span class="mt-1 block text-xs font-bold" :class="isUpcoming(pax.departure_date) ? 'text-success' : 'text-text-main'">{{ formatShortDate(pax.departure_date) }}</span>
                   <span class="mt-0.5 block font-mono text-[10px] text-text-muted">{{ formatTime(pax.departure_time) }}</span>
+                  <span v-if="pax.date_label" class="mt-1 block text-[10px] font-bold text-warning">{{ pax.date_label }}</span>
                 </div>
               </div>
 
-              <div class="rounded-xl border border-white/5 bg-black/10 p-3">
+              <div class="rounded-xl border border-white/10 bg-black/10 p-3">
                 <div class="flex items-center justify-between gap-3">
-                  <div class="flex items-center gap-2 font-mono text-xs font-black text-text-main">
-                    <MapPin class="h-3.5 w-3.5 text-sky-400" />
-                    {{ pax.booking?.from_airport || '—' }}
-                    <ArrowLeft class="h-3 w-3 text-text-muted" />
-                    {{ pax.booking?.to_airport || '—' }}
+                  <div class="flex flex-1 items-center gap-2">
+                    <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ pax.booking?.from_airport || '—' }}</span>
+                    <div class="relative flex flex-1 items-center justify-center">
+                      <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-l from-sky-400/60 via-sky-400/20 to-transparent"></div>
+                      <Plane class="relative h-3.5 w-3.5 -rotate-12 text-sky-400" />
+                    </div>
+                    <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ pax.booking?.to_airport || '—' }}</span>
                   </div>
                   <span class="shrink-0 rounded-full bg-white/5 px-2 py-1 text-[9px] font-bold text-text-muted">{{ pax.booking?.passenger_count || 1 }} مسافر</span>
                 </div>
@@ -278,10 +313,20 @@
                   <p class="truncate font-bold text-text-main">{{ pax.customer?.name || 'عميل غير محدد' }}</p>
                   <p class="mt-0.5 truncate">الموظف: {{ pax.employee_name || '—' }}</p>
                 </div>
-                <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20">
-                  <Eye class="h-3.5 w-3.5" />
-                  عرض الحجز
-                </router-link>
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <button v-if="pax.passenger_id && !pax.traveled" type="button" @click="$emit('mark-traveled', pax)" class="inline-flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-2 text-xs font-bold text-success transition hover:bg-success/20">
+                    <CheckCircle2 class="h-3.5 w-3.5" />
+                    سافر
+                  </button>
+                  <button v-else-if="pax.passenger_id && pax.traveled" type="button" @click="$emit('unmark-traveled', pax)" class="inline-flex items-center gap-1.5 rounded-lg bg-success/15 px-3 py-2 text-xs font-bold text-success transition hover:bg-success/25">
+                    <CheckCircle2 class="h-3.5 w-3.5" />
+                    تم
+                  </button>
+                  <router-link v-if="pax.booking?.id" :to="{ name: 'flights.show', params: { id: pax.booking.id } }" class="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20">
+                    <Eye class="h-3.5 w-3.5" />
+                    عرض
+                  </router-link>
+                </div>
               </div>
             </article>
           </div>
@@ -375,6 +420,8 @@ import {
   ArrowLeft,
   BellRing,
   CalendarDays,
+  Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -383,8 +430,12 @@ import {
   Info,
   Loader2,
   MapPin,
+  Plane,
+  PlaneTakeoff,
+  PlaneLanding,
   RefreshCw,
   RotateCcw,
+  Route,
   Save,
   Search,
   SlidersHorizontal,
@@ -573,6 +624,27 @@ function affiliationClass(pax) {
     : 'border-white/10 bg-white/5 text-text-muted';
 }
 
+function legLabel(pax) {
+  if (pax.leg === 'return') return 'عودة';
+  if (pax.leg === 'outbound') return 'ذهاب';
+  if (pax.leg === 'segment') return `ترانزيت ${pax.leg_number ?? ''}`.trim();
+  return 'رحلة';
+}
+
+function legBadgeClass(pax) {
+  if (pax.leg === 'return') return 'border-gold/30 bg-gold/10 text-gold';
+  if (pax.leg === 'outbound') return 'border-sky-400/30 bg-sky-500/10 text-sky-300';
+  if (pax.leg === 'segment') return 'border-violet-400/30 bg-violet-500/10 text-violet-300';
+  return 'border-white/10 bg-white/5 text-text-muted';
+}
+
+function legIcon(pax) {
+  if (pax.leg === 'return') return PlaneLanding;
+  if (pax.leg === 'outbound') return PlaneTakeoff;
+  if (pax.leg === 'segment') return Route;
+  return Plane;
+}
+
 function formatDepartureDate(dateStr) {
   if (!dateStr) return 'غير محدد';
   try {
@@ -632,6 +704,38 @@ async function copyToClipboard(text, successMessage = 'تم النسخ بنجا�
   } catch (error) {
     console.error('Could not copy text', error);
     window.addToast?.('تعذر نسخ النص', 'error');
+  }
+}
+
+async function markTraveled(pax) {
+  if (!pax?.passenger_id) return;
+  try {
+    const response = await axios.post(`/api/v1/flight/passengers/${pax.passenger_id}/mark-traveled`);
+    if (response.data?.success) {
+      window.addToast?.('تم تسجيل سفر الراكب بنجاح', 'success');
+      await fetchPassengers(pagination.current_page);
+    } else {
+      window.addToast?.(response.data?.message || 'تعذر تسجيل السفر', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to mark passenger traveled', error);
+    window.addToast?.(error?.response?.data?.message || 'تعذر تسجيل السفر', 'error');
+  }
+}
+
+async function unmarkTraveled(pax) {
+  if (!pax?.passenger_id) return;
+  try {
+    const response = await axios.post(`/api/v1/flight/passengers/${pax.passenger_id}/unmark-traveled`);
+    if (response.data?.success) {
+      window.addToast?.('تم إلغاء تسجيل السفر', 'success');
+      await fetchPassengers(pagination.current_page);
+    } else {
+      window.addToast?.(response.data?.message || 'تعذر إلغاء التسجيل', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to unmark passenger traveled', error);
+    window.addToast?.(error?.response?.data?.message || 'تعذر إلغاء التسجيل', 'error');
   }
 }
 
