@@ -327,10 +327,31 @@ const form = ref({
  * account matches THIS currency (line 2184 of FlightBookingService.php), so
  * the account dropdown MUST be filtered against `saleCurrency` — never
  * `purchaseCurrency` (which is the airline cost currency).
+ *
+ * FIX (2026-09-11): Fallback chain now prefers `original_currency` over
+ * `currency`. The flight store maps `b.selling_currency` to `b.currency`,
+ * which used to be hardcoded to 'EGP' in the resource (see
+ * FlightBookingResource.php line 141). When the resource is misconfigured or
+ * the booking was created before the fix, `b.currency = 'EGP'` even for a
+ * KWD booking, hiding all KWD cashboxes from the dropdown.
+ *
+ * The fallback chain matches the backend's `resolveCustomerOriginalCurrency()`:
+ *   1. pricing.currency (the post-fix value)
+ *   2. b.currency (legacy — was 'EGP' on KWD bookings before the fix)
+ *   3. original_currency / pricing.purchaseCurrency (the carrier's foreign
+ *      currency — only useful when the booking's main `currency` field is
+ *      EGP but the customer actually paid in KWD via original_currency)
+ *   4. 'EGP' (final fallback)
  */
 const saleCurrency = computed(() => {
   const b = props.initialBooking;
-  return String(b?.currency ?? b?.pricing?.currency ?? 'EGP').toUpperCase();
+  return String(
+    b?.pricing?.currency
+      ?? b?.currency
+      ?? b?.original_currency
+      ?? b?.pricing?.purchaseCurrency
+      ?? 'EGP'
+  ).toUpperCase();
 });
 
 /**

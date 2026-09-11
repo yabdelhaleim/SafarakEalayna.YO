@@ -138,7 +138,19 @@ class FlightBookingResource extends JsonResource
             'profit_margin' => number_format($profitMargin, 2).'%',
             'currency' => $this->currency ?? 'EGP',
             'purchase_currency' => $this->currency ?? 'EGP',
-            'selling_currency' => 'EGP',
+            // FIX (2026-09-11): was hardcoded to 'EGP', which caused the Vue
+            // client (flightStore.mapBooking) to filter refund-account dropdowns
+            // by 'EGP' even for foreign-currency bookings. The customer would
+            // see only EGP cashboxes/banks, then submit, then the backend's
+            // cancelBooking validation would reject the EGP account with
+            // "عملة حساب الاسترجاع (EGP) لا تطابق عملة الحجز (KWD)".
+            //
+            // The refund must be disbursed in the SAME currency the booking
+            // was priced in (= $this->currency). For cross-currency bookings
+            // where the customer paid in a different currency, original_currency
+            // takes precedence (it represents the customer's actual paid currency
+            // — see FlightBookingService::resolveCustomerOriginalCurrency()).
+            'selling_currency' => $this->original_currency ?: ($this->currency ?? 'EGP'),
             'currency_used' => $this->currency_used,
             'balance_currency_used' => $this->balance_currency_used,
             'exchange_rate_used' => $this->exchange_rate_used !== null ? (float) $this->exchange_rate_used : null,
