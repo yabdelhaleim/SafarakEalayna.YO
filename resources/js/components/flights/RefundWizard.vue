@@ -175,7 +175,7 @@
 
           <div v-if="settlementAccounts.length === 0" class="p-4 rounded-xl bg-error/10 border border-error/20 text-center">
             <p class="text-xs text-error font-mono">
-              لا توجد حسابات تسوية بعملة الحجز ({{ purchaseCurrency }}). أضف خزينة/بنك بهذه العملة أولاً.
+              لا توجد حسابات تسوية بعملة الحجز ({{ saleCurrency }}). أضف خزينة/بنك بهذه العملة أولاً.
             </p>
           </div>
 
@@ -319,13 +319,37 @@ const form = ref({
   notes: '',
 });
 
-/** عملة تكلفة الشراء على الحجز (قد تكون KWD/USD) — للعرض التوضيحي فقط */
-const purchaseCurrency = computed(() => {
+/**
+ * Customer's payment currency (= `booking.currency` on the server side).
+ *
+ * This is what the customer paid in and what gets refunded back. The server's
+ * `FlightBookingService::cancelBooking()` enforces that the chosen settlement
+ * account matches THIS currency (line 2184 of FlightBookingService.php), so
+ * the account dropdown MUST be filtered against `saleCurrency` — never
+ * `purchaseCurrency` (which is the airline cost currency).
+ */
+const saleCurrency = computed(() => {
   const b = props.initialBooking;
   return String(b?.currency ?? b?.pricing?.currency ?? 'EGP').toUpperCase();
 });
 
-const hasForeignPurchase = computed(() => purchaseCurrency.value !== 'EGP');
+/**
+ * Airline purchase cost currency (= `booking.purchaseCurrency` /
+ * `booking.foreign_currency` on the server side). Display-only — never used
+ * to filter settlement accounts because the refund goes back to the customer
+ * in `saleCurrency`, not in what we paid the airline.
+ */
+const purchaseCurrency = computed(() => {
+  const b = props.initialBooking;
+  return String(
+    b?.purchaseCurrency
+    ?? b?.pricing?.purchaseCurrency
+    ?? b?.foreign_currency
+    ?? saleCurrency.value
+  ).toUpperCase();
+});
+
+const hasForeignPurchase = computed(() => purchaseCurrency.value !== saleCurrency.value);
 
 const payments = computed(() => {
   const b = props.initialBooking;
@@ -460,7 +484,7 @@ async function loadSettlementAccounts() {
     // Refund must be disbursed in the booking's original currency (server-enforced
     // by FlightBookingService::cancelBooking() — Bug #B6 fix). Pre-filter on the
     // client so the user only sees accounts they can actually pick.
-    settlementAccounts.value = filterSettlementAccountsByCurrency(all, purchaseCurrency.value);
+    settlementAccounts.value = filterSettlementAccountsByCurrency(all, saleCurrency.value);
     if (!form.value.accountId && settlementAccounts.value.length === 1) {
       form.value.accountId = settlementAccounts.value[0].id;
     }
