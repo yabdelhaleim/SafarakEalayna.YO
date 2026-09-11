@@ -2410,13 +2410,42 @@ class FlightBookingService
                     throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
                 }
 
-                // Step 3.5 (Bug #B6 fix): Validate refund account currency matches booking currency.
+                // Step 3.5 (Bug #B6 fix): Validate refund account currency matches the
+                // CUSTOMER'S PAID CURRENCY (not booking.currency).
+                //
+                // Real-world scenario: a booking is sold in KWD (= booking.currency)
+                // but the customer paid 5,200 EGP into an EGP cashbox (= original_currency).
+                // The refund must go back to the customer in the currency they paid in
+                // (EGP), NOT in the ticket-pricing currency (KWD). Forcing a KWD refund
+                // would require an FX conversion at the cancel time which we don't have
+                // a market rate for — and it would surprise the customer who expects
+                // their money back in the same currency they handed over.
+                //
+                // Allowed refund currencies (priority order):
+                //   1. original_currency (= customer's actual paid currency; may be null
+                //      if they paid in the same currency as the booking — observer
+                //      clears it in that case)
+                //   2. booking.currency (= the ticket-pricing currency; used when
+                //      customer paid in same currency)
                 if ($refundAmount > 0 && ! empty($data['account_id'])) {
                     $refundAccount = Account::query()->find($data['account_id']);
-                    if ($refundAccount && strtoupper((string) $refundAccount->currency) !== $bookingCurrency) {
+                    $allowedCurrencies = array_filter([
+                        $booking->original_currency,
+                        $booking->currency,
+                    ]);
+                    $allowedCurrencies = array_map(
+                        fn ($c) => strtoupper((string) $c),
+                        $allowedCurrencies
+                    );
+                    if ($refundAccount && !in_array(
+                        strtoupper((string) $refundAccount->currency),
+                        $allowedCurrencies,
+                        true
+                    )) {
                         throw new \InvalidArgumentException(
-                            "عملة حساب الاسترجاع ({$refundAccount->currency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
-                            "يجب اختيار حساب بنفس عملة الحجز."
+                            "عملة حساب الاسترجاع ({$refundAccount->currency}) لا تطابق عملة دفع العميل (".
+                            implode('/', $allowedCurrencies).
+                            "). يجب اختيار حساب بنفس عملة الدفع."
                         );
                     }
                 }
