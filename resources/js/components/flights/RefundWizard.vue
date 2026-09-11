@@ -167,14 +167,16 @@
           :step="3"
           :total="totalSteps"
           title="حساب صرف الاسترداد"
-          subtitle="اختر الحساب (بنك / خزينة) الذي يُصرف منه المبلغ المرتجع للعميل بالجنيه المصري."
+          subtitle="اختر الحساب (بنك / خزينة) الذي يُصرف منه المبلغ المرتجع للعميل بنفس عملة الحجز."
         />
 
         <div v-if="customerRefundAmount > 0">
           <label class="block text-xs text-gold mb-3 uppercase tracking-widest font-mono">حساب الصرف *</label>
 
           <div v-if="settlementAccounts.length === 0" class="p-4 rounded-xl bg-error/10 border border-error/20 text-center">
-            <p class="text-xs text-error font-mono">لا توجد حسابات تسوية متاحة. تأكد من إعداد الخزائن/المحافظ.</p>
+            <p class="text-xs text-error font-mono">
+              لا توجد حسابات تسوية بعملة الحجز ({{ purchaseCurrency }}). أضف خزينة/بنك بهذه العملة أولاً.
+            </p>
           </div>
 
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
@@ -286,7 +288,10 @@
 import { ref, computed, onMounted, h } from 'vue';
 import axios from 'axios';
 import { useFlightStore } from '@/stores/flightStore';
-import { fetchSettlementAccounts as fetchModuleSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
+import {
+  fetchSettlementAccounts as fetchModuleSettlementAccounts,
+  filterSettlementAccountsByCurrency,
+} from '@/composables/useTreasuryAccountGroups';
 
 const props = defineProps({
   initialBooking: {
@@ -451,7 +456,11 @@ function setupFromBooking(booking) {
 
 async function loadSettlementAccounts() {
   try {
-    settlementAccounts.value = await fetchModuleSettlementAccounts(axios, { module: 'flight' });
+    const all = await fetchModuleSettlementAccounts(axios, { module: 'flight' });
+    // Refund must be disbursed in the booking's original currency (server-enforced
+    // by FlightBookingService::cancelBooking() — Bug #B6 fix). Pre-filter on the
+    // client so the user only sees accounts they can actually pick.
+    settlementAccounts.value = filterSettlementAccountsByCurrency(all, purchaseCurrency.value);
     if (!form.value.accountId && settlementAccounts.value.length === 1) {
       form.value.accountId = settlementAccounts.value[0].id;
     }
