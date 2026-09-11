@@ -2263,11 +2263,7 @@ class FlightBookingService
                     $saleAmountForComparison = (float) $booking->selling_price;
                     $totalPenaltiesInBookingCurrency = $airlinePenalty + $officePenalty;
                 } else {
-                    // FIX (2026-09-11): the customer-paid amount (original_amount)
-                    // is what limits the refund, NOT the ticket's selling_price_foreign.
-                    // If the customer paid 5 USD against a 100 USD ticket (partial),
-                    // we should refund 5 USD, not 100 USD.
-                    $foreignSaleAmount = (float) ($booking->original_amount ?: ($booking->selling_price_foreign ?? 0.0));
+                    $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
                     $saleAmountForComparison = $foreignSaleAmount;
                     // EGP penalties converted to foreign currency at the booking rate.
                     $totalPenaltiesInBookingCurrency = ($airlinePenalty + $officePenalty) / max($bookingExchangeRate, 0.0001);
@@ -2280,37 +2276,14 @@ class FlightBookingService
                     );
                 }
 
-                // Determine the customer's actual paid currency for the refund
-                // amount calculation (= original_currency if set, else booking.currency).
-                // FIX (2026-09-11): this was previously branching on $bookingCurrency
-                // which silently underpaid customers on cross-currency bookings.
-                $customerPaidCurrency = strtoupper((string) ($booking->original_currency ?: $booking->currency));
-
-                // Refund amount is in CUSTOMER'S PAID CURRENCY (matches the refund
-                // account's currency — see Step 3.5 validation below).
-                //
-                // FIX (2026-09-11): was branching on $bookingCurrency (the ticket's
-                // pricing currency) which gave wrong amounts for cross-currency bookings
-                // where the customer paid in a different currency than the ticket.
-                //
-                // Real bug: a KWD booking where customer paid 812.50 EGP
-                // (= original_amount) would compute refundAmount = 5.00 (the
-                // selling_price_foreign in KWD) instead of 812.50 — silently
-                // underpaying the customer by ~162x. Now we use $customerPaidCurrency
-                // (computed above as original_currency ?: currency) so the refund
-                // matches what the customer actually paid.
-                if ($customerPaidCurrency === 'EGP') {
+                // Refund amount is in BOOKING CURRENCY (matches the refund account's
+                // currency — see Step 3.5 validation below). For EGP bookings the
+                // refund caps at the EGP-denominated total of payments; for foreign
+                // bookings it caps at the foreign-currency sale amount.
+                if ($bookingCurrency === 'EGP') {
                     $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
                 } else {
-                    // Customer paid in a foreign currency. Use original_amount
-                    // (= what they paid in foreign) — NOT selling_price_foreign
-                    // (= what the ticket is priced at in foreign). For a customer
-                    // who paid USD 50 against a USD 100 ticket, original_amount=50
-                    // and we should refund 50, not 100.
-                    $foreignPaidAmount = (float) ($booking->original_amount ?: ($booking->selling_price_foreign ?? 0.0));
-                    // EGP penalties converted to foreign currency at the booking rate.
-                    $totalPenaltiesInCustomerCurrency = ($airlinePenalty + $officePenalty) / max($bookingExchangeRate, 0.0001);
-                    $refundAmount = $foreignPaidAmount - $totalPenaltiesInCustomerCurrency;
+                    $refundAmount = $saleAmountForComparison - $totalPenaltiesInBookingCurrency;
                 }
                 if ($refundAmount < 0) {
                     $refundAmount = 0;
@@ -2320,13 +2293,12 @@ class FlightBookingService
                     'flight_booking_id' => $booking->id,
                     'booking_number' => $booking->booking_number,
                     'booking_currency' => $bookingCurrency,
-                    'customer_paid_currency' => $customerPaidCurrency,
                     'total_paid_egp' => $totalPaid,
                     'sale_amount' => $saleAmountForComparison,
                     'airline_penalty' => $airlinePenalty,
                     'office_penalty' => $officePenalty,
                     'refund_amount' => $refundAmount,
-                    'refund_currency' => $customerPaidCurrency,
+                    'refund_currency' => $bookingCurrency,
                     'user_id' => $userId,
                 ]);
 
@@ -2386,57 +2358,23 @@ class FlightBookingService
                 // cleared by the FIN-A branch in deleteBookingWithReversal,
                 // accepting the cashbox drop as a known trade-off documented
                 // in the report.
-                //
-                // FIX (2026-09-11): ALSO post the customer-side revenue reversal
-                // (Step 3.5) BEFORE the cash refund, so the customer.AR ledger
-                // reaches 0 before we touch the cashbox. Otherwise the orphan
-                // customer AR balance persists (the BUG-7 documented in commit
-                // history was about double-counting — this fix avoids that by
-                // reversing the sale fully first).
-                //
-                // Determine the ACTUAL refund currency up-front: it's the
-                // currency the customer paid in (= original_currency if set,
-                // else booking.currency). This is the currency that lands in
-                // the refund cashbox and the currency the customer receives.
-                //
-                // Refund amount calculation:
-                //   - If customer paid in EGP (original_currency='EGP' OR
-                //     booking.currency='EGP' and no original_currency):
-                //       refundAmount = totalPaid - penalties  (in EGP)
-                //   - If customer paid in a foreign currency (original_currency='USD'
-                //     etc.): refundAmount = original_amount - penalties_in_foreign
-                //
-                // The previous code took the ELSE branch when booking.currency was
-                // non-EGP, even if the customer actually paid in EGP (= original_currency='EGP').
-                // It then computed refundAmount from selling_price_foreign (in booking
-                // currency) instead of original_amount (in customer's paid currency) —
-                // silently underpaying the customer by ~162x for KWD bookings paid
-                // from an EGP cashbox.
-
                 if ($booking->sale_gl_transaction_id) {
-                    // The original sale was posted at the EGP-equivalent of
-                    // `selling_price` (always stored in EGP, regardless of
-                    // booking.currency — see createBooking Step 1, line 261/271).
-                    //
-                    // FIX (2026-09-11): previously this block branched on
-                    // $bookingCurrency and, for non-EGP bookings, recomputed
-                    // `saleAmountEgp` from `selling_price_foreign * exchange_rate`.
-                    // That EGP figure is *not* what was originally posted on
-                    // the customer AR — the original sale was at `selling_price`.
-                    // Reading the original transaction's `amount` field removes
-                    // any ambiguity (and any FX rounding drift).
                     if (! isset($bookingExchangeRate)) {
                         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
                     }
-                    $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
-                    // Use the EXACT original sale amount recorded on the
-                    // customer AR — never re-derive it from foreign-side fields.
-                    $saleAmountEgp = (float) ($orig?->amount ?? $booking->selling_price);
-                    $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
+                    if ($bookingCurrency === 'EGP') {
+                        $saleAmountEgp = (float) $booking->selling_price;
+                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
+                    } else {
+                        $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
+                        $saleAmountEgp = $foreignSaleAmount * $bookingExchangeRate;
+                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
+                    }
                     $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
 
                     $reversalPosted = false;
                     if ($saleReversalAmount > 0.001) {
+                        $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                         if ($orig && $orig->from_account_id && $orig->to_account_id) {
                             $clearingId = (int) $orig->from_account_id;
                             $customerAccountId = (int) $orig->to_account_id;
@@ -2472,42 +2410,13 @@ class FlightBookingService
                     throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
                 }
 
-                // Step 3.5 (Bug #B6 fix): Validate refund account currency matches the
-                // CUSTOMER'S PAID CURRENCY (not booking.currency).
-                //
-                // Real-world scenario: a booking is sold in KWD (= booking.currency)
-                // but the customer paid 5,200 EGP into an EGP cashbox (= original_currency).
-                // The refund must go back to the customer in the currency they paid in
-                // (EGP), NOT in the ticket-pricing currency (KWD). Forcing a KWD refund
-                // would require an FX conversion at the cancel time which we don't have
-                // a market rate for — and it would surprise the customer who expects
-                // their money back in the same currency they handed over.
-                //
-                // Allowed refund currencies (priority order):
-                //   1. original_currency (= customer's actual paid currency; may be null
-                //      if they paid in the same currency as the booking — observer
-                //      clears it in that case)
-                //   2. booking.currency (= the ticket-pricing currency; used when
-                //      customer paid in same currency)
+                // Step 3.5 (Bug #B6 fix): Validate refund account currency matches booking currency.
                 if ($refundAmount > 0 && ! empty($data['account_id'])) {
                     $refundAccount = Account::query()->find($data['account_id']);
-                    $allowedCurrencies = array_filter([
-                        $booking->original_currency,
-                        $booking->currency,
-                    ]);
-                    $allowedCurrencies = array_map(
-                        fn ($c) => strtoupper((string) $c),
-                        $allowedCurrencies
-                    );
-                    if ($refundAccount && !in_array(
-                        strtoupper((string) $refundAccount->currency),
-                        $allowedCurrencies,
-                        true
-                    )) {
+                    if ($refundAccount && strtoupper((string) $refundAccount->currency) !== $bookingCurrency) {
                         throw new \InvalidArgumentException(
-                            "عملة حساب الاسترجاع ({$refundAccount->currency}) لا تطابق عملة دفع العميل (".
-                            implode('/', $allowedCurrencies).
-                            "). يجب اختيار حساب بنفس عملة الدفع."
+                            "عملة حساب الاسترجاع ({$refundAccount->currency}) لا تطابق عملة الحجز ({$bookingCurrency}). ".
+                            "يجب اختيار حساب بنفس عملة الحجز."
                         );
                     }
                 }

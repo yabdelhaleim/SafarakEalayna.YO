@@ -167,16 +167,14 @@
           :step="3"
           :total="totalSteps"
           title="حساب صرف الاسترداد"
-          subtitle="اختر الحساب (بنك / خزينة) الذي يُصرف منه المبلغ المرتجع للعميل بنفس عملة الحجز."
+          subtitle="اختر الحساب (بنك / خزينة) الذي يُصرف منه المبلغ المرتجع للعميل بالجنيه المصري."
         />
 
         <div v-if="customerRefundAmount > 0">
           <label class="block text-xs text-gold mb-3 uppercase tracking-widest font-mono">حساب الصرف *</label>
 
           <div v-if="settlementAccounts.length === 0" class="p-4 rounded-xl bg-error/10 border border-error/20 text-center">
-            <p class="text-xs text-error font-mono">
-              لا توجد حسابات تسوية بعملة الحجز ({{ saleCurrency }}). أضف خزينة/بنك بهذه العملة أولاً.
-            </p>
+            <p class="text-xs text-error font-mono">لا توجد حسابات تسوية متاحة. تأكد من إعداد الخزائن/المحافظ.</p>
           </div>
 
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
@@ -288,10 +286,7 @@
 import { ref, computed, onMounted, h } from 'vue';
 import axios from 'axios';
 import { useFlightStore } from '@/stores/flightStore';
-import {
-  fetchSettlementAccounts as fetchModuleSettlementAccounts,
-  filterSettlementAccountsByCurrency,
-} from '@/composables/useTreasuryAccountGroups';
+import { fetchSettlementAccounts as fetchModuleSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 
 const props = defineProps({
   initialBooking: {
@@ -319,58 +314,13 @@ const form = ref({
   notes: '',
 });
 
-/**
- * Customer's payment currency (= `booking.currency` on the server side).
- *
- * This is what the customer paid in and what gets refunded back. The server's
- * `FlightBookingService::cancelBooking()` enforces that the chosen settlement
- * account matches THIS currency (line 2184 of FlightBookingService.php), so
- * the account dropdown MUST be filtered against `saleCurrency` — never
- * `purchaseCurrency` (which is the airline cost currency).
- *
- * FIX (2026-09-11): Fallback chain now prefers `original_currency` over
- * `currency`. The flight store maps `b.selling_currency` to `b.currency`,
- * which used to be hardcoded to 'EGP' in the resource (see
- * FlightBookingResource.php line 141). When the resource is misconfigured or
- * the booking was created before the fix, `b.currency = 'EGP'` even for a
- * KWD booking, hiding all KWD cashboxes from the dropdown.
- *
- * The fallback chain matches the backend's `resolveCustomerOriginalCurrency()`:
- *   1. pricing.currency (the post-fix value)
- *   2. b.currency (legacy — was 'EGP' on KWD bookings before the fix)
- *   3. original_currency / pricing.purchaseCurrency (the carrier's foreign
- *      currency — only useful when the booking's main `currency` field is
- *      EGP but the customer actually paid in KWD via original_currency)
- *   4. 'EGP' (final fallback)
- */
-const saleCurrency = computed(() => {
-  const b = props.initialBooking;
-  return String(
-    b?.pricing?.currency
-      ?? b?.currency
-      ?? b?.original_currency
-      ?? b?.pricing?.purchaseCurrency
-      ?? 'EGP'
-  ).toUpperCase();
-});
-
-/**
- * Airline purchase cost currency (= `booking.purchaseCurrency` /
- * `booking.foreign_currency` on the server side). Display-only — never used
- * to filter settlement accounts because the refund goes back to the customer
- * in `saleCurrency`, not in what we paid the airline.
- */
+/** عملة تكلفة الشراء على الحجز (قد تكون KWD/USD) — للعرض التوضيحي فقط */
 const purchaseCurrency = computed(() => {
   const b = props.initialBooking;
-  return String(
-    b?.purchaseCurrency
-    ?? b?.pricing?.purchaseCurrency
-    ?? b?.foreign_currency
-    ?? saleCurrency.value
-  ).toUpperCase();
+  return String(b?.currency ?? b?.pricing?.currency ?? 'EGP').toUpperCase();
 });
 
-const hasForeignPurchase = computed(() => purchaseCurrency.value !== saleCurrency.value);
+const hasForeignPurchase = computed(() => purchaseCurrency.value !== 'EGP');
 
 const payments = computed(() => {
   const b = props.initialBooking;
@@ -501,11 +451,7 @@ function setupFromBooking(booking) {
 
 async function loadSettlementAccounts() {
   try {
-    const all = await fetchModuleSettlementAccounts(axios, { module: 'flight' });
-    // Refund must be disbursed in the booking's original currency (server-enforced
-    // by FlightBookingService::cancelBooking() — Bug #B6 fix). Pre-filter on the
-    // client so the user only sees accounts they can actually pick.
-    settlementAccounts.value = filterSettlementAccountsByCurrency(all, saleCurrency.value);
+    settlementAccounts.value = await fetchModuleSettlementAccounts(axios, { module: 'flight' });
     if (!form.value.accountId && settlementAccounts.value.length === 1) {
       form.value.accountId = settlementAccounts.value[0].id;
     }
