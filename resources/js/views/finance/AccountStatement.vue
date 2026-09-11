@@ -1925,13 +1925,22 @@ async function printFullStatement() {
       ? `/api/v1/customers/${selectedCustomer.value.id}/statement`
       : `/api/v1/finance/accounts/${route.params.id}/statement`;
 
+    // per_page=all is the sentinel the backend (AccountService.php:297)
+    // recognizes to bypass the 100-row cap and stream the full filtered set.
+    // Sending 5000 was silently clamped to 100 on the server, which is why
+    // the "Print All" button only ever printed a partial set.
     const res = await axios.get(url, {
-      params: { ...filters.value, per_page: 5000, page: 1 }
+      params: { ...filters.value, per_page: 'all', page: 1 }
     });
     const data = res.data?.data || {};
     statement.value = data.items || [];
 
     await nextTick();
+    // Finish every entrance animation BEFORE snapshotting — without this,
+    // rows that have `animationDelay: ${idx * 30}ms` are still translated
+    // off-screen when window.print() captures the page, producing an empty
+    // table even though `statement.value` is populated.
+    flushAnimations();
     window.print();
 
     statement.value = originalStatement;
@@ -2043,14 +2052,83 @@ function getModuleLabel(val) {
   return customMap[val] || financeStore.meta.transactionModules?.find(m => m.value === val)?.label || val;
 }
 
-function printStatement() {
+function flushAnimations() {
+  // window.print() snapshots whatever is currently painted. Every row in the
+  // table has `animate-in slide-in-from-right-4 fade-in` with
+  // `animationDelay: ${idx * 30}ms`, so on a 20-row page the last row is still
+  // translated ~1rem + faded for nearly a full second. Finishing all animations
+  // before print guarantees the snapshot is fully laid-out.
+  if (typeof document === 'undefined' || !document.body?.getAnimations) return;
+  try {
+    document.body.getAnimations({ subtree: true }).forEach((a) => {
+      try { a.finish(); } catch { /* ignore */ }
+    });
+  } catch {
+    // getAnimations may throw if the document is detached — non-fatal.
+  }
+}
+
+async function printStatement() {
+  await nextTick();
+  flushAnimations();
   window.print();
 }
 
-const exportExcel = () => {
+const exportExcel = async () => {
+  // Customer statements stay on the in-browser CSV path for now — adding
+  // a customer export endpoint is out of scope for this fix. Account
+  // statements go through the new server-side XLSX endpoint which:
+  //   - streams the FULL filtered set (not just the 20 rows on the page),
+  //   - respects every active filter (search, dates, type, module),
+  //   - produces a real Excel file with RTL layout, summary card, totals
+  //     row, and formatted date/number columns.
+  if (statementTargetType.value === 'customer') {
+    return exportExcelLegacyCsv();
+  }
+  if (loading.value) return;
+  loading.value = true;
+  try {
+    const res = await axios.get(
+      `/api/v1/finance/accounts/${route.params.id}/statement/export`,
+      {
+        params: { ...filters.value, per_page: 'all', page: 1 },
+        responseType: 'blob',
+      }
+    );
+
+    // Derive a filename from the response Content-Disposition when the
+    // server provides one, fall back to a sensible default otherwise.
+    const cd = res.headers?.['content-disposition'] || '';
+    const match = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+    const filename = match
+      ? decodeURIComponent(match[1])
+      : `كشف_حساب_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+
+    if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+      window.addToast('تم تصدير كشف الحساب إلى Excel بنجاح', 'success');
+    }
+  } catch (err) {
+    notifyError('فشل تصدير Excel', err, 'فشل تصدير كشف الحساب، يرجى المحاولة لاحقاً');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Kept as a fallback for the customer-statement view, which is out of
+// scope for this fix. Mirrors the original CSV builder.
+const exportExcelLegacyCsv = () => {
   if (!statement.value.length) return;
   const headers = ['التاريخ', 'القسم/الموظف', 'رقم المرجع/PNR', 'البيان/الوصف', 'مدين (-)', 'دائن (+)', 'الرصيد بعد الحركة'];
-  
+
   const formatDateLocal = (dateString) => {
     if (!dateString) return '';
     try {
@@ -2075,10 +2153,10 @@ const exportExcel = () => {
     const debit = entry.debit > 0 ? entry.debit : 0;
     const credit = entry.credit > 0 ? entry.credit : 0;
     const balance = entry.balance_after || 0;
-    
+
     return [date, moduleUser, pnr, description, debit, credit, balance];
   });
-  
+
   const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -2272,6 +2350,21 @@ onMounted(async () => {
   tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  /* Strip entrance animations from the table so window.print() doesn't snapshot
+   * rows that are still translated/faded-out from `slide-in-from-right-4` + `animationDelay: ${idx * 30}ms`. */
+  .stmt-table tr,
+  .stmt-table tbody tr,
+  .stmt-table tr[class*="animate-in"],
+  .stmt-table tr[class*="slide-in"] {
+    animation: none !important;
+    animation-delay: 0ms !important;
+    animation-duration: 0ms !important;
+    transform: none !important;
+    opacity: 1 !important;
+    transition: none !important;
+    visibility: visible !important;
   }
 
   th, td {

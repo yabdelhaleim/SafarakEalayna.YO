@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\V1\Fawry\FawryTransactionController;
 use App\Http\Controllers\Api\V1\Fawry\FawryTreasuryController;
 use App\Http\Controllers\Api\V1\Fawry\FawryWalkInPaymentController;
 use App\Http\Controllers\Api\V1\Finance\AccountController;
+use App\Http\Controllers\Api\V1\Finance\AccountStatementExportController;
 use App\Http\Controllers\Api\V1\Finance\ApprovalController;
 use App\Http\Controllers\Api\V1\Finance\AuditController;
 use App\Http\Controllers\Api\V1\Finance\CurrencyController;
@@ -155,6 +156,10 @@ Route::prefix('v1')->middleware([
             // Account specific routes
             Route::post('accounts/{account}/deactivate', [AccountController::class, 'deactivate']);
             Route::get('accounts/{account}/statement', [AccountController::class, 'statement']);
+            // Server-side XLSX export of the same filtered set. Streams
+            // `per_page=all` so the file always reflects the on-screen
+            // filters, not just whatever was loaded into the Vue page.
+            Route::get('accounts/{account}/statement/export', [AccountStatementExportController::class, 'export']);
             Route::post('transfers', [AccountController::class, 'transfer']);
             Route::get('transfers', [AccountController::class, 'transferHistory']);
 

@@ -290,8 +290,41 @@ class AccountService
             $openingBalance += (float) $beforeBalance;
         }
 
-        $perPage = min($filters['per_page'] ?? 20, 100);
-        $paginator = $query->orderBy('account_entries.created_at', 'desc')
+        // per_page=all is a sentinel used by print/export flows (AccountStatement.vue
+        // printFullStatement / AccountStatementExportController) to bypass the 100-row
+        // cap so the full filtered set actually prints / exports end-to-end.
+        // Anything else is clamped to [1, 100] as before.
+        $perPage = ($filters['per_page'] ?? null) === 'all'
+            ? PHP_INT_MAX
+            : min(max((int) ($filters['per_page'] ?? 20), 1), 100);
+
+        if ($perPage === PHP_INT_MAX) {
+            $rows = (clone $query)->orderBy('account_entries.created_at', 'desc')
+                ->orderBy('account_entries.id', 'desc')
+                ->get();
+
+            return [
+                'items' => $rows,
+                'pagination' => [
+                    'total' => $rows->count(),
+                    'per_page' => $rows->count(),
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'from' => $rows->count() > 0 ? 1 : null,
+                    'to' => $rows->count() > 0 ? $rows->count() : null,
+                ],
+                'stats' => [
+                    'opening_balance' => (float) $openingBalance,
+                    'period_credit' => (float) ($periodTotals->total_credit ?? 0),
+                    'period_debit' => (float) ($periodTotals->total_debit ?? 0),
+                    'closing_balance' => (float) ($openingBalance + ($periodTotals->total_credit ?? 0) - ($periodTotals->total_debit ?? 0)),
+                    'account_balance' => (float) $account->balance,
+                ],
+            ];
+        }
+
+        $paginator = $query
+            ->orderBy('account_entries.created_at', 'desc')
             ->orderBy('account_entries.id', 'desc')
             ->paginate($perPage);
 
