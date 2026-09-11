@@ -2263,7 +2263,11 @@ class FlightBookingService
                     $saleAmountForComparison = (float) $booking->selling_price;
                     $totalPenaltiesInBookingCurrency = $airlinePenalty + $officePenalty;
                 } else {
-                    $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
+                    // FIX (2026-09-11): the customer-paid amount (original_amount)
+                    // is what limits the refund, NOT the ticket's selling_price_foreign.
+                    // If the customer paid 5 USD against a 100 USD ticket (partial),
+                    // we should refund 5 USD, not 100 USD.
+                    $foreignSaleAmount = (float) ($booking->original_amount ?: ($booking->selling_price_foreign ?? 0.0));
                     $saleAmountForComparison = $foreignSaleAmount;
                     // EGP penalties converted to foreign currency at the booking rate.
                     $totalPenaltiesInBookingCurrency = ($airlinePenalty + $officePenalty) / max($bookingExchangeRate, 0.0001);
@@ -2276,14 +2280,37 @@ class FlightBookingService
                     );
                 }
 
-                // Refund amount is in BOOKING CURRENCY (matches the refund account's
-                // currency — see Step 3.5 validation below). For EGP bookings the
-                // refund caps at the EGP-denominated total of payments; for foreign
-                // bookings it caps at the foreign-currency sale amount.
-                if ($bookingCurrency === 'EGP') {
+                // Determine the customer's actual paid currency for the refund
+                // amount calculation (= original_currency if set, else booking.currency).
+                // FIX (2026-09-11): this was previously branching on $bookingCurrency
+                // which silently underpaid customers on cross-currency bookings.
+                $customerPaidCurrency = strtoupper((string) ($booking->original_currency ?: $booking->currency));
+
+                // Refund amount is in CUSTOMER'S PAID CURRENCY (matches the refund
+                // account's currency — see Step 3.5 validation below).
+                //
+                // FIX (2026-09-11): was branching on $bookingCurrency (the ticket's
+                // pricing currency) which gave wrong amounts for cross-currency bookings
+                // where the customer paid in a different currency than the ticket.
+                //
+                // Real bug: a KWD booking where customer paid 812.50 EGP
+                // (= original_amount) would compute refundAmount = 5.00 (the
+                // selling_price_foreign in KWD) instead of 812.50 — silently
+                // underpaying the customer by ~162x. Now we use $customerPaidCurrency
+                // (computed above as original_currency ?: currency) so the refund
+                // matches what the customer actually paid.
+                if ($customerPaidCurrency === 'EGP') {
                     $refundAmount = $totalPaid - $airlinePenalty - $officePenalty;
                 } else {
-                    $refundAmount = $saleAmountForComparison - $totalPenaltiesInBookingCurrency;
+                    // Customer paid in a foreign currency. Use original_amount
+                    // (= what they paid in foreign) — NOT selling_price_foreign
+                    // (= what the ticket is priced at in foreign). For a customer
+                    // who paid USD 50 against a USD 100 ticket, original_amount=50
+                    // and we should refund 50, not 100.
+                    $foreignPaidAmount = (float) ($booking->original_amount ?: ($booking->selling_price_foreign ?? 0.0));
+                    // EGP penalties converted to foreign currency at the booking rate.
+                    $totalPenaltiesInCustomerCurrency = ($airlinePenalty + $officePenalty) / max($bookingExchangeRate, 0.0001);
+                    $refundAmount = $foreignPaidAmount - $totalPenaltiesInCustomerCurrency;
                 }
                 if ($refundAmount < 0) {
                     $refundAmount = 0;
@@ -2358,6 +2385,33 @@ class FlightBookingService
                 // cleared by the FIN-A branch in deleteBookingWithReversal,
                 // accepting the cashbox drop as a known trade-off documented
                 // in the report.
+                //
+                // FIX (2026-09-11): ALSO post the customer-side revenue reversal
+                // (Step 3.5) BEFORE the cash refund, so the customer.AR ledger
+                // reaches 0 before we touch the cashbox. Otherwise the orphan
+                // customer AR balance persists (the BUG-7 documented in commit
+                // history was about double-counting — this fix avoids that by
+                // reversing the sale fully first).
+                //
+                // Determine the ACTUAL refund currency up-front: it's the
+                // currency the customer paid in (= original_currency if set,
+                // else booking.currency). This is the currency that lands in
+                // the refund cashbox and the currency the customer receives.
+                //
+                // Refund amount calculation:
+                //   - If customer paid in EGP (original_currency='EGP' OR
+                //     booking.currency='EGP' and no original_currency):
+                //       refundAmount = totalPaid - penalties  (in EGP)
+                //   - If customer paid in a foreign currency (original_currency='USD'
+                //     etc.): refundAmount = original_amount - penalties_in_foreign
+                //
+                // The previous code took the ELSE branch when booking.currency was
+                // non-EGP, even if the customer actually paid in EGP (= original_currency='EGP').
+                // It then computed refundAmount from selling_price_foreign (in booking
+                // currency) instead of original_amount (in customer's paid currency) —
+                // silently underpaying the customer by ~162x for KWD bookings paid
+                // from an EGP cashbox.
+
                 if ($booking->sale_gl_transaction_id) {
                     if (! isset($bookingExchangeRate)) {
                         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
