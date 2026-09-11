@@ -69,18 +69,23 @@ class FlightCancelFlowTest extends FlightTestCase
             'refund_amount' => 400.0,
         ]);
 
-        // Office income transaction exists (BUG-7 fix)
+        // BUG-7 (2026-09-02 c23d51b): office_penalty is NO LONGER posted as
+        // a separate type='income' transaction. It is kept implicitly via the
+        // sale-reversal math: refund_amount = totalPaid - airline - office
+        // = 1000 - 500 - 100 = 400. The 100 EGP office fee stays in the
+        // cashbox because the cashbox only paid out 400, not 1000. Asserting
+        // there is NO office-penalty income row preserves the post-c23d51b
+        // accounting invariant.
         $officeIncomeTx = Transaction::query()
             ->where('related_type', FlightBooking::class)
             ->where('related_id', $booking->id)
             ->where('type', 'income')
             ->where('notes', 'like', 'office_penalty%')
             ->first();
-        $this->assertNotNull(
+        $this->assertNull(
             $officeIncomeTx,
-            'BUG-7: office_penalty must be posted as an income transaction'
+            'BUG-7 fix (c23d51b): office_penalty must NOT be posted as a separate income tx — it is kept implicitly via the reduced refund amount.'
         );
-        $this->assertEqualsWithDelta(100.0, (float) $officeIncomeTx->amount, 0.01);
 
         // Revenue was reversed (BUG-6 fix: reversal loop completes even
         // when flight_payments exists)
@@ -97,10 +102,14 @@ class FlightCancelFlowTest extends FlightTestCase
 
         // Verify the accounting math:
         //   cashbox: starts at 100000
-        //   addPayment 1000 in: cashbox += 1000 → 101000
-        //   refund 400 out: cashbox -= 400 → 100600
-        //   office_penalty 100 in: cashbox += 100 → 100700
-        $this->assertAccountBalance($this->cashboxEgp, 100700.0);
+        //   addPayment 1000 in:  cashbox += 1000 → 101000
+        //   refund 400 out:      cashbox -= 400  → 100600
+        //   office_penalty 100 is KEPT IMPLICITLY in the cashbox (the office
+        //   fee manifests as the difference between what was paid in (1000)
+        //   and what was paid back to the customer (400) — the remaining 100
+        //   is the office's revenue, no separate income row needed).
+        //   cashbox ends at 100600 EGP.
+        $this->assertAccountBalance($this->cashboxEgp, 100600.0);
     }
 
     /**
@@ -123,17 +132,21 @@ class FlightCancelFlowTest extends FlightTestCase
             officePenalty: 100.0
         );
 
-        // Office income posted
+        // BUG-7 fix (c23d51b, 2026-09-02): office_penalty is NO LONGER posted
+        // as a separate type='income' transaction. The office fee stays
+        // implicitly in the cashbox because the cashbox only paid out 900
+        // (the refund) out of the 1000 it collected. Asserting the absence
+        // of a separate office_income row preserves the post-c23d51b
+        // accounting invariant.
         $officeIncomeTx = Transaction::query()
             ->where('related_type', FlightBooking::class)
             ->where('related_id', $booking->id)
             ->where('type', 'income')
             ->where('notes', 'like', 'office_penalty%')
             ->first();
-        $this->assertNotNull($officeIncomeTx, 'BUG-7: office_penalty must be posted');
-        $this->assertEqualsWithDelta(100.0, (float) $officeIncomeTx->amount, 0.01);
+        $this->assertNull($officeIncomeTx, 'BUG-7 fix (c23d51b): office_penalty must NOT be a separate income row — it is kept implicitly via the reduced refund amount.');
 
-        // Refund amount = 1000 - 100 = 900
+        // Refund amount = 1000 - 0 - 100 = 900 (kept office fee = 100)
         $this->assertDatabaseHas('flight_refunds', [
             'flight_booking_id' => $booking->id,
             'refund_amount' => 900.0,

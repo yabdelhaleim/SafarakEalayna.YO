@@ -2320,12 +2320,13 @@ class FlightBookingService
                     'flight_booking_id' => $booking->id,
                     'booking_number' => $booking->booking_number,
                     'booking_currency' => $bookingCurrency,
+                    'customer_paid_currency' => $customerPaidCurrency,
                     'total_paid_egp' => $totalPaid,
                     'sale_amount' => $saleAmountForComparison,
                     'airline_penalty' => $airlinePenalty,
                     'office_penalty' => $officePenalty,
                     'refund_amount' => $refundAmount,
-                    'refund_currency' => $bookingCurrency,
+                    'refund_currency' => $customerPaidCurrency,
                     'user_id' => $userId,
                 ]);
 
@@ -2413,22 +2414,29 @@ class FlightBookingService
                 // from an EGP cashbox.
 
                 if ($booking->sale_gl_transaction_id) {
+                    // The original sale was posted at the EGP-equivalent of
+                    // `selling_price` (always stored in EGP, regardless of
+                    // booking.currency — see createBooking Step 1, line 261/271).
+                    //
+                    // FIX (2026-09-11): previously this block branched on
+                    // $bookingCurrency and, for non-EGP bookings, recomputed
+                    // `saleAmountEgp` from `selling_price_foreign * exchange_rate`.
+                    // That EGP figure is *not* what was originally posted on
+                    // the customer AR — the original sale was at `selling_price`.
+                    // Reading the original transaction's `amount` field removes
+                    // any ambiguity (and any FX rounding drift).
                     if (! isset($bookingExchangeRate)) {
                         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
                     }
-                    if ($bookingCurrency === 'EGP') {
-                        $saleAmountEgp = (float) $booking->selling_price;
-                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
-                    } else {
-                        $foreignSaleAmount = (float) ($booking->selling_price_foreign ?? $booking->original_amount ?? 0.0);
-                        $saleAmountEgp = $foreignSaleAmount * $bookingExchangeRate;
-                        $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
-                    }
+                    $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                    // Use the EXACT original sale amount recorded on the
+                    // customer AR — never re-derive it from foreign-side fields.
+                    $saleAmountEgp = (float) ($orig?->amount ?? $booking->selling_price);
+                    $totalPenaltiesEgp = $airlinePenalty + $officePenalty;
                     $saleReversalAmount = max(0.0, $saleAmountEgp - $totalPenaltiesEgp);
 
                     $reversalPosted = false;
                     if ($saleReversalAmount > 0.001) {
-                        $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
                         if ($orig && $orig->from_account_id && $orig->to_account_id) {
                             $clearingId = (int) $orig->from_account_id;
                             $customerAccountId = (int) $orig->to_account_id;
