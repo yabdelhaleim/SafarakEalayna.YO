@@ -115,6 +115,55 @@
           </div>
         </section>
 
+        <!-- ── ملخص السيولة حسب العملة ─────────────────────────────── -->
+        <section v-if="ov.liquidity_by_currency?.length" class="space-y-3">
+          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="text-xl font-bold text-white">ملخص السيولة</h2>
+            <span class="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300">
+              ● الرصيد الفعلي = المال المشحون فعلاً
+            </span>
+          </div>
+
+          <div class="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+            <table class="min-w-full text-right text-sm">
+              <thead class="border-b border-white/10 bg-white/[0.03] text-[11px] uppercase tracking-wider text-white/40">
+                <tr>
+                  <th class="px-5 py-3 font-bold">العملة</th>
+                  <th class="px-5 py-3 font-bold text-emerald-300">رصيد الحسابات</th>
+                  <th class="px-5 py-3 font-bold text-white border-r border-white/10">
+                    إجمالي الرصيد الفعلي
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/5">
+                <tr
+                  v-for="row in ov.liquidity_by_currency"
+                  :key="row.currency"
+                  class="transition-colors hover:bg-white/[0.03]"
+                >
+                  <td class="px-5 py-3">
+                    <span class="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-black text-white">
+                      {{ row.currency }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 font-mono font-bold text-emerald-300 tabular-nums">
+                    {{ fmt(row.accounts_balance) }}
+                  </td>
+                  <td class="px-5 py-3 border-r border-white/10">
+                    <span class="font-mono text-base font-black text-white tabular-nums">
+                      {{ fmt(row.total_actual) }} {{ row.currency }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="text-xs text-white/40">
+            ⚠️ العملات المختلفة لا تُجمع مع بعض — كل عملة معروضة على حدة لتجنب الخلط.
+          </p>
+        </section>
+
         <!-- Recent transactions -->
         <section class="space-y-4">
           <h2 class="text-xl font-bold text-white flex items-center gap-2">

@@ -173,6 +173,19 @@ class FlightCarrier extends Model
 
     public function debit(float $amount, int $bookingId, int $userId): AirlineTransaction
     {
+        // Phase 11.1 B-7 DEFECT FIX: refuse to debit inactive carriers.
+        // The FlightCarrierRechargeService already refuses to fund an inactive
+        // carrier, but the booking flow (FlightBookingService::debitFlightCarrier)
+        // was able to debit an inactive carrier with a leftover balance — creating
+        // a production-safety gap. Mirror the same exception class so callers
+        // can catch InactiveFlightCarrierException consistently.
+        if (! $this->is_active) {
+            throw new \App\Exceptions\InactiveFlightCarrierException(
+                "لا يمكن إجراء حجز على ناقل غير نشط: الناقل «{$this->name}» ".
+                "({$this->code}) غير مُفعَّل. قم بتفعيله أولاً من شاشة إدارة الناقلين."
+            );
+        }
+
         if ($this->available_balance < $amount) {
             throw new \Exception(
                 "رصيد شركة الطيران غير كافٍ. " .

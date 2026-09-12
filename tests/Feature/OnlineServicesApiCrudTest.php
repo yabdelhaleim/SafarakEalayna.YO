@@ -49,14 +49,16 @@ class OnlineServicesApiCrudTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        $this->paymentMethod = PaymentMethod::query()->create([
-            'code' => 'cash_online_test',
-            'name_ar' => 'نقدي (اختبار)',
-            'name_en' => 'Cash (test)',
-            'color' => '#10B981',
-            'is_active' => true,
-            'order' => 0,
-        ]);
+        $this->paymentMethod = PaymentMethod::firstOrCreate(
+            ['code' => 'cash'],
+            [
+                'name_ar' => 'نقدي (اختبار)',
+                'name_en' => 'Cash (test)',
+                'color' => '#10B981',
+                'is_active' => true,
+                'order' => 0,
+            ],
+        );
     }
 
     public function test_online_settings_all_contract_for_vue(): void

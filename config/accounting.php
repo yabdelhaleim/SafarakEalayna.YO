@@ -131,7 +131,16 @@ return [
             'visa' => [
                 'EGP' => env('ACCOUNTING_VISA_INCOME_CLEARING_EGP', 'إقفال إيرادات التأشيرات (EGP)'),
                 'USD' => env('ACCOUNTING_VISA_INCOME_CLEARING_USD', 'إقفال إيرادات التأشيرات (USD)'),
-                'SAR' => env('ACCOUNTING_VISA_INCOME_CLEARING_SAR', 'إقفال إيرادات التأشيرات (SAR)'),
+                'SAR' => env('ACCOUNTING_VISA_INCOME_CLEARING_SAR', 'إقفل إيرادات التأشيرات (SAR)'),
+            ],
+            // FX SAFETY (2026-08-21): add per-currency Hajj/Umra income
+            // clearing buckets — mirror of the expense_per_currency block
+            // above. Without this, USD/SAR HajjUmra bookings route the
+            // income leg to the EGP clearing, hitting the safe-FX rule.
+            'hajj_umra' => [
+                'EGP' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_EGP', 'إقفال إيرادات الحج والعمرة (EGP)'),
+                'USD' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_USD', 'إقفال إيرادات الحج والعمرة (USD)'),
+                'SAR' => env('ACCOUNTING_HAJJ_INCOME_CLEARING_SAR', 'إقفال إيرادات الحج والعمرة (SAR)'),
             ],
         ],
         'expense_per_currency' => [
@@ -139,6 +148,15 @@ return [
                 'EGP' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_EGP', 'إقفال تكاليف التأشيرات (EGP)'),
                 'USD' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_USD', 'إقفال تكاليف التأشيرات (USD)'),
                 'SAR' => env('ACCOUNTING_VISA_EXPENSE_CLEARING_SAR', 'إقفال تكاليف التأشيرات (SAR)'),
+            ],
+            // FX SAFETY (2026-08-21): add per-currency Hajj/Umra clearing
+            // buckets so USD/SAR bookings don't post into the EGP clearing
+            // (cross-currency, would hit the safe-FX rejection in
+            // TransactionService::recordJournalTransfer).
+            'hajj_umra' => [
+                'EGP' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_EGP', 'إقفال تكاليف الحج والعمرة (EGP)'),
+                'USD' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_USD', 'إقفال تكاليف الحج والعمرة (USD)'),
+                'SAR' => env('ACCOUNTING_HAJJ_EXPENSE_CLEARING_SAR', 'إقفال تكاليف الحج والعمرة (SAR)'),
             ],
         ],
         /*
@@ -148,6 +166,24 @@ return [
             'flight_system' => env('ACCOUNTING_PREPAID_FLIGHT_SYSTEM_NAME', 'رصيد مسبق — أنظمة حجز الطيران'),
             'flight_carrier' => env('ACCOUNTING_PREPAID_FLIGHT_CARRIER_NAME', 'رصيد مسبق — ناقلو الطيران'),
             'fawry' => env('ACCOUNTING_PREPAID_FAWRY_NAME', 'رصيد مسبق — ماكينات فوري'),
+        ],
+        /*
+         * Sales-pending-receivable accounts — FIN-2 (2026-08-23).
+         *
+         * في الحجز الآجل (بدون دفعة فورية) يُسجَّل دين العميل فقط بدون
+         * الاعتراف بالإيراد. تُستخدم هذه الحسابات كحساب مقابل في القيد
+         * (pending_receivable → customer) فلا يصنّفه P&L كإيراد لأن
+         * from_account ليس في incomeClearing. يُعترف بالإيراد فعلياً
+         * عند استلام الدفع عبر addPayment().
+         *
+         * In credit bookings (no immediate payment) only the customer AR
+         * is recorded — no revenue recognition. This account is used as
+         * the contra leg of the (pending_receivable → customer) transfer,
+         * which the P&L classifier therefore skips (not in incomeClearing).
+         * Revenue is recognised at cash receipt via addPayment().
+         */
+        'sales_pending_receivable' => [
+            'flight' => env('ACCOUNTING_FLIGHT_SALES_PENDING_RECEIVABLE_NAME', 'ذمم عملاء طيران معلق'),
         ],
         /*
          * Offset for raw TreasuryService::credit / ::debit when no module context exists.

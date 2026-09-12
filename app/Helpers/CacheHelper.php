@@ -113,23 +113,51 @@ class CacheHelper
             return Cache::tags($tags);
         }
 
+        // IMPORTANT: capture the namespace constant in the OUTER method scope,
+        // not inside the anonymous class below. Inside an anonymous class the
+        // keyword `self::` resolves to the anonymous class itself, so any
+        // `self::FINANCE_LISTING_NAMESPACE` reference inside it raises
+        // `Undefined constant class@anonymous::FINANCE_LISTING_NAMESPACE`
+        // (uncaughtable through tags()/Cache::tags() and surfaces as HTTP 500
+        // on every /api/v1/finance/accounts and /api/v1/dashboard hit when
+        // the cache store is `database` / `file`).
         $namespace = self::FINANCE_LISTING_NAMESPACE;
+        $tagList = $tags;
 
-        // Build a tagged-key closure proxy.
-        return new class($tags, $namespace)
+        // Build a tagged-key closure proxy. We capture BOTH values in the
+        // constructor and never reference the enclosing class from inside the
+        // anonymous class body (see the reason above).
+        return new class($tagList, $namespace)
         {
-            public function __construct(private array $tags, private string $namespace) {}
+            public function __construct(private array $tagList, private string $namespace) {}
 
             public function remember(string $key, $ttl, \Closure $callback)
             {
-                $namespacedKey = $this->namespace . ':' . implode(',', $this->tags) . ':' . $key;
+                $namespacedKey = $this->namespace . ':' . implode(',', $this->tagList) . ':' . $key;
 
-                return Cache::remember($namespacedKey, $ttl, $callback);
+                try {
+                    return Cache::remember($namespacedKey, $ttl, $callback);
+                } catch (Throwable $e) {
+                    // Never let a cache failure bubble up as HTTP 500.
+                    // The calling controller may still be perfectly able to
+                    // serve the response by re-running the closure.
+                    Log::warning('CacheHelper::tags()->remember() failed; running callback without cache', [
+                        'key' => $namespacedKey,
+                        'error' => $e->getMessage(),
+                    ]);
+                    return $callback();
+                }
             }
 
             public function flush(): void
             {
-                CacheHelper::flushNamespace();
+                try {
+                    CacheHelper::flushNamespace();
+                } catch (Throwable $e) {
+                    Log::warning('CacheHelper::tags()->flush() failed', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         };
     }

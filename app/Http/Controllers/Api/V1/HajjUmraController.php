@@ -76,18 +76,10 @@ class HajjUmraController extends Controller
         );
     }
 
-    public function update(UpdateHajjUmraBookingRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
-    {
-        try {
-            $booking = $this->service->update($hajjUmra, $request->validated());
-        } catch (\Throwable $e) {
-            return ApiResponse::error('فشل تحديث الحجز: '.$e->getMessage(), null, 422);
-        }
+    // INCIDENT-2026-08-17: Tourism no-edit contract. PUT/PATCH removed.
+//   Cancellation is the supported correction path.
 
-        return ApiResponse::success('تم تحديث الحجز', new HajjUmraBookingResource($booking));
-    }
-
-    /**
+/**
      * DELETE /api/v1/hajj-umra/bookings/{hajjUmra}
      *
      * Soft delete the booking with full financial reversal.
@@ -112,8 +104,7 @@ class HajjUmraController extends Controller
                 return ApiResponse::error('هذا الحجز محذوف بالفعل', null, 422);
             }
 
-            $userId = Auth::id() ?: 1;
-            $this->service->deleteBookingWithReversal($booking->id, $userId);
+            $this->service->deleteBookingWithReversal($booking->id, $request->user());
 
             return ApiResponse::success('تم حذف الحجز وعكس كل الآثار المحاسبية بنجاح.');
         } catch (\Exception $e) {
@@ -139,18 +130,54 @@ class HajjUmraController extends Controller
         }
     }
 
-    public function addPayment(StoreHajjUmraPaymentRequest $request, HajjUmraBooking $hajjUmra): JsonResponse
+    public function addPayment(StoreHajjUmraPaymentRequest $request, int $hajjUmra): JsonResponse
     {
+        // PRE-PHASE-B IDEMPOTENCY FIX (2026-08-15):
+        //   The service is the source of truth for replay detection. It
+        //   tags the returned HajjUmraPayment with a transient boolean
+        //   `idempotent_replay` when the row it returned was pre-existing
+        //   (i.e. this call was a replay of a prior request that supplied
+        //   the same `idempotency_key`). The HTTP layer surfaces that as
+        //   a 200 OK + explicit body flag so the client can distinguish
+        //   "first request, payment was created" (201) from "replay, payment
+        //   already existed" (200).
+        //
+        // FIX (2026-08-29): look up the booking with withTrashed() so a
+        // soft-deleted booking is detected here and returns 422 (consistent
+        // with destroy() and the service-level guard) instead of 404 (which
+        // would imply "does not exist", misleading for a soft-deleted row).
+        $booking = HajjUmraBooking::withTrashed()->find($hajjUmra);
+        if (! $booking) {
+            return ApiResponse::error('الحجز غير موجود', null, 404);
+        }
+        if ($booking->trashed()) {
+            return ApiResponse::error(
+                'لا يمكن إضافة دفعة على حجز محذوف (soft-deleted). '
+                .'يجب استخدام deleteBookingWithReversal() للعكس الإداري.',
+                null,
+                422
+            );
+        }
+        $hajjUmra = $booking;
+
         try {
             $payment = $this->service->addPayment($hajjUmra, $request->validated());
         } catch (\Throwable $e) {
             return ApiResponse::error('فشل تسجيل الدفعة: '.$e->getMessage());
         }
 
-        return ApiResponse::success('تم تسجيل الدفعة', [
-            'payment' => $payment->load('account', 'transaction'),
-            'booking' => new HajjUmraBookingResource($this->service->find($hajjUmra->id)),
-        ], 201);
+        $isReplay = (bool) ($payment->idempotent_replay ?? false);
+        $status = $isReplay ? 200 : 201;
+
+        return ApiResponse::success(
+            $isReplay ? 'تم استرجاع الدفعة السابقة (إعادة طلب)' : 'تم تسجيل الدفعة',
+            [
+                'payment' => $payment->load('account', 'transaction'),
+                'booking' => new HajjUmraBookingResource($this->service->find($hajjUmra->id)),
+                'idempotent_replay' => $isReplay,
+            ],
+            $status
+        );
     }
 
     /**
@@ -194,7 +221,12 @@ class HajjUmraController extends Controller
                     DB::raw('MAX(hajj_umra_bookings.created_at) as last_booking'),
                 ])
                 ->join('customers', 'hajj_umra_bookings.customer_id', '=', 'customers.id')
-                ->where('hajj_umra_bookings.status', '!=', 'cancelled')
+                // FIX (2026-08-29): exclude BOTH cancelled AND refunded. Refunded
+                // bookings already had all financial effects reversed (income,
+                // expense, payments), so they contribute zero net debt. Including
+                // them would inflate the customer's total_sales / total_debt with
+                // ghost debt that has already been settled via the refund flow.
+                ->whereNotIn('hajj_umra_bookings.status', ['cancelled', 'refunded'])
                 ->groupBy('hajj_umra_bookings.customer_id');
 
             if ($search) {
@@ -299,8 +331,16 @@ class HajjUmraController extends Controller
 
             // 2. Fetch general debt payments (journal entries)
             if ($customer->account_id) {
-                $paymentTxIds = HajjUmraPayment::pluck('transaction_id')->filter()->toArray();
-                $bookingTxIds = HajjUmraBooking::where('customer_id', $customer->id)
+                // FIX (2026-08-29): use withTrashed() so the exclusion list
+                // covers soft-deleted payments/bookings too. Without this,
+                // after a DELETE the excludedTxIds array is EMPTY (the only
+                // payment was soft-deleted, the only booking was soft-deleted),
+                // and the AccountEntry query returns the ORIGINAL tx rows +
+                // their REVERSAL entries — which the statement then treats as
+                // fresh receipts, showing phantom credit (total_debt goes
+                // negative) for a customer with no active debt.
+                $paymentTxIds = HajjUmraPayment::withTrashed()->pluck('transaction_id')->filter()->toArray();
+                $bookingTxIds = HajjUmraBooking::withTrashed()->where('customer_id', $customer->id)
                     ->pluck('income_transaction_id')
                     ->filter()
                     ->toArray();

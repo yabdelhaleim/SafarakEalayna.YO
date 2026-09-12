@@ -129,6 +129,42 @@ export function normalizeWalletProviderCode(raw) {
 }
 
 /**
+ * Frontend mirror of `App\Enums\WalletProvider::label()`.
+ *
+ * Used for rendering wallet_provider codes in user-facing strings (e.g. the
+ * "unmatched providers" warning in WalletCreate.vue). Kept in sync with the
+ * PHP enum; if you add a new case there, mirror it here too.
+ *
+ * Canonical code → Arabic display label.
+ */
+export const WALLET_PROVIDER_LABELS = Object.freeze({
+  vodafone_cash: 'فودافون كاش',
+  instapay: 'إنستاباي',
+  etisalat_cash: 'اتصالات كاش',
+  orange_cash: 'أورانج كاش',
+  we_pay: 'WE Pay',
+  paymob: 'Paymob / بوابة دفع',
+  cash_wallet: 'محفظة كاش (عام)',
+  postal: 'بريد / مصاري',
+  fawry: 'فوري',
+  other: 'أخرى',
+});
+
+/**
+ * Resolve a wallet_provider code (raw, normalized, OR canonical) to an
+ * Arabic display label. Falls back to the raw input when no label exists
+ * so unrecognized legacy codes still surface.
+ *
+ * @param {string|null|undefined} raw
+ * @returns {string}
+ */
+export function walletProviderLabel(raw) {
+  const canonical = canonicalizeWalletTypeCode(raw);
+  if (!canonical) return raw == null ? '(غير محدد)' : String(raw);
+  return WALLET_PROVIDER_LABELS[canonical] ?? String(raw);
+}
+
+/**
  * Alias map for legacy / abbreviated wallet type codes.
  *
  * Maps custom (non-canonical) codes → canonical WalletProvider enum value.
@@ -167,12 +203,79 @@ export function canonicalizeWalletTypeCode(code) {
   return WALLET_TYPE_CODE_ALIASES[normalized] || normalized;
 }
 
+/**
+ * Category-level wallet types: code → list of provider codes that satisfy it.
+ *
+ * Some `wallet_types.code` values are CATEGORIES that aggregate several
+ * canonical providers (e.g. "محافظ كاش - فوري" with code `cash_wallet` is
+ * a parent bucket for Vodafone / InstaPay / Orange / Etisalat / WePay
+ * accounts). Without this map, `accountMatchesWalletType()` would reject
+ * those accounts because their `wallet_provider` is `vodafone_cash`,
+ * not `cash_wallet` — even though the user clearly intended a cash-wallet
+ * match.
+ *
+ * How to add a new category:
+ *   1. Insert a row in `wallet_types` with `code = <your_category>` and a
+ *      descriptive `name`.
+ *   2. Add an entry here mapping that code → array of canonical
+ *      `WalletProvider` values it should match.
+ *   3. (Optional) Add a Ui badge/icon in WalletCreate.vue if you want it
+ *      visually distinguished from leaf-level types.
+ *
+ * Keep this map frozen so accidental writes don't change reference equality.
+ */
+export const WALLET_TYPE_CATEGORY_MEMBERS = Object.freeze({
+  cash_wallet: Object.freeze([
+    'vodafone_cash',
+    'instapay',
+    'orange_cash',
+    'etisalat_cash',
+    'we_pay',
+  ]),
+  // Future category placeholders (kept commented so the contract is documented):
+  // bank_wallet: ['paymob', 'fawry'],
+  // mobile_money: ['vodafone_cash', 'orange_cash', 'etisalat_cash', 'we_pay'],
+});
+
+/**
+ * Return true when `walletType.code` is a registered category that contains
+ * the given canonical provider code.
+ *
+ * @param {string} canonicalProvider  e.g. 'vodafone_cash' (already normalized + canonicalized)
+ * @param {string} walletTypeCode     e.g. 'cash_wallet'    (already canonicalized)
+ */
+export function walletTypeCategoryIncludes(canonicalProvider, walletTypeCode) {
+  if (!canonicalProvider || !walletTypeCode) return false;
+  const members = WALLET_TYPE_CATEGORY_MEMBERS[walletTypeCode];
+  return Array.isArray(members) && members.includes(canonicalProvider);
+}
+
+/**
+ * Test if an account matches the selected wallet type.
+ *
+ * Match rules (in priority order):
+ *   1. Exact provider/code match (canonical): `walletType.code === wallet_provider`
+ *   2. Category match: `walletType.code` is a registered category that lists
+ *      the account's provider among its members.
+ *
+ * Both sides are normalized (lowercase + spaces/dashes → underscore) AND
+ * canonicalized (legacy aliases collapsed) before comparison, so this is
+ * robust against the small inconsistencies in legacy data inserted before
+ * the canonical WalletProvider enum was enforced.
+ *
+ * @param {object|null} account      Account row from the treasury overview API.
+ *                                   Must expose `wallet_provider`.
+ * @param {object|null} walletType   Row from `wallet_types` table. Must expose `code`.
+ * @returns {boolean}
+ */
 export function accountMatchesWalletType(account, walletType) {
   if (!walletType?.code) return true;
   const provider = normalizeWalletProviderCode(account?.wallet_provider);
   const code = canonicalizeWalletTypeCode(walletType.code);
   if (!provider) return false;
-  return provider === code;
+  if (provider === code) return true;
+  if (walletTypeCategoryIncludes(provider, code)) return true;
+  return false;
 }
 
 /**

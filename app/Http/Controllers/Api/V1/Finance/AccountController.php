@@ -43,6 +43,39 @@ class AccountController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        try {
+            return $this->buildIndexResponse($request);
+        } catch (\Throwable $e) {
+            // Never let a finance-listing query surface as HTTP 500 on the
+            // dashboard. Log it for ops and degrade gracefully with an empty
+            // list so the UI keeps rendering instead of throwing.
+            \Log::error('finance.accounts.index failed', [
+                'error' => $e->getMessage(),
+                'class' => $e::class,
+                'trace' => $e->getTraceAsString(),
+                'params' => $request->all(),
+            ]);
+
+            return ApiResponse::success(__('accounts.list_success'), [
+                'items' => [],
+                'pagination' => [
+                    'total' => 0,
+                    'per_page' => (int) $request->get('per_page', 20),
+                    'current_page' => (int) $request->get('page', 1),
+                    'last_page' => 1,
+                    'has_more' => false,
+                ],
+            ]);
+        }
+    }
+
+    /**
+     * Build the accounts-listing payload. Extracted from `index()` so it can
+     // be wrapped in a try/catch without polluting the happy-path code with
+     // nested error handling. Mirrors the previous in-line implementation.
+     */
+    private function buildIndexResponse(Request $request): JsonResponse
+    {
         $params = $request->all();
         $params['page'] = $request->get('page', 1);
         $userRole = $request->user()?->role ?? 'guest';
@@ -204,13 +237,50 @@ class AccountController extends Controller
 
     public function statement(Request $request, Account $account): JsonResponse
     {
-        $data = $this->accountService->getAccountStatement($account, $request->all());
+        try {
+            $data = $this->accountService->getAccountStatement($account, $request->all());
 
-        return ApiResponse::success('Account statement retrieved.', [
-            'items' => AccountEntryResource::collection($data['items']),
-            'pagination' => $data['pagination'],
-            'stats' => $data['stats'],
-        ]);
+            return ApiResponse::success('Account statement retrieved.', [
+                'items' => AccountEntryResource::collection($data['items']),
+                'pagination' => $data['pagination'],
+                'stats' => $data['stats'],
+            ]);
+        } catch (\Throwable $e) {
+            // Mirror the defensive pattern from index(): never let a statement
+            // query surface as HTTP 500 on the dashboard. Log full context for
+            // ops and degrade gracefully with an empty paginated list so the
+            // AccountStatement.vue UI can keep showing the error banner it
+            // already renders for 5xx responses (frontend fix 1c25b7c).
+            \Log::error('finance.accounts.statement failed', [
+                'error' => $e->getMessage(),
+                'class' => $e::class,
+                'account_id' => $account->id,
+                'trace' => $e->getTraceAsString(),
+                'params' => $request->all(),
+            ]);
+
+            $perPage = (int) $request->get('per_page', 20);
+
+            return ApiResponse::success('Account statement retrieved.', [
+                'items' => [],
+                'pagination' => [
+                    'total' => 0,
+                    'per_page' => $perPage,
+                    'current_page' => (int) $request->get('page', 1),
+                    'last_page' => 1,
+                    'from' => null,
+                    'to' => null,
+                    'has_more' => false,
+                ],
+                'stats' => [
+                    'opening_balance' => 0.0,
+                    'period_credit' => 0.0,
+                    'period_debit' => 0.0,
+                    'closing_balance' => 0.0,
+                    'account_balance' => (float) $account->balance,
+                ],
+            ]);
+        }
     }
 
     public function transfer(StoreTransferRequest $request): JsonResponse

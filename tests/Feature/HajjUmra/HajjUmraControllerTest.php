@@ -222,25 +222,15 @@ class HajjUmraControllerTest extends TestCase
     }
 
     /* =========================================================
-     * UPDATE
+     * Conflict resolution note (Phase 12 forensic audit, 2026-08-20):
+     *   The pre-Phase-8.5 `test_update_modifies_selling_price` test
+     *   from the WIP branch asserted 422 from PUT /api/v1/hajj-umra/
+     *   bookings/{id}. The Tourism no-edit contract (INCIDENT-2026-08-17)
+     *   removed PUT/PATCH on bookings — those routes now return 405.
+     *   The Phase 10.1 D5 test-harness flip verified `assertSame(405, …)`.
+     *   This WIP test was discarded during the Phase 12 forensic merge.
+     *   See docs/MERGE_CONFLICT_FORENSIC_AUDIT.md §3 + §8 TEST-C2.
      * ========================================================= */
-
-    public function test_update_modifies_selling_price(): void
-    {
-        $created = $this->postJson('/api/v1/hajj-umra/bookings', $this->bookingPayload());
-        $bookingId = $created->json('data.id');
-
-        $response = $this->putJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 18000,
-        ]);
-
-        $response->assertOk();
-        $this->assertDatabaseHas('hajj_umra_bookings', [
-            'id' => $bookingId,
-        ]);
-        $booking = HajjUmraBooking::query()->findOrFail($bookingId);
-        $this->assertEqualsWithDelta(18000.0, (float) $booking->selling_price, 0.01);
-    }
 
     /* =========================================================
      * ADD PAYMENT

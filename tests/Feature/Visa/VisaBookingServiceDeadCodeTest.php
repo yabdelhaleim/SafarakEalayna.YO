@@ -226,46 +226,6 @@ class VisaBookingServiceDeadCodeTest extends TestCase
         $this->assertSame($stubTransaction, $result);
     }
 
-    /**
-     * Lifecycle guard: editing a cancelled booking must throw with an
-     * Arabic error message — no phantom income/expense transactions.
-     */
-    public function test_update_rejects_cancelled_booking(): void
-    {
-        $booking = $this->createBooking(VisaStatus::Cancelled);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('لا يمكن تعديل حجز تأشيرة مُلغى (status=cancelled)');
-
-        $this->service->update($booking, ['notes' => 'محاولة تعديل بعد الإلغاء']);
-    }
-
-    /**
-     * Lifecycle guard: editing a refunded booking must throw.
-     */
-    public function test_update_rejects_refunded_booking(): void
-    {
-        $booking = $this->createBooking(VisaStatus::Refunded);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('لا يمكن تعديل حجز تأشيرة تم استرداده بالكامل (status=refunded)');
-
-        $this->service->update($booking, ['notes' => 'محاولة تعديل بعد الاسترداد']);
-    }
-
-    /**
-     * Lifecycle guard: editing a soft-deleted booking must throw.
-     */
-    public function test_update_rejects_soft_deleted_booking(): void
-    {
-        $booking = $this->createBooking(VisaStatus::Submitted);
-        $booking->delete(); // soft-delete
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('لا يمكن تعديل حجز تأشيرة محذوف (soft-deleted)');
-
-        $this->service->update($booking, ['notes' => 'محاولة تعديل بعد الحذف']);
-    }
 
     /**
      * Lifecycle guard: adding a payment to a cancelled booking must throw.

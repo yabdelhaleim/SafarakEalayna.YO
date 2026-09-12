@@ -161,6 +161,12 @@ class FawryMachineApiController extends Controller
                 ?? 'بيانات شحن ماكينة فوري غير صحيحة.';
 
             return ApiResponse::error($message, $e->errors(), 422);
+        } catch (\App\Exceptions\BusinessLogicException $e) {
+            $validationException = ValidationException::withMessages([
+                'amount' => [$e->getMessage()],
+            ]);
+            $message = collect($validationException->errors())->flatten()->first();
+            return ApiResponse::error($message, $validationException->errors(), 422);
         } catch (ModelNotFoundException) {
             return ApiResponse::error('الماكينة أو حساب التمويل المحدد غير موجود أو غير مؤهل للشحن.', null, 404);
         } catch (\Throwable $e) {

@@ -50,6 +50,14 @@ export const useBusStore = defineStore('bus', {
 
     errors: {},
 
+    // Level 2 / Problem 4 — transient flag set by payBooking() when the
+    // server returns a same-payment response (replay). The Vue component
+    // reads this right after the call returns and shows an info toast
+    // ("already registered") instead of the success/error pair — the
+    // cashier's first request actually succeeded; only the response was
+    // lost or duplicated. Null after a non-replay response.
+    paymentReplayNotice: null,
+
     filters: {
       search: '',
       status: '',
@@ -479,9 +487,32 @@ export const useBusStore = defineStore('bus', {
       }
     },
 
-    async payBooking(id, payload) {
+    async payBooking(id, payload, options = {}) {
       this.loading.payments = true;
       this.errors = {};
+      this.paymentReplayNotice = null;
+
+      // ─── Level 2 / Problem 4 — Idempotency-Key policy ─────────────────
+      // The cashier's busStore doesn't decide WHEN to reuse the same
+      // UUID; the calling Vue component does. The action only:
+      //   1. forwards a caller-supplied key (retry of same logical
+      //      operation after a network error), OR
+      //   2. generates a fresh UUIDv4 (first attempt of a new logical
+      //      payment).
+      //
+      // Server semantics: same key → replay the original payment;
+      // different key → new payment (subject to the 5s safety-net).
+      // See BusBookingService::payBooking() for the backend logic.
+      const idempotencyKey = options.idempotencyKey || this._generateIdempotencyKey();
+
+      // Capture pre-request state so we can detect "replay" responses
+      // (the server returned the SAME payment that already existed,
+      // i.e. the cashier's first request actually succeeded but the
+      // response was lost — the retry was correctly absorbed).
+      const beforeBooking = this.bookings.find((b) => String(b.id) === String(id));
+      const paymentsCountBefore = Array.isArray(beforeBooking?.payments) ? beforeBooking.payments.length : 0;
+      const paidAmountBefore = Number(beforeBooking?.paid_amount ?? 0);
+
       try {
         const apiPayload = {
           amount: Number(payload.amount) || 0,
@@ -492,10 +523,30 @@ export const useBusStore = defineStore('bus', {
               : null,
           notes: payload.notes || null,
         };
-        const response = await axios.post(`/api/v1/bus/bookings/${id}/pay`, apiPayload);
+        const response = await axios.post(`/api/v1/bus/bookings/${id}/pay`, apiPayload, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+          // 15s timeout = the fallback mentioned in the Level 2 spec:
+          // if the server never responds, axios will fire the catch
+          // block (which sets loading.payments = false in finally),
+          // re-enabling the button. The component also disables the
+          // button explicitly in its click handler — both layers run.
+          timeout: 15000,
+        });
         const paidBooking = this.mapBooking(response.data?.data || response.data);
         const index = this.bookings.findIndex((b) => b.id === id);
         if (index !== -1 && paidBooking) this.bookings[index] = paidBooking;
+
+        // Replay detection — see paymentReplayNotice in state.
+        const paymentsCountAfter = Array.isArray(paidBooking?.payments) ? paidBooking.payments.length : 0;
+        const paidAmountAfter = Number(paidBooking?.paid_amount ?? 0);
+        const replayed =
+          paymentsCountAfter === paymentsCountBefore &&
+          Math.abs(paidAmountAfter - paidAmountBefore) < 0.005;
+        if (replayed && paidAmountBefore > 0) {
+          this.paymentReplayNotice =
+            'تم تسجيل هذه الدفعة بالفعل (نفس العملية) — لن يتم خصم أي مبلغ جديد.';
+        }
+
         await this.fetchStats();
         return paidBooking;
       } catch (error) {
@@ -713,6 +764,26 @@ export const useBusStore = defineStore('bus', {
 
     addToast(message, type = 'success') {
       if (window.addToast) window.addToast(message, type);
+    },
+
+    /**
+     * Generate an Idempotency-Key for a new logical payment attempt.
+     *
+     * Modern browsers expose `crypto.randomUUID()` (true UUIDv4). For
+     * older runtimes we build a collision-resistant time-based key —
+     * not cryptographically random, but unique enough for a single
+     * cashier's session.
+     *
+     * The store is the fallback generator; the Vue component is the
+     * source of truth for UUID lifecycle (generate on first click,
+     * reuse on retry of the same logical attempt, regenerate on form
+     * change / dialog reopen).
+     */
+    _generateIdempotencyKey() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return `bus-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     },
   },
 });

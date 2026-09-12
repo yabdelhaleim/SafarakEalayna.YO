@@ -5,15 +5,22 @@ namespace App\Services\Flight;
 use App\Enums\FlightBookingStatus;
 use App\Models\Flight\AirlineCredit;
 use App\Models\Flight\FlightBooking;
+use App\Models\Flight\FlightGroup;
 use App\Models\Flight\RefundRequest;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightSystem;
 use App\Models\Treasury;
 use App\Models\Account;
+use App\Models\Customer;
+use App\Models\Transaction;
+use App\Models\User;
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\LedgerClearingAccounts;
+use App\Services\Finance\PrepaidLedgerService;
+use App\Services\Flight\FlightBookingService;
+use App\Services\Finance\TreasuryLedgerMirror;
 use App\Support\Finance\DeadlockRetry;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +33,8 @@ class RefundService
     public function __construct(
         protected TransactionService $transactionService,
         protected LedgerClearingAccounts $clearingAccounts,
+        protected PrepaidLedgerService $prepaidLedgerService,
+        protected FlightBookingService $flightBookingService,
     ) {}
 
     /**
@@ -130,6 +139,96 @@ class RefundService
             "يجب أن يكون أحد الحسابات بـ EGP."
         );
     }
+
+    /**
+     * حل حساب الـ cashbox (Account) المطابق لـ Treasury model.
+     * الـ Treasury model (current_balance منفصل) منفصل عن الـ Account.balance.
+     * الـ Account.balance هو اللي بيتأثر بالـ GL transactions في عملية الإرجاع.
+     *
+     * Fallback chain:
+     *   1) Account بنفس اسم الـ treasury
+     *   2) Account نوعه cashbox بنفس العملة
+     *   3) Module vault للطيران
+     *   4) إنشاء cashbox جديد تلقائياً
+     */
+    protected function resolveCashboxAccount(Treasury $treasury, string $currency, int $userId): Account
+    {
+        $account = Account::where('name', $treasury->name)->first();
+        if ($account) {
+            return $account;
+        }
+
+        $account = Account::where('type', AccountType::Cashbox->value)
+            ->where('currency', $currency)
+            ->whereIn('module_type', ['flights', 'tourism'])
+            ->first();
+        if ($account) {
+            return $account;
+        }
+
+        $account = Account::getModuleVault('flights');
+        if ($account) {
+            return $account;
+        }
+
+        return Account::create([
+            'name' => $treasury->name,
+            'type' => AccountType::Cashbox,
+            'currency' => $currency,
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'tourism',
+            'created_by' => $userId,
+        ]);
+    }
+
+    /**
+     * ضمان وجود حساب محاسبي للعميل — ينسخ من FlightBookingService::ensureCustomerAccount.
+     */
+    protected function ensureCustomerAccount(int $customerId): Account
+    {
+        $customer = Customer::findOrFail($customerId);
+        if ($customer->account_id) {
+            $account = Account::find($customer->account_id);
+            if ($account) {
+                return $account;
+            }
+        }
+
+        $account = Account::where('name', 'Customer #'.$customer->id)->first();
+        if ($account) {
+            $customer->update(['account_id' => $account->id]);
+            return $account;
+        }
+
+        $account = Account::where('type', AccountType::Customer->value)
+            ->where('currency', 'EGP')
+            ->first();
+        if ($account) {
+            $customer->update(['account_id' => $account->id]);
+            return $account;
+        }
+
+        $account = Account::create([
+            'name' => 'Customer #'.$customer->id,
+            'type' => AccountType::Customer,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'customer',
+            // FIX (2026-09-02): subject accounts (customer/supplier) require
+            // module_type to be a SPECIFIC module name (e.g. 'flights'), not
+            // a division ('office' / 'tourism'). The division names are
+            // RESERVED for liquidity vaults (cashbox/wallet/bank). See
+            // App\Support\Finance\AccountModuleContract. The customer AR
+            // backing flight bookings is a flights-module subject account.
+            'module_type' => 'flights',
+            'created_by' => $customer->created_by ?? 1,
+        ]);
+        $customer->update(['account_id' => $account->id]);
+
+        return $account;
+    }
+
     /**
      * إنشاء طلب استرجاع جديد للتذكرة.
      */
@@ -166,7 +265,40 @@ class RefundService
         }
 
         $originalCurrency = strtoupper($booking->original_currency ?: ($booking->currency ?: 'EGP'));
-        $originalAmount = (float) ($booking->original_amount ?: $booking->selling_price);
+
+        // FIX (2026-09-03): for non-EGP bookings the fallback must use
+        // `selling_price_foreign`, NOT `selling_price` (which is stored in
+        // EGP per the 2026-07-23 contract). The previous fallback returned
+        // the EGP-equivalent, causing `refund_amount` to be ~50x too large
+        // for USD/KWD/etc. bookings and over-debiting the foreign cashbox
+        // by the EGP-equivalent instead of the foreign refund amount.
+        //
+        // FIX (2026-09-07): INSTALLMENT BUG — for EGP bookings, ALWAYS use
+        // `selling_price` as the refundable base, NOT `original_amount`.
+        //
+        // `original_amount` is set at booking-creation time to the first payment
+        // amount (e.g. 5,000) when the customer pays a deposit at booking time.
+        // Subsequent installment payments via addPayment() (e.g. 2,000 + 3,000)
+        // do NOT update `original_amount`, so it stays at 5,000 even though the
+        // full selling_price (10,000) has been collected.
+        //
+        // Using `original_amount` as the refund cap would then limit the refund
+        // to 5,000 instead of 10,000 — silently short-changing the customer.
+        //
+        // `original_amount` is only semantically meaningful for cross-currency
+        // bookings (booking.currency ≠ EGP) where it records the customer's actual
+        // foreign-currency amount. For EGP bookings it is either NULL (same-currency
+        // path, cleared by the model's saving guard) or stale (first-payment amount).
+        // `selling_price` is the authoritative total for EGP bookings.
+        if ($originalCurrency === 'EGP') {
+            $originalAmount = (float) $booking->selling_price;
+        } else {
+            $originalAmount = (float) ($booking->original_amount ?: (
+                $booking->selling_price_foreign > 0
+                    ? $booking->selling_price_foreign
+                    : $booking->selling_price
+            ));
+        }
         $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
 
         $cancellationFee = (float) ($data['cancellation_fee'] ?? 0);
@@ -314,7 +446,23 @@ class RefundService
                 ]);
 
             } else {
-                // Scenario B: إيداع في خزينة الوكالة
+                // Scenario B: إيداع في خزينة الوكالة (cash refund to agency treasury)
+                //
+                // الـ Pattern الصحيح (نفس cancelBooking / deleteBookingWithReversal):
+                //
+                //   Step A — عكس قيد البيع على دفتر العميل:
+                //     recordJournalTransfer(customer → clearing, amount=refund_amount)
+                //
+                //   Step B — إرجاع تكلفة الشراء لرصيد الـ carrier/system/group:
+                //     carrier: carrier->credit(purchaseNet) + PrepaidLedgerService::refundCogs('flight_carrier', purchaseNet)
+                //     system:  نفس النمط مع 'flight_system'
+                //     group:   recordJournalTransfer(expense_contra → group_account, purchaseNet)
+                //
+                //   Step C — صرف المبلغ من الخزينة النقدية للعميل:
+                //     recordJournalTransfer(cashbox → customer, amount=refund_amount, allow_from_negative=true)
+                //     + TreasuryLedgerMirror::mirrorFlightOutboundFromCash()
+                //     + TreasuryTransaction بنوع debit (صرف من الخزينة)
+
                 $treasury = Treasury::lockForUpdate()->find($refundRequest->treasury_id);
 
                 if (! $treasury) {
@@ -333,148 +481,339 @@ class RefundService
                     );
                 }
 
-                // إيداع المبلغ في الخزينة
-                $treasury->credit((float) $refundRequest->refund_amount);
-
-                // توثيق الحركة المالية في حركات الخزينة
-                // NOTE: الـ ledger_transaction_id + account_id يتم ربطهما بعد إنشاء
-                // الـ GL Transaction (في الأسفل) عبر ->linkToGl() — هذه هي الـ GAP
-                // اللي تم إغلاقها في هذا الـ commit.
-                $treasuryTransaction = $treasury->transactions()->create([
-                    'transaction_type' => 'receipt',
-                    'amount' => $refundRequest->refund_amount,
-                    'currency' => $refundRequest->refund_currency,
-                    'balance_before' => $treasury->current_balance - $refundRequest->refund_amount,
-                    'balance_after' => $treasury->current_balance,
-                    'reason' => 'استرجاع تذكرة طيران',
-                    'flight_booking_id' => $booking->id,
-                    'refund_request_id' => $refundRequest->id,
-                    'type' => 'credit',
-                    'exchange_rate' => $refundRequest->refund_exchange_rate,
-                    'base_amount' => $refundRequest->base_currency_refund,
-                    'description' => "إيداع استرجاع تذكرة #{$booking->booking_number}" .
-                        ($refundRequest->currency_difference != 0 ? " (فروقات عملة: {$refundRequest->currency_difference})" : ''),
-                    'agent_name' => $booking->agent_name ?: 'System',
-                ]);
-
-                Log::info('تم إيداع مبلغ الاسترجاع في الخزينة بنجاح', [
-                    'refund_request_id' => $refundRequest->id,
-                    'treasury_id' => $treasury->id,
-                    'amount' => $refundRequest->refund_amount,
-                ]);
-
-                // 1. Resolve corresponding Account for the Treasury
-                $account = Account::where('name', $treasury->name)->first();
-                if (! $account) {
-                    $account = Account::where('type', AccountType::Cashbox->value)
-                        ->where('currency', $refundRequest->refund_currency)
-                        ->whereIn('module_type', ['flights', 'tourism'])
-                        ->first();
-                }
-                if (! $account) {
-                    // Fallback to flights module vault
-                    $account = Account::getModuleVault('flights');
-                }
-                if (! $account) {
-                    // Last-resort fallback: create the cashbox Account on-the-fly.
-                    // Safe here because we're inside LedgerBalanceMutationGuard::run() + DB::transaction
-                    // — any failure will roll back atomically. The legacy concern of
-                    // "untracked direct account creation" is mitigated by the wrapping guards.
-                    // Bug #FIX: Liquidity accounts (cashbox) require module_type to be a DIVISION
-                    // ('office' or 'tourism') per AccountModuleContract — NOT a module like 'flights'.
-                    $account = Account::create([
-                        'name' => $treasury->name,
-                        'type' => AccountType::Cashbox,
-                        'currency' => $refundRequest->refund_currency,
-                        'is_active' => true,
-                        'owner_type' => 'office',
-                        'module_type' => 'tourism',
-                        'created_by' => $userId,
-                    ]);
-                }
-
-                // 2. Resolve source prepaid account and decrement balance in GDS/carrier sub-ledger
-                //
-                // Bug #B3 fix: use refundAmountInBalanceCurrency() helper to correctly
-                // convert refund_amount (in booking currency) to the carrier/system currency.
-                // Old code only handled the EGP case — for foreign-currency booking on a
-                // foreign-currency carrier, it was using refund_amount (foreign) directly
-                // without verifying it matches the carrier's currency.
-                $prepaidKey = 'flight_system';
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
+                $refundAmount = (float) $refundRequest->refund_amount;
+                $cancellationFee = (float) $refundRequest->cancellation_fee;
+                $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
+                $purchaseNet = $purchaseEgp;
 
-                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
-                    $prepaidKey = 'flight_carrier';
-                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
-                    if ($carrier) {
-                        $debitSubLedgerAmount = $this->refundAmountInBalanceCurrency(
-                            (string) $carrier->currency,
-                            $bookingCurrency,
-                            (float) $refundRequest->refund_amount,
-                            (float) $refundRequest->base_currency_refund,
-                            $bookingExchangeRate
-                        );
-                        $carrier->debit($debitSubLedgerAmount, $booking->id, $userId);
-                    }
-                } elseif ($booking->flight_system_id) {
-                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
-                    if ($system) {
-                        $debitSubLedgerAmount = $this->refundAmountInBalanceCurrency(
-                            (string) $system->currency,
-                            $bookingCurrency,
-                            (float) $refundRequest->refund_amount,
-                            (float) $refundRequest->base_currency_refund,
-                            $bookingExchangeRate
-                        );
-                        $system->debit($debitSubLedgerAmount, $booking->id, $userId);
+                $glTransaction = null;
+
+// ── Step A: عكس قيد البيع (customer → clearing, amount=refund_amount) ──
+                //
+                // نعكس الـ sale بـ refund_amount (مش selling_price بالكامل) عشان:
+                //   - الـ clearing (income) يرجع لـ -(cancellation_fee) = رسوم الإلغاء المتبقية كإيراد
+                //   - هذا pattern متطابق مع cancelBooking في FlightBookingService
+                //
+                // الـ cancellation_fee المحفوظة هي الفرق بين الـ sale والـ refund:
+                //   customer دفع selling_price، استرد refund_amount = selling_price - cancellation_fee
+                //   فالباقي (cancellation_fee) يبقى محفوظ في الـ clearing كإيراد (cancellation_fee_revenue)
+                if ($booking->sale_gl_transaction_id && $refundAmount > 0) {
+                    $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                    if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                        // FIX (2026-09-01): استخدم الـ EGP equivalent
+                        // (base_currency_refund) بدل $refundAmount الخام.
+                        // الـ refund_amount بيتسجل بعملة الحجز (مثل USD)
+                        // لكن الـ GL entries والـ customer AR لازم تكون
+                        // متناسقة بعملة EGP عشان الـ ledger يفضل متوازن.
+                        //
+                        // مثال على الـ bug قبل الإصلاح:
+                        //   booking.selling_price = 1000 EGP (= 20 USD)
+                        //   sale_gl_transaction = customer AR ← pending_sales_receivable, amount=1000 EGP
+                        //   refund_amount = 20 USD (= 1000 EGP equivalent)
+                        //   Step A قبل: amount=20 (USD خام) → customer AR -20 بس
+                        //     ← الـ customer AR يفضل بـ +980 رصيد
+                        //   Step A بعد:  amount=1000 (EGP) → customer AR متوازن
+                        //
+                        // Fallback chain زي الـ partial companion:
+                        //   1. base_currency_refund (من createRefundRequest)
+                        //   2. refundAmount * refundExchangeRate (لو الـ
+                        //      request اتعمل يدوي بدون service)
+                        //   3. refundAmount (لو EGP، الـ conversion = 1.0)
+                        $stepAmountEgp = (float) ($refundRequest->base_currency_refund ?? 0);
+                        if ($stepAmountEgp <= 0) {
+                            $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                            $stepAmountEgp = $refundAmount * $refundExchangeRate;
+                        }
+
+                        $reversalGl = $this->transactionService->recordJournalTransfer([
+                            'amount' => $stepAmountEgp,
+                            'from_account_id' => (int) $orig->to_account_id,    // customer (DR — يرجع له رصيد البيع)
+                            'to_account_id' => (int) $orig->from_account_id,    // clearing (CR — يمسح الإيراد)
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => "عكس قيد مبيعات الحجز ضمن عملية الاسترداد (مخصوماً منه رسوم الإلغاء {$cancellationFee}) — حجز #{$booking->booking_number}",
+                            'created_by' => $userId,
+                        ]);
+                        $glTransaction = $reversalGl;
+
+                        Log::info('تم عكس قيد مبيعات الحجز ضمن عملية الاسترداد', [
+                            'refund_request_id' => $refundRequest->id,
+                            'original_sale_gl_id' => $booking->sale_gl_transaction_id,
+                            'reversal_gl_id' => $reversalGl->id,
+                            'amount_egp' => $stepAmountEgp,
+                            'amount_booking_currency' => $refundAmount,
+                            'cancellation_fee_kept' => $cancellationFee,
+                        ]);
                     }
                 }
-                $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
 
-                // 3. Record GL journal entry transfer
+// ── Step A-REVENUE: عكس إيراد الدفعات المسجَّل في P&L ──────
                 //
-                // Bug #B4 + #B15 fix: use glTransferAmounts() helper to compute the
-                // correct amount (in from_account currency) and converted_amount (in
-                // to_account currency). The old code used `||` instead of `&&` and the
-                // convertedAmount was computed but not actually used as the GL amount.
-                if ($fromAccountId && $account && $fromAccountId !== $account->id) {
-                    $fromAccount = Account::find($fromAccountId);
+                // FIX (2026-09-01): RefundService كان بيعكس قيد البيع (Step A)
+                // بس لو $booking->sale_gl_transaction_id موجود، وفي حالة FIN-2
+                // (credit booking) ده بيبقى null والإيراد بيتعرف بس وقت
+                // addPayment عبر recordIncome (type='income'). بدون الـ call ده،
+                // الـ P&L بيفضل يعد الـ +revenue بعد الـ refund والداش بورد
+                // بيظهر ربح وهمي.
+                //
+                // منطق مختلف للـ full vs partial refund:
+                //
+                //   FULL refund (refund_amount == total payments):
+                //     reverseFlightBookingRevenue() بيعمل markTransactionReversed
+                //     على كل صف type='income' مربوط بـ FlightPayment + Customer
+                //     (FIN-3 BUG-2 payDebt path) → الـ P&L بيـ skip الصفوف دي
+                //     (الـ 'عكس:' prefix في H1 fix). الـ revenue الكامل بينخصم.
+                //
+                //   PARTIAL refund (refund_amount < total payments):
+                //     الـ logic ده بيـ skip reverseFlightBookingRevenue (لأنه
+                //     بيعكس الـ revenue بالكامل) وبيضيف companion row بس بمبلغ
+                //     الاسترداد. الـ companion row من نوع 'transfer' بـ notes
+                //     prefix 'عكس ' (مسافة بدون نقطتين) → الـ P&L engine (H1 fix)
+                //     بيـ reclassify كـ revenue_reversal وبيخصم بس المبلغ ده.
+                //
+                // Idempotent: لو already-reversed، بيرجع no-op. آمن للتشغيل
+                // المتكرر على نفس الحجز.
+                $totalRecognisedRevenue = (float) $booking->payments()
+                    ->whereNotNull('transaction_id')
+                    ->sum('amount');
+                $isFullRefund = $totalRecognisedRevenue > 0
+                    && abs($totalRecognisedRevenue - $refundAmount) < 0.01;
+
+if ($isFullRefund) {
+                    $this->flightBookingService->reverseFlightBookingRevenue(
+                        $booking,
+                        $userId
+                    );
+                } else {
+                    // PARTIAL REFUND: companion memo-only Transaction row (no balance mutation).
+                    //
+                    // الـ P&L engine بيـ classify الـ transfer-type transactions على أساس
+                    // من-to accounts (ProfitLossReportService::classifyTransactionForChart line 466-472):
+                    //   - if to=income_clearing && from!=income → 'revenue_reversal'
+                    //   - this flips the +revenue into +expense column → revenue reduced.
+                    //
+                    // الـ balance-sheet impact: صفر. الـ Transaction row بيتسجل بـ
+                    // from/to صحيحة عشان الـ classifier يـ classify صح، بس ما
+                    // نـ debit/credit accounts الـ balance.
+                    //
+                    // FIX (2026-09-02): الـ implementation الـ سابق كان بيستعمل
+                    // recordJournalTransfer() بـ from=customerAR → كان بيدبل-ديبت الـ
+                    // customer AR فالـ balance-sheet كان بيبوظ (RefundRequestReversalTest fail).
+                    // الـ memo-only Transaction يحل الـ P&L+balance dual-constraint.
+                    $firstPayment = $booking->payments()
+                        ->whereNotNull('transaction_id')
+                        ->with('transaction')
+                        ->first();
+
+                    if ($firstPayment && $firstPayment->transaction) {
+                        $origIncome = $firstPayment->transaction;
+                        $clearingAccounts = app(\App\Services\Finance\LedgerClearingAccounts::class);
+                        $incomeClearingId = $clearingAccounts->incomeContraIdForFlightBooking();
+
+                        if ($incomeClearingId) {
+                            $reversalAmountEgp = (float) ($refundRequest->base_currency_refund ?? 0);
+                            if ($reversalAmountEgp <= 0) {
+                                $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                                $reversalAmountEgp = $refundAmount * $refundExchangeRate;
+                            }
+
+                            // Use an arbitrary non-income from_account so the classifier
+                            // sees to=income_clearing with from!=income → 'revenue_reversal'.
+                            // Use the same customer AR as the original income row's from_account
+                            // for audit consistency, but DON'T mutate any account balance.
+                            //
+                            // The classifier uses from_account_id and to_account_id only
+                            // for classification — it does NOT sum balances, so leaving
+                            // them as text references is safe for P&L correctness.
+                            $customerARId = (int) $origIncome->from_account_id;
+
+                            // Use the original payment's cashbox as the "from" — it's a
+                            // liquidity account, so from != income_clearing → classified
+                            // as 'revenue_reversal'.
+                            $cashboxAccountId = (int) $origIncome->to_account_id;
+
+                            \App\Models\Transaction::create([
+                                'type' => \App\Enums\TransactionType::Transfer->value,
+                                'amount' => $reversalAmountEgp,
+                                'currency' => $refundRequest->refund_currency,
+                                'module' => \App\Enums\TransactionModule::Flight->value,
+                                'related_type' => \App\Models\Flight\FlightBooking::class,
+                                'related_id' => $booking->id,
+                                'from_account_id' => $cashboxAccountId,    // liquidity (not income) — triggers 'revenue_reversal' classification
+                                'to_account_id' => $incomeClearingId,      // income_clearing — the destination
+                                'created_by' => $userId,
+                                'notes' => "عكس إيراد مدفوعات جزئي ضمن الاسترداد (مخصوماً منه رسوم الإلغاء {$cancellationFee}) — حجز #{$booking->booking_number}",
+                            ]);
+
+                            Log::info('تم عكس إيراد الحجز جزئياً ضمن عملية الاسترداد', [
+                                'refund_request_id' => $refundRequest->id,
+                                'reversal_amount_egp' => $reversalAmountEgp,
+                                'cancellation_fee_kept' => $cancellationFee,
+                                'mode' => 'partial_companion_memo',
+                            ]);
+                        }
+                    }
+                }
+
+                // ── Step B: إرجاع تكلفة الشراء لرصيد الـ carrier/system/group ──
+                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
+                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
+                    if ($carrier && $purchaseNet > 0) {
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        // purchaseAmountInBalanceCurrency is non-static — calling it via
+                        // `FlightBookingService::` produced "cannot be called statically".
+                        $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
+                            (string) $carrier->currency,
+                            'EGP',
+                            $purchaseNet,
+                            null,
+                            $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $carrier->currency)
+                        );
+                        if ($creditSub > 0) {
+                            $carrier->credit(
+                                amount: $creditSub,
+                                description: 'استرداد حجز — إرجاع رصيد الناقل — حجز #'.$booking->booking_number,
+                                userId: $userId,
+                                bookingId: $booking->id
+                            );
+                        }
+                    }
+                    if ($purchaseNet > 0) {
+                        $this->prepaidLedgerService->refundCogs(
+                            'flight_carrier',
+                            TransactionModule::Flight,
+                            $purchaseNet,
+                            "استرداد تكلفة حجز {$booking->booking_number} — ناقل",
+                            FlightBooking::class,
+                            $booking->id
+                        );
+                    }
+                } elseif ($booking->purchase_balance_source === 'system' && $booking->flight_system_id) {
+                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
+                    if ($system && $purchaseNet > 0) {
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $creditSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
+                            (string) $system->currency,
+                            'EGP',
+                            $purchaseNet,
+                            null,
+                            $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $system->currency)
+                        );
+                        if ($creditSub > 0) {
+                            $system->credit(
+                                amount: $creditSub,
+                                description: 'استرداد حجز — إرجاع رصيد النظام — حجز #'.$booking->booking_number,
+                                userId: $userId,
+                                bookingId: $booking->id
+                            );
+                        }
+                    }
+                    if ($purchaseNet > 0) {
+                        $this->prepaidLedgerService->refundCogs(
+                            'flight_system',
+                            TransactionModule::Flight,
+                            $purchaseNet,
+                            "استرداد تكلفة حجز {$booking->booking_number} — نظام",
+                            FlightBooking::class,
+                            $booking->id
+                        );
+                    }
+                } elseif ($booking->purchase_balance_source === 'group' && $booking->flight_group_id) {
+                    $group = FlightGroup::lockForUpdate()->find($booking->flight_group_id);
+                    if ($group && $group->account_id && $purchaseNet > 0) {
+                        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+                        $groupGl = $this->transactionService->recordJournalTransfer([
+                            'amount' => $purchaseNet,
+                            'from_account_id' => $expenseContraId,
+                            'to_account_id' => (int) $group->account_id,
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => "استرداد تكلفة مجموعة — حجز #{$booking->booking_number} — مجموعة: {$group->name}",
+                            'created_by' => $userId,
+                        ]);
+                        $glTransaction = $groupGl;
+                    }
+                }
+
+                // ── Step C: صرف المبلغ من الخزينة النقدية للعميل ──
+                if ($refundAmount > 0) {
+                    $cashboxAccount = $this->resolveCashboxAccount($treasury, $refundRequest->refund_currency, $userId);
+                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+
+                    // F-2 audit fix (2026-08-24): wire the existing glTransferAmounts() helper.
+                    // The cashbox.currency == refund.currency (enforced at line 438), but the
+                    // customer account is ALWAYS EGP. When the booking is in a non-EGP currency
+                    // (e.g. USD booking paid to USD treasury), the cash-out is cross-currency:
+                    //   from = USD cashbox, to = EGP customer.
+                    // recordJournalTransfer rejects cross-currency journals that lack
+                    // converted_amount/exchange_rate, so we use glTransferAmounts() to compute them.
                     $glAmounts = $this->glTransferAmounts(
-                        (string) ($fromAccount ? $fromAccount->currency : 'EGP'),
-                        (string) $account->currency,
-                        (float) $refundRequest->refund_amount,
+                        $cashboxAccount->currency,
+                        $customerAccount->currency,
+                        $refundAmount,
                         (float) $refundRequest->base_currency_refund,
-                        $refundRequest->refund_exchange_rate !== null ? (float) $refundRequest->refund_exchange_rate : null
+                        (float) $refundRequest->refund_exchange_rate
                     );
 
-                    $glTransaction = $this->transactionService->recordJournalTransfer([
+                    $cashoutParams = [
                         'amount' => $glAmounts['amount'],
-                        'from_account_id' => $fromAccountId,
-                        'to_account_id' => $account->id,
-                        'allow_from_negative' => true,
+                        'from_account_id' => $cashboxAccount->id,         // cashbox (DR — صرف نقدي)
+                        'to_account_id' => $customerAccount->id,           // customer (CR — تسوية دين العميل)
+                        'allow_from_negative' => true,                      // الاسترداد تدفق مصرف حتى لو الرصيد بالسالب
                         'module' => TransactionModule::Flight->value,
-                        'related_type' => FlightBooking::class,
-                        'related_id' => $booking->id,
-                        'notes' => "إيداع استرجاع تذكرة حجز طيران — حجز #{$booking->booking_number}",
+                        'related_type' => RefundRequest::class,
+                        'related_id' => $refundRequest->id,
+                        'notes' => "صرف استرداد نقدي للعميل من الخزينة ({$treasury->name}) — طلب #{$refundRequest->id} — حجز #{$booking->booking_number}",
                         'created_by' => $userId,
-                        'converted_amount' => $glAmounts['converted_amount'],
-                        'exchange_rate' => $glAmounts['exchange_rate'],
-                    ]);
+                    ];
+                    if ($glAmounts['converted_amount'] !== null) {
+                        $cashoutParams['converted_amount'] = $glAmounts['converted_amount'];
+                        $cashoutParams['exchange_rate'] = $glAmounts['exchange_rate'];
+                    }
+                    $cashoutGl = $this->transactionService->recordJournalTransfer($cashoutParams);
+                    $glTransaction = $cashoutGl;
 
-                    Log::info('تم تسجيل القيد المحاسبي المزدوج للاسترداد بنجاح', [
+                    // توثيق حركة الخزينة (audit trail) — debit من الخزينة النقدية
+                    $treasuryTransaction = $treasury->transactions()->create([
+                        'transaction_type' => 'payment',
+                        'amount' => $refundAmount,
+                        'currency' => $refundRequest->refund_currency,
+                        'balance_before' => $treasury->current_balance + $refundAmount,
+                        'balance_after' => $treasury->current_balance,
+                        'reason' => 'صرف استرداد تذكرة طيران للعميل',
+                        'flight_booking_id' => $booking->id,
                         'refund_request_id' => $refundRequest->id,
-                        'from_account_id' => $fromAccountId,
-                        'to_account_id' => $account->id,
-                        'amount' => $glAmounts['amount'],
-                        'gl_transaction_id' => $glTransaction->id,
+                        'type' => 'debit',
+                        'exchange_rate' => $refundRequest->refund_exchange_rate,
+                        'base_amount' => $refundRequest->base_currency_refund,
+                        'description' => "صرف استرداد نقدي لتذكرة #{$booking->booking_number}",
+                        'agent_name' => $booking->agent_name ?: 'System',
                     ]);
 
-                    // NEW (2026-07-11): اربط الـ TreasuryTransaction بالـ GL Transaction
-                    // عشان نقفل الـ desync (rows بدون ledger_transaction_id كانت orphan).
-                    // الـ Treasury::credit() عمل debit لـ Treasury.balance،
-                    // والـ recordJournalTransfer عمل credit للـ Account.balance (cashbox).
-                    $treasuryTransaction->linkToGl($glTransaction, $account->id);
+                    // اربط مع الـ GL transaction + الـ cashbox Account
+                    $treasuryTransaction->linkToGl($cashoutGl, $cashboxAccount->id);
+
+                    // Mirror audit في الـ treasury ledger (لا يغير الـ balances — للمراجعة فقط)
+                    TreasuryLedgerMirror::mirrorFlightOutboundFromCash(
+                        $cashoutGl,
+                        $booking->id,
+                        "صرف استرداد نقدي للعميل — حجز #{$booking->booking_number}",
+                        User::find($userId)?->name ?? 'System'
+                    );
+
+                    Log::info('تم صرف مبلغ الاسترداد للعميل من الخزينة', [
+                        'refund_request_id' => $refundRequest->id,
+                        'treasury_id' => $treasury->id,
+                        'amount' => $refundAmount,
+                        'cashbox_account_id' => $cashboxAccount->id,
+                        'gl_transaction_id' => $cashoutGl->id,
+                    ]);
                 }
             }
 
@@ -574,137 +913,219 @@ class RefundService
                     ]);
                 }
             } else {
-                // -- agency_treasury: reverse GL + carrier/system debit + treasury receipt --
+                // -- agency_treasury: reverse the 3 steps in inverse order --
+                //
+                //   Undo Step C (cash-out from cashbox): recordJournalTransfer(customer → cashbox) + treasury_transaction row
+                //   Undo Step B (carrier credit-back): carrier->debit(purchaseNet) + consumeCogs('flight_carrier', purchaseNet)
+                //                                            أو نفس النمط لـ system/group
+                //   Undo Step A (sale GL reversal): recordJournalTransfer(clearing → customer, refund_amount)
 
                 $booking = FlightBooking::lockForUpdate()->findOrFail($refundRequest->flight_booking_id);
-                $prepaidKey = 'flight_system';
-
-                // (a) Reverse the FlightCarrier/System debit (credit back)
-                //
-                // Bug #B3 fix: use refundAmountInBalanceCurrency() helper for correct currency conversion.
                 $bookingCurrency = strtoupper((string) $booking->currency);
                 $bookingExchangeRate = (float) ($booking->booking_exchange_rate ?: ($booking->exchange_rate ?: 1.0));
-                $creditSubLedgerAmount = (float) $refundRequest->refund_amount;
+                $refundAmount = (float) $refundRequest->refund_amount;
+                $purchaseEgp = (float) ($booking->purchase_price_egp ?? $booking->purchase_price);
+                $purchaseNet = $purchaseEgp;
 
-                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
-                    $prepaidKey = 'flight_carrier';
-                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
-                    if ($carrier) {
-                        $creditSubLedgerAmount = $this->refundAmountInBalanceCurrency(
-                            (string) $carrier->currency,
-                            $bookingCurrency,
-                            (float) $refundRequest->refund_amount,
-                            (float) $refundRequest->base_currency_refund,
-                            $bookingExchangeRate
-                        );
-                        $carrier->credit(
-                            amount: $creditSubLedgerAmount,
-                            description: 'عكس خصم ناقل — حذف طلب استرداد #'.$refundRequest->id,
-                            userId: $userId,
-                            bookingId: $booking->id,
-                        );
-                    }
-                } elseif ($booking->flight_system_id) {
-                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
-                    if ($system) {
-                        $creditSubLedgerAmount = $this->refundAmountInBalanceCurrency(
-                            (string) $system->currency,
-                            $bookingCurrency,
-                            (float) $refundRequest->refund_amount,
-                            (float) $refundRequest->base_currency_refund,
-                            $bookingExchangeRate
-                        );
-                        $system->credit(
-                            amount: $creditSubLedgerAmount,
-                            description: 'عكس خصم نظام — حذف طلب استرداد #'.$refundRequest->id,
-                            userId: $userId,
-                            bookingId: $booking->id,
-                        );
-                    }
-                }
-
-                // (b) Reverse the GL journal transfer (cashbox → prepaid, opposite direction)
-                //     We re-resolve the destination Account the same way processRefundRequest does.
                 $treasury = $refundRequest->treasury_id ? Treasury::lockForUpdate()->find($refundRequest->treasury_id) : null;
-                $account = $treasury ? Account::where('name', $treasury->name)->first() : null;
-                if (! $account) {
-                    $account = Account::where('type', AccountType::Cashbox->value)
-                        ->where('currency', $refundRequest->refund_currency)
-                        ->whereIn('module_type', ['flights', 'tourism'])
-                        ->first();
-                }
-                if (! $account) {
-                    $account = Account::getModuleVault('flights');
-                }
+                $glTransaction = null;
 
-                $fromAccountId = $this->clearingAccounts->prepaidAccountId($prepaidKey);
+                // ── Undo Step C: عكس صرف الخزينة (customer → cashbox) ──
+                if ($treasury && $refundAmount > 0) {
+                    $cashboxAccount = $this->resolveCashboxAccount($treasury, $refundRequest->refund_currency, $userId);
+                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
 
-                if ($fromAccountId && $account && $fromAccountId !== $account->id) {
-                    // Bug #B4 + #B15 fix: use glTransferAmounts() helper.
-                    $fromAccount = Account::find($fromAccountId);
                     $glAmounts = $this->glTransferAmounts(
-                        (string) $account->currency,
-                        (string) ($fromAccount ? $fromAccount->currency : 'EGP'),
-                        (float) $refundRequest->refund_amount,
+                        $customerAccount->currency,
+                        $cashboxAccount->currency,
+                        $refundAmount,
                         (float) $refundRequest->base_currency_refund,
-                        $refundRequest->refund_exchange_rate !== null ? (float) $refundRequest->refund_exchange_rate : null
+                        (float) $refundRequest->refund_exchange_rate
                     );
 
-                    // REVERSE: original was prepaid → cashbox; here cashbox → prepaid
-                    $glTransaction = $this->transactionService->recordJournalTransfer([
+                    $cashoutReverseParams = [
                         'amount' => $glAmounts['amount'],
-                        'from_account_id' => $account->id,
-                        'to_account_id' => $fromAccountId,
+                        'from_account_id' => $customerAccount->id,         // customer (DR)
+                        'to_account_id' => $cashboxAccount->id,            // cashbox (CR) — يرجع له الرصيد اللي اتخصم منه الاسترداد
                         'allow_from_negative' => true,
                         'module' => TransactionModule::Flight->value,
                         'related_type' => RefundRequest::class,
                         'related_id' => $refundRequest->id,
-                        'notes' => 'عكس قيد استرداد — حذف طلب #'.$refundRequest->id.
-                                   ' — حجز #'.$refundRequest->flight_booking_id,
+                        'notes' => "عكس صرف استرداد نقدي للعميل — حذف طلب #{$refundRequest->id} — حجز #{$booking->booking_number}",
                         'created_by' => $userId,
-                        'converted_amount' => $glAmounts['converted_amount'],
-                        'exchange_rate' => $glAmounts['exchange_rate'],
-                    ]);
+                    ];
+                    if ($glAmounts['converted_amount'] !== null) {
+                        $cashoutReverseParams['converted_amount'] = $glAmounts['converted_amount'];
+                        $cashoutReverseParams['exchange_rate'] = $glAmounts['exchange_rate'];
+                    }
 
-                    Log::info('RefundService::reverseRefundRequest — GL reversal posted', [
-                        'refund_request_id' => $refundRequestId,
-                        'gl_transaction_id' => $glTransaction->id,
-                    ]);
-                }
+                    $reverseCashoutGl = $this->transactionService->recordJournalTransfer($cashoutReverseParams);
+                    $glTransaction = $reverseCashoutGl;
 
-                // (c) Reverse the Treasury receipt (debit the treasury + create compensating tx)
-                if ($treasury) {
-                    $amount = (float) $refundRequest->refund_amount;
-                    $treasury->debit($amount);
+                    // ⚠️ لا نعدّل $treasury->current_balance — الـ Treasury model منفصل عن الـ GL Account.
+                    // الـ processRefundRequest ما عملش $treasury->credit/debit، فالـ reverse ما يعملش كمان.
+                    // التوثيق بيكون عبر TreasuryTransaction (audit row) فقط.
 
-                    // توثيق الحركة المالية العكسية
-                    // NOTE: الـ ledger_transaction_id + account_id يتم ربطهما عبر ->linkToGl()
-                    // بعد ما الـ GL Transaction يتعمل في الأعلى.
                     $treasuryTransaction = $treasury->transactions()->create([
-                        'transaction_type' => 'debit',
-                        'amount' => $amount,
+                        'transaction_type' => 'receipt',
+                        'amount' => $refundAmount,
                         'currency' => $refundRequest->refund_currency,
-                        'balance_before' => $treasury->current_balance + $amount,
+                        'balance_before' => $treasury->current_balance,
                         'balance_after' => $treasury->current_balance,
-                        'reason' => 'عكس استرجاع تذكرة طيران — طلب #'.$refundRequest->id,
-                        'flight_booking_id' => $refundRequest->flight_booking_id,
+                        'reason' => 'عكس صرف استرداد تذكرة طيران — حذف طلب #'.$refundRequest->id,
+                        'flight_booking_id' => $booking->id,
                         'refund_request_id' => $refundRequest->id,
-                        'type' => 'debit',
+                        'type' => 'credit',
                         'exchange_rate' => $refundRequest->refund_exchange_rate,
                         'base_amount' => $refundRequest->base_currency_refund,
-                        'description' => 'عكس قيد طلب استرداد #'.$refundRequest->id.' (مرتجع)',
+                        'description' => 'إيداع عكسي لاسترداد نقدي محذوف — طلب #'.$refundRequest->id,
                         'agent_name' => $booking->agent_name ?: 'System',
                     ]);
 
-                    // NEW (2026-07-11): اربط الـ TreasuryTransaction بالـ GL Transaction
-                    if (isset($glTransaction)) {
-                        $treasuryTransaction->linkToGl($glTransaction, $account->id ?? null);
+                    $treasuryTransaction->linkToGl($reverseCashoutGl, $cashboxAccount->id);
+                }
+
+                // ── Undo Step B: عكس إرجاع التكلفة (carrier/system/group) ──
+                if ($booking->purchase_balance_source === 'carrier' && $booking->flight_carrier_id) {
+                    $carrier = FlightCarrier::lockForUpdate()->find($booking->flight_carrier_id);
+                    if ($carrier && $purchaseNet > 0) {
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
+                            (string) $carrier->currency,
+                            'EGP',
+                            $purchaseNet,
+                            null,
+                            $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $carrier->currency)
+                        );
+                        if ($debitSub > 0) {
+                            $carrier->debit($debitSub, $booking->id, $userId);
+                        }
                     }
+                    if ($purchaseNet > 0) {
+                        $this->prepaidLedgerService->consumeCogs(
+                            'flight_carrier',
+                            TransactionModule::Flight,
+                            $purchaseNet,
+                            "عكس استرداد تكلفة حجز {$booking->booking_number} — ناقل",
+                            FlightBooking::class,
+                            $booking->id
+                        );
+                    }
+                } elseif ($booking->purchase_balance_source === 'system' && $booking->flight_system_id) {
+                    $system = FlightSystem::lockForUpdate()->find($booking->flight_system_id);
+                    if ($system && $purchaseNet > 0) {
+                        // F-1 audit fix (2026-08-24): call via the injected instance, not statically.
+                        $debitSub = $this->flightBookingService->purchaseAmountInBalanceCurrency(
+                            (string) $system->currency,
+                            'EGP',
+                            $purchaseNet,
+                            null,
+                            $this->flightBookingService->lockedRateFromBookingSnapshot($booking, (string) $system->currency)
+                        );
+                        if ($debitSub > 0) {
+                            $system->debit($debitSub, $booking->id, $userId);
+                        }
+                    }
+                    if ($purchaseNet > 0) {
+                        $this->prepaidLedgerService->consumeCogs(
+                            'flight_system',
+                            TransactionModule::Flight,
+                            $purchaseNet,
+                            "عكس استرداد تكلفة حجز {$booking->booking_number} — نظام",
+                            FlightBooking::class,
+                            $booking->id
+                        );
+                    }
+                } elseif ($booking->purchase_balance_source === 'group' && $booking->flight_group_id) {
+                    $group = FlightGroup::lockForUpdate()->find($booking->flight_group_id);
+                    if ($group && $group->account_id && $purchaseNet > 0) {
+                        $expenseContraId = $this->clearingAccounts->expenseContraIdForModule(TransactionModule::Flight);
+                        $reverseGroupGl = $this->transactionService->recordJournalTransfer([
+                            'amount' => $purchaseNet,
+                            'from_account_id' => (int) $group->account_id,
+                            'to_account_id' => $expenseContraId,
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => "عكس استرداد تكلفة مجموعة — حذف طلب #{$refundRequest->id} — حجز #{$booking->booking_number}",
+                            'created_by' => $userId,
+                        ]);
+                        $glTransaction = $reverseGroupGl;
+                    }
+                }
+
+                // ── Undo Step A: إعادة قيد البيع (clearing → customer, amount=base_currency_refund) ──
+                //
+                // عكس الـ Step A (اللي عكس البيع بـ stepAmountEgp).
+                // فالـ reverse لازم يعيد البيع بـ EGP عشان:
+                //   - clearing يرجع لقيمته الأصلية (-selling_price)
+                //   - customer يرجع لقيمته الأصلية بعد الـ payment (0)
+                $saleRestoreAmount = (float) ($refundRequest->base_currency_refund ?? 0);
+                if ($saleRestoreAmount <= 0) {
+                    $refundExchangeRate = (float) ($refundRequest->refund_exchange_rate ?? 1.0);
+                    $saleRestoreAmount = $refundAmount * $refundExchangeRate;
+                }
+                if ($booking->sale_gl_transaction_id && $saleRestoreAmount > 0) {
+                    $orig = Transaction::query()->find($booking->sale_gl_transaction_id);
+                    if ($orig && $orig->from_account_id && $orig->to_account_id) {
+                        $restoreSaleGl = $this->transactionService->recordJournalTransfer([
+                            'amount' => $saleRestoreAmount,
+                            'from_account_id' => (int) $orig->from_account_id,    // clearing (DR — يرجع لقيمته)
+                            'to_account_id' => (int) $orig->to_account_id,        // customer (CR)
+                            'allow_from_negative' => true,
+                            'module' => TransactionModule::Flight->value,
+                            'related_type' => FlightBooking::class,
+                            'related_id' => $booking->id,
+                            'notes' => "إعادة قيد مبيعات الحجز بعد حذف طلب الاسترداد #{$refundRequest->id} — حجز #{$booking->booking_number}",
+                            'created_by' => $userId,
+                        ]);
+                        $glTransaction = $restoreSaleGl;
+
+                        Log::info('RefundService::reverseRefundRequest — GL sale re-recorded', [
+                            'refund_request_id' => $refundRequestId,
+                            'flight_booking_id' => $booking->id,
+                            'amount' => $saleRestoreAmount,
+                        ]);
+                    }
+                }
+            // 3.5) Undo Step A-REVENUE & restore booking status (GAP 6 FIX)
+            // Remove companion partial-refund transaction row if any
+            Transaction::query()
+                ->where('related_type', FlightBooking::class)
+                ->where('related_id', $booking->id)
+                ->where('notes', 'like', 'عكس إيراد مدفوعات جزئي ضمن الاسترداد%')
+                ->delete();
+
+            // Unmark reversed payments if full refund was applied
+            $payments = $booking->payments()->whereNotNull('transaction_id')->get();
+            foreach ($payments as $payment) {
+                $originalTx = Transaction::query()
+                    ->where('related_type', FlightPayment::class)
+                    ->where('related_id', $payment->id)
+                    ->where('type', 'income')
+                    ->first();
+                if ($originalTx && (str_starts_with((string) $originalTx->notes, 'عكس:') || str_starts_with((string) $originalTx->notes, 'عكس '))) {
+                    $originalTx->notes = preg_replace('/^عكس:\s*|^عكس\s+/u', '', (string) $originalTx->notes);
+                    $originalTx->save();
                 }
             }
 
-            // 4) Soft delete the refund request itself
-            $refundRequest->delete();
+            // Restore booking status back to CONFIRMED if there are no other active/processed refunds
+            $hasOtherActiveRefunds = RefundRequest::query()
+                ->where('flight_booking_id', $booking->id)
+                ->where('id', '!=', $refundRequest->id)
+                ->where('status', 'processed')
+                ->exists();
+
+            if (! $hasOtherActiveRefunds) {
+                $booking->status = FlightBookingStatus::CONFIRMED;
+                $booking->save();
+            }
+        }
+
+        // 4) Soft delete the refund request itself
+        $refundRequest->delete();
 
             Log::info('RefundService::reverseRefundRequest — complete', [
                 'refund_request_id' => $refundRequestId,

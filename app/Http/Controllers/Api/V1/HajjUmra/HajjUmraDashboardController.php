@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\HajjUmra;
 
 use App\Enums\AccountType;
+use App\Enums\HajjUmraStatus;
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
@@ -18,26 +19,49 @@ class HajjUmraDashboardController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
+        // استبعاد الحجوزات الملغاة والمستردة من إيراد الشهر — يطابق Flight dashboard
+        $excludedStatuses = [
+            HajjUmraStatus::Cancelled->value,
+            HajjUmraStatus::Refunded->value,
+        ];
+
         $monthlyRevenue = (float) HajjUmraBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', $excludedStatuses)
             ->selectRaw('COALESCE(SUM(selling_price + COALESCE(companion_selling_price, 0) + COALESCE(accommodation_extra_charge, 0)), 0) as total')
             ->value('total');
 
         $totalBookings = HajjUmraBooking::query()->count();
 
+        // استخدام AccountModuleDivision::TOURISM لضمان التقاط كل الحسابات السياحية
+        // (tourism, flights, hajj_umra, visas) — يطابق Flight dashboard
         $accounts = Account::query()
             ->where('is_active', true)
-            ->whereIn('module_type', ['tourism', 'hajj_umra'])
-            ->get(['type', 'balance']);
+            ->whereIn('module_type', \App\Support\Finance\AccountModuleDivision::TOURISM)
+            // نقتصر على liquidity types فقط (cashbox, bank, wallet) — لا نضع clearing/supplier/customer في الإجمالي
+            ->whereIn('type', [AccountType::Cashbox->value, AccountType::Bank->value, AccountType::Wallet->value])
+            ->get(['type', 'balance', 'currency']);
 
+        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+
+        // Safe enum comparison — one type per bucket so bank rows are not double-counted
         $cashboxes = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
         $banks = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Bank->value);
         $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
-        $cashboxBalance = (float) $cashboxes->sum('balance');
-        $bankBalance = (float) $banks->sum('balance');
-        $walletBalance = (float) $wallets->sum('balance');
+        // تحويل الأرصدة إلى EGP باستخدام متوسط سعر الشراء — يطابق Flight dashboard
+        $cashboxBalance = $cashboxes->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
+        $bankBalance = $banks->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
+        $walletBalance = $wallets->sum(function ($a) use ($treasuryService) {
+            $rate = $treasuryService->getAveragePurchaseRate($a->currency);
+            return (float) $a->balance * $rate;
+        });
 
         $recentBookings = HajjUmraBooking::query()
             ->with(['customer', 'program'])

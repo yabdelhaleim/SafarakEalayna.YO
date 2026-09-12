@@ -57,6 +57,14 @@
             <InfoCard label="العميل" :value="customerName" />
             <InfoCard label="المبلغ المدفوع (ج.م)" :value="formatEgp(totalPaid)" highlight />
           </div>
+          <p
+            v-if="payDebtPortion > 0"
+            class="text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-xl px-3 py-2"
+          >
+            يشمل {{ formatEgp(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)) }}
+            دفعات مباشرة + {{ formatEgp(payDebtPortion) }}
+            تسديد مديونية العميل (سند قبض على الحساب).
+          </p>
         </template>
 
         <div v-if="payments.length" class="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
@@ -322,9 +330,36 @@ const payments = computed(() => {
 const totalPaid = computed(() => {
   const b = props.initialBooking;
   if (!b) return 0;
+
+  // FIX (2026-09-08): the wizard previously summed only `b.payments[*].amount`
+  // (i.e. flight_payments rows) and returned early whenever that sum was > 0.
+  // But for counter/آجل customers, part of the payment may come in via
+  // CustomerController::payDebt — which posts an Income row to `transactions`
+  // but NEVER creates a `flight_payments` row. The backend's `paid_amount`
+  // accessor (FlightBooking.php) correctly sums BOTH sources, so `b.total_paid`
+  // from the API is the authoritative "ما دفعه العميل" figure.
+  //
+  // Real-world impact (booking FLT-20260905-8F37F8): selling_price=5200,
+  // flight_payments=[2200], payDebt=3000. The wizard previously displayed
+  // 2,200 (sum of flight_payments) while the backend refund service used
+  // 5,200 — a 3,000 EGP mismatch that left the customer and the cashier
+  // looking at two different numbers.
+  //
+  // Resolution: take the MAX of (API total_paid) and (frontend sum) so we
+  // never under-report. If both are 0 (no payments at all), fall back to
+  // selling_price so the modal isn't blank for unpaid bookings.
+  const fromApi = Number(b.total_paid ?? b.totalPaid ?? 0);
   const fromPayments = payments.value.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  if (fromPayments > 0) return fromPayments;
-  return Number(b.totalPaid ?? b.total_paid ?? b.pricing?.sellingPrice ?? b.selling_price ?? 0) || 0;
+  const computed = Math.max(
+    Number.isFinite(fromApi) && fromApi > 0 ? fromApi : 0,
+    fromPayments > 0 ? fromPayments : 0,
+  );
+
+  if (computed > 0) return computed;
+
+  // No payments at all — use selling_price so the modal renders the agreed
+  // ticket price (still better than 0 for refund planning).
+  return Number(b.selling_price ?? b.pricing?.sellingPrice ?? 0) || 0;
 });
 
 const customerRefundAmount = computed(() =>
@@ -334,6 +369,18 @@ const customerRefundAmount = computed(() =>
 const penaltiesExceedPaid = computed(
   () => (Number(form.value.airlinePenalty) || 0) + (Number(form.value.officePenalty) || 0) > totalPaid.value + 0.001,
 );
+
+// FIX (2026-09-08): تفصيل المبلغ المدفوع بين الأقساط المباشرة (flight_payments)
+// والتسديد عبر مديونية العميل (payDebt income). بيرجع 0 لو مفيش تسديد
+// من النوع ده، عشان نقدر نعرض tooltip توضيحي فقط لما يكون فيه payDebt.
+const payDebtPortion = computed(() => {
+  const b = props.initialBooking;
+  if (!b) return 0;
+  const fromApi = Number(b.total_paid ?? b.totalPaid ?? 0);
+  const fromPayments = payments.value.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const diff = (Number.isFinite(fromApi) ? fromApi : 0) - fromPayments;
+  return diff > 0 ? roundMoney(diff) : 0;
+});
 
 const displayBookingNumber = computed(
   () => props.initialBooking?.bookingNumber ?? props.initialBooking?.booking_number ?? form.value.bookingNumber ?? '—',

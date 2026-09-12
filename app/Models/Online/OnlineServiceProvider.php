@@ -52,9 +52,15 @@ class OnlineServiceProvider extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * Transactions using this provider's code.
+     * The FK column is `provider_code` (string), not `provider_id` —
+     * the relation joins `online_service_providers.code` ↔
+     * `online_transactions.provider_code` (Fawry-style lookup pattern).
+     */
     public function transactions(): HasMany
     {
-        return $this->hasMany(OnlineTransaction::class, 'provider_id');
+        return $this->hasMany(OnlineTransaction::class, 'provider_code', 'code');
     }
 
     public function scopeActive(Builder $query): Builder

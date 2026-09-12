@@ -63,28 +63,33 @@ class PrepaidLedgerService
         ];
 
         if (! $sameCurrency) {
-            try {
-                $conversion = $this->currencyService->convert($amount, $fromCurrency, $toCurrency);
-                $transferData['converted_amount'] = (float) $conversion['to_amount'];
-                $transferData['exchange_rate'] = (float) $conversion['rate'];
+            // FIX P2.1 (2026-08-20): NEVER silently fall back to 1:1 conversion.
+            // Per the Tourism production-readiness audit (Rule 1: "do not silently
+            // use incorrect currency conversion"), if the FX rate is unavailable
+            // we MUST throw — the caller can either seed an ExchangeRate row or
+            // supply a rate explicitly via the explicit-rate overload below.
+            //
+            // The previous behavior posted at 1:1 with just a warning log, which
+            // silently created financially incorrect transactions (e.g. 150 USD
+            // becoming 150 EGP instead of 7500 EGP at rate 50). That destroyed
+            // money on every cross-currency prepaid recharge when no rate was
+            // seeded in the test/local environment.
+            //
+            // See app/Services/Finance/CurrencyService.php::convert() which throws
+            // an explicit "لا يوجد سعر صرف متاح" exception when no rate can be
+            // resolved — we let that exception propagate so callers handle it.
+            $conversion = $this->currencyService->convert($amount, $fromCurrency, $toCurrency);
+            $transferData['converted_amount'] = (float) $conversion['to_amount'];
+            $transferData['exchange_rate'] = (float) $conversion['rate'];
 
-                Log::info('Prepaid recharge: currency conversion applied', [
-                    'prepaid_key' => $prepaidKey,
-                    'from_currency' => $fromCurrency,
-                    'to_currency' => $toCurrency,
-                    'from_amount' => $amount,
-                    'converted_amount' => $transferData['converted_amount'],
-                    'exchange_rate' => $transferData['exchange_rate'],
-                ]);
-            } catch (\Throwable $e) {
-                Log::warning('Prepaid recharge: currency conversion failed, posting at 1:1', [
-                    'prepaid_key' => $prepaidKey,
-                    'from_currency' => $fromCurrency,
-                    'to_currency' => $toCurrency,
-                    'error' => $e->getMessage(),
-                ]);
-                // Fallback: 1:1 conversion (تحذير في الـ log)
-            }
+            Log::info('Prepaid recharge: currency conversion applied', [
+                'prepaid_key' => $prepaidKey,
+                'from_currency' => $fromCurrency,
+                'to_currency' => $toCurrency,
+                'from_amount' => $amount,
+                'converted_amount' => $transferData['converted_amount'],
+                'exchange_rate' => $transferData['exchange_rate'],
+            ]);
         }
 
         $transaction = $this->transactionService->recordJournalTransfer($transferData);

@@ -135,6 +135,17 @@ class FlightSystem extends Model
 
     public function debit(float $amount, int $bookingId, int $userId): FlightSystemTransaction
     {
+        // Phase 11.1 B-7 DEFECT FIX: refuse to debit inactive systems.
+        // Mirrors the FlightCarrier::debit() fix and the
+        // FlightSystemRechargeService guard. Inactive systems must not accept
+        // new bookings even if they have a non-zero prepaid balance.
+        if (! $this->is_active) {
+            throw new \App\Exceptions\InactiveFlightSystemException(
+                "لا يمكن إجراء حجز على نظام حجز غير نشط: النظام «{$this->name}» ".
+                "({$this->code}) غير مُفعَّل. قم بتفعيله أولاً من شاشة إدارة الأنظمة."
+            );
+        }
+
         if ($this->available_balance < $amount) {
             throw new \Exception(
                 'رصيد نظام الحجز غير كافٍ. '.

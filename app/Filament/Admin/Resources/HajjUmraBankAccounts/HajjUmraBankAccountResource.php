@@ -44,7 +44,10 @@ class HajjUmraBankAccountResource extends Resource
     {
         return parent::getEloquentQuery()
             ->whereIn('type', [AccountType::Bank->value])
-            ->where('module_type', 'hajj_umra');
+            ->where(function (Builder $q): void {
+                $q->whereIn('module', ['hajj_umra', 'hajj', 'umrah'])
+                    ->orWhereIn('module_type', ['hajj_umra', 'hajj', 'umrah']);
+            });
     }
 
     public static function form(Schema $schema): Schema

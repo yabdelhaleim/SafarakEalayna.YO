@@ -1,0 +1,1 @@
+var e=e=>(e||``).replace(/\D/g,``),t=t=>e(t).slice(0,11),n=t=>{if(!t||t.trim()===``)return``;let n=e(t);return n.length>0&&n.length<11?`رقم الهاتف يجب أن يكون 11 رقمًا`:n.length===11&&!n.startsWith(`01`)?`يجب أن يبدأ رقم الهاتف بـ 01`:``};export{n,t};

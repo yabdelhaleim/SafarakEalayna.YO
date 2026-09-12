@@ -42,7 +42,10 @@ class VisaBankAccountResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('type', AccountType::Bank->value)
-            ->where('module_type', 'visas');
+            ->where(function (Builder $q): void {
+                $q->whereIn('module', ['visas', 'visa'])
+                    ->orWhereIn('module_type', ['visas', 'visa']);
+            });
     }
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema

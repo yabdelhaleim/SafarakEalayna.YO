@@ -80,6 +80,29 @@ class FlightMultiCurrencyProductionTest extends TestCase
             'is_active' => true,
         ]);
         $this->actingAs($this->admin);
+
+        // Phase 11 audit fix (2026-09-02): seed the currencies used across
+        // the cross-currency scenarios so that `PrepaidLedgerService::rechargePrepaid`
+        // (USD→EGP / SAR→EGP / KWD→EGP) can resolve exchange rates. Without
+        // these rows the first carrier recharge in `buildCurrencyFixture`
+        // throws "لا يوجد سعر صرف متاح" before any booking is created.
+        foreach ([
+            ['USD', 50.0],
+            ['SAR', 13.33],
+            ['KWD', 162.5],
+        ] as [$code, $rate]) {
+            \App\Models\Setting\Currency::updateOrCreate(
+                ['code' => $code],
+                [
+                    'name_ar' => $code,
+                    'name_en' => $code,
+                    'symbol' => $code,
+                    'exchange_rate' => $rate,
+                    'is_active' => true,
+                    'order' => 0,
+                ],
+            );
+        }
     }
 
     /**
@@ -185,8 +208,8 @@ class FlightMultiCurrencyProductionTest extends TestCase
 
         $exchangeRate = match ($currency) {
             'USD' => 50.0,
-            'SAR' => 13.0,
-            'KWD' => 160.0,
+            'SAR' => 13.33,
+            'KWD' => 162.5,
             default => 1.0,
         };
 
@@ -368,7 +391,7 @@ class FlightMultiCurrencyProductionTest extends TestCase
         );
 
         $exchangeRate = match ($currency) {
-            'USD' => 50.0, 'SAR' => 13.0, 'KWD' => 160.0, default => 1.0,
+            'USD' => 50.0, 'SAR' => 13.33, 'KWD' => 162.5, default => 1.0,
         };
 
         $sellingPriceForeign = 150.0;
@@ -507,7 +530,7 @@ class FlightMultiCurrencyProductionTest extends TestCase
         );
 
         $exchangeRate = match ($bookingCurrency) {
-            'USD' => 50.0, 'SAR' => 13.0, 'KWD' => 160.0, default => 1.0,
+            'USD' => 50.0, 'SAR' => 13.33, 'KWD' => 162.5, default => 1.0,
         };
 
         $sellingPriceEgp = 150.0 * $exchangeRate; // 150 booking-currency units worth of EGP

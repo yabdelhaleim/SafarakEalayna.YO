@@ -247,7 +247,7 @@ try {
 
         $paymentsCount = $booking2->payments->count();
 
-        $service->deleteBookingWithReversal($booking2->id, $realUser->id);
+        $service->deleteBookingWithReversal($booking2->id, $realUser);
 
         // Reload withTrashed() to verify soft-delete
         $bookingAfter = HajjUmraBooking::withTrashed()->findOrFail($booking2->id);
@@ -278,7 +278,7 @@ try {
         // Idempotency: second call must throw
         $idempotent = false;
         try {
-            $service->deleteBookingWithReversal($booking2->id, $realUser->id);
+            $service->deleteBookingWithReversal($booking2->id, $realUser);
         } catch (\RuntimeException $e) {
             $idempotent = str_contains($e->getMessage(), 'محذوف بالفعل');
         }
