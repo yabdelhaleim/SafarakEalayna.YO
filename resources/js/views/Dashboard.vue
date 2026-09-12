@@ -93,6 +93,7 @@
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-amber-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
+            <div v-if="tourismSummary.total_count === 0" class="text-[10px] text-gray-500 mt-0.5 italic">لا توجد حركات في الفترة</div>
           </div>
         </button>
 
@@ -116,6 +117,7 @@
           <div class="text-left">
             <div class="text-xs text-gray-400">صافي الأرباح</div>
             <div class="text-sm font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-sky-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
+            <div v-if="officeSummary.total_count === 0" class="text-[10px] text-gray-500 mt-0.5 italic">لا توجد حركات في الفترة</div>
           </div>
         </button>
 
@@ -225,7 +227,8 @@
           <div class="absolute -left-4 -bottom-4 text-amber-500/5 text-7xl font-black select-none">✈️</div>
           <div class="text-xs font-bold text-amber-400 mb-1">إجمالي إيرادات قطاع السياحة</div>
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(tourismSummary.total_revenue) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>الطيران: {{ formatCompactNumber(tourismSummary.flights.revenue) }}</span>
             <span>الحج والعمرة: {{ formatCompactNumber(tourismSummary.hajj.revenue) }}</span>
           </div>
@@ -235,7 +238,8 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💰</div>
           <div class="text-xs font-bold mb-1" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح قطاع السياحة</div>
           <div class="text-3xl font-black font-mono" :class="(tourismSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(tourismSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>ربح الطيران: {{ formatCompactNumber(tourismSummary.flights.profit) }}</span>
             <span>ربح الحج: {{ formatCompactNumber(tourismSummary.hajj.profit) }}</span>
             <span>ربح التأشيرات: {{ formatCompactNumber(tourismSummary.visa.profit) }}</span>
@@ -246,7 +250,8 @@
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">📊</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي العمليات المنفذة</div>
           <div class="text-3xl font-black text-white font-mono">{{ tourismSummary.total_count }} <span class="text-sm font-normal text-gray-400">حجز منفذ</span></div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="tourismSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>تذاكر طيران: {{ tourismSummary.flights.count }}</span>
             <span>برامج حج/عمرة: {{ tourismSummary.hajj.count }}</span>
           </div>
@@ -319,16 +324,20 @@
               <div
                 v-for="(day, index) in bookingsChart"
                 :key="index"
-                class="group flex flex-1 flex-col items-center gap-1.5"
+                class="group flex flex-1 flex-col items-center gap-1.5 relative cursor-pointer"
+                :title="`${day.label}\nالتذاكر: ${day.count}\nالأرباح: ${formatCurrency(day.profit || 0)}\nالإيرادات: ${formatCurrency(day.revenue || 0)}`"
               >
-                <div class="relative h-36 w-full overflow-hidden rounded-md bg-white/5">
+                <div class="relative h-36 w-full overflow-hidden rounded-md bg-white/5 flex flex-col justify-end">
                   <div
-                    class="absolute bottom-0 w-full rounded-t-md bg-gradient-to-t from-sky-600 to-cyan-400 transition-all group-hover:from-sky-500 group-hover:to-cyan-300"
-                    :style="{ height: `${(day.count / Math.max(1, ...bookingsChart.map(d => d.count))) * 100}%` }"
+                    class="w-full rounded-t-md bg-gradient-to-t from-sky-600 to-cyan-400 transition-all group-hover:from-sky-500 group-hover:to-cyan-300"
+                    :style="{ height: `${day.count > 0 ? Math.max((day.count / Math.max(1, ...bookingsChart.map(d => d.count))) * 100, 10) : 0}%` }"
                   ></div>
                 </div>
                 <span class="text-[10px] font-medium text-gray-400 truncate max-w-[50px]">{{ day.label }}</span>
-                <span class="text-xs font-bold text-sky-400">{{ day.count }}</span>
+                <span class="text-xs font-bold text-sky-400 font-mono">{{ day.count }}</span>
+                <span v-if="day.profit !== undefined && day.count > 0" class="text-[9px] font-bold font-mono" :class="(day.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ formatCompactNumber(day.profit) }}
+                </span>
               </div>
             </div>
           </div>
@@ -408,7 +417,8 @@
           <div class="absolute -left-4 -bottom-4 text-sky-500/5 text-7xl font-black select-none">🏢</div>
           <div class="text-xs font-bold text-sky-400 mb-1">إجمالي إيرادات حسابات المكتب</div>
           <div class="text-3xl font-black text-white font-mono">{{ formatCurrency(officeSummary.total_revenue) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>الباص: {{ formatCompactNumber(officeSummary.bus.revenue) }}</span>
             <span>فوري: {{ formatCompactNumber(officeSummary.fawry.revenue) }}</span>
             <span>المحافظ: {{ formatCompactNumber(officeSummary.wallet.revenue) }}</span>
@@ -420,7 +430,13 @@
           <div class="absolute -left-4 -bottom-4 text-emerald-500/5 text-7xl font-black select-none">💎</div>
           <div class="text-xs font-bold mb-1" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">صافي أرباح حسابات المكتب</div>
           <div class="text-3xl font-black font-mono" :class="(officeSummary.total_profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ formatCurrency(officeSummary.total_profit) }}</div>
-          <div class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
+          <div v-if="officeSummary.operating_expenses > 0" class="text-[11px] text-gray-400 mt-1 flex flex-wrap items-center gap-1.5">
+            <span>أرباح العمليات: <strong class="text-emerald-400 font-mono">{{ formatCurrency(officeSummary.gross_profit) }}</strong></span>
+            <span>-</span>
+            <span>المصروفات: <strong class="text-rose-400 font-mono">{{ formatCurrency(officeSummary.operating_expenses) }}</strong></span>
+          </div>
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex flex-wrap gap-x-4 items-center justify-between">
             <span>ربح الباص: {{ formatCompactNumber(officeSummary.bus.profit) }}</span>
             <span>ربح فوري: {{ formatCompactNumber(officeSummary.fawry.profit) }}</span>
             <span>ربح المحافظ: {{ formatCompactNumber(officeSummary.wallet.profit) }}</span>
@@ -432,7 +448,8 @@
           <div class="absolute -left-4 -bottom-4 text-amber-500/5 text-7xl font-black select-none">⚡</div>
           <div class="text-xs font-bold text-amber-400 mb-1">العمليات التشغيلية (المكتب)</div>
           <div class="text-3xl font-black text-white font-mono">{{ officeSummary.total_count }} <span class="text-sm font-normal text-gray-400">حركة</span></div>
-          <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+          <div v-if="officeSummary.total_count === 0" class="mt-2 text-[11px] text-gray-500 italic">لا توجد حركات في الفترة المحددة</div>
+          <div v-else class="mt-2 text-xs text-gray-400 flex items-center justify-between">
             <span>حجوزات باص: {{ officeSummary.bus.count }}</span>
             <span>حركات فوري: {{ officeSummary.fawry.count }}</span>
             <span>خدمات إلكترونية: {{ officeSummary.online.count }}</span>
@@ -469,16 +486,20 @@
               <div
                 v-for="(day, index) in busBookingsChart"
                 :key="'bc-'+index"
-                class="group flex flex-1 flex-col items-center gap-1.5"
+                class="group flex flex-1 flex-col items-center gap-1.5 relative cursor-pointer"
+                :title="`${day.label}\nحجوزات الباص: ${day.count}\nالأرباح: ${formatCurrency(day.profit || 0)}\nالإيرادات: ${formatCurrency(day.revenue || 0)}`"
               >
-                <div class="relative h-32 w-full overflow-hidden rounded-md bg-white/5">
+                <div class="relative h-32 w-full overflow-hidden rounded-md bg-white/5 flex flex-col justify-end">
                   <div
-                    class="absolute bottom-0 w-full rounded-t-md bg-gradient-to-t from-amber-700 to-amber-400"
-                    :style="{ height: `${(day.count / Math.max(1, ...busBookingsChart.map(d => d.count))) * 100}%` }"
+                    class="w-full rounded-t-md bg-gradient-to-t from-amber-700 to-amber-400 transition-all group-hover:from-amber-600 group-hover:to-amber-300"
+                    :style="{ height: `${day.count > 0 ? Math.max((day.count / Math.max(1, ...busBookingsChart.map(d => d.count))) * 100, 10) : 0}%` }"
                   ></div>
                 </div>
                 <span class="text-[10px] font-medium text-gray-400 truncate max-w-[50px]">{{ day.label }}</span>
-                <span class="text-xs font-bold text-amber-400">{{ day.count }}</span>
+                <span class="text-xs font-bold text-amber-400 font-mono">{{ day.count }}</span>
+                <span v-if="day.profit !== undefined && day.count > 0" class="text-[9px] font-bold font-mono" :class="(day.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ formatCompactNumber(day.profit) }}
+                </span>
               </div>
             </div>
           </div>
@@ -580,8 +601,12 @@
             </div>
             <div class="space-y-3">
               <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
-                <span class="text-gray-400">إجمالي المبيعات</span>
+                <span class="text-gray-400">إجمالي رسوم الخدمة (الإيراد)</span>
                 <span class="font-bold text-white font-mono">{{ formatCurrency(officeSummary.wallet.revenue) }}</span>
+              </div>
+              <div v-if="officeSummary.wallet.volume > 0" class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-xs">
+                <span class="text-gray-400">إجمالي مبالغ التحويلات (السيولة)</span>
+                <span class="font-medium text-gray-300 font-mono">{{ formatCurrency(officeSummary.wallet.volume) }}</span>
               </div>
               <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-sm">
                 <span class="text-gray-400">الربح الصافي المحقق</span>
@@ -1308,10 +1333,12 @@ const officeSummary = ref({
   bus: { count: 0, revenue: 0, profit: 0 },
   fawry: { count: 0, revenue: 0, profit: 0 },
   online: { count: 0, revenue: 0, profit: 0 },
-  wallet: { count: 0, revenue: 0, profit: 0 },
+  wallet: { count: 0, revenue: 0, profit: 0, volume: 0 },
   total_count: 0,
   total_revenue: 0,
   total_profit: 0,
+  gross_profit: 0,
+  operating_expenses: 0,
 });
 
 const treasurySummary = ref({
@@ -1346,9 +1373,10 @@ const parseAmount = (value) => {
 };
 
 const normalizeModuleBlock = (block = {}) => ({
-  count: parseAmount(block.count),
-  revenue: parseAmount(block.revenue),
-  profit: parseAmount(block.profit),
+  count: parseAmount(block?.count),
+  revenue: parseAmount(block?.revenue),
+  profit: parseAmount(block?.profit),
+  volume: parseAmount(block?.volume),
 });
 
 const normalizeTourismSummary = (raw = {}) => ({
@@ -1361,13 +1389,15 @@ const normalizeTourismSummary = (raw = {}) => ({
 });
 
 const normalizeOfficeSummary = (raw = {}) => ({
-  bus: normalizeModuleBlock(raw.bus),
-  fawry: normalizeModuleBlock(raw.fawry),
-  online: normalizeModuleBlock(raw.online),
-  wallet: normalizeModuleBlock(raw.wallet),
-  total_count: parseAmount(raw.total_count),
-  total_revenue: parseAmount(raw.total_revenue),
-  total_profit: parseAmount(raw.total_profit),
+  bus: normalizeModuleBlock(raw?.bus),
+  fawry: normalizeModuleBlock(raw?.fawry),
+  online: normalizeModuleBlock(raw?.online),
+  wallet: normalizeModuleBlock(raw?.wallet),
+  total_count: parseAmount(raw?.total_count),
+  total_revenue: parseAmount(raw?.total_revenue),
+  total_profit: parseAmount(raw?.total_profit),
+  gross_profit: parseAmount(raw?.gross_profit),
+  operating_expenses: parseAmount(raw?.operating_expenses),
 });
 
 const normalizeTreasurySummary = (raw = {}) => ({
@@ -1509,6 +1539,7 @@ const fetchDashboardData = async () => {
         date_to: filters.value.date_to,
         carrier_id: filters.value.carrier_id,
         system_type: filters.value.system_type,
+        nocache: isRefreshing.value ? 1 : 0,
       }
     });
 
@@ -1537,6 +1568,8 @@ const fetchDashboardData = async () => {
     bookingsChart.value = (data.bookings_chart || []).map((day) => ({
       ...day,
       count: parseAmount(day.count),
+      revenue: parseAmount(day.revenue),
+      profit: parseAmount(day.profit),
     }));
     revenueChart.value = data.revenue_chart || [];
     carrierPerformance.value = (data.carrier_performance || []).map((item) => ({
@@ -1562,6 +1595,8 @@ const fetchDashboardData = async () => {
     busBookingsChart.value = (data.bus_bookings_chart || []).map((day) => ({
       ...day,
       count: parseAmount(day.count),
+      revenue: parseAmount(day.revenue),
+      profit: parseAmount(day.profit),
     }));
     busCompanyPerformance.value = (data.bus_company_performance || []).map((item) => ({
       ...item,

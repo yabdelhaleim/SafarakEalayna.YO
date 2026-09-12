@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Flight\FlightBookingService;
 use App\Services\Flight\FlightCarrierRechargeService;
+use App\Models\Setting\Currency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -51,6 +52,35 @@ class FlightKwdPaymentConversionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Phase 11 audit fix (2026-09-02): seed KWD currency so that
+        // `PrepaidLedgerService::rechargePrepaid` can convert the KWD
+        // cashbox → EGP prepaid account. Without this seed the test
+        // throws "لا يوجد سعر صرف متاح من KWD إلى EGP" before any
+        // booking or payment can be created.
+        Currency::updateOrCreate(
+            ['code' => 'KWD'],
+            [
+                'name_ar' => 'دينار كويتي',
+                'name_en' => 'Kuwaiti Dinar',
+                'symbol' => 'KWD',
+                'exchange_rate' => 160.0,
+                'is_active' => true,
+                'order' => 0,
+            ],
+        );
+        // Also seed SAR (used by the mismatched-currency rejection test).
+        Currency::updateOrCreate(
+            ['code' => 'SAR'],
+            [
+                'name_ar' => 'ريال سعودي',
+                'name_en' => 'Saudi Riyal',
+                'symbol' => 'SAR',
+                'exchange_rate' => 12.7,
+                'is_active' => true,
+                'order' => 0,
+            ],
+        );
 
         $this->bookingService = app(FlightBookingService::class);
 

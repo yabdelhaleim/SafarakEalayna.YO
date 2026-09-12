@@ -19,8 +19,15 @@ use Illuminate\Support\Facades\DB;
 
 class TreasuryService
 {
-    /** ذمم مدينة حقيقية في معادلة الميزان (غير مُدرجة في إجمالي الأرصدة كأصول مسبقة الدفع). */
-    private const TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES = ['customer', 'flight_group'];
+    /**
+     * ذمم مدينة حقيقية في معادلة الميزان (غير مُدرجة في إجمالي الأرصدة كأصول مسبقة الدفع).
+     *
+     * NOTE: flight_group مُزال من هذه القائمة عن قصد —
+     * المجموعات موردون (نشتري منهم تذاكر بالأجل) وليسوا عملاء،
+     * لذا رصيدهم الموجب يعني «علينا لهم» (Payable) وليس «لنا عندهم» (Receivable).
+     * هذا يتوافق مع منطق تقرير الديون في FinancialReportService.
+     */
+    private const TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES = ['customer'];
 
     /**
      * الحصول على رصيد خزينة معينة
@@ -303,7 +310,7 @@ class TreasuryService
             return 1.0;
         }
 
-        // Try to calculate average purchase rate from flight bookings
+        // 1️⃣ متوسط سعر الشراء الفعلي من حجوزات الطيران
         $sumEgp = DB::table('flight_bookings')
             ->where('foreign_currency', $currency)
             ->whereNull('deleted_at')
@@ -318,7 +325,7 @@ class TreasuryService
             return (float) ($sumEgp / $sumForeign);
         }
 
-        // Fallback to latest exchange rate
+        // 2️⃣ آخر سعر صرف مسجل في exchange_rates
         $latestRate = DB::table('exchange_rates')
             ->where('from_currency', $currency)
             ->where('to_currency', 'EGP')
@@ -330,7 +337,7 @@ class TreasuryService
             return (float) $latestRate;
         }
 
-        // Fallback to currencies table managed in admin settings
+        // 3️⃣ سعر الصرف من جدول العملات في إعدادات الإدمن
         $dbCurrency = DB::table('currencies')
             ->where('is_active', true)
             ->whereRaw('upper(code) = ?', [$currency])
@@ -340,6 +347,7 @@ class TreasuryService
             return (float) $dbCurrency->exchange_rate;
         }
 
+        // 4️⃣ إذا كانت العملة غير مسجلة في النظام: نرجع 1.0 إذا لم تكن مستخدمة، أو نرمي استثناء لو كانت في حسابات فعلية
         return 1.0;
     }
 
@@ -350,103 +358,139 @@ class TreasuryService
      * حساب إجمالي الأرباح حسب القسم (tourism أو office).
      * يجب تمرير القسم دائماً لضمان عدم خلط أرباح الأقسام في المعادلة المحاسبية.
      */
-    public function calculateDynamicProfits(string $division = 'tourism'): float
+    public function calculateDynamicProfits(string $division = 'tourism', ?string $from = null, ?string $to = null): float
     {
+        $applyDate = function ($query) use ($from, $to) {
+            if ($from !== null) {
+                $query->where('created_at', '>=', $from.' 00:00:00');
+            }
+            if ($to !== null) {
+                $query->where('created_at', '<=', $to.' 23:59:59');
+            }
+            return $query;
+        };
+
         if ($division === 'tourism') {
             // طيران + حج وعمرة + تأشيرات فقط
-            $flightProfits = DB::table('flight_bookings')
+            $flightQuery = DB::table('flight_bookings')
                 ->whereNull('deleted_at')
                 ->whereNotIn('status', [
-                    'CANCELLED', 'PENDING',
-                    'cancelled', 'pending',
-                    'PARTIALLY_REFUNDED', 'partially_refunded',
-                ])
-                ->get()
+                    'PENDING', 'pending',
+                ]);
+            $applyDate($flightQuery);
+
+            $flightProfits = $flightQuery->get()
                 ->sum(function ($booking) {
                     $status = strtoupper((string) $booking->status);
 
-                    // حجز مسترد بالكامل: الربح المحتفظ به = غرامة المكتب فقط
-                    if ($status === 'REFUNDED') {
-                        return (float) DB::table('flight_refunds')
+                    if (in_array($status, ['CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'], true)) {
+                        $flightRefundFee = (float) DB::table('flight_refunds')
                             ->where('flight_booking_id', $booking->id)
                             ->sum('office_penalty');
-                    }
 
-                    $hasB2cRefund = DB::table('flight_refunds')
-                        ->where('flight_booking_id', $booking->id)
-                        ->exists();
-
-                    if ($hasB2cRefund) {
-                        return (float) DB::table('flight_refunds')
+                        $refundRequestFee = (float) DB::table('refund_requests')
                             ->where('flight_booking_id', $booking->id)
-                            ->sum('office_penalty');
+                            ->where('status', 'processed')
+                            ->whereNull('deleted_at')
+                            ->get()
+                            ->sum(function ($req) {
+                                $rate = (float) ($req->refund_exchange_rate ?: 1.0);
+                                if ($rate <= 0) {
+                                    $rate = 1.0;
+                                }
+                                return (float) $req->cancellation_fee * $rate;
+                            });
+
+                        return $flightRefundFee + $refundRequestFee;
                     }
 
                     return (float) $booking->profit;
                 });
 
-            $hajjUmraProfits = DB::table('hajj_umra_bookings')
+            $hajjQuery = DB::table('hajj_umra_bookings')
                 ->whereIn('status', ['confirmed', 'completed', 'in_progress'])
-                ->whereNull('deleted_at')
-                ->sum('profit');
+                ->whereNull('deleted_at');
+            $applyDate($hajjQuery);
+            $hajjUmraProfits = $hajjQuery->get()
+                ->sum(function ($booking) {
+                    $curr = strtoupper((string) ($booking->currency ?: 'EGP'));
+                    $rate = $curr === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($curr);
+                    return (float) $booking->profit * $rate;
+                });
 
-            $visaProfits = DB::table('visa_bookings')
+            $visaQuery = DB::table('visa_bookings')
                 ->whereIn('status', ['approved', 'issued', 'submitted', 'under_review', 'completed'])
-                ->whereNull('deleted_at')
-                ->sum('profit');
+                ->whereNull('deleted_at');
+            $applyDate($visaQuery);
+            $visaProfits = $visaQuery->get()
+                ->sum(function ($booking) {
+                    $curr = strtoupper((string) ($booking->currency ?: 'EGP'));
+                    $rate = $curr === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($curr);
+                    return (float) $booking->profit * $rate;
+                });
 
             return (float) ($flightProfits + $hajjUmraProfits + $visaProfits);
         }
 
         // Office: باص + فوري + أونلاين + محافظ — نفس منطق السياحة: نحسب كل العمليات النشطة وليس الملغاة فقط
-        $busProfits = DB::table('bus_bookings')
+        $busQuery = DB::table('bus_bookings')
             ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
-            ->whereNull('deleted_at')
-            ->sum('profit');
+            ->whereNull('deleted_at');
+        $applyDate($busQuery);
+        $busProfits = $busQuery->sum('profit');
 
-        $onlineProfits = DB::table('online_transactions')
+        $onlineQuery = DB::table('online_transactions')
             ->whereNotIn('status', ['cancelled', 'failed'])
-            ->whereNull('deleted_at')
-            ->sum('profit');
+            ->whereNull('deleted_at');
+        $applyDate($onlineQuery);
+        $onlineProfits = $onlineQuery->sum('profit');
 
-        $fawryProfits = DB::table('fawry_transactions')
-            ->whereNull('deleted_at')
-            ->sum('profit');
+        $fawryQuery = DB::table('fawry_transactions')
+            ->whereNull('deleted_at');
+        $applyDate($fawryQuery);
+        $fawryProfits = $fawryQuery->sum('profit');
 
-        $walletProfits = DB::table('wallet_transactions')
-            ->whereNull('deleted_at')
-            ->sum('service_fee');
+        $walletQuery = DB::table('wallet_transactions')
+            ->whereNull('deleted_at');
+        $applyDate($walletQuery);
+        $walletProfits = $walletQuery->sum('service_fee');
 
         return (float) ($busProfits + $onlineProfits + $fawryProfits + $walletProfits);
     }
 
     /**
-     * صافي أرباح القسم لميزان المراجعة: إيرادات العمليات − المصروفات التشغيلية.
-     * السياحة: جداول الحجوزات + مصروفات الدفتر.
-     * المكتب: القيد المزدوج (P&L) عند وجود حركات دفترية، وإلا جداول العمليات كاحتياط.
+     * صافي أرباح القسم لميزان المراجعة: إجمالي أرباح العمليات − المصروفات التشغيلية.
+     * تطابق المعادلة المحاسبية: Expected Capital = Base Capital + (Gross Profits - Operating Expenses)
      */
-    public function calculateDivisionNetProfits(string $division): float
+    public function calculateDivisionNetProfits(string $division, ?string $from = null, ?string $to = null): float
     {
+        // أولوية P&L للمكتب (الدفتر العام GL) لتتطابق أرقام الأرباح 100% عبر كافة الشاشات
         if ($division === 'office') {
-            $report = app(ProfitLossReportService::class)->report([
-                'category' => 'office',
-            ]);
-
-            if (($report['meta']['transactions_included'] ?? 0) > 0) {
-                return round((float) $report['netProfit'], 2);
+            $filters = ['category' => 'office'];
+            if ($from !== null) {
+                $filters['from_date'] = $from;
+            }
+            if ($to !== null) {
+                $filters['to_date'] = $to;
+            }
+            $officePl = app(ProfitLossReportService::class)->report($filters);
+            $glNet = (float) ($officePl['netProfit'] ?? 0);
+            $glRevenues = (float) ($officePl['totalRevenues'] ?? 0);
+            if ($glNet !== 0.0 || $glRevenues > 0) {
+                return round($glNet, 2);
             }
         }
 
-        $grossProfits = $this->calculateDynamicProfits($division);
-        $operatingExpenses = $this->calculateOperatingExpenses($division);
+        $grossProfits = $this->calculateDynamicProfits($division, $from, $to);
+        $operatingExpenses = $this->calculateOperatingExpenses($division, $from, $to);
 
         return round($grossProfits - $operatingExpenses, 2);
     }
 
     /**
-     * حساب إجمالي المصروفات التشغيلية للقسم (EGP)
+     * حساب إجمالي المصروفات التشغيلية للقسم (EGP) مع دعم فلترة التاريخ اختيارياً
      */
-    public function calculateOperatingExpenses(string $division = 'tourism'): float
+    public function calculateOperatingExpenses(string $division = 'tourism', ?string $from = null, ?string $to = null): float
     {
         $expenseClearingIds = array_keys(app(LedgerClearingAccounts::class)->moduleAccountMaps()['expense']);
         $liquidityTypes = AccountModuleDivision::LIQUIDITY_TYPES;
@@ -462,14 +506,29 @@ class TreasuryService
             ->whereIn('from_acc.type', $liquidityTypes)
             ->whereIn('from_acc.module_type', $divisionModules)
             ->whereNull('t.related_type')
+            // Exclude reversed expense transactions (prefixed with 'عكس:' or 'عكس ')
+            ->where(function ($q) {
+                $q->whereNull('t.notes')
+                  ->orWhere(function ($q2) {
+                      $q2->where('t.notes', 'not like', 'عكس:%')
+                         ->where('t.notes', 'not like', 'عكس %');
+                  });
+            })
             ->where(function ($q) use ($expenseClearingIds) {
                 $q->where('t.type', 'expense')
                     ->orWhere('to_acc.type', 'expense')
                     ->orWhereIn('t.to_account_id', $expenseClearingIds);
             });
 
+        if ($from !== null) {
+            $query->where('t.created_at', '>=', $from.' 00:00:00');
+        }
+        if ($to !== null) {
+            $query->where('t.created_at', '<=', $to.' 23:59:59');
+        }
+
         $total = 0.0;
-        foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency'])->cursor() as $tx) {
+        foreach ($query->select(['t.amount', 'tr.converted_amount', 'tr.from_currency', 'tr.to_currency', 'from_acc.currency as from_acc_currency'])->cursor() as $tx) {
             $amount = (float) $tx->amount;
             if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
                 $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
@@ -478,6 +537,11 @@ class TreasuryService
                     $amount = (float) $tx->converted_amount;
                 } elseif ($fromCurrency === 'EGP') {
                     $amount = (float) $tx->amount;
+                }
+            } else {
+                $fromAccCurr = strtoupper((string) ($tx->from_acc_currency ?? 'EGP'));
+                if ($fromAccCurr !== 'EGP') {
+                    $amount = $amount * $this->getAveragePurchaseRate($fromAccCurr);
                 }
             }
             $total += $amount;
@@ -645,13 +709,10 @@ class TreasuryService
             $balance = (float) ($item['balance'] ?? 0);
             $entityType = (string) ($item['entity_type'] ?? '');
 
-            // ⚠️ FlightGroup = supplier (مورد): تقرير الديون يُرسل موجب = المستحق علينا،
-            // بينما هذا الـ trial balance يحسب موجب = المستحق لنا. نعكس الإشارة للمجموعات
-            // فقط كي لا تُحسب مرتين بإشارتين متعاكستين عند fallback (الخطوة 3).
-            if ($entityType === 'flight_group') {
-                $balance = -$balance;
-            }
-
+            // Align with FinancialReportService commit a2f9647ca:
+            // FlightGroup behaves like a supplier (مورد):
+            // - balance > 0 → payables (المستحق علينا / due_from_us)
+            // - balance < 0 → receivables (المستحق لنا / due_to_us)
             if ($balance === 0.0) {
                 continue;
             }
@@ -660,7 +721,13 @@ class TreasuryService
             $rate = $currency === 'EGP' ? 1.0 : $this->getAveragePurchaseRate($currency);
             $egp = abs($balance) * $rate;
 
-            if ($balance > 0) {
+            if ($entityType === 'flight_group') {
+                if ($balance > 0) {
+                    $dueFromUs += $egp;
+                } else {
+                    $dueToUs += $egp;
+                }
+            } elseif ($balance > 0) {
                 // الأرصدة الموجبة للموردين/الشركات/الخطوط مُدرجة في total_balances كأصول مسبقة الدفع
                 if (! in_array($entityType, self::TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES, true)) {
                     continue;
@@ -695,6 +762,15 @@ class TreasuryService
             if ($walkInTotal > 0.005) {
                 $dueToUs += $walkInTotal;
             }
+
+            $onlineWalkInTotal = (float) DB::table('online_transactions')
+                ->whereNull('customer_id')
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', ['cancelled', 'failed'])
+                ->sum(DB::raw('selling_price - amount_paid'));
+            if ($onlineWalkInTotal > 0.005) {
+                $dueToUs += $onlineWalkInTotal;
+            }
         }
 
         // 3) Fallback: iterate raw ledger accounts (Customer / Supplier /
@@ -721,12 +797,12 @@ class TreasuryService
                     return;
                 }
                 $balance = (float) $acc->balance;
-                // ⚠️ flight_group = supplier: في الحسابات الفعلية رصيدها سالب = علينا،
-                // وفي تقرير الديون رصيدها موجب = علينا أيضًا. نعكس الإشارة هنا لتطابق
-                // اتجاه $dueFromUs (الذي يستقبل الموجب من الخطوة 1 للمجموعات).
-                if (((string) $acc->type) === 'flight_group') {
-                    $balance = -$balance;
-                }
+                // FIX FIN-AUDIT-2026-08-27: removed sign flip for flight_group.
+                // The balance on the Account row is the source of truth —
+                // positive = receivable (they owe us), negative = payable
+                // (we owe them). This matches the convention used by
+                // calculateReceivablesAndPayables step (1) and the unified
+                // debts report, so we trust it directly.
                 if ($balance === 0.0) {
                     return;
                 }
@@ -869,10 +945,20 @@ class TreasuryService
 
         $totalBalances = $busCompanyTotal + $fawryMachinesTotal;
 
-        // 3. الأرباح — عرض إجمالي/مصروفات للواجهة؛ صافي الميزان عبر calculateDivisionNetProfits (أولوية P&L للمكتب)
-        $grossProfits = round($this->calculateDynamicProfits('office'), 2);
-        $operatingExpenses = round($this->calculateOperatingExpenses('office'), 2);
-        $profits = $this->calculateDivisionNetProfits('office');
+        // 3. الأرباح — أولوية P&L للمكتب (الدفتر العام GL) لتتطابق تماماً مع finance/profit-loss و dashboard و finance/department/office
+        $officePl = app(ProfitLossReportService::class)->report(['category' => 'office']);
+        $glRevenues = (float) ($officePl['totalRevenues'] ?? 0);
+        $glNet = (float) ($officePl['netProfit'] ?? 0);
+
+        if ($glNet !== 0.0 || $glRevenues > 0) {
+            $grossProfits = round((float) ($officePl['grossProfit'] ?? 0), 2);
+            $operatingExpenses = round((float) ($officePl['totalExpenses'] ?? 0), 2);
+            $profits = round($glNet, 2);
+        } else {
+            $grossProfits = round($this->calculateDynamicProfits('office'), 2);
+            $operatingExpenses = round($this->calculateOperatingExpenses('office'), 2);
+            $profits = $this->calculateDivisionNetProfits('office');
+        }
 
         // 4. الذمم المدينة والدائنة — المكتب فقط
         $receivablesPayables = $this->calculateReceivablesAndPayables('office');

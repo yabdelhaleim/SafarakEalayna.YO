@@ -48,6 +48,21 @@ class FlightSoftDeleteRealWorldTest extends TestCase
         parent::setUp();
         $this->bookingService = app(FlightBookingService::class);
 
+        // Phase 11 audit fix (2026-09-02): seed KWD so scenarios 5/6 can
+        // recharge the KWD carrier from a KWD cashbox (PrepaidLedgerService
+        // requires the FX rate from KWD → EGP for the prepaid GL leg).
+        \App\Models\Setting\Currency::updateOrCreate(
+            ['code' => 'KWD'],
+            [
+                'name_ar' => 'دينار كويتي',
+                'name_en' => 'Kuwaiti Dinar',
+                'symbol' => 'KWD',
+                'exchange_rate' => 160.0,
+                'is_active' => true,
+                'order' => 0,
+            ],
+        );
+
         $this->admin = User::factory()->create([
             'name' => 'Real World Admin',
             'email' => 'realworld@test.com',

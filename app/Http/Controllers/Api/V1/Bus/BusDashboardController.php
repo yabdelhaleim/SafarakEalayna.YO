@@ -8,26 +8,29 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Bus\BusBooking;
-use App\Models\Bus\BusInventory;
 use App\Models\Bus\BusCompany;
-use App\Services\Finance\CurrencyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class BusDashboardController extends Controller
 {
+    /**
+     * Canonical Bus currency (EGP-only contract — Phase 3).
+     */
+    private const BUS_CURRENCY = 'EGP';
+
     public function index(Request $request): JsonResponse
     {
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
         // 1. Monthly Revenue (exclude cancelled / refunded)
-        // Fix #4: group by currency and convert each group's subtotal to
-        // EGP before summing. The raw SUM mixed currencies silently —
-        // 1 USD booking + 1 EGP booking would report $220 instead of
-        // ~5120 EGP equivalent.
-        $currencyService = app(CurrencyService::class);
+        //
+        // EGP-only contract: every Bus booking is EGP, so the dashboard
+        // sums `total_price` directly. The previous code grouped by
+        // `currency` and FX-converted each group via CurrencyService;
+        // that helper is no longer invoked anywhere in the Bus module.
         $monthlyRevenue = (float) BusBooking::query()
             ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
             ->whereNotIn('status', [
@@ -35,59 +38,40 @@ class BusDashboardController extends Controller
                 BusBookingStatus::Refunded->value,
                 BusBookingStatus::PartiallyRefunded->value,
             ])
-            ->selectRaw('currency, COALESCE(SUM(total_price), 0) as subtotal')
-            ->groupBy('currency')
-            ->get()
-            ->sum(function ($row) use ($currencyService) {
-                $currency = (string) ($row->currency ?? 'EGP');
-                if ($currency === 'EGP') {
-                    return (float) $row->subtotal;
-                }
-
-                return (float) $currencyService->convert((float) $row->subtotal, $currency, 'EGP')['to_amount'];
-            });
+            ->where('currency', self::BUS_CURRENCY)
+            ->sum('total_price');
 
         // 2. Total Bookings
         $totalBookings = BusBooking::count();
 
         // 3. Accounts Balances (Cashboxes, Banks, Wallets) for Bus Module.
         //
-        // Bug #B-02 fix: previously filtered `module_type='bus'` only. That
-        // excluded the unified office-division liquidity accounts that were
-        // introduced in Phase 3.5. Per the AccountModuleContract the
-        // bus/fawry/online/wallet_transfer modules share ONE office-division
-        // cashbox, so the dashboard must look at BOTH 'bus' AND 'office'.
+        // Bus module shares the office-division cashbox per the
+        // AccountModuleContract (bus/fawry/online/wallet_transfer). Only
+        // EGP accounts are summed (EGP-only contract).
         $accounts = Account::query()
             ->where('is_active', true)
             ->whereIn('module_type', ['bus', 'office'])
+            ->where('currency', self::BUS_CURRENCY)
             ->get(['type', 'balance']);
 
-        $cashboxes = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
-        $banks = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Bank->value);
-        $wallets = $accounts->filter(fn($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
+        $cashboxes = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Cashbox->value);
+        $banks = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Bank->value);
+        $wallets = $accounts->filter(fn ($a) => ($a->type instanceof \BackedEnum ? $a->type->value : $a->type) === AccountType::Wallet->value);
 
         $cashboxBalance = $cashboxes->sum('balance');
         $bankBalance = $banks->sum('balance');
         $walletBalance = $wallets->sum('balance');
 
-        // 4. Company Debts (Sum of balances from linked accounts)
-        // Fix #6: group supplier accounts by currency and convert each
-        // group's debt to EGP before summing. The raw SUM mixed currencies —
-        // a USD supplier with -100 balance + EGP supplier with -200 would
-        // report -300 instead of the correct -5200 EGP equivalent.
+        // 4. Company Debts (Sum of balances from linked accounts).
+        //
+        // EGP-only contract: supplier AR accounts are always EGP, so we
+        // sum balances directly. The previous code grouped by `currency`
+        // and FX-converted each group; that helper is no longer invoked.
         $totalCompanyDebt = (float) Account::query()
             ->whereIn('id', BusCompany::query()->whereNotNull('account_id')->pluck('account_id'))
-            ->selectRaw('currency, COALESCE(SUM(balance), 0) as subtotal')
-            ->groupBy('currency')
-            ->get()
-            ->sum(function ($row) use ($currencyService) {
-                $currency = (string) ($row->currency ?? 'EGP');
-                if ($currency === 'EGP') {
-                    return (float) $row->subtotal;
-                }
-
-                return (float) $currencyService->convert((float) $row->subtotal, $currency, 'EGP')['to_amount'];
-            });
+            ->where('currency', self::BUS_CURRENCY)
+            ->sum('balance');
 
         // 5. Recent Bookings (Limit 10)
         $recentBookings = BusBooking::query()

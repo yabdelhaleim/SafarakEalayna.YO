@@ -195,7 +195,7 @@ class FawryTransactionServiceTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'id' => $transaction->expense_transaction_id,
-            'type' => 'transfer',
+            'type' => 'expense',
             'amount' => 95.00,
         ]);
     }

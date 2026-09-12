@@ -19,19 +19,39 @@ class BusRefundController extends Controller
 
     /**
      * إنشاء طلب استرجاع جديد لحجز الباص.
+     *
+     * EGP-only contract (Phase 3 — Bus EGP-Only Hardening): the Bus module
+     * operates in EGP ONLY. The `refund_currency` parameter, if supplied,
+     * must be exactly 'EGP'; otherwise the request is rejected with 422.
+     * The `refund_exchange_rate` parameter must be exactly 1.0; any other
+     * value is rejected with 422.
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'bus_booking_id' => ['required', 'integer', 'exists:bus_bookings,id'],
-            'cancellation_fee' => ['nullable', 'numeric', 'min:0'],
-            'refund_currency' => ['nullable', 'string', 'size:3'],
-            'refund_exchange_rate' => ['nullable', 'numeric', 'min:0.000001'],
-            'destination' => ['required', 'string', 'in:agency_treasury,company_credit'],
-            'treasury_id' => ['nullable', 'required_if:destination,agency_treasury', 'integer', 'exists:treasuries,id'],
-            'refund_type' => ['nullable', 'string'],
-            'notes' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validate(
+            [
+                'bus_booking_id' => ['required', 'integer', 'exists:bus_bookings,id'],
+                'cancellation_fee' => ['nullable', 'numeric', 'min:0'],
+                'refund_currency' => ['nullable', 'string', 'size:3', 'in:EGP,egp'],
+                'refund_exchange_rate' => ['nullable', 'numeric', 'in:1,1.0'],
+                'destination' => ['required', 'string', 'in:agency_treasury,company_credit'],
+                'treasury_id' => ['nullable', 'required_if:destination,agency_treasury', 'integer', 'exists:treasuries,id'],
+                'refund_type' => ['nullable', 'string'],
+                'notes' => ['nullable', 'string'],
+            ],
+            [
+                'refund_currency.in' => 'وحدة الباص تعمل بالجنيه المصري فقط. العملة المسموح بها: EGP.',
+                'refund_exchange_rate.in' => 'سعر الصرف في وحدة الباص ثابت 1.0 (لا يوجد FX).',
+            ]
+        );
+
+        // Normalize refund_currency to upper-case EGP regardless of input casing.
+        if (isset($validated['refund_currency'])) {
+            $validated['refund_currency'] = 'EGP';
+        }
+        if (isset($validated['refund_exchange_rate'])) {
+            $validated['refund_exchange_rate'] = 1.0;
+        }
 
         try {
             $userId = Auth::id() ?: 1;

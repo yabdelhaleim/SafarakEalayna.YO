@@ -5,7 +5,6 @@ namespace App\Http\Requests\Online;
 use App\Enums\OnlineTransactionStatus;
 use App\Models\Account;
 use App\Models\Online\OnlineTransaction;
-use App\Models\Setting\PaymentMethod;
 use App\Rules\OnlineLiquidityAccount;
 use App\Support\Finance\PaymentMethodAccountType;
 use Illuminate\Foundation\Http\FormRequest;
@@ -21,8 +20,8 @@ class UpdateOnlineTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_type_id' => ['sometimes', 'integer', 'exists:online_service_types,id'],
-            'provider_id' => ['nullable', 'integer', 'exists:online_service_providers,id'],
+            'service_type_code' => ['sometimes', 'string', 'max:80'],
+            'provider_code' => ['nullable', 'string', 'max:80'],
 
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
@@ -36,10 +35,15 @@ class UpdateOnlineTransactionRequest extends FormRequest
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
 
             'payment_method' => [
+                // Free-text: mirrors the Fawry `operation_type` pattern.
+                // The PaymentMethodAccountType::resolve() helper maps the
+                // typed code to an AccountType enum so we can still validate
+                // the picked collection account is the right kind. No DB
+                // lookup is required, so an empty `payment_methods` table
+                // on production does not block edits.
                 'sometimes',
                 'string',
-                Rule::exists(PaymentMethod::class, 'code')
-                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+                'max:80',
             ],
             'account_id' => [
                 'sometimes',
@@ -81,19 +85,6 @@ class UpdateOnlineTransactionRequest extends FormRequest
             $accountId = $this->exists('account_id')
                 ? $this->input('account_id')
                 : $transaction?->account_id;
-
-            if (
-                ! $this->exists('payment_method')
-                && ! PaymentMethod::query()
-                    ->where('code', $paymentMethod)
-                    ->where('is_active', true)
-                    ->whereNull('deleted_at')
-                    ->exists()
-            ) {
-                $validator->errors()->add('payment_method', 'طريقة الدفع المحددة غير مفعّلة.');
-
-                return;
-            }
 
             if (! $this->exists('account_id') && $accountId) {
                 (new OnlineLiquidityAccount)->validate(

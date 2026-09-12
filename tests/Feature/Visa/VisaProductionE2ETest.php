@@ -425,56 +425,7 @@ class VisaProductionE2ETest extends TestCase
         $this->assertEqualsWithDelta(800.00, (float) $customerAccount->balance, 0.01);
     }
 
-    /* ========== SCENARIO 4: EDIT / REPOST ========== */
-
-    public function test_8_update_selling_price_reposts_income(): void
-    {
-        $result = $this->createBooking([
-            'purchase_price' => 4000,
-            'selling_price' => 6000,
-            'service_fee' => 200,
-        ]);
-        $bookingId = $result['booking']->id;
-        $originalIncome = VisaBooking::findOrFail($bookingId)->income_transaction_id;
-
-        $this->patchJson("/api/v1/visa/bookings/{$bookingId}", [
-            'selling_price' => 7500,
-        ])->assertOk();
-
-        $booking = VisaBooking::findOrFail($bookingId);
-        $this->assertNotEquals($originalIncome, $booking->income_transaction_id);
-        // Income amount = new selling + service_fee = 7500 + 200 = 7700
-        $this->assertEquals(7700.0, (float) $booking->incomeTransaction->amount);
-        // Profit = (7500+200) - 4000 = 3700
-        $this->assertEquals(3700.0, (float) $booking->profit);
-
-        // Original tx still exists, additive reversal applied
-        $originalEntries = AccountEntry::where('transaction_id', $originalIncome)->get();
-        $netDelta = (float) ($originalEntries->sum('credit') - $originalEntries->sum('debit'));
-        $this->assertEqualsWithDelta(0.0, $netDelta, 0.01,
-            'Original income tx must net to zero (additive reversal applied)');
-
-        $this->assertBookingIsBalanced($bookingId);
-    }
-
-    public function test_9_update_purchase_price_reposts_expense(): void
-    {
-        $result = $this->createBooking([
-            'purchase_price' => 5000,
-            'selling_price' => 8000,
-        ]);
-        $bookingId = $result['booking']->id;
-        $originalExpense = VisaBooking::findOrFail($bookingId)->expense_transaction_id;
-
-        $this->patchJson("/api/v1/visa/bookings/{$bookingId}", [
-            'purchase_price' => 3500,
-        ])->assertOk();
-
-        $booking = VisaBooking::findOrFail($bookingId);
-        $this->assertNotEquals($originalExpense, $booking->expense_transaction_id);
-        $this->assertEquals(3500.0, (float) $booking->expenseTransaction->amount);
-        $this->assertBookingIsBalanced($bookingId);
-    }
+    /* ========== SCENARIO 4: EDIT / REPOST — REMOVED (INCIDENT-2026-08-17 no-edit contract) ========== */
 
     /* ========== SCENARIO 5: CANCEL ========== */
 
@@ -620,9 +571,8 @@ class VisaProductionE2ETest extends TestCase
             'amount' => 1000, 'payment_method' => 'cash', 'account_id' => $this->treasuryEGP->id,
         ])->assertCreated();
 
-        $this->patchJson("/api/v1/visa/bookings/{$bookingId}", [
-            'selling_price' => 6000,
-        ])->assertOk();
+        // Edit is permanently disabled by INCIDENT-2026-08-17 Tourism no-edit contract.
+        // Skipping the PATCH step → routing directly to cancellation as the correction path.
 
         $this->postJson("/api/v1/visa/bookings/{$bookingId}/cancel", [
             'reason' => 'ختام',
@@ -702,38 +652,8 @@ class VisaProductionE2ETest extends TestCase
 
     /* ========== HARDENING TESTS ========== */
 
-    public function test_16_edit_cancelled_booking_is_rejected(): void
-    {
-        // Hardening: editing a cancelled/refunded Visa booking should also be blocked
-        // (parallel to the HajjUmra fix). We test that PATCH on a cancelled booking
-        // is rejected by the service. If the service does NOT guard, the test will
-        // pass currently and reveal a production bug.
-        $result = $this->createBooking([
-            'purchase_price' => 5000,
-            'selling_price' => 8000,
-        ]);
-        $bookingId = $result['booking']->id;
 
-        $this->postJson("/api/v1/visa/bookings/{$bookingId}/cancel", ['reason' => 'إلغاء'])->assertOk();
-
-        $txCountBefore = Transaction::where('related_type', VisaBooking::class)
-            ->where('related_id', $bookingId)->count();
-
-        $resp = $this->patchJson("/api/v1/visa/bookings/{$bookingId}", [
-            'selling_price' => 99999,
-        ]);
-
-        // We expect the service to block this. Currently the visa service does
-        // NOT have the guard — this test would fail and reveal the bug.
-        $resp->assertStatus(422);
-
-        $txCountAfter = Transaction::where('related_type', VisaBooking::class)
-            ->where('related_id', $bookingId)->count();
-        $this->assertEquals($txCountBefore, $txCountAfter,
-            'Editing a cancelled booking must NOT create new accounting transactions');
-    }
-
-    public function test_17_payment_on_cancelled_booking_is_rejected(): void
+public function test_17_payment_on_cancelled_booking_is_rejected(): void
     {
         // Note: VisaBookingService::addPayment() currently doesn't guard against
         // cancelled/refunded. This test verifies the GUARD BEHAVIOUR.
@@ -813,29 +733,11 @@ class VisaProductionE2ETest extends TestCase
         $payResp->assertStatus(422);
     }
 
-    public function test_21_profit_sign_is_correct_after_edit(): void
-    {
-        $result = $this->createBooking([
-            'purchase_price' => 5000,
-            'selling_price' => 7000,
-            'service_fee' => 1000,
-        ]);
-        $bookingId = $result['booking']->id;
-        // Profit = (7000+1000) - 5000 = 3000
-        $booking = $result['booking'];
-        $this->assertEqualsWithDelta(3000.0, (float) $booking->profit, 0.01);
+    // test_21 (profit_sign_is_correct_after_edit) — REMOVED (INCIDENT-2026-08-17)
+//   Edit is permanently disabled at the route layer (PUT/PATCH → 405 by design),
+//   so profit-after-edit can no longer be triggered. Cancellation is the supported path.
 
-        // Bump selling by 2000 → profit grows to 5000
-        $this->patchJson("/api/v1/visa/bookings/{$bookingId}", [
-            'selling_price' => 9000,
-        ])->assertOk();
-
-        $booking->refresh();
-        $this->assertEqualsWithDelta(5000.0, (float) $booking->profit, 0.01);
-        $this->assertBookingIsBalanced($bookingId);
-    }
-
-    public function test_22_customer_balances_endpoint_reflects_visa_debts(): void
+public function test_22_customer_balances_endpoint_reflects_visa_debts(): void
     {
         $customer = Customer::query()->create([
             'full_name' => 'Visa Customer Statement',

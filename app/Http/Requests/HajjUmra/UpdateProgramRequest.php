@@ -18,8 +18,17 @@ class UpdateProgramRequest extends FormRequest
             $this->merge(['booking_status' => 'open']);
         }
 
-        if ($this->input('program_type') === 'umrah') {
-            $this->merge(['program_type' => 'umra']);
+        // Phase 10.1 FIX — case-insensitive normalization for program_type
+        // (mirrors StoreProgramRequest fix). Without this, an UPDATE payload
+        // carrying 'UMRA' would fail Rule::in(['hajj','umra']).
+        if ($type = $this->input('program_type')) {
+            $lower = strtolower((string) $type);
+            $canonical = match ($lower) {
+                'hajj' => 'hajj',
+                'umrah', 'umra' => 'umra',
+                default => $lower,
+            };
+            $this->merge(['program_type' => $canonical]);
         }
 
         if ($type = $this->input('accommodation_type')) {

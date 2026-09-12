@@ -240,7 +240,13 @@ class AviationServiceTest extends TestCase
     }
 
     /**
-     * ✅ 8) OP-03 — updateBooking sets status + notes
+     * ✅ 8) OP-03 — Tourism no-edit contract INCIDENT-2026-08-17.
+     *
+     * Phase 11 audit fix (2026-09-02): AviationService::updateBooking is
+     * permanently disabled. All edits must go through delete-and-recreate
+     * (or the dedicated cancel flow). This test asserts the no-edit contract:
+     * any call to updateBooking throws LogicException with the incident
+     * reference, and the booking is NOT mutated.
      */
     public function test_update_booking_via_aviation_service(): void
     {
@@ -276,14 +282,24 @@ class AviationServiceTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        $result = $this->service->updateBooking($booking->id, [
-            'status' => 'PENDING',
-            'notes' => 'Aviation update test',
-        ]);
+        // The no-edit contract: updateBooking throws LogicException and the
+        // booking is left untouched.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/INCIDENT-2026-08-17/');
 
-        $freshStatus = $result->fresh()->status;
-        $this->assertEquals('PENDING', $freshStatus instanceof \BackedEnum ? $freshStatus->value : $freshStatus);
-        $this->assertEquals('Aviation update test', $result->fresh()->notes);
+        try {
+            $this->service->updateBooking($booking->id, [
+                'status' => 'PENDING',
+                'notes' => 'Aviation update test',
+            ]);
+        } catch (\LogicException $e) {
+            // Defence: confirm the booking was NOT mutated before re-throwing.
+            $this->assertEquals('CONFIRMED', $booking->fresh()->status->value,
+                'Tourism no-edit contract: booking.status must NOT change');
+            $this->assertNull($booking->fresh()->notes,
+                'Tourism no-edit contract: booking.notes must NOT change');
+            throw $e;
+        }
     }
 
     /**

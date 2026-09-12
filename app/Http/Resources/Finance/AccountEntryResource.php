@@ -39,9 +39,11 @@ class AccountEntryResource extends JsonResource
         } elseif ($related instanceof OnlineTransaction) {
             $reference_id = $related->reference_number;
             $entity_name = $related->customer_name;
-            $process_type = $related->serviceType?->name ?: 'خدمة أون لاين';
+            // service_type_code is the source of truth (free-text). The
+            // serviceTypeRow lookup gives the Arabic label when present.
+            $process_type = $related->serviceTypeRow?->name_ar ?: ($related->service_type_code ?: 'خدمة أون لاين');
             $status = $related->status?->value;
-            $provider_name = $related->provider?->name;
+            $provider_name = $related->providerRow?->name_ar ?? $related->provider_code;
         } elseif ($related instanceof Transfer) {
             $process_type = 'تحويل مالي';
             $entity_name = $transaction->from_account_id == $this->account_id

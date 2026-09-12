@@ -68,9 +68,9 @@
         <!-- Service Type Filter -->
         <div>
           <label class="block text-sm font-medium text-text-muted mb-2">نوع الخدمة</label>
-          <select v-model="filters.service_type_id" @change="fetchBalances" class="form-select-dark py-2.5 text-sm">
+          <select v-model="filters.service_type_code" @change="fetchBalances" class="form-select-dark py-2.5 text-sm">
             <option value="all">الكل</option>
-            <option v-for="st in serviceTypes" :key="st.id" :value="st.id">{{ st.label }}</option>
+            <option v-for="st in serviceTypes" :key="st.code" :value="st.code">{{ st.label }}</option>
           </select>
         </div>
 
@@ -634,7 +634,7 @@ const store = useOnlineStore();
 const filters = ref({
   search: '',
   status: 'all',
-  service_type_id: 'all',
+  service_type_code: 'all',
   from_date: '',
   to_date: '',
 });
@@ -774,7 +774,7 @@ const fetchBalances = async () => {
       params: {
         search: filters.value.search,
         status: filters.value.status,
-        service_type_id: filters.value.service_type_id,
+        service_type_code: filters.value.service_type_code,
         from_date: filters.value.from_date,
         to_date: filters.value.to_date,
         _t: Date.now(),

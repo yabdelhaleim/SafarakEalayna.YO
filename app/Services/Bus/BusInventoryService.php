@@ -8,6 +8,7 @@ use App\Enums\TransactionModule;
 use App\Models\Bus\BusCompanyPayment;
 use App\Models\Bus\BusInventory;
 use App\Models\Transaction;
+use App\Services\Bus\Concerns\BusEgpOnly;
 use App\Services\Finance\TransactionService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 
 class BusInventoryService
 {
+    use BusEgpOnly;
+
     protected TransactionService $transactionService;
 
     public function __construct(TransactionService $transactionService)
@@ -120,6 +123,10 @@ class BusInventoryService
                     'remaining_debt' => $totalCost,
                     'notes' => $data['notes'] ?? null,
                     'created_by' => Auth::id(),
+                    // EGP-only contract: every Bus inventory is EGP with rate=1.0.
+                    // Even if a caller passes a non-EGP currency, it is rejected here.
+                    'currency' => self::BUS_CURRENCY,
+                    'exchange_rate_to_egp' => self::BUS_EXCHANGE_RATE_TO_EGP,
                 ];
 
                 if ($data['payment_type'] === BusInventoryPaymentType::Cash->value) {
@@ -185,6 +192,10 @@ class BusInventoryService
      * Update non-financial inventory fields only.
      * Cannot update: total_tickets, cost_per_ticket, payment_type
      *
+     * EGP-only contract (Phase 3 — Bus EGP-Only Hardening): the inventory
+     * is always EGP. The `currency` and `exchange_rate_to_egp` columns are
+     * forced to EGP/1.0 even if the caller attempts to inject other values.
+     *
      * @param  array  $data  Validated update data
      *
      * @throws \Exception
@@ -193,12 +204,20 @@ class BusInventoryService
     {
         try {
             return DB::transaction(function () use ($inventory, $data) {
+                // EGP-only: refuse to update an inventory that was created
+                // with a non-EGP currency (configuration error).
+                $this->assertBusCurrency((string) ($inventory->currency ?? self::BUS_CURRENCY), 'inventory.currency');
+                $this->assertBusExchangeRate((float) ($inventory->exchange_rate_to_egp ?? self::BUS_EXCHANGE_RATE_TO_EGP), 'inventory.exchange_rate_to_egp');
+
                 $inventory->fill([
                     'route' => $data['route'] ?? $inventory->route,
                     'travel_date' => $data['travel_date'] ?? $inventory->travel_date,
                     'departure_time' => $data['departure_time'] ?? $inventory->departure_time,
                     'selling_price' => $data['selling_price'] ?? $inventory->selling_price,
                     'notes' => $data['notes'] ?? $inventory->notes,
+                    // EGP-only: force EGP/1.0 even if a caller tries to override.
+                    'currency' => self::BUS_CURRENCY,
+                    'exchange_rate_to_egp' => self::BUS_EXCHANGE_RATE_TO_EGP,
                 ]);
 
                 // Repair legacy rows created before the derived total-cost fields

@@ -1698,7 +1698,16 @@ const viewCustomerStatement = async (customer) => {
             module: 'flight',
             credit: isDebt ? 0 : parseFloat(tx.amount),
             debit: isDebt ? parseFloat(tx.amount) : 0,
-            booking_details: tx.booking ? { pnr: tx.booking.pnr, provider_name: tx.booking.airline_name || '—', route: 'حجز مرتبط', selling_price: parseFloat(tx.amount), total_paid: isDebt ? 0 : parseFloat(tx.amount), remaining: isDebt ? parseFloat(tx.amount) : 0 } : null
+            booking_details: tx.booking ? {
+              booking_id: tx.booking.id,
+              booking_number: tx.booking.booking_number,
+              pnr: tx.booking.pnr,
+              provider_name: tx.booking.airline_name || '—',
+              route: 'حجز مرتبط',
+              selling_price: parseFloat(tx.amount),
+              total_paid: isDebt ? 0 : parseFloat(tx.amount),
+              remaining: isDebt ? parseFloat(tx.amount) : 0
+            } : null
           };
         });
         // Running balance

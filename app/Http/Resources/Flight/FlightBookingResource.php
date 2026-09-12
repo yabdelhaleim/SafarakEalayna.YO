@@ -20,7 +20,13 @@ class FlightBookingResource extends JsonResource
             ? $this->system_type
             : FlightSystemType::tryFrom($this->system_type) ?? FlightSystemType::Manual;
 
-        $totalPaid = $this->whenLoaded('payments', fn () => $this->payments->sum('amount'), 0);
+        // FIN-3 BUG-5 (2026-08-29): use the model's paid_amount accessor
+        // (which already includes payDebt income via BUG-4), not just the
+        // sum of `flight_payments`. The Vue client reads `total_paid` and
+        // `payment_status` from this payload; if those diverge from the
+        // accessor, the booking page shows "المدفوع: 0" / "غير مدفوع"
+        // even though the cash arrived via /customers/{id}/pay-debt.
+        $totalPaid = (float) $this->paid_amount;
         $remaining = max(0, $this->selling_price - $totalPaid);
         $profitMargin = $this->selling_price > 0
             ? round(($this->profit / $this->selling_price) * 100, 2)

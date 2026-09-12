@@ -67,12 +67,14 @@ class UseOfficeDepartmentWalletsTest extends TestCase
             'created_by' => $this->admin->id,
         ]);
 
-        $this->walletType = WalletType::query()->create([
-            'name' => 'فودافون كاش',
-            'code' => 'vodafone_cash',
-            'is_active' => true,
-            'sort_order' => 1,
-        ]);
+        $this->walletType = WalletType::query()->firstOrCreate(
+            ['code' => 'vodafone_cash'],
+            [
+                'name' => 'فودافون كاش',
+                'is_active' => true,
+                'sort_order' => 1,
+            ]
+        );
 
         // المحفظة الرسمية للموديول (الحالية — بتفلتر wallet_transfer)
         $this->officialModuleWallet = Account::query()->create([
@@ -171,9 +173,20 @@ class UseOfficeDepartmentWalletsTest extends TestCase
             'id' => $this->officeDepartmentWallet->id,
             'balance' => 8000 - 500, // المبلغ اتخصم من محفظة المكتب
         ]);
+        // Post-2026-08-30: with a registered customer, the new wallet SEND
+        // behavior debits only the wallet provider by `amount` and credits
+        // the customer's account by `amount` (NOT amount+fee). The fee
+        // stays on the WT row and surfaces to P&L via the settlement
+        // transfer (customer → cashbox of amount_paid). Since this test
+        // doesn't pin amount_paid, it defaults to totalAmount=505, so the
+        // cashbox still receives +505 via settlement — the assertion value
+        // is unchanged but the underlying ledger flow is now 1 transfer
+        // (wallet→customer, amount=500) + 1 settlement transfer
+        // (customer→cashbox, amount=505) instead of the old income+expense
+        // pair routed through clearing accounts.
         $this->assertDatabaseHas('accounts', [
             'id' => $this->cashbox->id,
-            'balance' => 50000 + 505, // المبلغ + الرسوم اتزادوا في الخزينة
+            'balance' => 50000 + 505, // المبلغ + الرسوم اتزادوا في الخزينة عبر الـ settlement
         ]);
     }
 

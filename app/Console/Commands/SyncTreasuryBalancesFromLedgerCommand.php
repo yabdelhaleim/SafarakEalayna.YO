@@ -29,7 +29,11 @@ class SyncTreasuryBalancesFromLedgerCommand extends Command
         $onlyId = $this->option('account') ? (int) $this->option('account') : null;
         $tolerance = (float) config('accounting.reconciliation.balance_vs_entries_tolerance', 0.05);
 
+        // FIX FIN-AUDIT-2026-08-27: exclude opening entries (transaction_id
+        // IS NULL) from the net flow aggregation so the sync command reports
+        // true operational drift, not opening-equity noise.
         $ledgerNet = AccountEntry::query()
+            ->whereNotNull('transaction_id')
             ->selectRaw('account_id, SUM(COALESCE(credit, 0) - COALESCE(debit, 0)) AS net')
             ->groupBy('account_id')
             ->pluck('net', 'account_id')
@@ -46,9 +50,13 @@ class SyncTreasuryBalancesFromLedgerCommand extends Command
         $changes = [];
 
         foreach ($accounts as $account) {
+            // FIX FIN-AUDIT-2026-08-27: use chronological order (created_at)
+            // rather than id, so backdated opening entries do not shadow
+            // later movements when picking the "last balance_after".
             $lastAfter = AccountEntry::query()
                 ->where('account_id', $account->id)
                 ->whereNotNull('balance_after')
+                ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->value('balance_after');
 

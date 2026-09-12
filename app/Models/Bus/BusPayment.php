@@ -21,6 +21,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'currency',
     'exchange_rate_to_egp',
     'notes',
+    // Level 2 / Problem 4: Idempotency-Key from the client request. NULL
+    // for legacy / safety-net-only rows.
+    'idempotency_key',
     'created_by',
 ])]
 class BusPayment extends Model

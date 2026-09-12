@@ -96,7 +96,16 @@ class LedgerReconciliationService
         $tolerance = (float) config('accounting.reconciliation.tolerance', 0.02);
         $balanceTol = (float) config('accounting.reconciliation.balance_vs_entries_tolerance', 0.05);
 
-        $sums = AccountEntry::query()->selectRaw('SUM(debit) AS td, SUM(credit) AS tc')->first();
+        // FIX FIN-AUDIT-2026-08-27: Opening entries (transaction_id IS NULL,
+        // or is_opening=true) are pre-existing equity postings created by
+        // Account::created() when an Account is seeded with a non-zero
+        // balance. They are NOT part of the operational ledger and must be
+        // excluded from global totals so the operational ledger balances
+        // (debits == credits) regardless of opening seed amounts.
+        $sums = AccountEntry::query()
+            ->whereNotNull('transaction_id')
+            ->selectRaw('SUM(debit) AS td, SUM(credit) AS tc')
+            ->first();
         $totalDebit = round((float) ($sums->td ?? 0), 2);
         $totalCredit = round((float) ($sums->tc ?? 0), 2);
         $globalDelta = round(abs($totalDebit - $totalCredit), 2);
@@ -112,7 +121,13 @@ class LedgerReconciliationService
         }
 
         /** @var Collection<int, float> $ledgerNetByAccountId */
+        // FIX FIN-AUDIT-2026-08-27: also exclude opening entries when
+        // computing per-account net flow so balance vs ledger comparison
+        // is consistent (operational ledger only — opening equity is
+        // a separate concern tracked via the System Opening Balances
+        // contra account).
         $ledgerNetByAccountId = AccountEntry::query()
+            ->whereNotNull('transaction_id')
             ->selectRaw('account_id')
             ->selectRaw('SUM(COALESCE(credit, 0) - COALESCE(debit, 0)) AS net_flow')
             ->groupBy('account_id')
@@ -202,9 +217,16 @@ class LedgerReconciliationService
      */
     protected function ledgerBalanceForAccount(int $accountId, Collection $ledgerNetByAccountId): float
     {
+        // FIX FIN-AUDIT-2026-08-27: order by created_at (chronological) rather
+        // than id (insertion order). Backdated opening entries can have an
+        // id greater than later movements; using insertion order makes the
+        // "last balance_after" reflect the wrong (backdated) row, causing
+        // spurious balance drift detection. created_at gives the actual
+        // chronological sequence of postings.
         $lastAfter = AccountEntry::query()
             ->where('account_id', $accountId)
             ->whereNotNull('balance_after')
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->value('balance_after');
 

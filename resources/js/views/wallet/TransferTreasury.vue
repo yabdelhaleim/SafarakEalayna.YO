@@ -145,15 +145,34 @@
               <thead class="sticky top-0 bg-[#0a111e] text-white/40 uppercase tracking-wider">
                 <tr>
                   <th class="px-4 py-3">التاريخ</th>
+                  <th class="px-4 py-3">النوع</th>
                   <th class="px-4 py-3">المبلغ</th>
+                  <th class="px-4 py-3">الطرف الآخر</th>
                   <th class="px-4 py-3">ملاحظات</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-white/5">
                 <tr v-for="tx in accountTxRows" :key="tx.id" class="hover:bg-white/[0.02]">
-                  <td class="px-4 py-3 font-mono text-white/40">{{ formatDt(tx.created_at) }}</td>
-                  <td class="px-4 py-3 font-mono font-bold text-white tabular-nums text-sm">{{ Number(tx.amount).toLocaleString('ar-EG') }}</td>
-                  <td class="max-w-[250px] truncate px-4 py-3 text-white/30">{{ tx.notes || '—' }}</td>
+                  <td class="px-4 py-3 font-mono text-white/40 whitespace-nowrap">{{ formatDt(tx.created_at) }}</td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    <span
+                      class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold"
+                      :class="getTxTypeBadgeClass(tx, modal.account)"
+                    >
+                      <span>{{ getTxTypeIcon(tx, modal.account) }}</span>
+                      <span>{{ getTxTypeLabel(tx, modal.account) }}</span>
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 font-mono font-bold tabular-nums text-sm whitespace-nowrap" :class="getTxAmountClass(tx, modal.account)">
+                    <span v-if="isTxInflow(tx, modal.account)">+</span>
+                    <span v-else-if="isTxOutflow(tx, modal.account)">-</span>
+                    {{ Number(tx.amount).toLocaleString('ar-EG') }}
+                    <span class="text-[10px] font-normal text-white/40 mr-0.5">{{ tx.currency || modal.account.currency || 'ج.م' }}</span>
+                  </td>
+                  <td class="px-4 py-3 text-white/70 whitespace-nowrap">
+                    {{ getContraAccountName(tx, modal.account) }}
+                  </td>
+                  <td class="max-w-[280px] truncate px-4 py-3 text-white/40" :title="tx.notes || ''">{{ tx.notes || '—' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -244,6 +263,82 @@ const loadAccountPage = async (page) => {
   } finally {
     accountTxLoading.value = false;
   }
+};
+
+const isTxInflow = (tx, acc) => {
+  if (!tx || !acc) return false;
+  if (tx.to_account_id === acc.id) return true;
+  if (tx.type === 'income') return true;
+  return false;
+};
+
+const isTxOutflow = (tx, acc) => {
+  if (!tx || !acc) return false;
+  if (tx.from_account_id === acc.id) return true;
+  if (tx.type === 'expense' || tx.type === 'refund') return true;
+  return false;
+};
+
+const getTxTypeLabel = (tx, acc) => {
+  if (!tx) return '—';
+  const rawType = tx.type;
+  const notes = tx.notes || '';
+
+  // Determine specific wallet operation if notes indicate it
+  if (notes.includes('إرسال') || notes.includes('خصم من المحفظة')) {
+    return isTxOutflow(tx, acc) ? 'سحب (إرسال)' : 'إيداع (إرسال)';
+  }
+  if (notes.includes('استقبال') || notes.includes('استلام رصيد')) {
+    return isTxInflow(tx, acc) ? 'إيداع (استقبال)' : 'سحب (استقبال)';
+  }
+  if (notes.includes('دفعة نقدية') || notes.includes('سداد') || notes.includes('تسديد')) {
+    return isTxInflow(tx, acc) ? 'تحصيل / سداد' : 'صرف / سداد';
+  }
+  if (notes.includes('رسوم') || notes.includes('عمولة')) {
+    return 'عمولة / رسوم';
+  }
+
+  // Fallback to basic GL types
+  if (rawType === 'income') return 'إيداع';
+  if (rawType === 'expense') return 'سحب / صرف';
+  if (rawType === 'transfer') {
+    if (isTxInflow(tx, acc)) return 'إيداع (تحويل)';
+    if (isTxOutflow(tx, acc)) return 'سحب (تحويل)';
+    return 'تحويل';
+  }
+  if (rawType === 'refund') return 'استرداد';
+  if (rawType === 'writeoff') return 'شطب';
+  return rawType || 'معاملة';
+};
+
+const getTxTypeIcon = (tx, acc) => {
+  if (isTxInflow(tx, acc)) return '↓';
+  if (isTxOutflow(tx, acc)) return '↑';
+  return '⇆';
+};
+
+const getTxTypeBadgeClass = (tx, acc) => {
+  if (isTxInflow(tx, acc)) {
+    return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+  }
+  if (isTxOutflow(tx, acc)) {
+    return 'bg-red-500/15 text-red-400 border border-red-500/30';
+  }
+  return 'bg-blue-500/15 text-blue-400 border border-blue-500/30';
+};
+
+const getTxAmountClass = (tx, acc) => {
+  if (isTxInflow(tx, acc)) return 'text-emerald-400';
+  if (isTxOutflow(tx, acc)) return 'text-red-400';
+  return 'text-white';
+};
+
+const getContraAccountName = (tx, acc) => {
+  if (!tx || !acc) return '—';
+  if (tx.from_account_id === acc.id) {
+    return tx.to_account?.name || (tx.to_account_id ? `حساب #${tx.to_account_id}` : '—');
+  }
+  return tx.from_account?.name || (tx.from_account_id ? `حساب #${tx.from_account_id}` : '—');
 };
 </script>
 

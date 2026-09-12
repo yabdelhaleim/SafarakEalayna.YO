@@ -842,10 +842,18 @@ const submitPayment = async () => {
     store.addToast('تم تسديد الدين بنجاح ✓', 'success');
     closePaymentModal();
 
-    // Reload both the customer balances and the settlement accounts list in parallel
+    // Reload the customer balances, the settlement accounts list, AND the
+    // Fawry dashboard in parallel — the dashboard's recent-operations table
+    // and total_payments KPI read fawry_transactions.amount directly, so
+    // without this reload they'd show the old "غير مكتمل / آجل بالكامل"
+    // status even after the GL + per-row amount bump succeeded server-side.
     await Promise.all([
       fetchBalances(),
-      loadAccounts()
+      loadAccounts(),
+      store.fetchFawryDashboard().catch(() => {
+        // Dashboard reload is best-effort; the 15s polling timer on
+        // FawryDashboard.vue will pick it up if this fails.
+      }),
     ]);
 
     if (modalOpen.value) {

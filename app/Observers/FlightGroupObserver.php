@@ -16,7 +16,7 @@ class FlightGroupObserver
         }
 
         $group->loadMissing('carrier');
-        $currency = $group->carrier?->currency ?: 'EGP';
+        $currency = $group->currency ?: ($group->carrier?->currency ?: 'EGP');
 
         $account = Account::create([
             'name' => 'حساب مجموعة طيران: ' . ($group->name ?: 'غير مسمى'),

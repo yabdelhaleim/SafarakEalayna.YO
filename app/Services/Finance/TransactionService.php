@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
 use App\Enums\TransactionType;
+use App\Exceptions\BusinessLogicException;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
@@ -71,10 +72,24 @@ class TransactionService
             ?: $this->ledgerClearingAccounts->expenseContraIdForModuleAndCurrency((string) $moduleValue, $txCurrency);
 
         if ($resolvedContra !== null && $resolvedContra !== $fromId) {
+            $fromAcc = Account::find($fromId);
+            $toAcc = Account::find($resolvedContra);
+            $convertedAmount = $data['converted_amount'] ?? null;
+            $exchangeRate = $data['exchange_rate'] ?? null;
+
+            if ($fromAcc && $toAcc && strtoupper((string) $fromAcc->currency) !== strtoupper((string) $toAcc->currency)) {
+                if ($convertedAmount === null || $exchangeRate === null) {
+                    $currencyService = app(CurrencyService::class);
+                    $fx = $currencyService->convert($amount, (string) $fromAcc->currency, (string) $toAcc->currency);
+                    $convertedAmount = $convertedAmount ?? round((float) $fx['to_amount'], 4);
+                    $exchangeRate = $exchangeRate ?? round((float) $fx['rate'], 6);
+                }
+            }
+
             return $this->recordJournalTransfer([
                 'amount' => $amount,
-                'converted_amount' => $data['converted_amount'] ?? null,
-                'exchange_rate' => $data['exchange_rate'] ?? null,
+                'converted_amount' => $convertedAmount,
+                'exchange_rate' => $exchangeRate,
                 'from_account_id' => $fromId,
                 'to_account_id' => $resolvedContra,
                 'allow_from_negative' => $data['allow_from_negative'] ?? $this->ledgerClearingAccounts->isPrepaidAccountId($fromId),
@@ -84,6 +99,16 @@ class TransactionService
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $data['created_by'] ?? Auth::id() ?? 1,
                 'currency' => $txCurrency,
+                // FIN-3 REMEDIATION (2026-08-21): preserve the expense semantic
+                // when routing through a clearing account. Pre-fix, `recordExpense`
+                // relied on `recordJournalTransfer` defaulting to `type=Transfer`,
+                // which silently re-tagged every clearing-account expense as a
+                // transfer. Reports filtering on `type='expense'` missed them
+                // and treasury dashboards were skewed.
+                //
+                // Post-fix: `recordExpense` is explicit about the intent and
+                // `recordJournalTransfer` honors the caller-supplied type.
+                'type' => TransactionType::Expense->value,
             ]);
         }
 
@@ -191,13 +216,36 @@ class TransactionService
         }
 
         if ($resolvedContra !== null && $resolvedContra !== $toId) {
+            $fromAcc = Account::find($resolvedContra);
+            $toAcc = Account::find($toId);
+            $convertedAmount = $data['converted_amount'] ?? null;
+            $exchangeRate = $data['exchange_rate'] ?? null;
+
+            if ($fromAcc && $toAcc && strtoupper((string) $fromAcc->currency) !== strtoupper((string) $toAcc->currency)) {
+                if ($convertedAmount === null || $exchangeRate === null) {
+                    $currencyService = app(CurrencyService::class);
+                    $fx = $currencyService->convert($amount, (string) $fromAcc->currency, (string) $toAcc->currency);
+                    $convertedAmount = $convertedAmount ?? round((float) $fx['to_amount'], 4);
+                    $exchangeRate = $exchangeRate ?? round((float) $fx['rate'], 6);
+                }
+            }
+
             return $this->recordJournalTransfer([
                 'amount' => $amount,
-                'converted_amount' => $data['converted_amount'] ?? null,
-                'exchange_rate' => $data['exchange_rate'] ?? null,
+                'converted_amount' => $convertedAmount,
+                'exchange_rate' => $exchangeRate,
                 'from_account_id' => $resolvedContra,
                 'to_account_id' => $toId,
                 'allow_from_negative' => (bool) ($data['allow_contra_negative'] ?? true),
+                // FC-AUDIT-20260814 fix (D1): pass `type='Income'` so that:
+                //   1) The 2026-08-12 duplicate-Income guard in recordJournalTransfer
+                //      (lines 612–625) fires on the second call with same related_type+related_id.
+                //   2) The resulting Transaction row is correctly categorized as 'Income'
+                //      for income reports and accounting breakdowns.
+                //   3) Audit trail + reversal queries that filter type='Income' now match.
+                // Previously recordIncome silently defaulted to TransactionType::Transfer,
+                // bypassing the duplicate guard and mis-categorizing all income postings.
+                'type' => TransactionType::Income->value,
                 'module' => $moduleValue,
                 'related_type' => $data['related_type'] ?? null,
                 'related_id' => $data['related_id'] ?? null,
@@ -340,7 +388,30 @@ class TransactionService
                 ]);
             }
 
+
             $transaction->notes = 'عكس: '.($transaction->notes ?? '');
+            // 🛡️ income_unique_key fix (2026-09-07):
+            // The DB has a STORED generated column:
+            //   income_unique_key = IF(type='income' AND related_type<>'App\Models\Customer', related_id, NULL)
+            // with a UNIQUE index on (related_type, income_unique_key).
+            //
+            // After reverseTransaction, the app-level guard in recordJournalTransfer
+            // (lines ~751-775) correctly detects the reversed row via its 'عكس:' notes
+            // prefix and allows a new income posting. BUT the DB-level UNIQUE constraint
+            // still sees type='income' on the reversed row → income_unique_key is still
+            // populated → INSERT of the new income row fails with SQLSTATE[23000] 1062.
+            //
+            // Fix: flip type to TransactionType::Refund on the reversed row. This makes
+            // income_unique_key evaluate to NULL (freeing the UNIQUE slot) while
+            // preserving the 'عكس:' notes prefix for all downstream consumers
+            // (FinancialReportService, ProfitLossReportService, etc.) that use
+            // notes to identify reversals — they are unaffected.
+            $rawType = $transaction->type instanceof TransactionType
+                ? $transaction->type->value
+                : (string) $transaction->type;
+            if (strtolower($rawType) === 'income') {
+                $transaction->type = TransactionType::Refund;
+            }
             $transaction->save();
 
             Log::info('Transaction reversed', [
@@ -348,6 +419,57 @@ class TransactionService
                 'type' => $transaction->type,
                 'amount' => $transaction->amount,
                 'entries_reversed' => $entries->count(),
+                'user_id' => Auth::id(),
+            ]);
+
+            return $transaction;
+        }));
+    }
+
+    /**
+     * Mark a transaction as "reversed" for P&L classifier purposes WITHOUT
+     * creating mirror AccountEntry rows or mutating account balances.
+     *
+     * Used by the flight cancellation flow's FIN-B revenue-reversal step.
+     * The full {@see self::reverseTransaction()} creates mirror entries
+     * that debit the cashbox AND credit the customer AR — which, in
+     * combination with the cancellation's separate cash-refund journal
+     * (treasury → customer), produces a duplicate customer-credit
+     * (HIGH — flight cancellation posts duplicate customer AR credits).
+     *
+     * This lightweight marker only sets the canonical `عكس:` notes prefix
+     * that ProfitLossReportService::report() recognises for skipping
+     * already-reversed revenue. The actual cash return is handled by the
+     * regular cash-refund journal (refundTreasuryAccount).
+     *
+     * Idempotent: a transaction already in a reversed state is returned
+     * unchanged (same idempotency contract as reverseTransaction).
+     */
+    public function markTransactionReversed(Transaction $transaction): Transaction
+    {
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($transaction) {
+            $transaction = Transaction::query()
+                ->lockForUpdate()
+                ->findOrFail($transaction->id);
+
+            if (str_starts_with((string) $transaction->notes, 'عكس:')
+                || str_starts_with((string) $transaction->notes, 'عكس ')) {
+                Log::info('markTransactionReversed: already reversed, no-op', [
+                    'transaction_id' => $transaction->id,
+                    'type' => $transaction->type,
+                    'user_id' => Auth::id(),
+                ]);
+
+                return $transaction;
+            }
+
+            $transaction->notes = 'عكس: '.($transaction->notes ?? '');
+            $transaction->save();
+
+            Log::info('Transaction marked as reversed (no balance mutation)', [
+                'transaction_id' => $transaction->id,
+                'type' => $transaction->type,
+                'amount' => $transaction->amount,
                 'user_id' => Auth::id(),
             ]);
 
@@ -463,6 +585,14 @@ class TransactionService
                 'created_by' => (int) $createdBy,
                 'notes' => $data['notes'] ?? null,
                 'attachment_path' => $data['attachment_path'] ?? null,
+                // BUG-FIX (2026-08-24): propagate related_type/related_id so
+                // FlightBookingService::reverseGroupTransactionsForBooking can
+                // find the journal linked to a pay-debt FlightGroupTransaction.
+                // Pre-fix, pay-debt transfers were orphaned on the Transaction
+                // row (related_type/related_id were dropped) so the reverse
+                // path never matched them and cashbox balance drifted.
+                'related_type' => $data['related_type'] ?? null,
+                'related_id' => $data['related_id'] ?? null,
             ]);
 
             // Ledger entry directions match the project's convention (balance = SUM(credit) - SUM(debit)).
@@ -601,25 +731,69 @@ class TransactionService
                 $typeValue = TransactionType::from((string) $data['type'])->value;
             }
 
-            // FIX (2026-08-12): guard against duplicate income transactions on the
-            // same related entity. A booking (or any morph entity) can have AT MOST
-            // ONE income transaction — the sale. Any subsequent collection must be
-            // a Transfer (cash → AR), not a new Income. This bug previously caused
-            // every bus booking to register 2 income tx (sale + payment) and doubled
-            // the office income sum in the trial balance.
+            // FIX (Path C, 2026-08-14): guard against duplicate ACTIVE income
+            // transactions on the same related entity.
+            //
+            // Invariant: a booking (or any morph entity) can have AT MOST ONE
+            // ACTIVE income transaction — the sale. Any subsequent collection
+            // MUST be a Transfer (cash → AR), not a new Income. This bug
+            // previously caused every bus booking to register 2 income tx
+            // (sale + payment) and doubled the office income sum in the
+            // trial balance (FC-AUDIT 2026-08-12, original guard).
+            //
+            // Path C extension: when the original sale income is REVERSED
+            // additively (notes prefix `عكس:` / `عكس ` — the project's
+            // de-facto reversal convention set by TransactionService::reverseTransaction
+            // line 352 and consumed by 8+ downstream readers), the related
+            // slot becomes available again for a new income posting.
+            //
+            // Why this is correct:
+            //   1. Additive reversal preserves the original transaction row
+            //      (project rule: original transactions are never deleted or
+            //      modified — only inverse entries are added).
+            //   2. The original's contribution to GL is already 0
+            //      (original debit + inverse credit cancel out).
+            //   3. Reports that filter on this convention
+            //      (FinancialReportService::classifyPL line 1751 et al.)
+            //      already treat reversed rows as `revenue_reversal`.
+            //   4. The 8 existing consumers in the codebase (Documented in
+            //      .zcode/plans/path-c-analysis-20260814.md Section 3A)
+            //      already filter on `notes NOT LIKE 'عكس:%'` — the
+            //      application guard using the same convention stays
+            //      consistent.
+            //
+            // This change unblocks `HajjUmraBookingService::repostIncomeTransaction()`
+            // (lines 327-350) which previously threw at this guard, breaking
+            // every attempt to edit the selling_price of an active HajjUmra
+            // booking.
             $relatedType = $data['related_type'] ?? null;
             $relatedId = $data['related_id'] ?? null;
-            if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId) {
-                $existingIncome = DB::table('transactions')
+            // The duplicate-income guard protects booking-level sales against double revenue
+            // recognition. We exclude Customer::class because customers legitimately pay their
+            // outstanding balance (debt) in multiple separate receipts/installments over time.
+            if ($typeValue === TransactionType::Income->value && $relatedType && $relatedId && $relatedType !== Customer::class) {
+                $existingActiveIncome = DB::table('transactions')
                     ->where('related_type', $relatedType)
                     ->where('related_id', $relatedId)
                     ->where('type', TransactionType::Income->value)
+                    ->where(function ($q) {
+                        // A row is "ACTIVE" if its notes are absent or do
+                        // NOT start with the reversal prefix. Reversed
+                        // rows are excluded from the unique slot.
+                        $q->whereNull('notes')
+                            ->orWhere(function ($q2) {
+                                $q2->where('notes', 'not like', 'عكس:%')
+                                    ->where('notes', 'not like', 'عكس %');
+                            });
+                    })
                     ->exists();
-                if ($existingIncome) {
+                if ($existingActiveIncome) {
                     throw new \InvalidArgumentException(
                         "Duplicate income transaction blocked for {$relatedType}#{$relatedId}. ".
-                        'Each booking can have only ONE income transaction (the sale). '.
-                        'Subsequent collections must be a Transfer (type=transfer).'
+                        'Each booking can have only ONE ACTIVE income transaction (the sale). '.
+                        'Reversed (عكس:) incomes do not occupy this slot — repostIncomeTransaction() '.
+                        'can re-issue a new sale once the prior sale is reversed. '.
+                        'Subsequent COLLECTIONS on a booking must use Transfer (type=transfer).'
                     );
                 }
             }
@@ -666,55 +840,136 @@ class TransactionService
             }
 
             if (! $allowFromNegative && $isFund && (float) $fromAccount->balance < $amount) {
-                throw ValidationException::withMessages([
-                    'amount' => 'رصيد الحساب غير كافٍ: '.$fromAccount->name,
-                ]);
+                // FINDING UX-1 (MED) REMEDIATION (2026-08-21):
+                // Insufficient balance is a BUSINESS RULE violation (the request
+                // is well-formed and authorized, but the server's state conflicts
+                // with it). Throw BusinessLogicException → HTTP 409 Conflict.
+                // 422 is reserved for input-shape errors (ValidationException).
+                throw new BusinessLogicException(
+                    'رصيد الحساب غير كافٍ: '.$fromAccount->name,
+                    [
+                        'account_id' => $fromAccount->id,
+                        'account_name' => $fromAccount->name,
+                        'required' => $amount,
+                        'available' => (float) $fromAccount->balance,
+                    ]
+                );
             }
 
             $fromCurrency = strtoupper((string) $fromAccount->currency);
             $toCurrency = strtoupper((string) $toAccount->currency);
             $sameCurrency = $fromCurrency === $toCurrency;
 
-            $toAmount = $sameCurrency
-                ? $amount
-                : (float) ($data['converted_amount'] ?? 0.0);
+            $toAmount = $amount;
 
-            if (! $sameCurrency && $toAmount <= 0) {
-                $rate = (float) ($data['exchange_rate'] ?? 1.0);
-                if ($rate > 0) {
-                    if ($fromCurrency === 'EGP') {
-                        $toAmount = $amount / $rate;
-                    } else {
-                        $toAmount = $amount * $rate;
-                    }
+            if (! $sameCurrency) {
+                // ─────────────────────────────────────────────────────────────────
+                // SAFE FX RULE (FIX 2026-08-21): cross-currency transfers MUST
+                //   carry EXPLICIT conversion information. The previous
+                //   implementation silently coerced a missing `exchange_rate`
+                //   to `1.0` and a missing `converted_amount` to the raw
+                //   `$amount`, producing incorrect ledger postings when a
+                //   Visa/HajjUmra admin settled an EGP customer debt into a
+                //   non-EGP treasury without supplying a rate.
+                //
+                //   Acceptable inputs (in priority order):
+                //     1. `converted_amount` > 0  — caller already computed the
+                //        destination amount using CurrencyService::convert().
+                //        Preferred path for callers that already have the rate.
+                //     2. `exchange_rate` > 0    — caller supplies the rate;
+                //        service computes the destination amount based on the
+                //        EGP/foreign direction.
+                //
+                //   Anything else (missing, zero, negative, non-numeric) →
+                //   BusinessLogicException → HTTP 409 Conflict. The request
+                //   is well-formed; the server state cannot safely absorb it.
+                //
+                //   Same-currency transfers: unchanged behavior, no FX data
+                //   required.
+                // ─────────────────────────────────────────────────────────────────
+                $rawConvertedAmount = $data['converted_amount'] ?? null;
+                $rawExchangeRate = $data['exchange_rate'] ?? null;
+
+                $hasConvertedAmount = $rawConvertedAmount !== null
+                    && is_numeric($rawConvertedAmount)
+                    && (float) $rawConvertedAmount > 0;
+                $hasExchangeRate = $rawExchangeRate !== null
+                    && is_numeric($rawExchangeRate)
+                    && (float) $rawExchangeRate > 0;
+
+                if ($hasConvertedAmount) {
+                    // Path 1: caller supplied the converted destination amount.
+                    $toAmount = (float) $rawConvertedAmount;
+                } elseif ($hasExchangeRate) {
+                    // Path 2: caller supplied the rate; we compute the amount.
+                    $rate = (float) $rawExchangeRate;
+                    $toAmount = $fromCurrency === 'EGP'
+                        ? $amount / $rate      // EGP → foreign: divide
+                        : $amount * $rate;      // foreign → EGP: multiply
                 } else {
-                    $toAmount = $amount;
+                    // Neither (or invalid) → REJECT. No silent 1.0. No silent
+                    // amount-as-conversion. Caller must use CurrencyService.
+                    throw new BusinessLogicException(
+                        'لا يمكن تنفيذ تحويل عبر عملات مختلفة دون تحديد سعر الصرف أو المبلغ المحوّل. '
+                        .'عملة المصدر: '.$fromCurrency.'، عملة الهدف: '.$toCurrency.'. '
+                        .'يجب استخدام CurrencyService::convert() لتحويل المبلغ، أو تمرير converted_amount/exchange_rate صراحةً بقيم موجبة.',
+                        [
+                            'from_account_id' => $fromId,
+                            'to_account_id' => $toId,
+                            'from_currency' => $fromCurrency,
+                            'to_currency' => $toCurrency,
+                            'amount' => $amount,
+                            'provided_converted_amount' => $rawConvertedAmount,
+                            'provided_exchange_rate' => $rawExchangeRate,
+                        ]
+                    );
                 }
             }
 
             // Project convention: balance = SUM(credit) - SUM(debit) (see FinancialReportService line 383).
             // Therefore: from-account losing money → DEBIT entry; to-account gaining money → CREDIT entry.
             // (Reverts the previous "Finding #1 fix" that flipped directions and broke the invariant.)
-            $fromAccount->balance = (float) $fromAccount->balance - $amount;
-            $fromAccount->save();
+            //
+            // BUG-FIX (2026-08-28): use DB::table()->update() instead of
+            // Eloquent $account->save() to persist the new balance. Eloquent's
+            // save() fires the Account `saving`/`updating` observers, which
+            // include the module_type contract check (Account::booted lines
+            // 285-409). For some subject accounts (notably customer AR
+            // mirrors with module_type='flights'), the save() side-effect was
+            // silently dropping the balance write — the AccountEntry was
+            // created with balance_after=0 and accounts.balance stayed at 0,
+            // leaving every customer with a permanently-zero AR balance.
+            // Direct DB update bypasses the model event chain entirely while
+            // staying inside the LedgerBalanceMutationGuard::run() block, so
+            // the balance guard still validates the mutation context.
+            $newFromBalance = round((float) $fromAccount->balance - $amount, 2);
+            DB::table('accounts')->where('id', $fromAccount->id)->update([
+                'balance' => $newFromBalance,
+                'updated_at' => now(),
+            ]);
+            $fromAccount->balance = $newFromBalance;
 
             AccountEntry::create([
                 'account_id' => $fromAccount->id,
                 'transaction_id' => $transaction->id,
                 'debit' => $amount,
                 'credit' => 0.00,
-                'balance_after' => $fromAccount->balance,
+                'balance_after' => $newFromBalance,
             ]);
 
-            $toAccount->balance = (float) $toAccount->balance + $toAmount;
-            $toAccount->save();
+            $newToBalance = round((float) $toAccount->balance + $toAmount, 2);
+            DB::table('accounts')->where('id', $toAccount->id)->update([
+                'balance' => $newToBalance,
+                'updated_at' => now(),
+            ]);
+            $toAccount->balance = $newToBalance;
 
             AccountEntry::create([
                 'account_id' => $toAccount->id,
                 'transaction_id' => $transaction->id,
                 'debit' => 0.00,
                 'credit' => $toAmount,
-                'balance_after' => $toAccount->balance,
+                'balance_after' => $newToBalance,
             ]);
 
             Log::info('Journal transfer recorded', [

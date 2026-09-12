@@ -288,17 +288,21 @@ class FawryTransactionService
             ]);
             $incomeTransactionId = $saleIncomeTransaction->id;
 
-            // Settlement: تحصيل جزئي من العميل → الخزينة
+            // Settlement: تحصيل جزئي من العميل → الخزينة (cash movement, not new revenue)
+            // B-2 fix (2026-08-20): settlement uses recordJournalTransfer (Transfer type)
+            // instead of recordIncome (Income type) to avoid Path C duplicate-income guard.
+            // The settlement is a cash movement AR → cashbox, not a new revenue recognition.
             if ($amountPaid > 0) {
-                $this->transactionService->recordIncome([
+                $this->transactionService->recordJournalTransfer([
                     'amount' => $amountPaid,
+                    'from_account_id' => $customerAccount->id,
                     'to_account_id' => $accountId,
-                    'contra_account_id' => $customerAccount->id,
                     'module' => TransactionModule::Fawry->value,
                     'related_type' => FawryTransaction::class,
                     'related_id' => $fawryTransaction->id,
                     'notes' => "سداد جزء من عملية فوري - {$operationLabel}: {$clientName}",
                     'created_by' => $createdBy,
+                    'allow_from_negative' => true,
                 ]);
             }
         } else {
@@ -597,6 +601,49 @@ class FawryTransactionService
                 // surfaces in the finance accounts dashboard.
                 $settlementBalanceBefore = (float) (Account::find($settlementAccountId)?->balance ?? 0.0);
 
+                // 🛡️ B-3 fix: derive the OPENING balance (cashbox as it
+                // was BEFORE any of the operations that contributed to
+                // the current balance) for the deficit check.
+                //
+                // The previous implementation compared the post-reversal
+                // balance against the pre-DELETE (post-CREATE) balance,
+                // which is mathematically guaranteed to drift by exactly
+                // the original settlement amount on every normal
+                // CREATE→DELETE — incorrectly firing the auto-correct on
+                // healthy reversals and inflating the cashbox back to the
+                // pre-DELETE value (FINDING-FAWRY-01 ghost-balance).
+                //
+                // The opening balance is derived from the GENERAL LEDGER:
+                //   opening = balanceBefore - (Σ credits - Σ debits)
+                //
+                // This formula works for every case because the GL is the
+                // source of truth for balance changes:
+                //
+                //   • Normal CREATE→DELETE (registered, full payment):
+                //       opening = (opening + settlement_credit)
+                //                 - (settlement_credit - 0) = opening
+                //     After reversal, cashbox = opening → drift = 0.
+                //   • Normal CREATE→pay-debt→DELETE (walk-in):
+                //       opening = (opening + paydebt_credit)
+                //                 - (paydebt_credit - 0) = opening
+                //     After reversal+reclamation, cashbox = opening → drift = 0.
+                //   • Legacy orphan debit (the case the deficit guard was
+                //     originally designed to fix):
+                //       opening = (opening + settlement_credit - orphan_debit)
+                //                 - (settlement_credit - orphan_debit) = opening
+                //     After reversal, cashbox = opening - orphan_debit
+                //     → drift = orphan_debit → correction fires.
+                $glCredits = (float) DB::table('account_entries')
+                    ->where('account_id', $settlementAccountId)
+                    ->sum('credit');
+                $glDebits = (float) DB::table('account_entries')
+                    ->where('account_id', $settlementAccountId)
+                    ->sum('debit');
+                $openingBalance = round(
+                    $settlementBalanceBefore - ($glCredits - $glDebits),
+                    2
+                );
+
                 // 🛡️ Bug B refinement: only the EXCESS of (current amount)
                 // over the original settlement needs reclaiming. The original
                 // settlement (amount set at creation) is already linked to
@@ -738,7 +785,7 @@ class FawryTransactionService
                 $this->correctDeficitIfAny(
                     $transaction->id,
                     $settlementAccountId,
-                    $settlementBalanceBefore,
+                    $openingBalance,
                     TransactionModule::Fawry->value,
                 );
 
@@ -763,21 +810,31 @@ class FawryTransactionService
     }
 
     /**
-     * If the settlement account is still below its pre-delete balance
-     * after the reversal pipeline has run, post a corrective journal
-     * transfer from the module's income-clearing account to the
-     * settlement account. This keeps the finance dashboard's
-     * `deficit_accounts` alert in sync with the operator's intent:
-     * a deleted operation must not leave a phantom deficit.
+     * If the settlement account is still below its OPENING balance
+     * (i.e. the balance it had BEFORE the operation was created) after
+     * the reversal pipeline has run, post a corrective journal transfer
+     * from the module's income-clearing account to the settlement
+     * account. This keeps the finance dashboard's `deficit_accounts`
+     * alert in sync with the operator's intent: a deleted operation
+     * must not leave a phantom deficit (e.g. legacy walk-in orphan
+     * debits that weren't matched by any credit).
+     *
+     * B-3 fix: the comparison baseline is the OPENING balance, not
+     * the pre-DELETE balance. The reversal pipeline is designed to
+     * restore the cashbox from the post-CREATE state back to the
+     * pre-CREATE (opening) state; using the pre-DELETE state as the
+     * target incorrectly detected a "deficit" on every normal
+     * CREATE→DELETE and re-deposited the original settlement to the
+     * cashbox — the exact FINDING-FAWRY-01 ghost-balance bug.
      *
      * Idempotent: writes a single corrective entry tagged with the
-     * deleted fawry_transaction id in its notes so subsequent
-     * runs (e.g. on a re-trigger) can detect and skip.
+     * deleted fawry_transaction id in its notes so subsequent runs
+     * (e.g. on a re-trigger) can detect and skip.
      */
     protected function correctDeficitIfAny(
         int $fawryTransactionId,
         int $settlementAccountId,
-        float $balanceBefore,
+        float $openingBalance,
         string $moduleValue,
     ): void {
         $account = Account::lockForUpdate()->find($settlementAccountId);
@@ -786,7 +843,7 @@ class FawryTransactionService
         }
 
         $balanceAfter = (float) $account->balance;
-        $drift = round($balanceBefore - $balanceAfter, 2);
+        $drift = round($openingBalance - $balanceAfter, 2);
 
         if ($drift <= 0.01) {
             return; // No deficit to correct.

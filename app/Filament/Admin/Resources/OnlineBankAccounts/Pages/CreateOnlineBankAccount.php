@@ -13,7 +13,8 @@ class CreateOnlineBankAccount extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['type'] = AccountType::Bank->value;
-        $data['module_type'] = 'online';
+        $data['module_type'] = 'office';
+        $data['module'] = 'online';
 
         return $data;
     }
