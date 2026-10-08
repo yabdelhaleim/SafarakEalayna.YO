@@ -313,6 +313,15 @@ export const useBusStore = defineStore('bus', {
       this.errors = {};
       const controller = new AbortController();
       try {
+        if (params.public) {
+          const pubResponse = await axios.get('/api/v1/public/bus/companies', {
+            signal: controller.signal,
+          });
+          const pubData = pubResponse.data?.data || pubResponse.data;
+          this.companies = Array.isArray(pubData) ? pubData : (pubData.items || []);
+          return;
+        }
+
         const response = await axios.get('/api/v1/bus/companies', {
           params: { per_page: 100, ...params },
           signal: controller.signal,
@@ -331,6 +340,19 @@ export const useBusStore = defineStore('bus', {
         }
       } catch (error) {
         if (axios.isCancel(error)) return;
+        if (error.response?.status === 403) {
+          try {
+            const pubResponse = await axios.get('/api/v1/public/bus/companies', {
+              signal: controller.signal,
+            });
+            const pubData = pubResponse.data?.data || pubResponse.data;
+            this.companies = Array.isArray(pubData) ? pubData : (pubData.items || []);
+            return;
+          } catch (pubError) {
+            if (axios.isCancel(pubError)) return;
+            console.error('Failed to fetch public bus companies fallback:', pubError);
+          }
+        }
         console.error('Failed to fetch companies:', error);
         this.errors = { fetch: error.response?.data?.message || 'فشل تحميل الشركات' };
         this.companies = [];

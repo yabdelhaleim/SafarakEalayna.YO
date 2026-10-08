@@ -1106,7 +1106,7 @@ watch(sellingTotal, (t) => {
 // ─── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(async () => {
   resetBookingForm();
-  await store.fetchCompanies();
+  await store.fetchCompanies({ public: true });
   await loadSettlementAccounts();
 });
 
