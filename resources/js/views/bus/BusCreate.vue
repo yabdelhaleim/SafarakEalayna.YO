@@ -667,6 +667,7 @@ import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useBusStore } from '@/stores/busStore';
+import { useAuthStore } from '@/stores/authStore';
 import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
 import {
   ArrowRight, BusFront, UserCircle, Ticket, CreditCard, FileText,
@@ -675,8 +676,9 @@ import {
   TrendingDown, TrendingUp, AlertCircle,
 } from 'lucide-vue-next';
 
-const router = useRouter();
-const store  = useBusStore();
+const router    = useRouter();
+const store     = useBusStore();
+const authStore = useAuthStore();
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 const totalSteps    = 4;
@@ -911,20 +913,22 @@ const selectCompany = async (company) => {
       }
     });
 
-    // Also try to get company account balance for real debt figure
-    try {
-      const compRes = await axios.get(`/api/v1/bus/companies/${company.id}`);
-      const balance  = compRes.data?.data?.account?.balance ?? null;
-      if (balance !== null) {
-        // Company account balance in our ledger: negative = we owe them
-        companyStats.value = {
-          totalTickets,
-          totalDebt:     Math.max(0, -Number(balance)),
-          paidToCompany: Math.max(0, Number(balance)),
-        };
-        return;
-      }
-    } catch { /* fallback below */ }
+    // Also try to get company account balance for real debt figure (admin only to avoid 403 for employees)
+    if (authStore.isAdmin) {
+      try {
+        const compRes = await axios.get(`/api/v1/bus/companies/${company.id}`);
+        const balance  = compRes.data?.data?.account?.balance ?? null;
+        if (balance !== null) {
+          // Company account balance in our ledger: negative = we owe them
+          companyStats.value = {
+            totalTickets,
+            totalDebt:     Math.max(0, -Number(balance)),
+            paidToCompany: Math.max(0, Number(balance)),
+          };
+          return;
+        }
+      } catch { /* fallback below */ }
+    }
 
     companyStats.value = {
       totalTickets,
@@ -939,6 +943,7 @@ const selectCompany = async (company) => {
 // ─── Route suggestions ─────────────────────────────────────────────────────
 const buildRouteSuggestions = async (field, query, target) => {
   if (!form.value.company_id || query.length < 2) { target.value = []; return; }
+  if (!authStore.isAdmin) { target.value = []; return; }
   clearTimeout(suggTimeout);
   suggTimeout = setTimeout(async () => {
     try {
