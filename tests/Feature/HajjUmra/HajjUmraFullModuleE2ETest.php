@@ -7,6 +7,7 @@ use App\Enums\WalletProvider;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Customer;
+use App\Models\ExchangeRate;
 use App\Models\HajjUmraBooking;
 use App\Models\HajjUmraPayment;
 use App\Models\HajjUmra\HajjUmraExecutingCompany;
@@ -84,6 +85,16 @@ class HajjUmraFullModuleE2ETest extends TestCase
             'email' => 'cashier-hajj-full@'.now()->timestamp.'.test',
             'password' => Hash::make('password'),
             'role'  => 'cashier',
+            // Post SEC-1 (2026-08-21) deny-by-default: cashiers no longer
+            // auto-receive defaultEmployeeModules(). Grant the operational
+            // permissions explicitly so the cashier can post Hajj/Umra
+            // payments, refunds, and treasury movements in the E2E tests.
+            // In production this is handled by the seeder; the test mirrors
+            // that explicit-grant pattern.
+            'permissions' => [
+                'manage_hajj', 'manage_treasury', 'manage_refunds',
+                'manage_flights', 'manage_bus', 'manage_online', 'manage_finance',
+            ],
             'is_active' => true,
         ]);
 
@@ -179,6 +190,32 @@ class HajjUmraFullModuleE2ETest extends TestCase
             'account_id' => $this->supplierAccount->id,
             'default_cost_price' => 1500.00,
             'is_active' => true,
+        ]);
+
+        // ---- FX rates: EGP↔USD and EGP↔SAR ----
+        // Cross-currency tests (EGP booking against USD supplier, SAR
+        // booking, USD bookings) require current-date rate rows or
+        // CurrencyService::convert() throws and booking creation fails
+        // with HTTP 422. Seed both directions of every pair used.
+        ExchangeRate::query()->create([
+            'from_currency' => 'USD', 'to_currency' => 'EGP', 'rate' => 50.0,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'EGP', 'to_currency' => 'USD', 'rate' => 1 / 50.0,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'SAR', 'to_currency' => 'EGP', 'rate' => 13.5,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
+        ]);
+        ExchangeRate::query()->create([
+            'from_currency' => 'EGP', 'to_currency' => 'SAR', 'rate' => 1 / 13.5,
+            'effective_date' => now()->toDateString(), 'is_active' => true,
+            'created_by' => $this->admin->id,
         ]);
 
         // ---- executing company (will auto-create its own account on save) ----
@@ -306,17 +343,31 @@ class HajjUmraFullModuleE2ETest extends TestCase
     private function assertAccountBalanceConsistent(Account $account, float $initialBalance): void
     {
         $account = $account->fresh();
+        // Post-FIN-1 (2026-08-21, app/Models/Account.php lines 175-275):
+        // The Account::created observer auto-posts an opening-balance
+        // AccountEntry (credit=$initialBalance) the moment an Account is
+        // created with `balance > 0`. The project's invariant is therefore:
+        //
+        //   balance == SUM(credit) - SUM(debit)  (inclusive of the opening row)
+        //
+        // Pre-FIN-1 the test used:
+        //   balance == initial_balance + (SUM(credit) - SUM(debit))
+        // because the opening entry did not exist and `initial_balance` was
+        // a seed-time starting point unrelated to the entries table.
+        //
+        // We keep `initial_balance` as a parameter for API stability and
+        // documentation, but no longer add it — it is already counted in
+        // the entries_net via the FIN-1 observer.
         $net = (float) AccountEntry::query()
             ->where('account_id', $account->id)
             ->selectRaw('COALESCE(SUM(credit),0) - COALESCE(SUM(debit),0) as net')
             ->value('net');
-        $expected = $initialBalance + $net;
         $this->assertEqualsWithDelta(
-            $expected,
+            $net,
             (float) $account->balance,
             0.01,
             "Account '{$account->name}' balance ({$account->balance}) does NOT match "
-            ."initial_balance({$initialBalance}) + entries_net({$net}) = {$expected}"
+            ."entries_net({$net}); initial balance was {$initialBalance} (already included via FIN-1 opening entry)."
         );
     }
 

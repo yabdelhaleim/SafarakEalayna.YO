@@ -24,8 +24,9 @@ class CreateBankAccount extends CreateRecord
             $data['type'] = AccountType::Bank->value;
         }
 
-        // Lock module_type to flights when not provided.
-        $data['module_type'] = $data['module_type'] ?? 'flights';
+        // Lock module_type to tourism and module to flights.
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'flights';
 
         return $data;
     }

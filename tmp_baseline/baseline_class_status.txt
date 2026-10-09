@@ -1,0 +1,196 @@
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Finance\LedgerEntryDescriptionResolverTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Customer\CustomerModuleTypeConsistencyTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Customer\CustomerModuleTypeValidationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FilamentLiquidityVueApiTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Filament\FlightLiquidityFilamentTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FinanceAccountsModuleFilterTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FinanceTransferTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Finance\DashboardFinanceInclusionTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Finance\FinanceLiquidityResourceIsolationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Finance\FlightDashboardTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Finance\PrepaidCogsTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Finance\TourismTrialBalanceIntegrityTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FinancialReportTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightBookingApiCrudTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightBookingDisplayConsistencyTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightBookingFlowTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FlightBookingPhase2Test[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightCreditBookingTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FlightGroupPayDebtTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightRemainingCrudTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\FlightSystemRechargeTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\AirlineAccountDebitServiceTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\AirlineAccountPhase1v2Test[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\AirportControllerTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\AviationControllerCreateTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\AviationServiceTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\BookingLifecycleAuditTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\CashboxReversalAfterCancelTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\F12Phase12FlightDeleteRegressionTest[39m
+[2026-08-24 21:01:02] testing.INFO: PASSED: test_full_booking_delete_reverses_all_balances_and_preserves_audit_trail {"deltas":{"carrier":0.0,"prepaid_gl":0.0,"cashbox":0.0,"customer":0.0},"tx_count_before_delete":2,"tx_count_after_delete":4}
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightBookingDeletionReversalTest[39m
+[2026-08-24 21:01:03] testing.INFO: PASSED: test_deleting_pending_booking_without_payment_still_reverses_purchase_ledger
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightCarrierControllerTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightCarrierRechargeServiceTest[39m
+[2026-08-24 21:01:05] testing.INFO: S02 PASSED: cash-basis invariant — revenue recognised at cash receipt {"cashbox_delta":22000.0,"pnl":{"totalRevenues":22000.0,"totalCogs":20000.0,"grossProfit":2000.0,"netProfit":2000.0}}
+[2026-08-24 21:01:05] testing.INFO: S03 PASSED: FIN-B revenue reversal on full-refund cancel {"reversed_income_rows":1,"pnl":{"totalRevenues":0.0,"totalCogs":0.0,"grossProfit":0.0,"netProfit":0.0}}
+[2026-08-24 21:01:06] testing.INFO: S04 PASSED: FIN-A + FIN-D — full lifecycle zeros P&L and placeholder accounts {"deltas":{"cashbox":-22000.0,"carrier":0.0,"pending_sales_receivable":0.0,"income_clearing":0.0},"pnl":{"totalRevenues":0.0,"totalCogs":0.0,"grossProfit":0.0,"netProfit":0.0}}
+[2026-08-24 21:01:06] testing.INFO: S05 PASSED: direct delete returns balances to baseline; P&L revenue retained (cash-basis) {"deltas":{"cashbox":0.0,"carrier":0.0,"pending_sales_receivable":0.0,"income_clearing":0.0},"pnl":{"totalRevenues":22000.0,"totalCogs":0.0,"grossProfit":22000.0,"netProfit":22000.0}}
+[2026-08-24 21:01:06] testing.INFO: S06 PASSED: FIN-A + FIN-B + FIN-D — partial pay + cancel + delete zeros P&L {"deltas":{"cashbox":-12000.0,"carrier":0.0,"pending_sales_receivable":0.0,"income_clearing":0.0},"pnl":{"totalRevenues":0.0,"totalCogs":0.0,"grossProfit":0.0,"netProfit":0.0}}
+[2026-08-24 21:01:07] testing.INFO: S07 PASSED: no-payment + cancel + delete returns to baseline {"deltas":{"cashbox":0.0,"carrier":0.0,"pending_sales_receivable":0.0,"income_clearing":0.0},"pnl":{"totalRevenues":0.0,"totalCogs":0.0,"grossProfit":0.0,"netProfit":0.0}}
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightCashBasisRegressionTest[39m
+[2026-08-24 21:01:07] testing.INFO: S08 PASSED: cancel idempotency — no double revenue reversal {"payment_id":1,"income_notes_prefix_after_first_cancel":"عكس: "}
+  ✓ PASS   SIGN/EGP                          — booking#1 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/USD                          — booking#2 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/SAR                          — booking#3 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/EUR                          — booking#4 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   SIGN/KWD                          — booking#5 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/EGP                        — booking#6 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/USD                        — booking#7 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/SAR                        — booking#8 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/EUR                        — booking#9 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   SYSTEM/KWD                        — booking#10 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/EGP                         — booking#11 CONFIRMED, profit=10.00 EGP, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/USD                         — booking#12 CONFIRMED, profit=495.00 USD, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/SAR                         — booking#13 CONFIRMED, profit=132.00 SAR, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/EUR                         — booking#14 CONFIRMED, profit=538.00 EUR, cashbox.Δ=+110.00
+  ✓ PASS   GROUP/KWD                         — booking#15 CONFIRMED, profit=1615.00 KWD, cashbox.Δ=+110.00
+  → PASS  15/15
+  ✓ PASS   egp_egp (booking=EGP, pay=EGP)    — booking#16 CONFIRMED, profit=10.00, currency=EGP, paid_total=110.00
+  ✓ PASS   egp_usd (booking=EGP, pay=USD)    — booking#17 CONFIRMED, profit=10.00, currency=EGP, paid_total=110.00
+  ✓ PASS   usd_egp (booking=USD, pay=EGP)    — booking#18 CONFIRMED, profit=495.00, currency=USD, paid_total=5445.00
+  ✓ PASS   usd_usd (booking=USD, pay=USD)    — booking#19 CONFIRMED, profit=495.00, currency=USD, paid_total=5445.00
+  ✓ PASS   kwd_egp (booking=KWD, pay=EGP)    — booking#20 CONFIRMED, profit=1615.00, currency=KWD, paid_total=17765.00
+  → PASS  5/5
+  ✓ PASS   C1 full-refund cancel             — status=REFUNDED cashbox.Δ=-220.00
+  ✓ PASS   C2 cancel-with-penalty            — status=CANCELLED kept=$100
+  ✓ PASS   C3 no-pay cancel                  — status=CANCELLED
+  ✓ PASS   C4 pay-after-cancel rejected      — rejected as expected
+  → PASS  4/4
+  ✓ PASS   D1 partial refund                 — status=PARTIALLY_REFUNDED refund=99.00 EGP
+  ✓ PASS   D2 full refund                    — status=REFUNDED refund=5445.00 USD
+  ✓ PASS   D3 airline-credit voucher         — status=REFUNDED voucher=17765.00 KWD
+  → PASS  3/3
+  ✓ PASS   E1 delete PENDING (no pay)        — booking#28 trashed=Y | Δ cashbox=+0.00 carrier=+2000.00 pending=+2500.00
+  ✓ PASS   E2 delete CONFIRMED direct        — booking#29 trashed=Y | Δ cashbox=-110.00 carrier=+100.00 pending=+5445.00
+  ✓ PASS   E3 delete after cancel+refund     — booking#30 trashed=Y | Δ cashbox=-1562.00 carrier=+0.00 pending=+0.00
+  ✓ PASS   E4 delete after cancel+penalty    — booking#31 trashed=Y | Δ cashbox=+48.14 carrier=+0.00 pending=+100.00
+  → PASS  4/4
+  ✓ PASS   F1 round-trip (2 segments)        — segments=2
+  ✓ PASS   F2 multi-leg (3 segments)         — segments=3
+  → PASS  2/2
+  → PASS  5/5
+SUMMARY: 33/33 scenarios PASS, 5/5 invariants PASS  (runtime: 2.01s)
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightFullOperationsAuditTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightGroupCurrencyColumnTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightGroupFlowTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightKwdPaymentConversionTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightModuleDeepE2ETest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightMultiCurrencyProductionTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightPaymentNoDoubleIncomeTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightPaymentOwnershipTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightPaymentReversalTest[39m
+[2026-08-24 21:01:21] testing.INFO: PASSED: test_multiple_payments_each_reversed_independently {"payments_count":3,"final_cashbox":0.0}
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightProductionFullE2ETest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\FlightSoftDeleteRealWorldTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightSystemControllerTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightTreasuryOverviewSameCurrencyDropdownTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\FlightTreasuryOverviewTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\IdempotencyKeyTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\PassengerMarkTraveledTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\Phase11ConsolidatedDeepAuditTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\Phase11FeBeContractAuditTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\Phase11MandatoryGatesTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\Phase11ThreePathDeepE2ETest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\RefundDiagnosisTest[39m
+[2026-08-24 21:02:00] testing.INFO: PASSED: test_refund_to_airline_credit_reversal_cancels_credit_voucher {"credit_status":"cancelled","carrier_balance":85000.0}
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Flight\RefundRequestReversalTest[39m
+[2026-08-24 21:02:01] testing.INFO: PASSED: test_reversing_unprocessed_refund_request_soft_deletes_without_gl_change
+[2026-08-24 21:02:01] testing.INFO: PASSED: test_confirmed_modification_reversal_credits_back_airline_account {"airline_balance_before":10000.0,"airline_balance_after_confirm":9500.0,"airline_balance_after_reverse":10000.0}
+[2026-08-24 21:02:01] testing.INFO: PASSED: test_non_confirmed_modification_reversal_soft_deletes_without_balance_change
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Flight\TicketModificationDeletionTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ModuleIntegrationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Reports\CustomerDebtsReportModuleCoverageTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Reports\ReportsHubTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Reports\TourismPAndLComprehensiveTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\TourismAudit\FlightFullAuditTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismAudit\TourismAccountClassificationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismDivision\FlightGroupCarrierIntegrationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismDivision\FlightProductionTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismDivision\MultiCurrencyFxConversionTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeeDatabaseIntegrityTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeeIDORTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeeIdempotencyTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeeIsolationTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\EmployeePermissionsWiringTest[39m
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\TourismEmployeeE2E\FrontendPermissionAuditTest[39m
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Tourism\TourismNoEditContractTest[39m
+  [41;1m FAILED [49;22m [1mTests\Feature\Finance\TourismTrialBalanceIntegrityTest[22m [90m>[39m flight group receivable appears in tourism due t…
+  [41;1m FAILED [49;22m [1mTests\Feature\FinancialReportTest[22m [90m>[39m debts report correctly maps flight to touri… [41;1m InvalidArgumentException [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FinancialReportTest[22m [90m>[39m debts report retrieves flight groups         [41;1m InvalidArgumentException [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingApiCrudTest[22m [90m>[39m update with empty departure time does not null column
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingApiCrudTest[22m [90m>[39m flight bookings api crud response shapes
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingDisplayConsistencyTest[22m [90m>[39m foreign purchase currency does not change…  [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingFlowTest[22m [90m>[39m handles foreign currency booking
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingFlowTest[22m [90m>[39m handles foreign currency booking payment conversion
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingFlowTest[22m [90m>[39m prevents booking when insufficient carrier balance
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingFlowTest[22m [90m>[39m cancels booking with complete accounting rollback
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightBookingFlowTest[22m [90m>[39m kwd booking cancel restores carrier sign and refunds cus… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightCreditBookingTest[22m [90m>[39m partial payment records correct customer debt           [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightCreditBookingTest[22m [90m>[39m backfill fixes missing sale journal after partial paym… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightRemainingCrudTest[22m [90m>[39m flight refunds
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightSystemRechargeTest[22m [90m>[39m can recharge flight system successfully
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightSystemRechargeTest[22m [90m>[39m fails recharge if account belongs to other module
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightSystemRechargeTest[22m [90m>[39m fails recharge if currency mismatch
+  [41;1m FAILED [49;22m [1mTests\Feature\FlightSystemRechargeTest[22m [90m>[39m fails recharge if insufficient balance
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\AviationServiceTest[22m [90m>[39m update booking via aviation service             [41;1m LogicException [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\CashboxReversalAfterCancelTest[22m [90m>[39m bug a defect 006 cancel no refund delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\CashboxReversalAfterCancelTest[22m [90m>[39m bug b defect 005 cancel with refund delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\CashboxReversalAfterCancelTest[22m [90m>[39m known limitation kwd refund throws
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\F12Phase12FlightDeleteRegressionTest[22m [90m>[39m p0 1b full penalty cancel then delete no resi…
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightCashBasisRegressionTest[22m [90m>[39m s01 egp credit booking no payment recognises no reve…
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightKwdPaymentConversionTest[22m [90m>[39m kwd booking paid from egp cashbox succee… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightKwdPaymentConversionTest[22m [90m>[39m kwd booking paid from egp with partial a… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightKwdPaymentConversionTest[22m [90m>[39m kwd booking paid from mismatched foreign… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightModuleDeepE2ETest[22m [90m>[39m scenario 12 egp full pay partial cancel delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightModuleDeepE2ETest[22m [90m>[39m scenario 13 kwd three installments full penalty… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightModuleDeepE2ETest[22m [90m>[39m scenario 14 usd pay from wallet cancel delete    [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightModuleDeepE2ETest[22m [90m>[39m scenario 17 cross currency payment no negative   [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightModuleDeepE2ETest[22m [90m>[39m part5 delete after partial refund
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking payment cancel delete cycle f… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking payment cancel delete cycle f… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking payment cancel delete cycle f… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking through system with currency…  [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking through system with currency…  [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m booking through system with currency…  [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m cross currency payment does not break… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m cross currency payment does not break… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightMultiCurrencyProductionTest[22m [90m>[39m cross currency payment does not break… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightPaymentNoDoubleIncomeTest[22m [90m>[39m single payment creates one transfer no extra incom…
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightPaymentNoDoubleIncomeTest[22m [90m>[39m n partial payments create exactly one sale and n t…
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightPaymentReversalTest[22m [90m>[39m single payment reversal restores cashbox and clearing ba…
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightProductionFullE2ETest[22m [90m>[39m scenario a egp full pay partial cancel delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightProductionFullE2ETest[22m [90m>[39m scenario b kwd three installments full pena… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightProductionFullE2ETest[22m [90m>[39m scenario c usd pay from wallet cancel delet… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightProductionFullE2ETest[22m [90m>[39m scenario d sar pay from bank modification d… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightProductionFullE2ETest[22m [90m>[39m scenario f cross currency payment no negati… [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightSoftDeleteRealWorldTest[22m [90m>[39m scenario2 book partial pay cancel soft delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\FlightSoftDeleteRealWorldTest[22m [90m>[39m scenario3 book cancel no refund soft delete
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\Phase11FeBeContractAuditTest[22m [90m>[39m a2 create system booking via http contract  [41;1m Exception [49;22m
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\Phase11MandatoryGatesTest[22m [90m>[39m c2 03 cancel group booking reverts group debt
+  [41;1m FAILED [49;22m [1mTests\Feature\Flight\RefundRequestReversalTest[22m [90m>[39m refund to agency treasury reversal restores all balances
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismAudit\FlightFullAuditTest[22m [90m>[39m create booking with system source
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismAudit\FlightFullAuditTest[22m [90m>[39m full payment moves booking to confirmed
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismAudit\FlightFullAuditTest[22m [90m>[39m partial payment keeps booking pending
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismAudit\FlightFullAuditTest[22m [90m>[39m idempotency key replay returns existing payment
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismAudit\FlightFullAuditTest[22m [90m>[39m cancellation preserves original sale transaction
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeDatabaseIntegrityTest[22m [90m>[39m no orphan flight payments
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest[22m [90m>[39m employee can update booking prices
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest[22m [90m>[39m employee can record payment
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest[22m [90m>[39m employee cannot cancel booking
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeFlightE2ETest[22m [90m>[39m employee cannot confirm booking
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeIDORTest[22m [90m>[39m flight employee b can record payment on a booking
+  [41;1m FAILED [49;22m [1mTests\Feature\TourismEmployeeE2E\EmployeeIdempotencyTest[22m [90m>[39m flight payment idempotent under same key
+  [41;1m FAILED [49;22m [1mTests\Feature\Tourism\TourismNoEditContractTest[22m [90m>[39m flight booking service update throws
+  [41;1m FAILED [49;22m [1mTests\Feature\Tourism\TourismNoEditContractTest[22m [90m>[39m flight booking service update prices throws

@@ -1,0 +1,115 @@
+
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m  PHASE 10 — BUS FULL E2E TEST (model + service + API + Filament + ledger)[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+
+[2m  Pre-flight: pre-cleanup + setup[0m
+  - test user: id=1 email=phase10-bus-tester@example.com
+  - run marker: PHASE10-RUN-6dba8430 | pre-cleaned 0 leftover entities
+  - cashbox seeded: balance=100000.00 EGP
+  - FX rates seeded (USD_EGP=50, SAR_EGP=13.33, KWD_EGP=162.5, EUR_EGP=54.5)
+  - clearing: income=5, expense=6
+  - customer: id=1, account_id=7
+
+[1m[36m── §B  Booking CRUD ────────────────────────────────────────────────[0m
+  [B1  ] create_booking_egp_basic                                 [32m✓ PASS[0m  [2mid=1, total=200.00, avail=9[0m
+  [B2  ] create_booking_qty_3                                     [32m✓ PASS[0m  [2mid=2, total=600.00, profit=360.00, avail=7[0m
+  [B3  ] get_booking_by_id                                        [32m✓ PASS[0m  [2mid=1[0m
+  [B4  ] list_bookings_paginated                                  [32m✓ PASS[0m  [2mcount=2[0m
+  [B5  ] get_booking_stats                                        [32m✓ PASS[0m  [2mtotal_bookings=2[0m
+  [B6  ] ledger_balanced_after_crud                               [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §C  Payment flows ───────────────────────────────────────────────[0m
+  [C1  ] full_payment_200                                         [32m✓ PASS[0m  [2mstatus=paid, paid=200.00[0m
+  [C2  ] partial_then_topup                                       [32m✓ PASS[0m  [2mafter_partial=Partial/50.00 → after_topup=paid/200.00[0m
+  [C3  ] multi_payment_3x                                         [32m✓ PASS[0m  [2mpayments=3, paid=200.00, status=paid[0m
+  [C4  ] overpayment_rejected                                     [32m✓ PASS[0m  [2mthrew as expected[0m
+  [C5  ] idempotency_key_replay                                   [32m✓ PASS[0m  [2mpayments: 1→1, paid: 200.00→200.00[0m
+  [C6  ] cashbox_balance_increased                                [32m✓ PASS[0m  [2mΔ=+800.00 EGP[0m
+  [C7  ] ledger_balanced_after_payments                           [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §D  Cancellation ────────────────────────────────────────────────[0m
+  [D1  ] cancel_no_penalty_full_refund                            [32m✓ PASS[0m  [2mstatus=refunded, refund=200.00 EGP[0m
+  [D2  ] cancel_unpaid_no_refund                                  [32m✓ PASS[0m  [2mstatus=cancelled, cashbox_delta=0.00[0m
+  [D3  ] cancel_partial_paid_partial_penalty                      [32m✓ PASS[0m  [2mrefund=50.00 EGP (expected 50.00), status=refunded[0m
+  [D4  ] cancel_already_cancelled_throws                          [32m✓ PASS[0m  [2mOK[0m
+  [D5  ] cancelled_booking_visible_not_trashed                    [32m✓ PASS[0m  [2mstatus=refunded, trashed=NO[0m
+  [D6  ] ledger_balanced_after_cancellations                      [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §E  Simple deleteBooking ────────────────────────────────────────[0m
+  [E1  ] simple_delete_unpaid                                     [32m✓ PASS[0m  [2mtrashed=YES, avail=4→5[0m
+  [E2  ] simple_delete_rejects_paid                               [32m✓ PASS[0m  [2mthrew correctly[0m
+  [E3  ] ledger_balanced_after_simple_delete                      [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §F  deleteBookingWithReversal (with payments) — Δ=0 ──────────[0m
+  [F1  ] partial_paid_delete_delta_zero                           [32m✓ PASS[0m  [2mcashbox_Δ=0.00, customer_Δ=0.00, avail_Δ=0[0m
+  [F2  ] fully_paid_delete_delta_zero                             [32m✓ PASS[0m  [2mcashbox_Δ=0.00, customer_Δ=0.00, avail_Δ=0[0m
+  [F3  ] multi_payment_delete_delta_zero                          [32m✓ PASS[0m  [2mcashbox_Δ=0.00, customer_Δ=0.00, avail_Δ=0[0m
+  [F4  ] delete_idempotency_throws_arabic                         [32m✓ PASS[0m  [2mOK: هذا الحجز محذوف بالفعل (soft delete) — [0m
+  [F5  ] delete_already_cancelled_just_hides                      [32m✓ PASS[0m  [2mpre_status=cancelled, trashed=YES[0m
+  [F6  ] customer_debt_isolation_other_booking_intact             [32m✓ PASS[0m  [2mcustomer_Δ=-100.00 (expected -100), bookingB_paid=200.00 (expected 200)[0m
+  [F7  ] ledger_balanced_after_with_reversal                      [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §G  Inventory debt lifecycle ────────────────────────────────────[0m
+  [G1  ] inventory_partial_debt_pay                               [32m✓ PASS[0m  [2mpaid=400.00, remaining=600.00[0m
+  [G2  ] inventory_full_debt_pay                                  [32m✓ PASS[0m  [2mpaid=1000.00, remaining=0.00[0m
+  [G3  ] inventory_overpay_rejected                               [32m✓ PASS[0m  [2mOK: This inventory has no remaining debt.[0m
+  [G4  ] inventory_cash_rejects_debt_pay                          [32m✓ PASS[0m  [2mOK[0m
+  [G5  ] ledger_balanced_after_inventory_debt                     [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §H  deleteInventory ─────────────────────────────────────────────[0m
+  [H1  ] delete_cash_inventory_reverses_expense                   [32m✓ PASS[0m  [2mcashbox_Δ=0.00 (expected 0 from baseline), cost_was=250.00[0m
+  [H2  ] delete_deferred_inventory_with_paid_debt                 [32m✓ PASS[0m  [2msoft-deleted[0m
+  [H3  ] delete_inventory_with_bookings_rejected                  [32m✓ PASS[0m  [2mOK[0m
+  [H4  ] ledger_balanced_after_inventory_delete                   [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §I  Company deletion + statement ────────────────────────────────[0m
+  [I1  ] company_statement_endpoint_works                         [32m✓ PASS[0m  [2mkeys=success,message,data,errors[0m
+  [I2  ] delete_company_with_inventories_rejected                 [32m✓ PASS[0m  [2mOK[0m
+  [I3  ] delete_empty_company_succeeds                            [32m✓ PASS[0m  [2msoft-deleted[0m
+  [I4  ] ledger_balanced_after_company_ops                        [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §J  Filament UI rendering (Livewire tests) ──────────────────────[0m
+  [J1  ] bus_bookings_index_renders                               [32m✓ PASS[0m  [2mOK[0m
+  [J2  ] bus_inventories_index_renders                            [32m✓ PASS[0m  [2mOK[0m
+  [J3  ] bus_companies_index_renders                              [32m✓ PASS[0m  [2mOK[0m
+  [J4  ] bus_tickets_index_renders                                [32m✓ PASS[0m  [2mN/A — table dropped by F-8 cleanup (dead code)[0m
+  [J5  ] edit_bus_company_renders                                 [32m✓ PASS[0m  [2mOK[0m
+  [J6  ] inventories_relation_manager_renders                     [32m✓ PASS[0m  [2mOK[0m
+  [J7  ] filament_resource_urls_resolve                           [32m✓ PASS[0m  [2mall 4 URLs OK[0m
+
+[1m[36m── §K  Filament action wiring ──────────────────────────────────────[0m
+  [K1  ] payDebt_action_wired_on_deferred_only                    [32m✓ PASS[0m  [2mOK[0m
+  [K2  ] deleteCompany_wired_3_paths                              [32m✓ PASS[0m  [2mOK[0m
+  [K3  ] deleteInventory_wired_relation_manager                   [32m✓ PASS[0m  [2mOK[0m
+  [K4  ] deleteTicket_wired_resource                              [32m✓ PASS[0m  [2mOK[0m
+
+[1m[36m── §L  ModelDeletionGuard ──────────────────────────────────────────[0m
+  [L1  ] direct_BusBooking_delete_throws                          [32m✓ PASS[0m  [2mOK[0m
+  [L2  ] direct_BusInventory_delete_throws                        [32m✓ PASS[0m  [2mOK[0m
+  [L3  ] direct_BusCompany_delete_throws                          [32m✓ PASS[0m  [2mOK[0m
+  [L4  ] direct_BusTicket_delete_throws                           [32m✓ PASS[0m  [2mN/A — table dropped by F-8 (dead code)[0m
+
+[1m[36m── §M  Filament wiring integrity (no raw DeleteAction) ─────────────[0m
+  [M.Bus] BusBookingResource: no_raw_DeleteAction                  [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+  [M.Bus] BusInventoryResource: no_raw_DeleteAction                [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+  [M.Bus] BusCompanyResource: no_raw_DeleteAction                  [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+  [M.Bus] BusTicketResource: no_raw_DeleteAction                   [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+  [M.Inv] InventoriesRelationManager: no_raw_DeleteAction          [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+  [M.Edi] EditBusCompany: no_raw_DeleteAction                      [32m✓ PASS[0m  [2mraw_delete=no, raw_bulk=no[0m
+
+[1m[36m── §N  Global invariant + cleanup ──────────────────────────────────[0m
+  [N1  ] ledger_globally_balanced                                 [32m✓ PASS[0m  [2mOK[0m
+  [N2  ] cleanup_force_delete_all                                 [32m✓ PASS[0m  [2mbookings=18, inventories=22, companies=3, tickets=0, payments=17, refunds=3[0m
+
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m  PHASE 10 — BUS FULL E2E — FINAL SUMMARY[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+  Total scenarios:    65
+  [32m✓ Passed:[0m          65
+  [32m✗ Failed:          0[0m
+  Cleanup:            [32m✓ DB returned to original[0m
+  Ledger:             [32m✓ Globally balanced[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m  ✓ ALL TESTS PASSED — 0 ERRORS[0m
+[1m═══════════════════════════════════════════════════════════════════════════════[0m

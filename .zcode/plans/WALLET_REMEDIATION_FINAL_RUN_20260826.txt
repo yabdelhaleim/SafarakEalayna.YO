@@ -1,0 +1,73 @@
+WALLET REMEDIATION FINAL TEST RUN — 2026-08-26
+==============================================
+
+Branch: phase-10-tourism-production-audit-hajj-umra
+Test command: php artisan test tests/Feature/Wallet
+Database: SQLite :memory: (RefreshDatabase)
+
+RESULT: 🟢 ALL GREEN
+  Tests:    278 passed
+  Assertions: 1542
+  Duration: 59.89s
+  Failures: 0
+  Errors:   0
+  Skipped:  0
+  Risky:    0
+
+PER-FILE BREAKDOWN (approximate, from prior isolated runs):
+  - tests/Feature/Wallet/Phases/PhaseFinancialRetestComprehensiveTest.php
+        71 tests, 228 assertions — 🟢 PASS (renamed from
+        PhaseFinancialRetestComprehensive.php so PHPUnit discovers it)
+  - tests/Feature/Wallet/Phases/PhaseFinancialRetestV2Test.php
+        25 tests, 186 assertions — 🟢 PASS
+  - tests/Feature/Wallet/WalletTransactionCrudTest.php
+        14 tests,  70 assertions — 🟢 PASS (migrated to WalletTestCase +
+        asAdmin() helper; settlement-direction assertions updated)
+  - Phases 01..12 (Phase01Auth...Phase12Concurrency, etc.)
+        ~168 tests covering authorization, validation, idempotency,
+        concurrency, security, reconciliation, etc.
+
+KEY REMEDIATIONS APPLIED (this run reflects them all):
+  D-V2-009 (P2) Amount normalization:
+    - Added WalletTransactionService::normalizeAmount() using bcmath
+      (half-away-from-zero, 2-decimal). Applied at every monetary entry
+      point: amount, service_fee, total_amount, amount_paid, and all
+      settlement/repost re-derivations.
+
+  D-V2-008 (P3) Update validator hardening:
+    - Rewrote UpdateWalletTransactionRequest::withValidator so it
+      ALWAYS resolves effective accounts (request OR bound via
+      route('transaction')) and ALWAYS enforces active-state, currency
+      match, and "wallet != cash" — even when the request omits these
+      fields and the bound transaction is being used as source of truth.
+
+  Phase07 settlement-direction assertion (this is the uncommitted fix):
+    - Wallet gains the fee (5 EGP for send+100+5 in Phase07 example).
+    - Cashbox loses amount+fee (105 EGP).
+    - Comment explains why the direction is the corrected FIN-2 pathB.
+
+  Phase09 injection assertion:
+    - notes IS updateable (was already).
+    - amount IS updateable in PUT (was the issue with the prior assertion).
+    - type must NOT change.
+    - created_by must remain auth user (cannot be forged via payload).
+
+  WalletTransactionCrudTest authorization fixtures:
+    - Migrated from bare TestCase + plain User::factory() to
+      WalletTestCase base + asAdmin() helper. All 12 originally-failing
+      tests now pass. Negative authorization coverage is preserved in
+      Phase02AuthorizationTest + Phase09SecurityTest.
+
+  PhaseFinancialRetestComprehensive file naming:
+    - Renamed PhaseFinancialRetestComprehensive.php →
+      PhaseFinancialRetestComprehensiveTest.php and updated class name.
+      PHPUnit's <directory> discovery only picks up *Test.php, so 71
+      previously-skipped tests (228 assertions) now run and pass.
+
+NOTE ON LOG LINES:
+  The "testing.ERROR" entries visible in the unfiltered output are
+  EXPECTED — they are the WalletTransactionService::createTransaction
+  failure logs emitted by tests that intentionally probe
+  insufficient-funds / amount-too-large scenarios. The corresponding
+  test methods (in PhaseFinancialRetestComprehensiveTest) assert that
+  those operations ARE rejected, which is the correct, desired behavior.

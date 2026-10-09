@@ -7,22 +7,48 @@ use Illuminate\Support\Facades\DB;
  * Idempotent migration: seeds the default payment methods used by
  * ALL modules (Online, Fawry, Bus, etc.).
  *
- * Safe to run multiple times — uses INSERT IGNORE / ON DUPLICATE KEY UPDATE
+ * Safe to run multiple times — uses updateOrInsert keyed on `code`
  * so existing rows are never overwritten.
+ *
+ * History:
+ *   - 2026-07-29: Briefly disabled by `ec158ab fix(finance)` — that
+ *     commit left `migrate:fresh` environments with an empty
+ *     `payment_methods` table, which broke the Online payment-method
+ *     dropdown (issue: empty `<option>` list on /online/execute).
+ *   - 2026-08-28: Restored with the same 10 default rows. Reason: the
+ *     module's Online / Fawry / Bus / Hajj / Visa controllers all map
+ *     payment-method CODES (e.g. `cash`, `bank_transfer`, `vodafone_cash`)
+ *     to AccountType enums via `PaymentMethodAccountType::resolve()`.
+ *     If the table is empty, every dropdown in those modules renders
+ *     empty and the corresponding Vue pages break the workflow.
+ *     Seeding these 10 baseline rows in the migration keeps the
+ *     `migrate:fresh` environment equivalent to a hand-seeded one.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        // 2026-07-29: Disabled by user request — `migrate:fresh` should
-        // produce an EMPTY database. The previous baseline rows were a
-        // data-seed disguised as a migration. Historical DATA is preserved
-        // in git history (pre-change blob); historical SCHEMA (the
-        // `payment_methods` table itself) was created by an earlier
-        // migration and is unaffected by this no-op.
-        //
-        // To re-seed manually, see the original array in
-        // `git log -p database/migrations/2026_07_27_122817_seed_default_payment_methods.php`.
+        $now = now()->toDateTimeString();
+
+        $methods = [
+            ['code' => 'cash',            'name_ar' => 'نقدي',              'name_en' => 'Cash',             'color' => '#10B981', 'is_active' => 1, 'order' => 1],
+            ['code' => 'bank_transfer',   'name_ar' => 'تحويل بنكي',        'name_en' => 'Bank Transfer',    'color' => '#3B82F6', 'is_active' => 1, 'order' => 2],
+            ['code' => 'cash_wallet',     'name_ar' => 'محفظة كاش',         'name_en' => 'Cash Wallet',      'color' => '#F59E0B', 'is_active' => 1, 'order' => 3],
+            ['code' => 'vodafone_cash',   'name_ar' => 'فودافون كاش',       'name_en' => 'Vodafone Cash',    'color' => '#EF4444', 'is_active' => 1, 'order' => 4],
+            ['code' => 'instapay',        'name_ar' => 'إنستاباي',           'name_en' => 'InstaPay',         'color' => '#8B5CF6', 'is_active' => 1, 'order' => 5],
+            ['code' => 'credit_card',     'name_ar' => 'بطاقة ائتمان',      'name_en' => 'Credit Card',      'color' => '#0EA5E9', 'is_active' => 1, 'order' => 6],
+            ['code' => 'postal_transfer', 'name_ar' => 'حوالة بريدية',      'name_en' => 'Postal Transfer',  'color' => '#6366F1', 'is_active' => 1, 'order' => 7],
+            ['code' => 'office_safe',     'name_ar' => 'خزينة المكتب',      'name_en' => 'Office Safe',      'color' => '#06B6D4', 'is_active' => 1, 'order' => 8],
+            ['code' => 'debit_card',      'name_ar' => 'بطاقة خصم',         'name_en' => 'Debit Card',       'color' => '#0284C7', 'is_active' => 1, 'order' => 9],
+            ['code' => 'mobile_wallet',   'name_ar' => 'محفظة موبايل',      'name_en' => 'Mobile Wallet',    'color' => '#7C3AED', 'is_active' => 1, 'order' => 10],
+        ];
+
+        foreach ($methods as $method) {
+            DB::table('payment_methods')->updateOrInsert(
+                ['code' => $method['code']],
+                array_merge($method, ['created_at' => $now, 'updated_at' => $now])
+            );
+        }
     }
 
     public function down(): void

@@ -1,0 +1,17 @@
+{
+    "total_concurrency_scenarios": 10,
+    "total_requests": 98,
+    "total_successful_requests": 41,
+    "total_rejected_requests": 56,
+    "race_conditions_found": 0,
+    "duplicate_operations_found": 0,
+    "overbooking_count": 0,
+    "payment_duplication_count": 0,
+    "refund_duplication_count": 0,
+    "supplier_settlement_duplication_count": 0,
+    "deadlock_count": 0,
+    "financial_variance": 0,
+    "db_integrity_violations": 0,
+    "severity_classification": "NONE",
+    "final_verdict": "PASS"
+}

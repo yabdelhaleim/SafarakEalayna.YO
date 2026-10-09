@@ -29,18 +29,27 @@ class WalletTransactionCrudTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        // Post-2026-08-30: deny-by-default permission system requires
+        // either an admin role or explicit `permissions` for
+        // wallet.create / wallet.view. Use admin so CRUD endpoints
+        // (POST/GET/PUT/DELETE) reach the controller instead of 403ing
+        // at the permission middleware.
+        $this->user = User::factory()->create([
+            'role' => 'admin',
+        ]);
 
         $this->walletAccount = Account::factory()->create([
             'type' => AccountType::Wallet->value,
             'balance' => 10000,
             'name' => 'فودافون كاش - الوكالة',
+            'is_active' => true,
         ]);
 
         $this->cashAccount = Account::factory()->create([
             'type' => AccountType::Cashbox->value,
             'balance' => 5000,
             'name' => 'خزينة رئيسية',
+            'is_active' => true,
         ]);
 
         $this->customer = Customer::factory()->create([
@@ -111,7 +120,13 @@ class WalletTransactionCrudTest extends TestCase
 
     public function test_send_updates_accounts_correctly(): void
     {
+        // WLT-FEE-LEG-REG (2026-09-03): pin amount_paid=0 to lock in the
+        // "send WITHOUT settlement" path. Under the new SEND behavior:
+        //   - wallet debited by `amount` only (500)
+        //   - customer's account credited by `amount` only (500)
+        //   - cashbox GAINS `fee` (10) — agency commission income at creation
         $payload = $this->sendPayload(amount: 500, fee: 10);
+        $payload['amount_paid'] = 0.00;
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/wallet/transactions', $payload);
@@ -122,10 +137,11 @@ class WalletTransactionCrudTest extends TestCase
             'balance' => 10000 - 500,
         ]);
 
-        // cash balance increases by amount+fee (510)
+        // WLT-FEE-LEG-REG: cashbox gains `fee` (10) as agency commission income,
+        // even without settlement (amount_paid=0). The fee is recognized at creation.
         $this->assertDatabaseHas('accounts', [
             'id' => $this->cashAccount->id,
-            'balance' => 5000 + 510,
+            'balance' => 5000 + 10,
         ]);
     }
 

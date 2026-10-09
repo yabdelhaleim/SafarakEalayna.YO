@@ -1,0 +1,23 @@
+{
+    "timestamp": "2026-08-15 14:23:30",
+    "environment": "local",
+    "database": "safarakealayna",
+    "counts": {
+        "bus_companies": 47,
+        "bus_inventories": 74,
+        "bus_bookings": 476,
+        "bus_payments": 37,
+        "bus_company_payments": 3,
+        "bus_refund_requests": 12,
+        "accounts": 537,
+        "account_entries": 2322,
+        "treasury_transactions": 0
+    },
+    "financial_sums": {
+        "booking_total": 24110,
+        "booking_paid": 7230,
+        "payments_sum": 7230,
+        "company_payments_sum": 900,
+        "refunds_sum": 1380
+    }
+}

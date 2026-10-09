@@ -45,7 +45,10 @@ class OnlineWalletResource extends Resource
     {
         return parent::getEloquentQuery()
             ->where('type', AccountType::Wallet->value)
-            ->where('module_type', 'online');
+            ->where(function (Builder $q): void {
+                $q->where('module', 'online')
+                    ->orWhere('module_type', 'online');
+            });
     }
 
     public static function form(Schema $schema): Schema

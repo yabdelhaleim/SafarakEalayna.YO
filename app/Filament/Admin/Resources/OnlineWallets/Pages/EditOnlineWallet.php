@@ -13,7 +13,8 @@ class EditOnlineWallet extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $data['type'] = AccountType::Wallet->value;
-        $data['module_type'] = 'online';
+        $data['module_type'] = 'office';
+        $data['module'] = 'online';
 
         return $data;
     }

@@ -4,6 +4,7 @@ namespace App\Services\Wallet;
 
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Enums\WalletTransactionType;
 use App\Models\Account;
 use App\Models\AuditLog;
@@ -14,6 +15,7 @@ use App\Models\Wallet\WalletType;
 use App\Services\Finance\DeferredTransactionDeletionGuard;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -76,16 +78,173 @@ class WalletTransactionService
         return $query->orderBy('created_at', 'desc')->paginate($perPage);
     }
 
+    /**
+     * Normalize a monetary value to the canonical 2-decimal half-up precision.
+     *
+     * FINDING D-V2-009 (P2, MEDIUM) REMEDIATION (2026-08-26):
+     * Pre-fix, raw 3-decimal inputs (e.g. 100.005) reached three different
+     * layers with three different representations:
+     *   - wallet_transactions.amount stored as 100.01 (decimal:2 cast rounds)
+     *   - account_entries.debit stored as 100.005 (raw value posted)
+     *   - accounts.balance derived from balance_after = 9900.00
+     * This created a split-brain where reports aggregating WT.amount disagreed
+     * with reports aggregating account_entries.
+     *
+     * Post-fix: every monetary value MUST be normalized to 2-decimal
+     * half-up precision at the service layer BEFORE it touches:
+     *   - WalletTransaction::create() / ->amount / ->service_fee / ->total_amount
+     *   - TransactionService::recordIncome() / recordExpense() / recordJournalTransfer()
+     *   - AccountEntry::create() debit/credit fields
+     *   - Account::balance mutation
+     *
+     * After normalization, 100.005 → 100.01 EVERYWHERE. One canonical value.
+     *
+     * Implementation uses bcmath (PHP_INT_MAX-safe) with a half-away-from-zero
+     * offset of 0.005, identical to tests/Feature/Wallet/Support/Decimal::round().
+     */
+    public static function normalizeAmount(int|float|string $value): float
+    {
+        $value = (string) $value;
+        if ($value === '' || $value === null) {
+            return 0.00;
+        }
+        $negative = str_starts_with($value, '-');
+        $abs = $negative ? substr($value, 1) : $value;
+        // bcadd 0.005 to round-half-away-from-zero at 2 decimals.
+        $rounded = bcadd($abs, '0.005', 2);
+
+        return (float) ($negative && $rounded !== '0' && ! str_contains($rounded, '-')
+            ? '-' . $rounded
+            : $rounded);
+    }
+
     public function createTransaction(array $data): WalletTransaction
     {
+        // ─────────────────────────────────────────────────────────────────
+        // IDM-1 REMEDIATION (2026-08-20) — replay protection for wallet
+        // transactions. Mirrors the established Hajj/Umra, Flight, Visa,
+        // and Bus idempotency pattern.
+        //
+        //   Identity:    (created_by, idempotency_key)
+        //   Stored on:   wallet_transactions.idempotency_key  (nullable, 100 chars)
+        //   Enforced:    UNIQUE index `wt_idem_uniq` (migration 2026_08_20_120000)
+        //
+        //   Layered protection:
+        //     1. Pre-check inside DB::transaction: SELECT existing WalletTransaction
+        //        with same (created_by, idempotency_key). If found and not
+        //        soft-deleted → return it as idempotent_replay=true. The caller
+        //        (controller) maps this to HTTP 200 + body flag.
+        //     2. DB-level UNIQUE constraint (the migration). Even if two
+        //        callers bypass the pre-check (race, buggy client, raw SQL),
+        //        the INSERT will fail with SQLSTATE 23000 / MySQL code 1062.
+        //        The catch below re-queries and returns the existing row
+        //        idempotently.
+        //     3. Soft-deleted rows are NOT treated as replay blockers.
+        //        A soft-deleted row has a non-null `deleted_at`; the
+        //        pre-check filters them out so a fresh INSERT is allowed.
+        //
+        //   Backward compat: when `idempotency_key` is null/empty, no
+        //   protection is applied. Legacy callers keep their existing
+        //   behavior — no checkpoints, no errors.
+        // ─────────────────────────────────────────────────────────────────
+        $idempotencyKey = isset($data['idempotency_key']) && $data['idempotency_key'] !== ''
+            ? (string) $data['idempotency_key']
+            : null;
+        // Resolve the principal (created_by) so the (created_by, key)
+        // scope is consistent with the UNIQUE index. Auth::id() is the
+        // authenticated user; fall back to the request-supplied value
+        // when called from a non-HTTP context (e.g. jobs, tests).
+        $createdByForIdem = (int) (Auth::id() ?? ($data['created_by'] ?? 1));
+
         try {
-            return DB::transaction(function () use ($data) {
+            return DB::transaction(function () use ($data, $idempotencyKey, $createdByForIdem) {
+                // Layer 1 — pre-check. If a non-soft-deleted row with the
+                // same (created_by, idempotency_key) exists, return it
+                // immediately. No new WalletTransaction, no new ledger
+                // entries, no new audit log. The transient `idempotent_replay`
+                // flag is read by the controller to return HTTP 200.
+                if ($idempotencyKey !== null) {
+                    $existing = WalletTransaction::query()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        // Soft-delete-aware: only ACTIVE rows block a replay.
+                        ->whereNull('deleted_at')
+                        ->first();
+                    if ($existing) {
+                        $existing->idempotent_replay = true;
+
+                        return $existing;
+                    }
+
+                    // Soft-deleted row with the same key: release the key
+                    // so the new INSERT can succeed. The UNIQUE constraint
+                    // (created_by, idempotency_key) does NOT distinguish
+                    // soft-deleted rows from active ones, so a fresh
+                    // INSERT would collide without this NULL-out. The
+                    // soft-deleted row keeps its `deleted_at` for audit;
+                    // only the idempotency_key is cleared.
+                    //
+                    // IMPORTANT: use `withTrashed()` because the default
+                    // SoftDeletes global scope HIDES soft-deleted rows
+                    // from `query()`. Without it, the UPDATE silently
+                    // matches 0 rows and the INSERT collides downstream.
+                    //
+                    // This is safe inside the DB transaction: if the new
+                    // INSERT/INSERT fails for any reason, the
+                    // soft-delete's key-revoke rolls back along with
+                    // everything else.
+                    WalletTransaction::withTrashed()
+                        ->where('created_by', $createdByForIdem)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->whereNotNull('deleted_at')
+                        ->update(['idempotency_key' => null]);
+                }
+
                 $rawType = $data['type'];
                 $type = $rawType instanceof WalletTransactionType
                     ? $rawType
                     : WalletTransactionType::from((string) $rawType);
-                $amount = (float) $data['amount'];
-                $fee = (float) ($data['service_fee'] ?? 0);
+                // D-V2-009: normalize to 2-decimal precision BEFORE any further
+                // arithmetic or storage. Same canonical value used everywhere downstream.
+                $amount = self::normalizeAmount($data['amount']);
+                $fee = self::normalizeAmount($data['service_fee'] ?? 0);
+
+                // FINDING CONC-1 (HIGH) REMEDIATED (2026-08-21):
+                // Pre-fix: `WalletTransaction::create()` ran BEFORE any row
+                // lock was acquired. A burst of concurrent sends could each
+                // create their WT row, then queue for the lock inside
+                // `recordIncome/recordExpense`. The lock prevented double-spend
+                // on the balance check, but WT row count could rise above the
+                // count of successful transactions (phantom WT rows on
+                // failed-overdraft attempts).
+                //
+                // Post-fix: acquire `lockForUpdate()` on the wallet_account_id
+                // row BEFORE the WT insert. This is the canonical
+                // serialization point: any concurrent send targeting the same
+                // wallet_account_id will queue here, see the latest balance,
+                // and either succeed or fail cleanly. The lock is held until
+                // the DB::transaction commits, after the journal legs have
+                // also locked the same row (lockForUpdate is re-entrant for
+                // the same connection). On rollback, the lock is released.
+                //
+                // Note: `recordJournalTransfer` ALSO locks the from/to accounts
+                // (lines 691-696) — that's defense in depth, not redundant.
+                // It guards the journal-specific path; this guard protects
+                // the WT insert path.
+                $walletAccountId = (int) $data['wallet_account_id'];
+                $cashAccountId = (int) $data['cash_account_id'];
+                if ($walletAccountId > 0) {
+                    Account::query()
+                        ->where('id', $walletAccountId)
+                        ->lockForUpdate()
+                        ->first();
+                }
+                if ($cashAccountId > 0 && $cashAccountId !== $walletAccountId) {
+                    Account::query()
+                        ->where('id', $cashAccountId)
+                        ->lockForUpdate()
+                        ->first();
+                }
 
                 // total_amount: للИслаرسال العميل يدفع amount+fee، للاستقبال يأخذ amount-fee
                 $totalAmount = match ($type) {
@@ -102,33 +261,80 @@ class WalletTransactionService
                 }
                 $walletTypeName = WalletType::find($data['wallet_type_id'])?->name ?? '';
                 $createdBy = Auth::id() ?? ($data['created_by'] ?? 1);
-                $amountPaid = isset($data['amount_paid']) ? (float) $data['amount_paid'] : $totalAmount;
-                $record = WalletTransaction::create([
-                    'wallet_type_id' => $data['wallet_type_id'],
-                    'customer_id' => $data['customer_id'] ?? null,
-                    'customer_name' => $customerName,
-                    'wallet_number' => $data['wallet_number'],
-                    'type' => $type->value,
-                    'amount' => $amount,
-                    'service_fee' => $fee,
-                    'total_amount' => $totalAmount,
-                    'amount_paid' => $amountPaid,
-                    'wallet_account_id' => $data['wallet_account_id'],
-                    'cash_account_id' => $data['cash_account_id'],
-                    'employee_id' => $data['employee_id'] ?? null,
-                    'created_by' => $createdBy,
-                    'notes' => $data['notes'] ?? null,
-                ]);
+                // D-V2-009: normalize amount_paid for consistency.
+                $amountPaid = isset($data['amount_paid'])
+                    ? self::normalizeAmount($data['amount_paid'])
+                    : $totalAmount;
+
+                // Layer 2 — INSERT. The DB UNIQUE constraint is the final
+                // backstop. If two concurrent calls bypassed the pre-check
+                // (e.g. lock acquisition failed), the second INSERT will
+                // fail with SQLSTATE 23000 / MySQL code 1062. The catch
+                // block below converts that to an idempotent return.
+                try {
+                    $record = WalletTransaction::create([
+                        'wallet_type_id' => $data['wallet_type_id'],
+                        'customer_id' => $data['customer_id'] ?? null,
+                        'customer_name' => $customerName,
+                        'wallet_number' => $data['wallet_number'],
+                        'type' => $type->value,
+                        'amount' => $amount,
+                        'service_fee' => $fee,
+                        'total_amount' => $totalAmount,
+                        'amount_paid' => $amountPaid,
+                        'wallet_account_id' => $data['wallet_account_id'],
+                        'cash_account_id' => $data['cash_account_id'],
+                        // WLT-1 (2026-09-02): optional receive-only
+                        // destination override. Persisted verbatim;
+                        // semantics are enforced in postMainReceivePair()
+                        // and postSettlementReceive().
+                        'receive_destination_account_id' => $type === WalletTransactionType::Receive
+                            ? ($data['receive_destination_account_id'] ?? null)
+                            : null,
+                        'employee_id' => $data['employee_id'] ?? null,
+                        'created_by' => $createdBy,
+                        'notes' => $data['notes'] ?? null,
+                        'idempotency_key' => $idempotencyKey,
+                    ]);
+                } catch (QueryException $qe) {
+                    // Layer 2 catch — DB UNIQUE backstop.
+                    if ($this->isDuplicateKeyError($qe) && $idempotencyKey !== null) {
+                        // The pre-check passed but the INSERT still tripped
+                        // the UNIQUE. Another call must have created the row
+                        // between SELECT and INSERT. Re-query and return the
+                        // now-existing row as idempotent_replay.
+                        $existing = WalletTransaction::query()
+                            ->where('created_by', $createdByForIdem)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->whereNull('deleted_at')
+                            ->first();
+                        if ($existing) {
+                            $existing->idempotent_replay = true;
+
+                            return $existing;
+                        }
+                    }
+                    // Not a duplicate-key error, or the row isn't visible
+                    // for some reason — rethrow so the outer catch logs it.
+                    throw $qe;
+                }
+
                 // Wrap in try/catch(Throwable) to surface inner exceptions clearly.
                 // Outer try only catches \Exception, but accountForSend/accountForReceive
                 // may throw \TypeError or \Error which silently bypass the catch.
                 try {
+                    // WLT-1 (2026-09-02): re-read the record so the freshly-
+                    // persisted `receive_destination_account_id` is visible
+                    // to the helper methods (the in-memory $record instance
+                    // is the original INSERT result and does NOT auto-reflect
+                    // the columns we wrote into the same call).
+                    $fresh = $record->fresh();
                     [$incomeTransaction, $expenseTransaction] = match ($type) {
                         WalletTransactionType::Send => $this->accountForSend(
-                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                            $fresh, $amount, $fee, $walletTypeName, $customerName, $createdBy
                         ),
                         WalletTransactionType::Receive => $this->accountForReceive(
-                            $record, $amount, $fee, $walletTypeName, $customerName, $createdBy
+                            $fresh, $amount, $fee, $walletTypeName, $customerName, $createdBy
                         ),
                     };
                 } catch (\Throwable $inner) {
@@ -145,6 +351,7 @@ class WalletTransactionService
                     'service_fee' => $fee,
                     'customer_name' => $customerName,
                     'created_by' => $createdBy,
+                    'idempotency_key' => $idempotencyKey,
                 ]);
 
                 // ── Audit log ─────────────────────────────────────────────
@@ -160,6 +367,7 @@ class WalletTransactionService
 
                 return $record->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'receiveDestinationAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
                 ]);
             });
@@ -171,6 +379,26 @@ class WalletTransactionService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Identify a "duplicate entry on unique index" QueryException.
+     * MySQL: SQLSTATE 23000, error code 1062.
+     * SQLite: SQLSTATE 23000 (canonical SQL state).
+     * PostgreSQL: SQLSTATE 23000.
+     *
+     * Mirrors the same helper in HajjUmraBookingService, VisaBookingService,
+     * and FlightBookingService to keep the project-wide convention.
+     */
+    private function isDuplicateKeyError(QueryException $qe): bool
+    {
+        $sqlState = (string) ($qe->errorInfo[0] ?? '');
+        if ($sqlState === '23000') {
+            return true;
+        }
+        $code = (int) ($qe->errorInfo[1] ?? 0);
+
+        return $code === 1062;
     }
 
     public function updateTransaction(WalletTransaction $transaction, array $data): WalletTransaction
@@ -194,23 +422,39 @@ class WalletTransactionService
                     && (int) $data['wallet_account_id'] !== (int) $transaction->wallet_account_id;
                 $cashAccountChanged = array_key_exists('cash_account_id', $data)
                     && (int) $data['cash_account_id'] !== (int) $transaction->cash_account_id;
+                // WLT-1 (2026-09-02): the receive-destination override moves
+                // the Expense leg between accounts — must trigger a ledger
+                // repost so the old leg is reversed and the new leg is posted
+                // against the new destination account.
+                $receiveDestinationChanged = array_key_exists('receive_destination_account_id', $data)
+                    && (int) ($data['receive_destination_account_id'] ?? 0) !== (int) ($transaction->receive_destination_account_id ?? 0);
 
                 $amountOrFeeChanged = $amountChanged || $serviceFeeChanged;
                 $anyLedgerAffectingChange = $amountOrFeeChanged || $amountPaidChanged
-                    || $walletAccountChanged || $cashAccountChanged;
+                    || $walletAccountChanged || $cashAccountChanged
+                    || $receiveDestinationChanged;
 
                 // Compute the new totals BEFORE the model update so we can
                 // re-derive total_amount (Send: amount+fee, Receive: amount-fee).
                 if ($amountOrFeeChanged) {
-                    $newAmount = (float) ($data['amount'] ?? $transaction->amount);
-                    $newFee = (float) ($data['service_fee'] ?? $transaction->service_fee);
+                    // D-V2-009: normalize amount + fee to 2-decimal precision
+                    // BEFORE re-deriving total_amount. The total must use the
+                    // canonical 2-decimal values.
+                    $newAmount = self::normalizeAmount($data['amount'] ?? $transaction->amount);
+                    $newFee = self::normalizeAmount($data['service_fee'] ?? $transaction->service_fee);
                     $type = $transaction->type instanceof WalletTransactionType
                         ? $transaction->type
                         : WalletTransactionType::from((string) $transaction->type);
+                    $data['amount'] = $newAmount;
+                    $data['service_fee'] = $newFee;
                     $data['total_amount'] = match ($type) {
-                        WalletTransactionType::Send => $newAmount + $newFee,
-                        WalletTransactionType::Receive => $newAmount - $newFee,
+                        WalletTransactionType::Send => self::normalizeAmount($newAmount + $newFee),
+                        WalletTransactionType::Receive => self::normalizeAmount($newAmount - $newFee),
                     };
+                }
+                // D-V2-009: normalize amount_paid if supplied.
+                if (array_key_exists('amount_paid', $data) && $data['amount_paid'] !== null) {
+                    $data['amount_paid'] = self::normalizeAmount($data['amount_paid']);
                 }
                 $transaction->update($data);
                 // ACCOUNTING INTEGRITY (Phase 9 fix — same pattern as
@@ -244,6 +488,7 @@ class WalletTransactionService
 
                 return $transaction->fresh([
                     'walletType', 'customer', 'walletAccount', 'cashAccount',
+                    'receiveDestinationAccount',
                     'employee', 'createdBy', 'incomeTransaction', 'expenseTransaction',
                 ]);
             });
@@ -334,8 +579,8 @@ class WalletTransactionService
             ? $transaction->type
             : WalletTransactionType::from((string) $transaction->type);
 
-        $amount = (float) $transaction->amount;
-        $fee = (float) $transaction->service_fee;
+        $amount = self::normalizeAmount($transaction->amount);
+        $fee = self::normalizeAmount($transaction->service_fee);
 
         $walletTypeName = $transaction->walletType?->name ?? '';
         $customerName = $transaction->customer_name ?: '—';
@@ -392,7 +637,8 @@ class WalletTransactionService
             : WalletTransactionType::from((string) $transaction->type);
 
         // For both Send and Receive, the settlement involves the cash
-        // account and the customer account. The pair uniquely identifies
+        // account and the customer account (or the destination override
+        // account, when WLT-1 was used). The pair uniquely identifies
         // the settlement row (the main income/expense use wallet_account
         // or customer_account alone, never cash+customer together).
         //
@@ -406,14 +652,30 @@ class WalletTransactionService
         // reversals are excluded by `notes NOT LIKE 'عكس%'` so the
         // chain of "reverse of reverse of reverse" does not pollute
         // the match.
+        //
+        // WLT-1 (2026-09-02): the settlement may have been posted with
+        // either the customer_account or the receive_destination_account_id
+        // as the contra side. We match BOTH pairs so the right settlement
+        // is reversed regardless of which destination was used originally.
+        $destinationOverride = (int) ($transaction->receive_destination_account_id ?? 0) ?: null;
+        $settlementContraId = $destinationOverride ?: $customerAccount->id;
+
         $settlement = Transaction::where('related_type', WalletTransaction::class)
             ->where('related_id', $transaction->id)
-            ->where(function ($q) use ($transaction, $customerAccount) {
+            ->where(function ($q) use ($transaction, $customerAccount, $settlementContraId) {
                 $q->where(function ($sub) use ($transaction, $customerAccount) {
+                    // Legacy pair: cash_account ↔ customer_account
                     $sub->where('from_account_id', $transaction->cash_account_id)
                         ->where('to_account_id', $customerAccount->id);
                 })->orWhere(function ($sub) use ($transaction, $customerAccount) {
                     $sub->where('from_account_id', $customerAccount->id)
+                        ->where('to_account_id', $transaction->cash_account_id);
+                })->orWhere(function ($sub) use ($transaction, $settlementContraId) {
+                    // WLT-1 pair: cash_account ↔ destination override
+                    $sub->where('from_account_id', $transaction->cash_account_id)
+                        ->where('to_account_id', $settlementContraId);
+                })->orWhere(function ($sub) use ($transaction, $settlementContraId) {
+                    $sub->where('from_account_id', $settlementContraId)
                         ->where('to_account_id', $transaction->cash_account_id);
                 });
             })
@@ -433,41 +695,59 @@ class WalletTransactionService
             $this->transactionService->reverseTransaction($settlement);
         }
 
-        $amountPaid = (float) $transaction->amount_paid;
-        if ($amountPaid < 0.001) {
-            return;
-        }
+        $amountPaid = self::normalizeAmount($transaction->amount_paid);
 
         $walletTypeName = $transaction->walletType?->name ?? '';
         $customerName = $transaction->customer_name ?: '—';
         $createdBy = $transaction->created_by ?? Auth::id() ?? 1;
 
-        // Re-emit the same settlement entry that the original
-        // accountForSend / accountForReceive would have posted.
+        // WLT-FEE-LEG-REG (2026-09-03): متسق مع postSettlementSend() — التسوية
+        // بتسدد الـ principal فقط للـ SEND (العمولة بقيد دخل منفصل).
+        // للـ RECEIVE التسوية بتسدد كامل amount_paid لأن طبيعة العملية مختلفة
+        // (الـ cash رايح للعميل مباشرة كدفعة من قيمة الاستقبال).
         if ($type === WalletTransactionType::Send) {
-            $this->transactionService->recordIncome([
-                'amount' => $amountPaid,
+            $principal = self::normalizeAmount((float) $transaction->amount);
+            $settlementAmount = min($amountPaid, $principal);
+            if ($settlementAmount < 0.005) {
+                return;
+            }
+            $this->transactionService->recordJournalTransfer([
+                'amount' => $settlementAmount,
+                'from_account_id' => $customerAccount->id,
                 'to_account_id' => $transaction->cash_account_id,
-                'contra_account_id' => $customerAccount->id,
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $transaction->id,
-                'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
+                'type' => TransactionType::Transfer->value,
+                'notes' => "إعادة تسجيل دفعة نقدية مسددة من العميل بقيمة {$settlementAmount} — {$walletTypeName} - {$customerName}",
                 'created_by' => $createdBy,
+                'currency' => $transaction->walletAccount?->currency,
             ]);
-        } else {
-            // Receive
-            $this->transactionService->recordExpense([
-                'amount' => $amountPaid,
-                'from_account_id' => $transaction->cash_account_id,
-                'contra_account_id' => $customerAccount->id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $transaction->id,
-                'notes' => "إعادة تسجيل دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}",
-                'created_by' => $createdBy,
-            ]);
+            return;
         }
+
+        // Receive branch — unchanged: full amount_paid moves from cashbox to customer/destination.
+        if ($amountPaid < 0.001) {
+            return;
+        }
+
+        // Receive — WLT-1: contra side may be the destination override
+        // or the legacy customer account.
+        $contraNotes = $destinationOverride
+            ? "إعادة تسجيل دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}"
+            : "دفعة نقدية مسددة للعميل بقيمة {$amountPaid} — {$walletTypeName} - {$customerName}";
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $amountPaid,
+            'from_account_id' => $transaction->cash_account_id,
+            'to_account_id' => $settlementContraId,
+            'module' => TransactionModule::Wallet->value,
+            'related_type' => WalletTransaction::class,
+            'related_id' => $transaction->id,
+            'type' => TransactionType::Transfer->value,
+            'notes' => $contraNotes,
+            'created_by' => $createdBy,
+            'currency' => $transaction->walletAccount?->currency,
+        ]);
     }
 
     /**
@@ -513,62 +793,161 @@ class WalletTransactionService
         string $customerName,
         int $createdBy
     ): array {
-        $totalAmount = $amount + $fee;
-
+        // FIX (2026-08-30) + WLT-FEE-LEG (2026-09-03):
+        //
+        // SEND must debit ONLY the wallet provider account by `amount`
+        // (NOT amount+fee) — the wallet provider debits the sender's wallet
+        // by the principal amount only. The fee is the agency's commission
+        // and surfaces in cash / P&L according to whether the customer
+        // is registered:
+        //
+        //   - registered customer: wallet → customer_account بـ amount فقط
+        //     (مديونية على العميل). الـ fees بتدخل الخزنة في
+        //     postSettlementSend() لما العميل يدفع الـ amount_paid (totalAmount)
+        //     نقدياً — الخزنة بتزيد بـ 60 كاملة.
+        //
+        //   - anonymous walk-in:   wallet → cash_account بـ `amount` فقط
+        //     (50) + income leg منفصل للرسوم (`fee`) على نفس الخزنة. ده
+        //     بيعمل correct double-entry: cash +50 من transfer + cash +10
+        //     من income = cash +60 إجمالي. الـ fees بتدخل الخزنة فوراً
+        //     كعمولة للوكالة (revenue).
+        //
+        // الـ WT row بيحتفظ بـ service_fee / total_amount / amount_paid
+        // كـ audit metadata، لكن الـ ledger legs دايماً بتتطابق مع الـ cash
+        // flow الفعلي (قبل WLT-FEE-LEG: الـ fees كانت «phantom» — موجودة
+        // في الـ WT بس مش بتتحرك في الحسابات، يعني كان في فرق بين
+        // الـ treasury summary والـ WT summary).
         if ($record->customer_id) {
             $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-            $income = $this->transactionService->recordIncome([
-                'amount' => $totalAmount,
-                'to_account_id' => $customerAccount->id,
+            // WLT-FEE-LEG-REG (2026-09-03):
+            // العميل المسجّل: wallet → customerAccount بـ amount (المبلغ الأصلي فقط).
+            // العمولة (fee) تتسجل كـ income leg منفصل على الخزنة (تحت).
+            // الـ settlement بعدها بيسدد الـ principal فقط من العميل للخزنة — ده
+            // بيخلي رصيد العميل = 0 بعد السداد الكامل، بدل ما كان -fee.
+            $transfer = $this->transactionService->recordJournalTransfer([
+                'amount' => $amount,                                // المبلغ فقط — الرسوم بقيد دخل منفصل
+                'from_account_id' => $record->wallet_account_id,    // المحفظة (يخصم منها)
+                'to_account_id' => $customerAccount->id,            // حساب العميل (مديونية تزيد)
+                'allow_from_negative' => true,                      // allow negative on prepaid wallets
                 'module' => TransactionModule::Wallet->value,
                 'related_type' => WalletTransaction::class,
                 'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: مديونية إرسال رصيد بقيمة {$amount} + رسوم {$fee}",
+                'type' => TransactionType::Transfer->value,
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للعميل (تسوية العميل لاحقاً)",
                 'created_by' => $createdBy,
+                'currency' => $record->walletAccount?->currency,
             ]);
 
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $amount,
-                'from_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم رصيد بقيمة {$amount} من المحفظة",
-                'created_by' => $createdBy,
-            ]);
+            // WLT-FEE-LEG-REG (2026-09-03): agency commission income leg.
+            // العمولة بتدخل الخزنة كدخل منفصل وقت إنشاء العملية (نفس نمط
+            // anonymous walk-in path في الأسطر 873-884). متسق مع ما يفعله
+            // الموظف في الـ Phase 9 financial retest للعملاء غير المسجلين.
+            $feeIncome = null;
+            if ($fee >= 0.005) {
+                $feeIncome = $this->transactionService->recordIncome([
+                    'amount' => $fee,
+                    'to_account_id' => $record->cash_account_id,
+                    'module' => TransactionModule::Wallet->value,
+                    'related_type' => WalletTransaction::class,
+                    'related_id' => $record->id,
+                    'notes' => "إرسال {$walletTypeName} - {$customerName}: رسوم خدمة {$fee} (عمولة الوكالة)",
+                    'created_by' => $createdBy,
+                    // WLT-FX-1 (2026-09-03): تمرير عملة المحفظة. بدونها الـ
+                    // incomeContraIdForModuleAndCurrency() بيوقع على حساب
+                    // الإقفال بالـ EGP افتراضياً، بيكسر الـ multi-currency.
+                    'currency' => $record->walletAccount?->currency,
+                ]);
+            }
 
-            return [$income, $expense];
+            // الـ returned tuple بيمشي مع signed contract بتاع الـ caller:
+            //   - first  = income_transaction_id (الـ feeIncome لو فيه fees، وإلا الـ mainTransfer)
+            //   - second = expense_transaction_id (الـ mainTransfer — wallet debit للعميل)
+            return [$feeIncome ?? $transfer, $transfer];
         }
 
-        // Anonymous customer (نقدي فوري): no settlement, no customer account
-        $income = $this->transactionService->recordIncome([
-            'amount' => $totalAmount,
-            'to_account_id' => $record->cash_account_id,
+        // Anonymous customer (نقدي فوري): المحفظة → الخزنة بـ المبلغ الأصلي فقط،
+// والرسوم تتسجل كـ income leg منفصل على نفس الخزنة.
+        //
+        // WLT-FEE-LEG (2026-09-03) — إصلاح فقدان الرسوم في الـ ledger.
+        // قبل الإصلاح: الـ cash كانت بتزيد بـ `amount` فقط (50). الـ 10 رسومات
+        // كانت بتتسجل في الـ WT row كـ service_fee بس مفيش ledger leg ليها —
+        // يعني بتضيع من دفاتر الوكالة (phantom — موجود في الـ WT بس مش في الحسابات).
+        //
+        // بعد الإصلاح: الحساب الفعلي يكون correct double-entry:
+        //   1. main_transfer: wallet → cash بـ `amount` (50)
+        //      - الـ wallet provider (vodafone) رصيدها ينقص 50 (اللي اتخصم من العميل)
+        //      - الخزنة تزيد 50
+        //   2. fee_income:   revenue → cash بـ `fee` (10)
+        //      - الخزنة تزيد 10 (دخل الرسوم اللي العميل دفعها للوكالة)
+        //
+        // النتيجة الإجمالية: wallet -50، cash +60، revenue +10 (دخل الرسوم).
+        // ده متسق مع registered customer path:
+        //   - wallet -50 (main transfer لمديونية العميل)
+        //   - cash +60 (settlement من العميل: الـ 50 للمدفوع + الـ 10 للرسوم)
+        //
+        // أمثلة على الأثر في الميزانية:
+        //   - 50 + 10 رسوم: wallet ينقص 50، cash يزيد 60 (10 عمولة الوكالة).
+        //   - 940 + 10 رسوم: wallet ينقص 940، cash يزيد 950 (10 عمولة الوكالة).
+        $mainTransfer = $this->transactionService->recordJournalTransfer([
+            'amount' => $amount,                              // المبلغ فقط — الـ wallet ما بتتخصمش بالرسوم
+            'from_account_id' => $record->wallet_account_id,  // المحفظة (vodafone provider balance)
+            'to_account_id' => $record->cash_account_id,      // الخزنة
+            'allow_from_negative' => true,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: استلام نقدي {$amount} + خدمة {$fee}",
+            'type' => TransactionType::Transfer->value,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم {$amount} من المحفظة للخزنة (الرسوم على الـ leg الثاني)",
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
 
-        $expense = $this->transactionService->recordExpense([
-            'amount' => $amount,
-            'from_account_id' => $record->wallet_account_id,
-            'module' => TransactionModule::Wallet->value,
-            'related_type' => WalletTransaction::class,
-            'related_id' => $record->id,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: خصم من المحفظة {$amount}",
-            'created_by' => $createdBy,
-        ]);
+        // الـ fee income: سجّل رسوم الخدمة كدخل للوكالة على نفس الخزنة.
+        // ده بيخلي cash +fee (10) و revenue -fee — الـ revenue هو agency earnings
+        // من رسوم خدمات المحفظة. Double-entry صحيح.
+        $feeIncome = null;
+        if ($fee >= 0.005) {
+            $feeIncome = $this->transactionService->recordIncome([
+                'amount' => $fee,
+                'to_account_id' => $record->cash_account_id,
+                'module' => TransactionModule::Wallet->value,
+                'related_type' => WalletTransaction::class,
+                'related_id' => $record->id,
+                'notes' => "إرسال {$walletTypeName} - {$customerName}: رسوم خدمة {$fee} (عمولة الوكالة)",
+                'created_by' => $createdBy,
+                // WLT-FX-1 (2026-09-03): تمرير عملة المحفظة لقيد الدخل —
+                // متسق مع mainTransfer اللي فوق. بدونها كان بيقع على
+                // حساب إقفال EGP افتراضياً.
+                'currency' => $record->walletAccount?->currency,
+            ]);
+        }
 
-        return [$income, $expense];
+        // الـ returned tuple بيمشي مع signed contract بتاع الـ caller:
+        //   - first  = income_transaction_id (الـ feeIncome لو فيه fees، وإلا الـ mainTransfer)
+        //   - second = expense_transaction_id (الـ mainTransfer — wallet debit)
+        return [$feeIncome ?? $mainTransfer, $mainTransfer];
     }
 
     /**
      * Post only the optional settlement transaction for a Send with a
      * registered customer when amount_paid > 0. Idempotent — if amount_paid
      * is 0 or the customer has no registered account, this is a no-op.
+     *
+     * FINDING FIN-2 (HIGH) REMEDIATED (2026-08-21):
+     * Pre-fix: this method called `recordIncome(...)` with the SAME
+     * `(related_type, related_id)` as the main Send pair. The duplicate
+     * guard in `TransactionService::recordJournalTransfer` (lines 650-674)
+     * rejected the second call with "Duplicate income transaction blocked".
+     *
+     * The guard itself documents the intended pattern:
+     *   "Subsequent COLLECTIONS on a booking must use Transfer (type=transfer)."
+     *
+     * Post-fix: this method now calls `recordTransfer(...)` instead. The
+     * settlement becomes a cashbox→wallet-account replenishment, the
+     * proper double-entry for "cashier collected cash from the customer
+     * and put it into the wallet vault". This is the transfer, NOT an
+     * income — and it does not collide with the main Send income slot.
      */
     protected function postSettlementSend(
         WalletTransaction $record,
@@ -587,15 +966,31 @@ class WalletTransactionService
 
         $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-        $this->transactionService->recordIncome([
-            'amount' => $amountPaid,
+        // WLT-FEE-LEG-REG (2026-09-03): التسوية بتسدد أصل الدين (amount) فقط،
+        // مش الـ amount_paid بكامله. العمولة (fee) اتسجلت كقيد دخل منفصل في
+        // postMainSendPair()، فالـ cashbox بتاعتها جاي من هناك.
+        //   - لو amount_paid = amount + fee: settlement = amount → رصيد العميل = 0
+        //   - لو amount_paid < amount (جزئي): settlement = amount_paid → العميل لسه عليه الباقي
+        //   - لو amount_paid > amount (دفع زيادة): settlement = amount → الباقي زيادة في الخزنة
+        // D-V2-009: normalize the settlement amount so WT.amount_paid and the
+        // settlement ledger leg carry the SAME canonical 2-decimal value.
+        $amountPaid = self::normalizeAmount($amountPaid);
+        $principal = self::normalizeAmount((float) $record->amount);
+        $settlementAmount = min($amountPaid, $principal);
+        if ($settlementAmount < 0.005) {
+            return;
+        }
+        $this->transactionService->recordJournalTransfer([
+            'amount' => $settlementAmount,
+            'from_account_id' => $customerAccount->id,
             'to_account_id' => $record->cash_account_id,
-            'contra_account_id' => $customerAccount->id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$amountPaid}",
+            'type' => TransactionType::Transfer->value,
+            'notes' => "إرسال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة من العميل بقيمة {$settlementAmount}",
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
     }
 
@@ -643,50 +1038,65 @@ class WalletTransactionService
     ): array {
         $totalAmount = $amount - $fee;
 
-        if ($record->customer_id) {
-            $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+        // WLT-1 (2026-09-02) — Receive destination override.
+        //
+        // Pre-fix, the destination of the Expense leg was hard-coded:
+        //   - registered customer → customerAccount (the customer debt/AP)
+        //   - anonymous customer  → cash_account_id (the cashbox)
+        //
+        // The user requested the ability to receive INTO any account type
+        // they choose (e.g. a bank account, another wallet provider, a
+        // card-clearing account). The optional `receive_destination_account_id`
+        // column on the WT row records the override. When present, the
+        // Expense leg is routed there instead of the legacy default.
+        // When NULL, the legacy default applies unchanged — fully backward
+        // compatible with existing rows and API clients.
+        //
+        // The chosen destination is also stored in the WT row so the
+        // settlement path (postSettlementReceive) can route cash
+        // collections to the same destination when amount_paid > 0.
+        $destinationOverride = (int) ($record->receive_destination_account_id ?? 0) ?: null;
 
-            $income = $this->transactionService->recordIncome([
-                'amount' => $amount,
-                'to_account_id' => $record->wallet_account_id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام رصيد بقيمة {$amount} في المحفظة",
-                'created_by' => $createdBy,
-            ]);
-
-            $expense = $this->transactionService->recordExpense([
-                'amount' => $totalAmount,
-                'from_account_id' => $customerAccount->id,
-                'module' => TransactionModule::Wallet->value,
-                'related_type' => WalletTransaction::class,
-                'related_id' => $record->id,
-                'notes' => "استقبال {$walletTypeName} - {$customerName}: مستحق للعميل بقيمة {$totalAmount} (صافي بعد رسوم {$fee})",
-                'created_by' => $createdBy,
-            ]);
-
-            return [$income, $expense];
-        }
-
-        // Anonymous customer
+        // Income leg is ALWAYS into the wallet provider account — the
+        // wallet provider receives `amount` regardless of where the cash
+        // physically lands.
         $income = $this->transactionService->recordIncome([
             'amount' => $amount,
             'to_account_id' => $record->wallet_account_id,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام محفظة {$amount}",
+            'notes' => "استقبال {$walletTypeName} - {$customerName}: استلام رصيد بقيمة {$amount} في المحفظة",
             'created_by' => $createdBy,
         ]);
 
+        // Resolve the destination for the Expense leg. Priority:
+        //   1. explicit override (any active account the user picked)
+        //   2. registered customer's account (legacy default)
+        //   3. cash_account_id for anonymous (legacy default)
+        if ($destinationOverride) {
+            $expenseFromAccountId = $destinationOverride;
+            $destinationLabel = 'حساب الاستقبال المختار';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: تحويل {$totalAmount} إلى الحساب المختار (صافي بعد رسوم {$fee})";
+        } elseif ($record->customer_id) {
+            $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
+            $expenseFromAccountId = $customerAccount->id;
+            $destinationLabel = 'حساب العميل';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: مستحق للعميل بقيمة {$totalAmount} (صافي بعد رسوم {$fee})";
+        } else {
+            // Anonymous walk-in — default to the cashbox.
+            $expenseFromAccountId = (int) $record->cash_account_id;
+            $destinationLabel = 'الخزينة';
+            $expenseNotes = "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}";
+        }
+
         $expense = $this->transactionService->recordExpense([
             'amount' => $totalAmount,
-            'from_account_id' => $record->cash_account_id,
+            'from_account_id' => $expenseFromAccountId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفع نقدي {$totalAmount}",
+            'notes' => $expenseNotes,
             'created_by' => $createdBy,
         ]);
 
@@ -715,15 +1125,30 @@ class WalletTransactionService
 
         $customerAccount = $this->ensureCustomerAccount((int) $record->customer_id);
 
-        $this->transactionService->recordExpense([
+        // WLT-1 (2026-09-02): the settlement leg mirrors the destination
+        // choice of the main receive pair. If the user picked an override
+        // account, the cash settlement flows from the cashbox INTO that
+        // override account (the cashier is paying out to wherever the
+        // customer/agency chose). If the user did NOT pick an override,
+        // the cash settlement flows from cashbox to the customer account
+        // (legacy behavior — the cashier is paying the customer back).
+        $destinationOverride = (int) ($record->receive_destination_account_id ?? 0) ?: null;
+        $contraAccountId = $destinationOverride ?: $customerAccount->id;
+        $settlementNotes = $destinationOverride
+            ? "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة إلى حساب الاستقبال المختار بقيمة {$amountPaid}"
+            : "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}";
+
+        $this->transactionService->recordJournalTransfer([
             'amount' => $amountPaid,
             'from_account_id' => $record->cash_account_id,
-            'contra_account_id' => $customerAccount->id,
+            'to_account_id' => $contraAccountId,
             'module' => TransactionModule::Wallet->value,
             'related_type' => WalletTransaction::class,
             'related_id' => $record->id,
-            'notes' => "استقبال {$walletTypeName} - {$customerName}: دفعة نقدية مسددة للعميل بقيمة {$amountPaid}",
+            'type' => TransactionType::Transfer->value,
+            'notes' => $settlementNotes,
             'created_by' => $createdBy,
+            'currency' => $record->walletAccount?->currency,
         ]);
     }
 
@@ -811,33 +1236,51 @@ class WalletTransactionService
 
     protected function ensureCustomerAccount(int $customerId): Account
     {
-        $customer = Customer::findOrFail($customerId);
+        // FINDING CONC-2 (MED) REMEDIATION (2026-08-21):
+        // Two concurrent first-time sends for the same customer could each
+        // see `customer->account_id === NULL`, both call `Account::create()`,
+        // and both write to `$customer->account_id` — leaving the Customer
+        // pointing to one Account and the orphan Account dangling.
+        //
+        // The fix: acquire a row-level lock on the Customer row at the
+        // START of ensureCustomerAccount, re-read `account_id` under the
+        // lock, and only create a new Account if the second reader still
+        // sees NULL. The Customer row is the canonical serialization
+        // point because it is the cross-process mutual exclusion primitive.
+        //
+        // The check + create is wrapped in DB::transaction so that the
+        // lock is held for the duration of the create+update pair.
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customerId) {
+            /** @var Customer $customer */
+            $customer = Customer::query()
+                ->where('id', $customerId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($customer->account_id) {
-            $account = Account::find($customer->account_id);
-            if ($account) {
-                // Phase 8 fix: CustomerLedgerObserver creates a generic
-                // 'office'-tagged account the moment a Customer row is
-                // inserted. When that customer is later used by a wallet
-                // transaction, we re-tag the account to 'wallet_transfer'
-                // so it surfaces in the TransferDashboardController stats
-                // and TransferAccounts/* resources (which filter strictly
-                // by module_type='wallet_transfer'). The re-tag is wrapped
-                // in LedgerBalanceMutationGuard because touching `balance`
-                // — even to confirm 0.00 — would otherwise trip the
-                // `Account::updating` boot guard.
-                if ($account->module_type !== 'wallet_transfer') {
-                    LedgerBalanceMutationGuard::run(function () use ($account) {
-                        $account->module_type = 'wallet_transfer';
-                        $account->save();
-                    });
+            if ($customer->account_id) {
+                $account = Account::find($customer->account_id);
+                if ($account) {
+                    // Phase 8 fix: CustomerLedgerObserver creates a generic
+                    // 'office'-tagged account the moment a Customer row is
+                    // inserted. When that customer is later used by a wallet
+                    // transaction, we re-tag the account to 'wallet_transfer'
+                    // so it surfaces in the TransferDashboardController stats
+                    // and TransferAccounts/* resources (which filter strictly
+                    // by module_type='wallet_transfer'). The re-tag is wrapped
+                    // in LedgerBalanceMutationGuard because touching `balance`
+                    // — even to confirm 0.00 — would otherwise trip the
+                    // `Account::updating` boot guard.
+                    if ($account->module_type !== 'wallet_transfer') {
+                        LedgerBalanceMutationGuard::run(function () use ($account) {
+                            $account->module_type = 'wallet_transfer';
+                            $account->save();
+                        });
+                    }
+
+                    return $account;
                 }
-
-                return $account;
             }
-        }
 
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
             $account = Account::create([
                 'name' => 'حساب العميل: '.$customer->full_name,
                 'type' => AccountType::Customer,
@@ -865,15 +1308,41 @@ class WalletTransactionService
         ])->findOrFail($id);
     }
 
+    /**
+     * Test-only accessor for the protected ensureCustomerAccount method.
+     * The CONC-2 regression test in Phase12ConcurrencyTest calls this twice
+     * to verify the lockForUpdate serialization holds.
+     */
+    public function ensureCustomerAccountForTest(int $customerId): Account
+    {
+        return $this->ensureCustomerAccount($customerId);
+    }
+
     public function getDailySummary(string $date): array
     {
+        // FINDING FIN-4 (MED) REMEDIATION (2026-08-21):
+        // The previous implementation summed `amount` (the principal only)
+        // and reported it as `total_sent`/`total_received`, which silently
+        // undercounted cash moved through the wallet because the
+        // `service_fee` was excluded. For reconciliation purposes, the
+        // cash that physically LEAVES the cashbox for a Send is
+        // `total_amount` = `amount` + `service_fee`. The accounting
+        // ledger was already correct (each TX has 3 paired entries);
+        // only this summary aggregator was wrong.
+        //
+        // FIX: add `total_sent_with_fees` and `total_received_with_fees`
+        // using `total_amount`. Keep `total_sent`/`total_received`
+        // (using `amount`) for backward compatibility — older clients
+        // (Filament dashboard widgets, exports) still read those.
         $result = WalletTransaction::whereDate('created_at', $date)
             ->selectRaw('
                 COUNT(*)                                       as total_transactions,
                 SUM(CASE WHEN type = "send"    THEN 1 ELSE 0 END) as send_count,
                 SUM(CASE WHEN type = "receive" THEN 1 ELSE 0 END) as receive_count,
-                SUM(CASE WHEN type = "send"    THEN amount ELSE 0 END) as total_sent,
-                SUM(CASE WHEN type = "receive" THEN amount ELSE 0 END) as total_received,
+                SUM(CASE WHEN type = "send"    THEN amount ELSE 0 END)        as total_sent,
+                SUM(CASE WHEN type = "receive" THEN amount ELSE 0 END)        as total_received,
+                SUM(CASE WHEN type = "send"    THEN total_amount ELSE 0 END) as total_sent_with_fees,
+                SUM(CASE WHEN type = "receive" THEN total_amount ELSE 0 END) as total_received_with_fees,
                 SUM(service_fee) as total_fees
             ')
             ->first();
@@ -884,6 +1353,8 @@ class WalletTransactionService
             'receive_count' => (int) ($result->receive_count ?? 0),
             'total_sent' => (float) ($result->total_sent ?? 0),
             'total_received' => (float) ($result->total_received ?? 0),
+            'total_sent_with_fees' => (float) ($result->total_sent_with_fees ?? 0),
+            'total_received_with_fees' => (float) ($result->total_received_with_fees ?? 0),
             'total_fees' => (float) ($result->total_fees ?? 0),
         ];
     }
@@ -906,7 +1377,6 @@ class WalletTransactionService
      *
      * @param  string  $action  مثل: 'wallet_transaction.created'
      * @param  WalletTransaction  $record  الـ record بعد/قبل العملية
-     * @param  WalletTransactionType  $type
      * @param  array<string, mixed>|null  $oldValues
      */
     protected function writeAuditLog(
@@ -952,8 +1422,18 @@ class WalletTransactionService
             AuditLog::create([
                 'user_id' => Auth::id() ?? $record->created_by ?? 1,
                 'action' => $action,
+                // Legacy polymorphic convention (kept for backward compatibility —
+                // every existing audit consumer reads `model_type`/`model_id`).
                 'model_type' => WalletTransaction::class,
                 'model_id' => $record->id,
+                // FINDING FIN-5 (MED) REMEDIATION (2026-08-21):
+                // Also write the modern `related_type`/`related_id` pair so
+                // cross-table audit queries ("all audit rows for booking X",
+                // "all audit rows for transaction Y") can use a single
+                // convention. Columns added by migration
+                // `2026_08_19_120000_add_related_columns_to_audit_logs_table`.
+                'related_type' => WalletTransaction::class,
+                'related_id' => $record->id,
                 'old_values' => $oldValues,
                 'new_values' => $newValues,
                 'ip_address' => request()?->ip(),

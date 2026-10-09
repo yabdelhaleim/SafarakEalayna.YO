@@ -24,7 +24,12 @@ class ProfitLossReportService
     private const TOURISM_MODULES = ['flight', 'hajj_umra', 'visa', 'tourism'];
 
     /** @var array<string, list<string>> */
-    private const OFFICE_MODULES = ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
+    // Must stay in sync with AccountModuleDivision::OFFICE.
+    // 'wallet' is kept as a normalised alias for 'wallet_transfer' (see
+    // normalizeModuleKey). 'service' was removed — it is not an office
+    // module and was causing unrelated transactions to bleed into the
+    // office P&L, producing a false deficit in the trial balance.
+    private const OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'general'];
 
     public function __construct(
         protected LedgerClearingAccounts $clearingAccounts
@@ -250,23 +255,54 @@ class ProfitLossReportService
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
 
-            // Skip transactions already reversed via
-            // TransactionService::reverseTransaction(): it posts mirror
-            // account entries (D/C swapped) that net the ledger back to
-            // zero, but t.from_account_id / t.to_account_id stay pointed
-            // at the consumption side. Without this guard the original
-            // cogs/revenue would be re-counted as if it were live. The
-            // 'عكس:' / 'عكس ' notes prefix is set by TransactionService at
-            // the end of reverseTransaction() — that is the canonical
-            // reversed marker.
+            // Reverse-transaction handling has TWO flavors that the P&L engine must
+            // distinguish — this MUST stay in lock-step with `report()` above
+            // (lines 109-138) so the per-module breakdown matches the aggregate
+            // total reported on the dashboard. Pre-fix this method skipped
+            // BOTH 'عكس:' (colon) AND 'عكس ' (space) prefixes, which meant a
+            // cancelled flight booking (which posts an additive companion row
+            // via `recordJournalTransfer` with notes starting with 'عكس ')
+            // left the original revenue counted and the reversal dropped —
+            // inflating the per-module profit card while the aggregate
+            // `total_profit` correctly subtracted it. Result: red-mismatch
+            // between sub-cards (طيران/حج/تأشيرات) and the total.
+            //
+            // 1. `عكس:` (colon) — set by `TransactionService::reverseTransaction()`:
+            //    the SAME original row's notes are prefixed and mirror
+            //    AccountEntry rows are added (D/C swapped) that net the
+            //    ledger back to zero. The P&L bucket would double-count the
+            //    original if we kept this row. → SKIP entirely.
+            //
+            // 2. `عكس ` (space, no colon) — set by `recordJournalTransfer()`
+            //    inside `FlightBookingService::cancelBooking` and the
+            //    Hajj/Visa equivalent paths: a NEW companion row is created
+            //    alongside the unmodified original. The original row counts
+            //    as revenue/cogs and must be cancelled out by this new row.
+            //    Reclassify revenue→revenue_reversal and cogs→cogs_reversal
+            //    so the subtraction path below runs.
+            //
+            // Both forms are correct bookkeeping; the engine just needs to
+            // know which form it is looking at. The skip+reclassify pair
+            // here mirrors the logic in `report()` line-by-line.
             $txNotes = (string) ($tx->notes ?? '');
-            if (str_starts_with($txNotes, 'عكس:') || str_starts_with($txNotes, 'عكس ')) {
+            if (str_starts_with($txNotes, 'عكس:')) {
                 continue;
             }
 
             $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
             if ($classification === null) {
                 continue;
+            }
+
+            // Apply the 'عكس ' (space) reversal reclassification AFTER
+            // classify() so we have a classification to flip. The mirror
+            // case 'عكس:' (colon) is already handled by the continue above.
+            if (str_starts_with($txNotes, 'عكس ')) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $section = $this->sectionForClassification($classification);
@@ -426,7 +462,22 @@ class ProfitLossReportService
     private function applyRelevanceFilter(Builder $query, array $clearingIds): void
     {
         $query->where(function (Builder $outer) use ($clearingIds): void {
-            $outer->whereIn('t.type', ['income', 'expense', 'refund']);
+            // FIX (H4): include 'writeoff' in the relevance set. The
+            // transactions.type enum was extended to
+            // ['income', 'expense', 'transfer', 'refund', 'writeoff']
+            // by migration 2026_07_09_020000_add_writeoff_to_transactions_type_enum,
+            // and ReportController already treats writeoff as a negative bucket
+            // in /api/v1/reports/profit-loss — but this P&L filter was still
+            // dropping those rows, so the Dashboard silently hid approved-loss
+            // writeoffs (e.g. legacy reconciliation rows from
+            // phase3b_v3_writeoff_7desyncs.php). Widening the type set makes
+            // them surface; the bucketing switch in report() / moduleBreakdown()
+            // handles classification via the existing
+            // $type === 'income' | 'expense' | 'refund' branches in classify()
+            // — writeoff lands on the 'expense' branch (operating_expense)
+            // since type === 'expense' is set by recordExpense / writeoff
+            // creators, so it's correctly booked as a cost.
+            $outer->whereIn('t.type', ['income', 'expense', 'refund', 'writeoff']);
 
             $outer->orWhere(function (Builder $transfer) use ($clearingIds): void {
                 $transfer->where('t.type', 'transfer')
@@ -477,10 +528,24 @@ class ProfitLossReportService
             $filteredModules
         );
 
-        $incomeClearingIds = array_keys($incomeClearing);
-        $expenseClearingIds = array_keys($expenseClearing);
+        // FIX (DEFICIT-BUG): Use only the clearing account IDs that belong to
+        // THIS division (already computed above as $clearingIds). The previous
+        // code called array_keys($incomeClearing) / array_keys($expenseClearing)
+        // which returned ALL clearing IDs across ALL modules (tourism + office),
+        // so the 'general' transaction sub-query was matching tourism clearing
+        // accounts and pulling tourism P&L entries into the office report —
+        // inflating office revenues and producing a false deficit in the trial
+        // balance (variance = currentCapital − expectedCapital < 0).
+        $divisionIncomeClearingIds = array_values(array_filter(
+            array_keys($incomeClearing),
+            fn (int $id) => in_array($incomeClearing[$id], $filteredModules, true)
+        ));
+        $divisionExpenseClearingIds = array_values(array_filter(
+            array_keys($expenseClearing),
+            fn (int $id) => in_array($expenseClearing[$id], $filteredModules, true)
+        ));
 
-        $query->where(function (Builder $q) use ($filteredModules, $clearingIds, $divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+        $query->where(function (Builder $q) use ($filteredModules, $clearingIds, $divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
             if ($filteredModules !== []) {
                 $q->whereIn('t.module', $filteredModules);
             }
@@ -489,24 +554,28 @@ class ProfitLossReportService
                     ->orWhereIn('t.to_account_id', $clearingIds);
             }
             // General transactions are resolved strictly by their source/destination account's module_type
-            $q->orWhere(function (Builder $sub) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+            $q->orWhere(function (Builder $sub) use ($divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
                 $sub->whereIn('t.module', ['general', ''])
-                    ->where(function (Builder $sub2) use ($divisionModules, $incomeClearingIds, $expenseClearingIds): void {
+                    ->where(function (Builder $sub2) use ($divisionModules, $divisionIncomeClearingIds, $divisionExpenseClearingIds): void {
                         // Expense path: paid from a liquidity account belonging to the division
-                        $sub2->where(function (Builder $exp) use ($divisionModules, $expenseClearingIds): void {
-                            $exp->where(function (Builder $eCond) use ($expenseClearingIds): void {
+                        $sub2->where(function (Builder $exp) use ($divisionModules, $divisionExpenseClearingIds): void {
+                            $exp->where(function (Builder $eCond) use ($divisionExpenseClearingIds): void {
                                 $eCond->where('t.type', 'expense')
-                                    ->orWhere('to_acc.type', 'expense')
-                                    ->orWhereIn('t.to_account_id', $expenseClearingIds);
+                                    ->orWhere('to_acc.type', 'expense');
+                                if ($divisionExpenseClearingIds !== []) {
+                                    $eCond->orWhereIn('t.to_account_id', $divisionExpenseClearingIds);
+                                }
                             })
                                 ->whereIn('from_acc.module_type', $divisionModules);
                         })
                         // Income path: received into a liquidity account belonging to the division
-                            ->orWhere(function (Builder $inc) use ($divisionModules, $incomeClearingIds): void {
-                                $inc->where(function (Builder $iCond) use ($incomeClearingIds): void {
+                            ->orWhere(function (Builder $inc) use ($divisionModules, $divisionIncomeClearingIds): void {
+                                $inc->where(function (Builder $iCond) use ($divisionIncomeClearingIds): void {
                                     $iCond->where('t.type', 'income')
-                                        ->orWhere('to_acc.type', 'income')
-                                        ->orWhereIn('t.from_account_id', $incomeClearingIds);
+                                        ->orWhere('to_acc.type', 'income');
+                                    if ($divisionIncomeClearingIds !== []) {
+                                        $iCond->orWhereIn('t.from_account_id', $divisionIncomeClearingIds);
+                                    }
                                 })
                                     ->whereIn('to_acc.module_type', $divisionModules);
                             });
@@ -565,7 +634,35 @@ class ProfitLossReportService
             return 'refund';
         }
 
+        // FIX (H4 — companion to the applyRelevanceFilter widening):
+        // type='writeoff' is the post-2026-07-09 marker for approved-loss
+        // writeoffs produced by reconciliation scripts (e.g.
+        // phase3b_v3_writeoff_7desyncs.php). Treat them identically to
+        // type='expense' so they book as operating_expense — matching the
+        // signed-impact convention already used by
+        // ReportController::profitLoss (income +, expense/refund/writeoff −).
+        // Without this, writeoffs would pass the relevance filter (H4 fix)
+        // and then be re-classified to null here, silently dropping them
+        // again. Mirrors the dashboard's "approved losses" semantics.
+        if ($type === 'writeoff') {
+            return 'operating_expense';
+        }
+
         if ($type === 'expense') {
+            // When the expense leg routes into a known expense-clearing account
+            // (e.g. إقفال تكاليف المحافظ, إقفال تكاليف الباص …) it represents
+            // the cost-of-service posted via recordExpense() — semantically
+            // identical to a type=transfer entry that lands in the same
+            // clearing account, which the transfer path already classifies as
+            // 'cogs' (line ~665). Re-classify here for consistency so both
+            // P&L and moduleBreakdown() report this as تكلفة الحجوزات rather
+            // than مصروفات تشغيلية.
+            if ($toId > 0 && isset($expenseClearing[$toId])) {
+                return 'cogs';
+            }
+            if ($fromId > 0 && isset($expenseClearing[$fromId])) {
+                return 'cogs_reversal';
+            }
             return 'operating_expense';
         }
 
@@ -678,20 +775,66 @@ class ProfitLossReportService
         };
     }
 
+    private function expandModuleForQuery(string $moduleKey): array
+    {
+        return match ($moduleKey) {
+            'wallet' => ['wallet', 'wallet_transfer', 'wallets'],
+            'flight' => ['flight', 'flights'],
+            'visa' => ['visa', 'visas'],
+            default => [$moduleKey],
+        };
+    }
+
     private function resolveAmountEGP(object $tx): float
     {
+        // Default to the stored amount (which is denominated in the source
+        // currency). The transfers-table join is LEFT-joined so converted_amount
+        // may legitimately be NULL — fall through cleanly to $amount in that case.
         $amount = (float) $tx->amount;
-        if (isset($tx->converted_amount) && (float) $tx->converted_amount > 0) {
-            $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
-            $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
-            if ($toCurrency === 'EGP') {
-                $amount = (float) $tx->converted_amount;
-            } elseif ($fromCurrency === 'EGP') {
-                $amount = (float) $tx->amount;
-            }
+        if (! isset($tx->converted_amount) || (float) $tx->converted_amount <= 0) {
+            return $amount;
         }
 
-        return $amount;
+        $fromCurrency = strtoupper((string) ($tx->from_currency ?? ''));
+        $toCurrency = strtoupper((string) ($tx->to_currency ?? ''));
+
+        // EGP is the dashboard reporting currency. If the destination leg is
+        // already EGP, the conversion is complete → use converted_amount.
+        if ($toCurrency === 'EGP') {
+            return (float) $tx->converted_amount;
+        }
+
+        // Source leg is EGP and destination is foreign → the EGP leg is the
+        // amount column itself (the foreign leg is derived from it via FX).
+        if ($fromCurrency === 'EGP') {
+            return $amount;
+        }
+
+        // FIX (H2): BOTH legs are non-EGP (e.g. USD cashbox → SAR clearing,
+        // or any inter-treasury cross-currency move that touches a clearing
+        // account). Previously this branch silently fell through to
+        // `$tx->amount` (a foreign-currency amount) which the P&L then
+        // summed as if it were EGP — corrupting tourism revenue/COGS for
+        // multi-currency visa/hajj bookings on the Dashboard only (the rest
+        // of the system uses CurrencyService::convert() on-demand and was
+        // unaffected).
+        //
+        // Same-currency defensive case: if both legs are the same currency
+        // AND the stored amount matches converted_amount, accept amount —
+        // this handles deposits / withdrawals within a single FX bucket.
+        if ($fromCurrency === $toCurrency
+            && abs((float) $tx->converted_amount - $amount) < 0.0001) {
+            return $amount;
+        }
+
+        // Genuine cross-currency, non-EGP case. We deliberately return 0.0
+        // (and let the caller skip via the $amount <= 0 guard in report() /
+        // moduleBreakdown()) rather than mis-price a foreign amount under
+        // an EGP label. The Dashboard is the only consumer that needs this
+        // normalisation — currency conversion for actual accounting lives
+        // in CurrencyService::convert() and is already applied by the
+        // writer services (recordJournalTransfer, etc.) at posting time.
+        return 0.0;
     }
 
     private function sectionForClassification(string $classification): string
@@ -788,7 +931,15 @@ class ProfitLossReportService
     {
         $list = [];
         foreach ($byName as $name => $sum) {
-            if ($sum <= 0) {
+            // Symmetric with formatModuleList (line ~764): keep near-zero
+            // and negative-net buckets in the list. A single named-expense
+            // bucket can legitimately net to negative when refunds exceed
+            // the original operating-expense postings in the period; the
+            // totalExpenses aggregate still reflects the negative value,
+            // so the breakdown line must too — otherwise Vue shows
+            // "لا توجد مصروفات مسجلة" while a non-zero totalExpenses
+            // appears below it, which is internally inconsistent.
+            if (abs($sum) < 0.00001) {
                 continue;
             }
             $list[] = [
@@ -854,6 +1005,7 @@ class ProfitLossReportService
                 't.type',
                 't.module',
                 't.amount',
+                't.notes',
                 't.created_at',
                 't.from_account_id',
                 't.to_account_id',
@@ -868,7 +1020,7 @@ class ProfitLossReportService
 
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
-        $query->where('t.module', $moduleKey);
+        $query->whereIn('t.module', $this->expandModuleForQuery($moduleKey));
         $this->applySoftDeleteExclusion($query);
 
         $daily = [];
@@ -882,6 +1034,32 @@ class ProfitLossReportService
             $amount = $this->resolveAmountEGP($tx);
             if ($amount <= 0) {
                 continue;
+            }
+
+            // Mirror the two-flavor reversal handling from report() so the
+            // daily chart never overstates revenue on reversal days.
+            //
+            // 1. 'عكس:' (with colon) — TransactionService::reverseTransaction()
+            //    modified the SAME original row; original + mirror entries
+            //    already net to zero on the ledger → SKIP entirely.
+            //
+            // 2. 'عكس ' (with space) — companion row from a direct
+            //    recordJournalTransfer() call (e.g. FlightBookingService::
+            //    cancelBooking). Reclassify so the subtraction path runs.
+            //
+            // Without this guard, daily chart income would INCLUDE both the
+            // already-reversed 'عكس:' row (double-counting) and the
+            // 'عكس ' companion row as positive revenue instead of subtracting.
+            $txNotes = (string) ($tx->notes ?? '');
+            if (str_starts_with($txNotes, 'عكس:')) {
+                continue;
+            }
+            if (str_starts_with($txNotes, 'عكس ')) {
+                if ($classification === 'revenue') {
+                    $classification = 'revenue_reversal';
+                } elseif ($classification === 'cogs') {
+                    $classification = 'cogs_reversal';
+                }
             }
 
             $date = substr((string) $tx->created_at, 0, 10); // 'YYYY-MM-DD'
@@ -940,14 +1118,21 @@ class ProfitLossReportService
      *                                 Use when the entity_id lives on a
      *                                 join table rather than on the related model.
      * @param  array{from_date?: string, to_date?: string}  $filters
-     * @return list<array{entity_id: int, income: float, cogs: float, expense: float, profit: float}>
+     * @param  string  $entityIdCast  'int' (default, backward-compat) or 'string'.
+     *                                 Set to 'string' when $entityColumn is a free-text
+     *                                 code (e.g. `online_transactions.provider_code`)
+     *                                 so the resulting `entity_id` survives the
+     *                                 final cast. Existing callers leave it as 'int'
+     *                                 and continue receiving integer entity_ids.
+     * @return list<array{entity_id: int|string, income: float, cogs: float, expense: float, profit: float}>
      */
     public function getProfitByEntity(
         string $module,
         string $relatedType,
         string $entityColumn,
         ?array $joinChain = null,
-        array $filters = []
+        array $filters = [],
+        string $entityIdCast = 'int'
     ): array {
         $moduleKey = $this->normalizeModuleKey($module);
         $maps = $this->clearingAccounts->moduleAccountMaps();
@@ -975,7 +1160,7 @@ class ProfitLossReportService
 
         $this->applyDateFilters($query, $filters);
         $this->applyRelevanceFilter($query, $allClearingIds);
-        $query->where('t.module', $moduleKey)
+        $query->whereIn('t.module', $this->expandModuleForQuery($moduleKey))
             ->where('t.related_type', $relatedType)
             ->whereNotNull('t.related_id');
         // Skip transactions whose related booking has been soft-deleted —
@@ -1056,8 +1241,13 @@ class ProfitLossReportService
             // with net refunds > revenue surfaces as negative profit —
             // the drill-down modal's "أعلى الكيانات" tab renders these
             // via the >= 0 conditional class (red text).
+            //
+            // $entityIdCast is honoured here only — the buckets themselves
+            // are keyed by the raw $id (PHP arrays accept string or int
+            // keys), so aggregation is unaffected.
+            $entityId = $entityIdCast === 'string' ? (string) $id : (int) $id;
             $result[] = [
-                'entity_id' => (int) $id,
+                'entity_id' => $entityId,
                 'income' => round($b['income'], 2),
                 'cogs' => round($b['cogs'], 2),
                 'expense' => round($b['expense'], 2),

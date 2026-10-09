@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  phpunit.audit.xml — Flight Full Operations Audit configuration.
+
+  Runs the FlightFullOperationsAuditTest against an ISOLATED MySQL schema
+  (safarak_flight_audit) on the staging server. The DB is separate from the
+  main safarak database and is rollback-only via DatabaseTransactions, so
+  nothing persists after the audit completes. The DB can be safely dropped
+  afterwards with scripts/audit_flight_cleanup.sh.
+
+  Usage:
+    php artisan test --configuration=phpunit.audit.xml \
+        --filter=FlightFullOperationsAuditTest
+
+  Override DB credentials via env vars on the CLI:
+    DB_HOST=... DB_PORT=... DB_USERNAME=... DB_PASSWORD=... \
+    php artisan test --configuration=phpunit.audit.xml
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.audit.cache"
+         executionOrder="depends,defects"
+         requireCoverageMetadata="false"
+         beStrictAboutCoverageMetadata="false"
+         beStrictAboutOutputDuringTests="true"
+         failOnRisky="false"
+         failOnWarning="false">
+    <testsuites>
+        <testsuite name="Audit">
+            <directory>tests/Feature/Flight</directory>
+            <exclude>tests/Feature/Flight/Support</exclude>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="DB_CONNECTION" value="mysql_audit" force="true"/>
+        <env name="DB_AUDIT_DATABASE" value="safarak_flight_audit" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+    </php>
+</phpunit>

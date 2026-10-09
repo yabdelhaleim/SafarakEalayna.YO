@@ -83,13 +83,15 @@ class TransferTreasuryController extends Controller
         ]);
     }
 
-    public function accountTransactions(Account $account)
+    public function accountTransactions(\Illuminate\Http\Request $request, Account $account)
     {
+        $perPage = min((int) $request->query('per_page', 20), 100);
+
         $transactions = Transaction::where('from_account_id', $account->id)
             ->orWhere('to_account_id', $account->id)
-            ->with(['createdBy'])
+            ->with(['createdBy', 'fromAccount:id,name,type', 'toAccount:id,name,type'])
             ->latest()
-            ->paginate(20);
+            ->paginate($perPage);
 
         return ApiResponse::success('Account transactions retrieved successfully', $transactions);
     }

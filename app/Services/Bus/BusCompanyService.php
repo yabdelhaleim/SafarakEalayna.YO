@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\Bus\BusCompany;
 use App\Support\Finance\LedgerBalanceMutationGuard;
+use App\Support\LikeWildcardEscaper;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,9 @@ class BusCompanyService
         $query = BusCompany::with(['createdBy', 'account']);
 
         if (isset($filters['search']) && $filters['search']) {
-            $search = $filters['search'];
+            // Level 2 / S-04 fix: escape LIKE wildcards (`%`, `_`, `\`) so a
+            // search like `%` does not match every company.
+            $search = LikeWildcardEscaper::escape((string) $filters['search']);
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%");
             });

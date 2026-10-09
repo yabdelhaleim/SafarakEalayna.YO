@@ -13,7 +13,8 @@ class EditHajjUmraBankAccount extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $data['type'] = AccountType::Bank->value;
-        $data['module_type'] = 'hajj_umra';
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'hajj_umra';
 
         return $data;
     }

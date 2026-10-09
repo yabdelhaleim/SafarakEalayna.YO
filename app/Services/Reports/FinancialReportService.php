@@ -37,10 +37,27 @@ class FinancialReportService
 {
     /**
      * تقرير كشف خزينة (إيرادات + مصروفات + رصيد)
+     *
+     * FIX FIN-AUDIT-2026-08-27: Exclude opening entries
+     * (transaction_id IS NULL) from totalIncome / totalExpense /
+     * netChange calculations. After the FIN-1 patch, every Account
+     * seeded with a non-zero balance auto-creates a paired opening
+     * entry (credit = balance on the new account, debit = balance on
+     * the System Opening Balances contra-account). Including those
+     * opening entries in income/expense sums falsely inflates
+     * "total_income" for liquidity accounts by their entire opening
+     * balance, producing grossly incorrect statements.
+     *
+     * Post-fix: opening entries are EXCLUDED from totals — they are
+     * equity seed, not operational income. The closing balance still
+     * reflects the stored Account.balance (which already incorporates
+     * the opening seed). The opening_balance is derived by subtracting
+     * the OPERATIONAL netChange from the stored balance.
      */
     public function getTreasuryReport(Account $treasury, array $filters = []): array
     {
         $query = $treasury->entries()
+            ->whereNotNull('transaction_id')
             ->with('transaction');
 
         if (! empty($filters['from_date'])) {
@@ -115,13 +132,19 @@ class FinancialReportService
             $mod = $row['module'] ?? 'unknown';
             $income = (float) ($row['income'] ?? 0);
             $cogs = (float) ($row['cogs'] ?? 0);
-            $expenses = (float) ($row['expenses'] ?? 0);
+            // FIX (PNL/TOURISM-FIX-A4, 2026-08-28): moduleBreakdown() emits
+            // 'expense' (singular) on its by_module rows. The earlier input
+            // read used 'expenses' (plural) — null-coalesce to 0 — so
+            // total_operating_expenses and every by_module[].expense were
+            // silently always 0. Fixing the read key here makes the data
+            // flow internally consistent with the singular 'expense' that
+            // /profit-by-module already returns to Vue.
+            $expenses = (float) ($row['expense'] ?? 0);
             $byModule[] = [
                 'module' => $mod,
                 'income' => $income,
                 'cogs' => $cogs,
-                'expense' => $expenses,    // FIX: singular 'expense' to match
-                // /profit-by-module and Vue code (m.expense)
+                'expense' => $expenses,
                 'profit' => $income - $cogs - $expenses,
             ];
             $totalIncome += $income;
@@ -174,7 +197,8 @@ class FinancialReportService
             foreach ($rowsBd as $row) {
                 $income += (float) ($row['income'] ?? 0);
                 $cogs += (float) ($row['cogs'] ?? 0);
-                $expenses += (float) ($row['expenses'] ?? 0);
+                // Singular 'expense' key — see PNL/TOURISM-FIX-A4 above.
+                $expenses += (float) ($row['expense'] ?? 0);
             }
             $rows[] = [
                 'date' => $day,
@@ -846,6 +870,76 @@ class FinancialReportService
             }
         }
 
+        // 1c. WALK-IN ONLINE CLIENTS (no Customer record; customer_id IS NULL).
+        if ($entityType === 'all' || $entityType === 'walkin_online') {
+            $walkInIncluded = ($department === null || $department === 'office')
+                && ($module === null || $module === 'online');
+
+            if ($walkInIncluded) {
+                $onlineWalkInQuery = DB::table('online_transactions')
+                    ->whereNull('customer_id')
+                    ->whereNull('deleted_at')
+                    ->whereNotIn('status', ['cancelled', 'failed'])
+                    ->select('customer_name', 'customer_phone')
+                    ->selectRaw('COALESCE(SUM(selling_price), 0) as total_sales')
+                    ->selectRaw('COALESCE(SUM(amount_paid), 0) as total_paid')
+                    ->selectRaw('COALESCE(SUM(selling_price - amount_paid), 0) as balance')
+                    ->selectRaw('COUNT(*) as tx_count')
+                    ->selectRaw('MAX(created_at) as last_tx')
+                    ->groupBy('customer_name', 'customer_phone')
+                    ->havingRaw('SUM(selling_price - amount_paid) > 0.005');
+
+                if ($search) {
+                    $onlineWalkInQuery->where(function ($q) use ($search) {
+                        $q->where('customer_name', 'like', '%'.$search.'%')
+                            ->orWhere('customer_phone', 'like', '%'.$search.'%');
+                    });
+                }
+
+                $onlineWalkInArAccountId = null;
+                if (class_exists(LedgerClearingAccounts::class)) {
+                    try {
+                        $onlineWalkInArAccountId = app(LedgerClearingAccounts::class)
+                            ->onlineWalkInArAccountId();
+                    } catch (\Throwable $e) {
+                        $onlineWalkInArAccountId = null;
+                    }
+                }
+
+                foreach ($onlineWalkInQuery->get() as $w) {
+                    $balance = (float) $w->balance;
+                    if ($balance == 0.0) {
+                        continue;
+                    }
+
+                    $dir = $balance > 0 ? 'receivables' : 'payables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => 'walkin_online_'.md5((string) ($w->customer_name . $w->customer_phone)),
+                        'name' => (string) ($w->customer_name ?: 'عميل إلكتروني غير مسجل'),
+                        'phone' => (string) ($w->customer_phone ?: '—'),
+                        'entity_type' => 'walkin_online',
+                        'entity_type_label' => 'عميل خدمات إلكترونية غير مسجل',
+                        'department' => 'office',
+                        'department_label' => 'قسم مكتب',
+                        'module' => 'online',
+                        'module_label' => 'خدمات إلكترونية',
+                        'balance' => $balance,
+                        'currency' => 'EGP',
+                        'account_id' => $onlineWalkInArAccountId,
+                        'statement_url' => $onlineWalkInArAccountId ? "/finance/account-statement/{$onlineWalkInArAccountId}" : null,
+                        'walk_in' => true,
+                        'tx_count' => (int) $w->tx_count,
+                        'total_sales' => (float) $w->total_sales,
+                        'total_paid' => (float) $w->total_paid,
+                    ];
+                }
+            }
+        }
+
         if ($entityType === 'all' || $entityType === 'supplier') {
             // 2. QUERY SUPPLIERS
             $supplierQuery = Supplier::query()->with('account');
@@ -1283,7 +1377,7 @@ class FinancialReportService
                         'module' => 'flight',
                         'module_label' => 'طيران',
                         'balance' => $balance,
-                        'currency' => $g->carrier ? $g->carrier->currency : 'EGP',
+                        'currency' => $g->currency ?: ($g->carrier ? $g->carrier->currency : ($g->account ? $g->account->currency : 'EGP')),
                         'account_id' => $g->account_id,
                         'statement_url' => '/flights/customers',
                     ];
@@ -1540,7 +1634,7 @@ foreach ($results as $item) {
         $payables = 0.0;
         $groups = FlightGroup::with('carrier')->get();
         foreach ($groups as $g) {
-            $gCurrency = $g->carrier?->currency ?: 'EGP';
+            $gCurrency = $g->currency ?: ($g->carrier?->currency ?: 'EGP');
             if (strtoupper($gCurrency) !== strtoupper($currency)) {
                 continue;
             }

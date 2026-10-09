@@ -4,17 +4,21 @@ namespace App\Services\Visa;
 
 use App\Enums\AccountType;
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Enums\VisaStatus;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\HajjUmra\VisaAgent;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\VisaBooking;
 use App\Models\VisaDetail;
 use App\Models\VisaPayment;
+use App\Services\Finance\CurrencyService;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\LedgerBalanceMutationGuard;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +36,10 @@ use Illuminate\Support\Facades\Log;
  */
 class VisaBookingService
 {
-    public function __construct(protected TransactionService $transactions) {}
+    public function __construct(
+        protected TransactionService $transactions,
+        protected CurrencyService $currencyService,
+    ) {}
 
     /**
      * @deprecated Use App\Services\Visa\VisaRefundService::cancel() directly.
@@ -45,10 +52,15 @@ class VisaBookingService
 
     /**
      * @deprecated Use App\Services\Visa\VisaRefundService::deleteWithReversal().
+     * Kept as a thin shim so legacy Filament / tests keep working.
+     *
+     * Note: signature is `(?User $actor = null)` to match the WIP shim
+     * contract from the 2026-08-20 RefundService rework — callers pass the
+     * User model, not the id. The shim extracts the id internally.
      */
-    public function deleteBookingWithReversal(int $bookingId, int $userId): bool
+    public function deleteBookingWithReversal(int $bookingId, ?User $actor = null): bool
     {
-        return app(VisaRefundService::class)->deleteWithReversal($bookingId, $userId);
+        return app(VisaRefundService::class)->deleteWithReversal($bookingId, $actor?->id);
     }
 
     /**
@@ -64,7 +76,7 @@ class VisaBookingService
      */
     public function repostIncomeTransaction(VisaBooking $booking, Transaction $transaction, float $newAmount): Transaction
     {
-        $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+        $customerAccount = $this->ensureCustomerAccount($booking->customer_id, (string) ($booking->currency ?? 'EGP'));
 
         return app(VisaModificationService::class)
             ->repostIncome($booking, $transaction, $newAmount, $customerAccount->id);
@@ -135,7 +147,7 @@ class VisaBookingService
         return DB::transaction(function () use ($data) {
             $customer = $this->resolveCustomer($data['customer'] ?? null, $data['customer_id'] ?? null);
 
-            $detailData = $data['visa_details'] ?? [];
+            $detailData = $data['visa_details'] ?? $data;
             $detail = VisaDetail::create([
                 'visa_type' => $detailData['visa_type'] ?? null,
                 'country' => $detailData['country'] ?? null,
@@ -157,6 +169,18 @@ class VisaBookingService
             $purchase = (float) $data['purchase_price'];
             $selling = (float) $data['selling_price'];
             $serviceFee = (float) ($data['service_fee'] ?? 0);
+
+            // ── Input validation: negative prices are never valid ────────────
+            if ($purchase < 0) {
+                throw new \InvalidArgumentException('سعر التكلفة (purchase_price) لا يمكن أن يكون سالباً.');
+            }
+            if ($selling < 0) {
+                throw new \InvalidArgumentException('سعر البيع (selling_price) لا يمكن أن يكون سالباً.');
+            }
+            if ($serviceFee < 0) {
+                throw new \InvalidArgumentException('رسوم الخدمة (service_fee) لا يمكن أن تكون سالبة.');
+            }
+
             $profit = round(($selling + $serviceFee) - $purchase, 2);
 
             $accountId = (int) ($data['account_id'] ?? 0);
@@ -174,24 +198,24 @@ class VisaBookingService
             // the canonical `profit` write through.
             $booking = VisaBooking::runProfitMutation(function () use ($customer, $detail, $data, $purchase, $selling, $serviceFee, $profit, $accountId, $createdBy) {
                 return VisaBooking::create([
-                'customer_id' => $customer->id,
-                'visa_detail_id' => $detail->id,
-                'module' => TransactionModule::Visa->value,
-                'purchase_price' => $purchase,
-                'selling_price' => $selling,
-                'service_fee' => $serviceFee,
-                'profit' => $profit,
-                'currency' => $data['currency'] ?? 'EGP',
-                'status' => $data['status'] ?? VisaStatus::Submitted->value,
-                'agent_name' => $data['agent_name'] ?? ($customer->full_name ?? ''),
-                'notes' => $data['notes'] ?? null,
-                'account_id' => $accountId,
-                'employee_id' => $data['employee_id'] ?? $createdBy,
-                'created_by' => $createdBy,
-            ]);
+                    'customer_id' => $customer->id,
+                    'visa_detail_id' => $detail->id,
+                    'module' => TransactionModule::Visa->value,
+                    'purchase_price' => $purchase,
+                    'selling_price' => $selling,
+                    'service_fee' => $serviceFee,
+                    'profit' => $profit,
+                    'currency' => $data['currency'] ?? 'EGP',
+                    'status' => $data['status'] ?? VisaStatus::Submitted->value,
+                    'agent_name' => $data['agent_name'] ?? ($customer->full_name ?? ''),
+                    'notes' => $data['notes'] ?? null,
+                    'account_id' => $accountId,
+                    'employee_id' => $data['employee_id'] ?? $createdBy,
+                    'created_by' => $createdBy,
+                ]);
             });
 
-            $customerAccount = $this->ensureCustomerAccount($customer->id);
+            $customerAccount = $this->ensureCustomerAccount($customer->id, (string) $booking->currency);
 
             $expenseAccountId = $accountId;
             $agentId = $detailData['visa_agent_id'] ?? null;
@@ -200,6 +224,36 @@ class VisaBookingService
                 if ($agent && $agent->account_id) {
                     $expenseAccountId = $agent->account_id;
                 }
+            }
+
+            // ─── FX SAFETY (2026-08-21) ────────────────────────────────
+            // The expense source is normally the visa agent's account
+            // (potentially USD). When the agent's account currency
+            // differs from the booking currency, that would force a
+            // cross-currency journal entry (USD debit / EGP credit),
+            // which the safe-FX rule in recordJournalTransfer now
+            // REJECTS unless explicit converted_amount + exchange_rate
+            // are supplied.
+            //
+            // For a visa booking expense, the right semantic is to
+            // settle the cost IN THE BOOKING CURRENCY (because that
+            // is the currency the office collects). The agent's
+            // foreign-currency account tracks the supplier payable
+            // separately (and is settled by an inter-account payment
+            // flow, not by this expense). So when the agent's account
+            // is in a different currency, we fall back to the booking's
+            // primary treasury (`$accountId`, the user-selected
+            // account) — same currency as the booking.
+            //
+            // Pre-fix: the silent `?? 1.0` masked this by applying a
+            // 1:1 rate and producing a nominally-balanced but
+            // semantically-wrong ledger.
+            $expenseFromAccount = Account::find($expenseAccountId);
+            if ($expenseFromAccount
+                && strtoupper((string) $expenseFromAccount->currency) !== strtoupper((string) $booking->currency)
+                && $expenseAccountId !== (int) $accountId
+            ) {
+                $expenseAccountId = (int) $accountId;
             }
 
             $expense = $this->transactions->recordExpense([
@@ -229,8 +283,17 @@ class VisaBookingService
                 'income_transaction_id' => $income->id,
             ]);
 
-            if (! empty($data['initial_payment']) && (float) ($data['initial_payment']['amount'] ?? 0) > 0) {
-                $this->addPayment($booking, $data['initial_payment']);
+            $initialPayment = $data['initial_payment'] ?? null;
+            if (! $initialPayment && ! empty($data['paid_amount']) && (float) $data['paid_amount'] > 0) {
+                $initialPayment = [
+                    'amount' => (float) $data['paid_amount'],
+                    'account_id' => $data['account_id'] ?? null,
+                    'payment_method' => $data['payment_method'] ?? 'cash',
+                    'notes' => 'الدفعة الأولى للتأشيرة',
+                ];
+            }
+            if (! empty($initialPayment) && (float) ($initialPayment['amount'] ?? 0) > 0) {
+                $this->addPayment($booking, $initialPayment);
             }
 
             Log::info('Visa booking created', [
@@ -247,15 +310,52 @@ class VisaBookingService
     public function update(VisaBooking $booking, array $data): VisaBooking
     {
         // ─────────────────────────────────────────────────────────────────
-        // BUG-FIX 2026-07-27: editing a cancelled or refunded Visa booking MUST
-        //   be blocked. The previous code only checked the lifecycle guard
-        //   in `addDebtPayment()` (line 354+) but the main update() path bypassed
-        //   it — so PATCH /api/v1/visa/bookings/{id} on a cancelled/refunded
-        //   booking would silently repost new income/expense transactions,
-        //   creating phantom journal entries on a supposedly-finished booking
-        //   and corrupting the financial timeline. Same invariant as the
-        //   HajjUmra fix.
+        // FINANCIAL IMMUTABILITY LOCK (FIX-2026-08-26):
+        //
+        // Business Rule: once ANY financial action (payment / debt payment)
+        // has been recorded against a booking, the booking becomes immutable.
+        // Before the first payment, non-financial metadata edits are allowed.
+        //
+        // Previous behaviour (INCIDENT-2026-08-17): threw unconditionally
+        // for ALL bookings, even those with no payments. This was stricter
+        // than the business rule and blocked legitimate pre-payment edits
+        // (e.g. correcting agent name, notes, or visa status before money
+        // moves).
+        //
+        // Detection: VisaPayment rows are the authoritative signal that a
+        // financial action has occurred. The initial expense/income clearing
+        // entries posted at booking-creation time do NOT constitute a
+        // "financial action" in this context (no money has changed hands).
         // ─────────────────────────────────────────────────────────────────
+        if ($booking->exists && $booking->id && $booking->payments()->exists()) {
+            throw new \LogicException(
+                'Tourism no-edit contract INCIDENT-2026-08-17: '
+                .'VisaBookingService::update() is locked — a financial action '
+                .'(payment) has already been recorded for this booking. '
+                .'Corrections must go through cancel-and-recreate.'
+            );
+        }
+
+        $financialFields = ['purchase_price', 'selling_price', 'service_fee', 'currency', 'account_id', 'customer_id'];
+        foreach ($financialFields as $field) {
+            if (array_key_exists($field, $data)) {
+                $val1 = $data[$field];
+                $val2 = $booking->$field;
+                if (is_numeric($val1) && is_numeric($val2)) {
+                    $val1 = round((float) $val1, 4);
+                    $val2 = round((float) $val2, 4);
+                }
+                if ($val1 != $val2) {
+                    throw new \LogicException(
+                        'Tourism no-edit contract INCIDENT-2026-08-17: '
+                        .'VisaBookingService::update() cannot modify financial fields '
+                        .'after booking creation. Tried to change '.$field.'.'
+                    );
+                }
+            }
+        }
+
+        // ── Active execution path (no payment recorded yet) ──
         $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
         if ($status === VisaStatus::Cancelled->value) {
             throw new \RuntimeException(
@@ -374,6 +474,9 @@ class VisaBookingService
     public function addDebtPayment(VisaBooking $booking, array $data): VisaPayment
     {
         return DB::transaction(function () use ($booking, $data) {
+            // BUG-FIX: Acquire a row-level lock on the booking row before reading remaining_amount
+            $booking = VisaBooking::lockForUpdate()->findOrFail($booking->id);
+
             $amount = (float) $data['amount'];
             $cashboxAccountId = (int) $data['account_id'];
             $createdBy = (int) (Auth::id() ?? ($data['created_by'] ?? 1));
@@ -382,33 +485,39 @@ class VisaBookingService
                 throw new \InvalidArgumentException('مبلغ السداد يجب أن يكون أكبر من صفر.');
             }
 
-            // Idempotency / over-payment guard
-            $booking->refresh();
-            if ($booking->status === VisaStatus::Cancelled) {
+            // Lifecycle / over-payment guards
+            $status = $booking->status instanceof \BackedEnum ? $booking->status->value : (string) $booking->status;
+            if ($status === VisaStatus::Cancelled->value) {
                 throw new \RuntimeException('لا يمكن السداد على حجز ملغى.');
             }
+            if ($status === VisaStatus::Refunded->value) {
+                throw new \RuntimeException('لا يمكن السداد على حجز تم استرداده بالكامل.');
+            }
+            if ($booking->trashed()) {
+                throw new \RuntimeException('لا يمكن السداد على حجز محذوف.');
+            }
+
             if ($amount > ((float) $booking->remaining_amount + 0.01)) {
                 throw new \RuntimeException(
-                    'مبلغ السداد يتجاوز المبلغ المتبقي على الحجز (' . round((float) $booking->remaining_amount, 2) . ').'
+                    'مبلغ السداد يتجاوز المبلغ المتبقي على الحجز ('.round((float) $booking->remaining_amount, 2).').'
                 );
             }
 
-            // Use the public resolver (raised to public for this call site).
-            $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+            // Use the public resolver to ensure customer account exists
+            $customerAccount = $this->ensureCustomerAccount($booking->customer_id, (string) ($booking->currency ?? 'EGP'));
 
-            // recordIncome creates balanced debit + credit AccountEntry rows
-            // and updates both account balances inside the LedgerBalanceMutationGuard.
-            $income = $this->transactions->recordIncome([
+            // recordJournalTransfer (type=transfer) resolves the duplicate income guard conflict.
+            $income = $this->transactions->recordJournalTransfer([
                 'amount' => $amount,
-                'to_account_id' => $cashboxAccountId,    // the cashbox the customer paid into
-                'contra_account_id' => $customerAccount->id,
-                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
+                'from_account_id' => $customerAccount->id,    // customer AR ↓
+                'to_account_id' => $cashboxAccountId,        // treasury ↑
+                'currency' => (string) ($booking->currency ?? 'EGP'),
                 'module' => TransactionModule::Visa->value,
+                'type' => TransactionType::Transfer->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
-                'notes' => 'سداد تأشيرة #' . $booking->id . ': ' . ($data['notes'] ?? ''),
+                'notes' => 'سداد تأشيرة #'.$booking->id.': '.($data['notes'] ?? ''),
                 'created_by' => $createdBy,
-                'allow_from_negative' => true,  // cashbox may go negative if not pre-funded
             ]);
 
             $payment = $booking->payments()->create([
@@ -424,7 +533,7 @@ class VisaBookingService
                 'created_by' => $createdBy,
             ]);
 
-            Log::info('Visa booking debt payment recorded (additive path)', [
+            Log::info('Visa booking debt payment recorded (transfer path)', [
                 'booking_id' => $booking->id,
                 'payment_id' => $payment->id,
                 'transaction_id' => $income->id,
@@ -471,6 +580,15 @@ class VisaBookingService
         }
 
         return DB::transaction(function () use ($booking, $data) {
+            // BUG-FIX 2026-08-14 (BUG-VISA-2026-08-14-004): acquire a row-level lock
+            // on the visa_bookings row BEFORE reading paid_amount. Without this,
+            // two concurrent addPayment() calls can both read the same
+            // paid_amount from the same snapshot, both pass the overpayment
+            // check, and both INSERT payments — letting the customer overpay.
+            // Same pattern as addDebtPayment() (line 397) and deleteWithReversal()
+            // (VisaRefundService.php:170).
+            $booking = VisaBooking::lockForUpdate()->findOrFail($booking->id);
+
             $amount = (float) $data['amount'];
             $accountId = (int) ($data['account_id'] ?? $booking->account_id);
             $createdBy = Auth::id() ?? ($data['created_by'] ?? null);
@@ -478,7 +596,6 @@ class VisaBookingService
             // Overpayment guard (BUG-FIX): reject if amount > remaining.
             // Mirror of the guard in addDebtPayment() (line 357+) — same
             // invariant, same error.
-            $booking->refresh();
             $totalDue = (float) $booking->selling_price + (float) ($booking->service_fee ?? 0);
             $paidAlready = (float) $booking->paid_amount;
             $remaining = max(0.0, $totalDue - $paidAlready);
@@ -488,32 +605,126 @@ class VisaBookingService
                 );
             }
 
-            $customerAccount = $this->ensureCustomerAccount($booking->customer_id);
+            $customerAccount = $this->ensureCustomerAccount($booking->customer_id, (string) ($booking->currency ?? 'EGP'));
 
-            $income = $this->transactions->recordIncome([
+            // ─────────────────────────────────────────────────────────────────
+            // BRIEF 6 / TASK C — VISA IDEMPOTENCY (2026-08-21):
+            //   Phase 9.8 added a UNIQUE constraint on
+            //   `(visa_booking_id, transaction_reference)`. This blocks
+            //   duplicate financial rows for the same payment attempt.
+            //
+            //   Pre-fix: the controller rejected the second call with 422
+            //   (UNIQUE violation) even when it was an idempotent retry of
+            //   the SAME payment — e.g. a network retry, or the same
+            //   reference sent twice with a different idempotency_key.
+            //   `test_same_payment_same_reference_is_idempotent` expected
+            //   200/201 with the existing payment id.
+            //
+            //   Post-fix: idempotency by reference FIRST, then by
+            //   idempotency_key. If the caller supplies a non-null
+            //   reference that already exists on this booking, return the
+            //   existing payment row. If no reference but the caller
+            //   supplies an idempotency_key that already exists, return
+            //   the existing payment row. No new transaction, no ledger
+            //   mutation, no duplicate.
+            //
+            //   Null/empty reference + null/empty idempotency_key (legacy
+            //   callers) still creates a new payment — the UNIQUE constraint
+            //   is no-op on nulls (MySQL/SQLite semantics).
+            //
+            //   The DB UNIQUE constraint remains the authoritative race-
+            // safety net for concurrent retries — see the catch block below.
+            // ─────────────────────────────────────────────────────────────────
+            $reference = $data['reference'] ?? $data['transaction_reference'] ?? null;
+            $idempotencyKey = $data['idempotency_key'] ?? null;
+            if ($reference !== null && $reference !== '') {
+                $existingPayment = VisaPayment::query()
+                    ->where('visa_booking_id', $booking->id)
+                    ->where('transaction_reference', $reference)
+                    ->first();
+                if ($existingPayment) {
+                    // Signal to callers (service-layer tests + API) that this
+                    // is an idempotent replay, not a new payment.
+                    $existingPayment->idempotent_replay = true;
+
+                    return $existingPayment;
+                }
+            } elseif ($idempotencyKey !== null && $idempotencyKey !== '') {
+                $existingPayment = VisaPayment::query()
+                    ->where('visa_booking_id', $booking->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+                if ($existingPayment) {
+                    // Signal to callers (service-layer tests + API) that this
+                    // is an idempotent replay, not a new payment.
+                    $existingPayment->idempotent_replay = true;
+
+                    return $existingPayment;
+                }
+            }
+
+            // PHASE 10 / FC-AUDIT-20260814 D1 — recordJournalTransfer
+            //   (type=Transfer) accounting for SUBSEQUENT collections.
+            //
+            //   Using recordIncome() here would, after the FC-AUDIT D1 fix,
+            //   set type=Income and trigger the duplicate-income guard on
+            //   the second payment. We use recordJournalTransfer() with
+            //   explicit type=Transfer, which is the semantically correct
+            //   category for cash collection against a known sale.
+            $income = $this->transactions->recordJournalTransfer([
                 'amount' => $amount,
-                'to_account_id' => $accountId,
-                'contra_account_id' => $customerAccount->id,
-                'currency' => $booking->currency,           // Phase 7: per-currency clearing routing
+                'from_account_id' => $customerAccount->id,    // customer AR ↓
+                'to_account_id' => $accountId,              // treasury ↑
+                'currency' => (string) ($booking->currency ?? 'EGP'),
                 'module' => TransactionModule::Visa->value,
+                'type' => TransactionType::Transfer->value,
                 'related_type' => VisaBooking::class,
                 'related_id' => $booking->id,
                 'notes' => "دفعة على تأشيرة #{$booking->id}",
                 'created_by' => $createdBy,
             ]);
 
-            return $booking->payments()->create([
-                'payment_method' => $data['payment_method'] ?? 'cash',
-                'amount' => $amount,
-                'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
-                'treasury_account' => $data['treasury_account'] ?? 'office_drawer',
-                'account_id' => $accountId,
-                'transaction_id' => $income->id,
-                'transaction_reference' => $data['reference'] ?? $data['transaction_reference'] ?? null,
-                'payment_date' => $data['payment_date'] ?? now(),
-                'paid_by' => $data['paid_by'] ?? $booking->customer?->full_name ?? '',
-                'created_by' => $createdBy,
-            ]);
+            try {
+                return $booking->payments()->create([
+                    'payment_method' => $data['payment_method'] ?? 'cash',
+                    'amount' => $amount,
+                    'currency' => $data['currency'] ?? $booking->currency ?? 'EGP',
+                    'treasury_account' => $data['treasury_account'] ?? 'office_drawer',
+                    'account_id' => $accountId,
+                    'transaction_id' => $income->id,
+                    'transaction_reference' => $reference,
+                    'idempotency_key' => $idempotencyKey,
+                    'payment_date' => $data['payment_date'] ?? now(),
+                    'paid_by' => $data['paid_by'] ?? $booking->customer?->full_name ?? '',
+                    'created_by' => $createdBy,
+                ]);
+            } catch (QueryException $e) {
+                // BRIEF 6 / TASK C — race-safety fallback: a concurrent retry
+                //   that passes the pre-check (between SELECT and INSERT)
+                //   can still hit the UNIQUE constraint. Treat as idempotent.
+                if (str_contains($e->getMessage(), 'UNIQUE')) {
+                    $existingPayment = null;
+                    if ($reference !== null && $reference !== '') {
+                        $existingPayment = VisaPayment::query()
+                            ->where('visa_booking_id', $booking->id)
+                            ->where('transaction_reference', $reference)
+                            ->first();
+                    }
+                    if (! $existingPayment && $idempotencyKey !== null && $idempotencyKey !== '') {
+                        $existingPayment = VisaPayment::query()
+                            ->where('visa_booking_id', $booking->id)
+                            ->where('idempotency_key', $idempotencyKey)
+                            ->first();
+                    }
+                    if ($existingPayment) {
+                        $existingPayment->idempotent_replay = true;
+
+                        return $existingPayment;
+                    }
+                }
+                throw $e;
+            }
+            // (Pre-Brief-6 create() call removed — replaced by the try block above.)
         });
     }
 
@@ -541,13 +752,17 @@ class VisaBookingService
      * can resolve the customer's ledger Account the same way the booking-flow
      * internals do — without duplicating the Account::create wrapping logic.
      */
-    public function ensureCustomerAccount(int $customerId): Account
+    public function ensureCustomerAccount(int $customerId, ?string $currency = null): Account
     {
         $customer = Customer::findOrFail($customerId);
+        $currency = $currency ? strtoupper($currency) : 'EGP';
 
         if ($customer->account_id) {
-            $account = Account::find($customer->account_id);
-            if ($account) {
+            $primary = Account::find($customer->account_id);
+            if ($primary
+                && strtoupper((string) $primary->currency) === $currency
+            ) {
+                // Primary account matches the requested currency — use it.
                 // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
                 // 'office'-tagged account the moment a Customer row is
                 // inserted. When that customer is later used in a Visa
@@ -557,24 +772,51 @@ class VisaBookingService
                 // LedgerBalanceMutationGuard because touching `balance`
                 // — even to confirm 0.00 — would otherwise trip the
                 // Account::updating boot guard.
-                if ($account->module_type !== 'visas') {
-                    LedgerBalanceMutationGuard::run(function () use ($account) {
-                        $account->module_type = 'visas';
-                        $account->save();
+                if ($primary->module_type !== 'visas') {
+                    LedgerBalanceMutationGuard::run(function () use ($primary) {
+                        $primary->module_type = 'visas';
+                        $primary->save();
                     });
                 }
 
-                return $account;
+                return $primary;
             }
         }
 
-        // Create new account for customer
-        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer) {
+        // FX SAFETY (2026-08-21): a customer may have bookings in multiple
+        // currencies. For each non-primary currency, we resolve (or create)
+        // a dedicated per-currency customer account. Pre-fix behaviour was
+        // to hard-code `currency='EGP'` for every customer account and let
+        // the silent `?? 1.0` fallback in recordJournalTransfer mask the
+        // cross-currency mismatch downstream — producing nominally-balanced
+        // but semantically-wrong ledger entries. Post-fix: every customer
+        // account used in a visa journal entry MUST match the booking
+        // currency, so we look up or auto-create a per-currency account.
+
+        $existing = Account::query()
+            ->where('module_type', 'visas')
+            ->where('owner_type', Account::OWNER_TYPE_OWNER)
+            ->where('type', AccountType::Customer->value)
+            ->where('currency', $currency)
+            ->where('notes', 'حساب تلقائي للعميل #'.$customer->id)
+            ->first();
+
+        if ($existing) {
+            // Repoint the customer to this per-currency account so callers
+            // reading `$customer->account_id` reach the active account.
+            if ((int) $customer->account_id !== (int) $existing->id) {
+                $customer->update(['account_id' => $existing->id]);
+            }
+
+            return $existing;
+        }
+
+        $account = LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($customer, $currency) {
             $account = Account::create([
-                'name' => 'حساب العميل: '.$customer->full_name,
+                'name' => 'حساب العميل: '.$customer->full_name.' ('.$currency.')',
                 'type' => AccountType::Customer,
                 'balance' => 0,
-                'currency' => 'EGP',
+                'currency' => $currency,
                 'is_active' => true,
                 'owner_type' => Account::OWNER_TYPE_OWNER,
                 'module_type' => 'visas',
@@ -588,9 +830,12 @@ class VisaBookingService
             Log::info('Customer ledger account created automatically', [
                 'customer_id' => $customer->id,
                 'account_id' => $account->id,
+                'currency' => $currency,
             ]);
 
             return $account;
         }));
+
+        return $account;
     }
 }

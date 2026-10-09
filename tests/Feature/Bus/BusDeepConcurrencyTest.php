@@ -7,6 +7,7 @@ use App\Models\Bus\BusBooking;
 use App\Models\Bus\BusPayment;
 use App\Models\Bus\BusRefundRequest;
 use App\Models\Customer;
+use Illuminate\Support\Str;
 
 /**
  * Deep Concurrency Invariants — Bus module
@@ -115,11 +116,17 @@ class BusDeepConcurrencyTest extends BusTestCase
         $successCount = 0;
         $rejectCount = 0;
         for ($i = 0; $i < 50; $i++) {
-            $resp = $this->postJson("/api/v1/bus/bookings/{$booking->id}/pay", [
-                'amount' => 10.0,
-                'payment_method' => 'cash',
-                'account_id' => $this->cashboxEgp->id,
-            ]);
+            // Each partial payment is a SEPARATE logical operation
+            // (cashier takes 10 EGP from the customer across 50 taps),
+            // so each carries a fresh Idempotency-Key. Without per-payment
+            // keys, only the 1st would succeed (safety-net blocks 2nd-50th
+            // because they share the same tuple within 5s).
+            $resp = $this->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+                ->postJson("/api/v1/bus/bookings/{$booking->id}/pay", [
+                    'amount' => 10.0,
+                    'payment_method' => 'cash',
+                    'account_id' => $this->cashboxEgp->id,
+                ]);
             if ($resp->status() === 200) {
                 $successCount++;
             } elseif ($resp->status() === 422) {

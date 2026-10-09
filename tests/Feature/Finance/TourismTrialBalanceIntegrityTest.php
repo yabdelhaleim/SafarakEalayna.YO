@@ -244,15 +244,10 @@ class TourismTrialBalanceIntegrityTest extends TestCase
     }
 
     /**
-     * Flight group debt (positive balance = receivable) MUST still enter
-     * tourism `due_to_us`. flight_group is in
-     * `TRIAL_BALANCE_RECEIVABLE_ENTITY_TYPES`.
-     *
-     * Note: the FlightGroup ledger account uses `type='customer'` (one of
-     * the SUBJECT_TYPES); the `flight_group` value lives in the API entity
-     * taxonomy, not in `accounts.type`.
+     * Flight group debt (positive balance = payable) MUST enter
+     * tourism `due_from_us`. flight_group is a supplier entity (commit 4990a5c).
      */
-    public function test_flight_group_receivable_appears_in_tourism_due_to_us(): void
+    public function test_flight_group_payable_appears_in_tourism_due_from_us(): void
     {
         $groupAccount = Account::query()->create([
             'name' => 'مجموعة طيران إيجبت إير',
@@ -275,7 +270,7 @@ class TourismTrialBalanceIntegrityTest extends TestCase
 
         $result = $this->treasury->calculateReceivablesAndPayables('tourism');
 
-        $this->assertEqualsWithDelta(3500.0, $result['due_to_us'], 0.01);
+        $this->assertEqualsWithDelta(3500.0, $result['due_from_us'], 0.01);
     }
 
     /**
@@ -392,8 +387,10 @@ class TourismTrialBalanceIntegrityTest extends TestCase
 
         $result = $this->treasury->calculateReceivablesAndPayables('tourism');
 
-        // Expected: 2000 + 1500 + 800 + 3500 = 7800 (office pollution = 0)
-        $this->assertEqualsWithDelta(7800.0, $result['due_to_us'], 0.01);
+        // Expected: 2000 + 1500 + 800 = 4300 (office pollution = 0)
+        // Flight group positive balance is a payable (due_from_us = 3500)
+        $this->assertEqualsWithDelta(4300.0, $result['due_to_us'], 0.01);
+        $this->assertEqualsWithDelta(3500.0, $result['due_from_us'], 0.01);
     }
 
     /**

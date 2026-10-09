@@ -14,6 +14,7 @@ use App\Models\Online\OnlineServiceType;
 use App\Models\Online\OnlineTransaction;
 use App\Models\Setting\PaymentMethod;
 use App\Services\Online\OnlineTransactionService;
+use App\Support\Finance\AccountModuleContract;
 use BackedEnum;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteAction;
@@ -25,6 +26,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Placeholder;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -62,22 +64,30 @@ class OnlineTransactionResource extends Resource
                     ->icon(Heroicon::OutlinedGlobeAlt)
                     ->schema([
                         Grid::make(2)->schema([
-                            Select::make('service_type_id')
+                            TextInput::make('service_type_code')
                                 ->label('نوع الخدمة')
-                                ->options(fn (): array => OnlineServiceType::query()->orderBy('order')->get()->mapWithKeys(
-                                    fn (OnlineServiceType $t) => [$t->getKey() => (filled($t->name_ar) ? $t->name_ar : (filled($t->code) ? $t->code : '— #'.$t->getKey()))]
-                                )->all())
-                                ->searchable()
                                 ->required()
-                                ->preload(),
+                                ->maxLength(80)
+                                ->placeholder('مثال: طوابع وضرائب، تصديقات، تأشيرات')
+                                ->helperText('اكتب نوع الخدمة كنص حر (يمكن إدارة الأنواع من موديول الخدمات الإلكترونية > أنواع الخدمات).')
+                                ->datalist(
+                                    fn (): array => OnlineServiceType::query()
+                                        ->orderBy('order')
+                                        ->pluck('name_ar')
+                                        ->all()
+                                ),
 
-                            Select::make('provider_id')
+                            TextInput::make('provider_code')
                                 ->label('المزود')
-                                ->options(fn (): array => OnlineServiceProvider::query()->orderBy('order')->get()->mapWithKeys(
-                                    fn (OnlineServiceProvider $p) => [$p->getKey() => (filled($p->name_ar) ? $p->name_ar : (filled($p->code) ? $p->code : '— #'.$p->getKey()))]
-                                )->all())
-                                ->searchable()
-                                ->preload(),
+                                ->maxLength(80)
+                                ->placeholder('مثال: شركة ممتاز، اعتماد، مسارات')
+                                ->helperText('اختياري — اكتب اسم المزود كنص حر.')
+                                ->datalist(
+                                    fn (): array => OnlineServiceProvider::query()
+                                        ->orderBy('order')
+                                        ->pluck('name_ar')
+                                        ->all()
+                                ),
                         ]),
                     ]),
 
@@ -158,6 +168,23 @@ class OnlineTransactionResource extends Resource
                 Section::make('الدفع والحالة')
                     ->icon(Heroicon::OutlinedCreditCard)
                     ->schema([
+                        // ⬇️ جديد 2026-09-03: يظهر فقط لو مفيش حسابات سيولة في قسم المكتب/الأونلاين.
+                        //    يحلّ مشكلة dropdown فاضي بعد تعطيل migration 2026_08_28_130000_seed_online_module_accounts.
+                        Placeholder::make('no_office_accounts_warning')
+                            ->label('لا توجد حسابات تحصيل')
+                            ->content(new \Illuminate\Support\HtmlString(
+                                'لا توجد حسابات تحصيل نشطة في قسم المكتب. '
+                                .'أضف حساباً من <a href="/admin/online-wallets" class="underline font-semibold">محافظ الأونلاين</a> '
+                                .'أو <a href="/admin/online-bank-accounts" class="underline font-semibold">البنوك</a> أولاً، '
+                                .'ثم أكمل تسجيل المعاملة.'
+                            ))
+                            ->visible(fn (): bool => ! Account::query()
+                                ->where('is_active', true)
+                                ->whereIn('module_type', ['online', AccountModuleContract::OFFICE_MODULE_TYPE])
+                                ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+                                ->exists()),
+                        // ⬆️ جديد
+
                         Grid::make(2)->schema([
                             Select::make('payment_method')
                                 ->label('طريقة الدفع')
@@ -215,7 +242,7 @@ class OnlineTransactionResource extends Resource
 
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        return parent::getEloquentQuery()->with(['serviceType', 'provider', 'customer', 'employee', 'account']);
+        return parent::getEloquentQuery()->with(['serviceTypeRow', 'providerRow', 'customer', 'employee', 'account']);
     }
 
     public static function table(Table $table): Table
@@ -234,11 +261,31 @@ class OnlineTransactionResource extends Resource
                 TextColumn::make('customer_phone', 'التليفون')
                     ->toggleable(),
 
-                TextColumn::make('serviceType.name_ar', 'الخدمة')
+                // Show Arabic name from the lookup table if a matching row
+                // exists in online_service_types; otherwise show the raw code.
+                TextColumn::make('service_type_code', 'الخدمة')
+                    ->label('الخدمة')
+                    ->formatStateUsing(function ($state, $record) {
+                        if (! $state) {
+                            return '—';
+                        }
+                        $name = $record->serviceTypeRow?->name_ar;
+
+                        return $name ?? $state;
+                    })
                     ->badge()
                     ->searchable(),
 
-                TextColumn::make('provider.name_ar', 'المزود')
+                TextColumn::make('provider_code', 'المزود')
+                    ->label('المزود')
+                    ->formatStateUsing(function ($state, $record) {
+                        if (! $state) {
+                            return '—';
+                        }
+                        $name = $record->providerRow?->name_ar;
+
+                        return $name ?? $state;
+                    })
                     ->badge()
                     ->placeholder('—'),
 
@@ -272,16 +319,16 @@ class OnlineTransactionResource extends Resource
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('service_type_id')
+                SelectFilter::make('service_type_code')
                     ->label('نوع الخدمة')
                     ->options(fn (): array => OnlineServiceType::query()->orderBy('order')->get()->mapWithKeys(
-                        fn (OnlineServiceType $t) => [$t->getKey() => (filled($t->name_ar) ? $t->name_ar : (filled($t->code) ? $t->code : '—'))]
+                        fn (OnlineServiceType $t) => [$t->code => (filled($t->name_ar) ? $t->name_ar : $t->code)]
                     )->all()),
 
-                SelectFilter::make('provider_id')
+                SelectFilter::make('provider_code')
                     ->label('المزود')
                     ->options(fn (): array => OnlineServiceProvider::query()->orderBy('order')->get()->mapWithKeys(
-                        fn (OnlineServiceProvider $p) => [$p->getKey() => (filled($p->name_ar) ? $p->name_ar : (filled($p->code) ? $p->code : '—'))]
+                        fn (OnlineServiceProvider $p) => [$p->code => (filled($p->name_ar) ? $p->name_ar : $p->code)]
                     )->all()),
 
                 SelectFilter::make('payment_method')
@@ -342,7 +389,7 @@ class OnlineTransactionResource extends Resource
     public static function apiEnvelopePreviewBody(OnlineTransaction $record, string $message): string
     {
         $record->refresh();
-        $record->loadMissing(['serviceType:id,name_ar,code', 'provider:id,name_ar,code', 'employee:id,full_name', 'account:id,name,type']);
+        $record->loadMissing(['serviceTypeRow:id,name_ar,code', 'providerRow:id,name_ar,code', 'employee:id,full_name', 'account:id,name,type']);
 
         $envelope = [
             'status' => true,
@@ -350,8 +397,8 @@ class OnlineTransactionResource extends Resource
             'data' => array_merge(
                 $record->attributesToArray(),
                 [
-                    'service_type' => $record->serviceType?->only(['id', 'name_ar', 'code']),
-                    'provider' => $record->provider?->only(['id', 'name_ar', 'code']),
+                    'service_type' => $record->serviceTypeRow?->only(['id', 'name_ar', 'code']),
+                    'provider' => $record->providerRow?->only(['id', 'name_ar', 'code']),
                     'employee' => $record->employee?->only(['id', 'full_name']),
                     'account' => $record->account?->only(['id', 'name', 'type']),
                 ],

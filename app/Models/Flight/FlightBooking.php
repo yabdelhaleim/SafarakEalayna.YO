@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable([
     'customer_id',
@@ -48,6 +49,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'trip_details',
     'purchase_price',
     'selling_price',
+    'selling_price_foreign',
     'profit',
     'currency',
     'foreign_currency',
@@ -279,13 +281,17 @@ class FlightBooking extends Model
 
     /**
      * حالة تحصيل العميل: paid / partial / unpaid (نفس منطق التصفية في FlightBookingService).
+     *
+     * FIN-3 BUG-5 (2026-08-29): delegate to paid_amount accessor so this
+     * agrees with what the JSON resource sends to the Vue client.
+     * Pre-fix, both this and the resource summed `flight_payments` only,
+     * so the API returned payment_status='paid' AND total_paid=0 at the
+     * same time when the booking was paid via payDebt income.
      */
     public function computePaymentStatus(): string
     {
         $selling = (float) $this->selling_price;
-        $totalPaid = $this->relationLoaded('payments')
-            ? (float) $this->payments->sum(fn ($p) => (float) $p->amount)
-            : (float) $this->payments()->sum('amount');
+        $totalPaid = (float) $this->paid_amount;
 
         if ($selling <= 0.01) {
             return 'paid';
@@ -304,9 +310,56 @@ class FlightBooking extends Model
 
     public function getPaidAmountAttribute(): float
     {
-        return $this->relationLoaded('payments')
+        $flightPaymentsPaid = $this->relationLoaded('payments')
             ? (float) $this->payments->sum('amount')
             : (float) $this->payments()->sum('amount');
+
+        // FIN-3 BUG-4 (2026-08-29): include payDebt income.
+        //
+        // Pre-fix, the accessor only summed `flight_payments` rows. The
+        // /customers/{id}/pay-debt flow (post FIN-3) posts a type='income'
+        // row keyed to the Customer model — it does NOT create a
+        // `flight_payments` row. Result: any customer who paid their
+        // booking debt via payDebt saw `paid_amount = 0`,
+        // `remaining_amount = selling_price`, and the booking page
+        // displayed "لم يتم الدفع" even though the cash had actually
+        // arrived. Downstream effects:
+        //   - booking.paid_status accessor returns 'unpaid'
+        //   - Vue FlightShow.vue computed "المدفوع = 0"
+        //   - any place that checks "is this booking fully paid" fails
+        //
+        // Fix: sum un-reversed payDebt income for this customer + flight
+        // module on top of the flight_payments sum. Mirrors the lookup
+        // pattern in FlightBookingService::cancelBooking (BUG-3) and
+        // FlightBookingService::reverseFlightBookingRevenue (BUG-2) so
+        // all three pieces of the cancellation flow see the same payment
+        // surface.
+        //
+        // Limitation: same multi-booking caveat — when a customer has
+        // multiple flight bookings, this allocates ALL their payDebt
+        // income to each booking's accessor. Acceptable until
+        // flight_booking_id is threaded into the payDebt related
+        // metadata. The long-term fix is to push payDebt into
+        // flight_payments rows directly.
+        //
+        // Performance: this is an N+1 risk if a UI does
+        // `Booking::all()->each(fn ($b) => $b->paid_amount)`. Eager-load
+        // `customer` if a list view calls this accessor in a loop.
+        $payDebtPaid = (float) DB::table('transactions')
+            ->where('related_type', Customer::class)
+            ->where('related_id', (int) $this->customer_id)
+            ->where('type', 'income')
+            ->where('module', \App\Enums\TransactionModule::Flight->value)
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                    ->orWhere(function ($q2) {
+                        $q2->where('notes', 'not like', 'عكس:%')
+                            ->where('notes', 'not like', 'عكس %');
+                    });
+            })
+            ->sum('amount');
+
+        return $flightPaymentsPaid + $payDebtPaid;
     }
 
     public function getRemainingAmountAttribute(): float

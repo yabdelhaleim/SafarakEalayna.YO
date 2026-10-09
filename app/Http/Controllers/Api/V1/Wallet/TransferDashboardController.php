@@ -7,6 +7,9 @@ use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Wallet\WalletTransaction;
+use App\Support\Finance\AccountModuleContract;
+use App\Support\Finance\AccountModuleDivision;
+use App\Support\Finance\LiquidityAccountGroups;
 use Illuminate\Support\Facades\DB;
 
 class TransferDashboardController extends Controller
@@ -15,51 +18,46 @@ class TransferDashboardController extends Controller
     {
         // 1. Module Stats (wallet_transfer is in the Office division).
         //
-        // Bug fix (2026-07-27): the previous code used `where('module_type',
-        // AccountType::Wallet->value)` for the balance SUM — but the seeded
-        // wallet accounts have `module_type='office'` (division) with a
-        // `module='wallet_transfer'` alias. As a result, the API returned
-        // `balance=0` for every section even when hundreds of thousands of
-        // EGP sat in the wallets. The matching count() filter used the
-        // correct module_type='wallet_transfer' (which is also a valid
-        // legacy value), so the two were inconsistent.
+        // Bug fix (2026-09-05): the previous code used a double-AND filter:
+        //   whereIn('module_type', ['office', 'wallet_transfer'])
+        //     ->where('module', 'wallet_transfer') OR module_type='wallet_transfer'
+        // This correctly matches the outer whereIn but then ALSO requires the
+        // inner condition, which excludes real liquidity accounts that have
+        // module_type='office' and module='' (empty). The result was all
+        // wallet/bank/cashbox balances returning 0 on the dashboard.
         //
-        // We now use `whereIn('module_type', ['office', 'wallet_transfer'])`
-        // — which matches:
-        //   • Newly-seeded rows (module_type='office', module='wallet_transfer')
-        //   • Legacy rows (module_type='wallet_transfer')
-        // The Bank/Cashbox counts remain scoped to the same module filter so
-        // a wallet_transfer bank doesn't bleed into bus/fawry/online counts.
-        $moduleFilter = fn ($q) => $q->whereIn('module_type', ['office', 'wallet_transfer'])
-            ->where(function ($q2) {
-                $q2->where('module', 'wallet_transfer')
-                    ->orWhere('module_type', 'wallet_transfer');
-            });
+        // Fix: use AccountModuleDivision::applyModuleFilter('wallet_transfer')
+        // — the same helper used by FawryDashboardController and every other
+        // office-module dashboard. It correctly expands the filter to include:
+        //   • module_type='wallet_transfer' (legacy rows)
+        //   • module_type='office'           (division-tagged rows)
+        //   • module='wallet_transfer'        (module column alias)
+        // The Bank/Cashbox/Wallet accounts in the office division are now
+        // correctly included in the balance SUM.
+        //
+        // Also add `is_active=true` filter to match the treasury controller's
+        // behaviour (inactive/closed accounts should not count toward liquidity).
+        $baseQuery = Account::query()->where('is_active', true);
+        AccountModuleDivision::applyModuleFilter($baseQuery, 'wallet_transfer');
+
+        $accounts = (clone $baseQuery)
+            ->whereIn('type', AccountModuleContract::LIQUIDITY_TYPES)
+            ->get(['type', 'balance']);
 
         $stats = [
-            'wallets' => [
-                'count' => (clone $moduleFilter(Account::query()))->where('type', AccountType::Wallet->value)->count(),
-                'balance' => (float) (clone $moduleFilter(Account::query()))->where('type', AccountType::Wallet->value)->sum('balance'),
-            ],
-            'banks' => [
-                'count' => (clone $moduleFilter(Account::query()))->where('type', AccountType::Bank->value)->count(),
-                'balance' => (float) (clone $moduleFilter(Account::query()))->where('type', AccountType::Bank->value)->sum('balance'),
-            ],
-            'cashboxes' => [
-                'count' => (clone $moduleFilter(Account::query()))->where('type', AccountType::Cashbox->value)->count(),
-                'balance' => (float) (clone $moduleFilter(Account::query()))->where('type', AccountType::Cashbox->value)->sum('balance'),
-            ],
-            'treasury' => [
-                'count' => (clone $moduleFilter(Account::query()))->where('type', AccountType::Bank->value)->count(),
-                'balance' => (float) (clone $moduleFilter(Account::query()))->where('type', AccountType::Bank->value)->sum('balance'),
-            ],
+            'wallets'   => LiquidityAccountGroups::countAndBalance($accounts, AccountType::Wallet),
+            'banks'     => LiquidityAccountGroups::countAndBalance($accounts, AccountType::Bank),
+            'cashboxes' => LiquidityAccountGroups::countAndBalance($accounts, AccountType::Cashbox),
+            // 'treasury' kept for response-shape backward compatibility.
+            // AccountType::Treasury was retired in Phase 3.5b; no accounts
+            // carry this type anymore. The value is always 0.
+            'treasury'  => ['count' => 0, 'balance' => 0.0],
         ];
 
         // 1.5 Total Liquidity
         $stats['total_liquidity'] = (float) $stats['wallets']['balance'] +
                                     (float) $stats['banks']['balance'] +
-                                    (float) $stats['cashboxes']['balance'] +
-                                    (float) $stats['treasury']['balance'];
+                                    (float) $stats['cashboxes']['balance'];
 
         // 1.6 Customers Debt — scoped to wallet_transfer customer accounts only.
         //

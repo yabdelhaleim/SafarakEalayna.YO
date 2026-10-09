@@ -61,9 +61,20 @@ class FawryWalkInPaymentController extends Controller
                     );
                 }
 
-                // Compute current debt for this walk-in client_name
+                // Compute current debt for this walk-in client_name.
+                //
+                // 🛡️ B-4 fix: filter out soft-deleted transactions.
+                // The FIFO loop further below already excludes them, but
+                // the SUM here didn't — so a soft-deleted tx with a
+                // stale `selling_price > amount` gap would inflate the
+                // debt and trigger a phantom "السداد مكتمل" rejection on
+                // a real customer, OR a phantom over-payment block when
+                // the customer tried to pay the inflated amount. The
+                // over-payment guard at line ~78 would then fire
+                // incorrectly, throwing on a valid pay-debt.
                 $debt = (float) DB::table('fawry_transactions')
                     ->whereNull('client_id')
+                    ->whereNull('deleted_at')
                     ->where('client_name', $clientName)
                     ->selectRaw('COALESCE(SUM(selling_price - amount), 0) as debt')
                     ->value('debt');

@@ -37,8 +37,11 @@ class BusWalletResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->whereIn('module_type', ['bus', 'office'])
-            ->where('type', AccountType::Wallet);
+            ->where('type', AccountType::Wallet)
+            ->where(function (Builder $q): void {
+                $q->where('module', 'bus')
+                    ->orWhere('module_type', 'bus');
+            });
     }
 
     public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema

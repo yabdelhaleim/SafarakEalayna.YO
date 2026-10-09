@@ -1,0 +1,1331 @@
+{
+    "audit": "TOURISM_FULL_SYSTEM_FINANCIAL_AUDIT",
+    "date": "2026-08-17",
+    "database": "safarakealayna",
+    "host": "127.0.0.1",
+    "env": "local",
+    "setup": {
+        "baseline": {
+            "accounts": 656,
+            "account_entries": 4042,
+            "transactions": 1977,
+            "customers": 570,
+            "flight_bookings": 0,
+            "hajj_umra_bookings": 0,
+            "visa_bookings": 2,
+            "bus_bookings": 897,
+            "online_transactions": 1,
+            "wallet_transactions": 17,
+            "fawry_transactions": 0,
+            "flight_payments": 0,
+            "hajj_umra_payments": 0,
+            "visa_payments": 0
+        },
+        "admin_id": 1,
+        "egp_treasury_id": 170,
+        "egp_treasury_balance_before": 52000,
+        "customer_account_id": 809,
+        "customer_id": 617,
+        "employee_id": 6,
+        "global_pre": {
+            "debits": 918674.75,
+            "credits": 918287.43,
+            "balance_sum": 741245.25,
+            "diff_debits_credits": 387.32
+        },
+        "visa_vault_id": 18,
+        "hajj_vault_id": 1,
+        "flight_system_id": null,
+        "flight_carrier_id": null,
+        "airline_account_id": null
+    },
+    "phases": [
+        {
+            "phase": "SETUP",
+            "msg": "Capturing baseline",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "SETUP",
+            "msg": "Locating admin user + treasury accounts",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "SETUP",
+            "msg": "fixtures created",
+            "extra": {
+                "baseline": {
+                    "accounts": 656,
+                    "account_entries": 4042,
+                    "transactions": 1977,
+                    "customers": 570,
+                    "flight_bookings": 0,
+                    "hajj_umra_bookings": 0,
+                    "visa_bookings": 2,
+                    "bus_bookings": 897,
+                    "online_transactions": 1,
+                    "wallet_transactions": 17,
+                    "fawry_transactions": 0,
+                    "flight_payments": 0,
+                    "hajj_umra_payments": 0,
+                    "visa_payments": 0
+                },
+                "admin_id": 1,
+                "egp_treasury_id": 170,
+                "egp_treasury_balance_before": 52000,
+                "customer_account_id": 809,
+                "customer_id": 617,
+                "employee_id": 6
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_A",
+            "msg": "Database integrity invariants",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_A",
+            "msg": "invariants",
+            "extra": {
+                "balance_variance_accounts": 20,
+                "max_variance": 1000000,
+                "unbalanced_transactions": 4,
+                "orphan_account_entries": 0,
+                "orphan_transactions": 0,
+                "negative_amount_entries": 0,
+                "negative_balance_accounts": 48,
+                "global_debit_credit_diff": 387.32
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B",
+            "msg": "Visa booking lifecycle",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.visa",
+            "msg": "EXCEPTION",
+            "extra": {
+                "exception": "SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'visa_type' cannot be null (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_details` (`visa_type`, `country`, `duration`, `visa_duration_id`, `entry_type`, `validity_from`, `validity_to`, `executing_company`, `executing_agent`, `executing_agent_contact`, `visa_agent_id`, `submission_date`, `expected_result_date`, `visa_number`, `status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2026-08-17 14:12:44, ?, ?, submitted, 2026-08-17 14:12:44, 2026-08-17 14:12:44))"
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.visa.summary",
+            "msg": "visa done",
+            "extra": [
+                {
+                    "test": "create",
+                    "status": "EXCEPTION",
+                    "details": {
+                        "msg": "SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'visa_type' cannot be null (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_details` (`visa_type`, `country`, `duration`, `visa_duration_id`, `entry_type`, `validity_from`, `validity_to`, `executing_company`, `executing_agent`, `executing_agent_contact`, `visa_agent_id`, `submission_date`, `expected_result_date`, `visa_number`, `status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2026-08-17 14:12:44, ?, ?, submitted, 2026-08-17 14:12:44, 2026-08-17 14:12:44))"
+                    }
+                }
+            ],
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B",
+            "msg": "Hajj\/Umra booking lifecycle",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.hajj",
+            "msg": "BLOCKED",
+            "extra": {
+                "reason": "no program"
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.hajj.summary",
+            "msg": "hajj done",
+            "extra": [
+                {
+                    "test": "skip",
+                    "status": "BLOCKED",
+                    "details": {
+                        "reason": "no program found"
+                    }
+                }
+            ],
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B",
+            "msg": "Flight booking lifecycle",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.flight",
+            "msg": "BLOCKED",
+            "extra": {
+                "reason": "no flight_system"
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_B.flight.summary",
+            "msg": "flight done",
+            "extra": [
+                {
+                    "test": "skip",
+                    "status": "BLOCKED",
+                    "details": {
+                        "reason": "no flight_system"
+                    }
+                }
+            ],
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_C",
+            "msg": "Report cross-checks",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_C",
+            "msg": "report checks",
+            "extra": {
+                "pl_error": "App\\Services\\Reports\\ProfitLossReportService::moduleBreakdown(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner.php on line 594",
+                "fin_error": "App\\Services\\Reports\\FinancialReportService::getFinancialSummary(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner.php on line 607",
+                "independent_income_credit": 91780,
+                "independent_expense_debit": 48680
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_D",
+            "msg": "Customer debt integrity",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_D",
+            "msg": "customer audit-customer balances",
+            "extra": {
+                "accounts_count": 1,
+                "total_balance": 0,
+                "accounts": [
+                    {
+                        "id": 809,
+                        "name": "AUDIT_20260817_CustomerAR",
+                        "module": "flights",
+                        "balance": 0
+                    }
+                ]
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_E",
+            "msg": "Post-run invariants",
+            "extra": null,
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "PHASE_E",
+            "msg": "post-run invariants",
+            "extra": {
+                "balance_variance_accounts": 20,
+                "unbalanced_transactions": 4
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        },
+        {
+            "phase": "VERDICT",
+            "msg": "NO-GO",
+            "extra": {
+                "class_a": 8,
+                "class_b": 0,
+                "has_variance": true,
+                "has_balance_variance": true,
+                "global_post_diff": 387.32
+            },
+            "t": "2026-08-17T14:12:44+00:00"
+        }
+    ],
+    "defects": [
+        {
+            "class": "A",
+            "where": "invariant",
+            "key": "balance_variance_accounts",
+            "value": 20
+        },
+        {
+            "class": "A",
+            "where": "invariant",
+            "key": "max_variance",
+            "value": 1000000
+        },
+        {
+            "class": "A",
+            "where": "invariant",
+            "key": "unbalanced_transactions",
+            "value": 4
+        },
+        {
+            "class": "A",
+            "where": "invariant",
+            "key": "negative_balance_accounts",
+            "value": 48
+        },
+        {
+            "class": "A",
+            "where": "invariant",
+            "key": "global_debit_credit_diff",
+            "value": 387.32
+        },
+        {
+            "class": "A",
+            "where": "visa",
+            "key": "create_or_lifecycle",
+            "value": "SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'visa_type' cannot be null (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_details` (`visa_type`, `country`, `duration`, `visa_duration_id`, `entry_type`, `validity_from`, `validity_to`, `executing_company`, `executing_agent`, `executing_agent_contact`, `visa_agent_id`, `submission_date`, `expected_result_date`, `visa_number`, `status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2026-08-17 14:12:44, ?, ?, submitted, 2026-08-17 14:12:44, 2026-08-17 14:12:44))"
+        },
+        {
+            "class": "A",
+            "where": "post_invariant",
+            "key": "balance_variance_accounts",
+            "value": 20
+        },
+        {
+            "class": "A",
+            "where": "post_invariant",
+            "key": "unbalanced_transactions",
+            "value": 4
+        }
+    ],
+    "audit_ids": {
+        "customer_id": 617,
+        "employee_id": 6
+    },
+    "verdict": "NO-GO",
+    "verdict_basis": {
+        "has_ledger_variance": true,
+        "ledger_variance_amount": 387.32,
+        "has_balance_variance": true,
+        "balance_variance_account_count": 20,
+        "has_unbalanced_transactions": true,
+        "unbalanced_tx_count": 4,
+        "has_fk_orphans": false,
+        "fk_orphans": [],
+        "note": "Audit fixtures (customer\/employee) were created and removed cleanly. The pre-existing defects are NOT caused by this audit — they are the audit findings."
+    },
+    "results": {
+        "flight": [
+            {
+                "test": "skip",
+                "status": "BLOCKED",
+                "details": {
+                    "reason": "no flight_system"
+                }
+            }
+        ],
+        "hajj": [
+            {
+                "test": "skip",
+                "status": "BLOCKED",
+                "details": {
+                    "reason": "no program found"
+                }
+            }
+        ],
+        "visa": [
+            {
+                "test": "create",
+                "status": "EXCEPTION",
+                "details": {
+                    "msg": "SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'visa_type' cannot be null (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: safarakealayna, SQL: insert into `visa_details` (`visa_type`, `country`, `duration`, `visa_duration_id`, `entry_type`, `validity_from`, `validity_to`, `executing_company`, `executing_agent`, `executing_agent_contact`, `visa_agent_id`, `submission_date`, `expected_result_date`, `visa_number`, `status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2026-08-17 14:12:44, ?, ?, submitted, 2026-08-17 14:12:44, 2026-08-17 14:12:44))"
+                }
+            }
+        ]
+    },
+    "post": {
+        "debits": 918674.75,
+        "credits": 918287.43,
+        "balance_sum": 741245.25,
+        "diff_debits_credits": 387.32,
+        "diff_pre_post_debits": 0,
+        "diff_pre_post_credits": 0
+    },
+    "phase2": {
+        "0": {
+            "phase": "PHASE_F",
+            "msg": "Report consistency matrix",
+            "extra": null,
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "independent_pl": {
+            "income": {
+                "credit": 91780,
+                "debit": 91780,
+                "count": 1800
+            },
+            "expense": {
+                "debit": 48680,
+                "credit": 48680,
+                "count": 1824
+            },
+            "transfer": {
+                "debit": 778214.75,
+                "credit": 777827.43,
+                "count": 418
+            },
+            "profit": 43100
+        },
+        "income_by_module": [
+            {
+                "module": "bus",
+                "income": 82780,
+                "count": 1794
+            },
+            {
+                "module": "visa",
+                "income": 9000,
+                "count": 6
+            }
+        ],
+        "expense_by_module": [
+            {
+                "module": "bus",
+                "expense": 48680,
+                "count": 1824
+            }
+        ],
+        "app_pl_error": "App\\Services\\Reports\\ProfitLossReportService::moduleBreakdown(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 106",
+        "app_daily_error": "App\\Services\\Reports\\ReportFinanceService::getDailyFinancialChart(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 114",
+        "app_financial_summary_error": "App\\Services\\Reports\\FinancialReportService::getFinancialSummary(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 123",
+        "independent_trial_balance": {
+            "total_debit": 918674.75,
+            "total_credit": 918287.43,
+            "variance": 387.32,
+            "balanced": false
+        },
+        "trial_balance_per_module": [
+            {
+                "module": "bus",
+                "debit": 209690,
+                "credit": 209690,
+                "variance": 0
+            },
+            {
+                "module": "visa",
+                "debit": 15000,
+                "credit": 15000,
+                "variance": 0
+            },
+            {
+                "module": "office",
+                "debit": 2100,
+                "credit": 2100,
+                "variance": 0
+            },
+            {
+                "module": "online",
+                "debit": 250,
+                "credit": 250,
+                "variance": 0
+            },
+            {
+                "module": "wallet",
+                "debit": 691634.75,
+                "credit": 691247.43,
+                "variance": 387.32
+            }
+        ],
+        "top_customer_accounts": [
+            {
+                "customer_id": 512,
+                "name": "P5 Passenger 1",
+                "module_type": null,
+                "account_balance": 35000,
+                "account_name": "ذممة عميل — P5 Passenger 1 · 01200000001"
+            },
+            {
+                "customer_id": 561,
+                "name": "P5 Passenger 50",
+                "module_type": null,
+                "account_balance": 14000,
+                "account_name": "ذممة عميل — P5 Passenger 50 · 01200000050"
+            },
+            {
+                "customer_id": 513,
+                "name": "P5 Passenger 2",
+                "module_type": null,
+                "account_balance": 7000,
+                "account_name": "ذممة عميل — P5 Passenger 2 · 01200000002"
+            },
+            {
+                "customer_id": 612,
+                "name": "Golden Visa Applicant Customer",
+                "module_type": null,
+                "account_balance": 3000,
+                "account_name": "ذممة عميل — Golden Visa Applicant Customer · 01200001111"
+            },
+            {
+                "customer_id": 504,
+                "name": "Race Buyer 10",
+                "module_type": null,
+                "account_balance": 2000,
+                "account_name": "ذممة عميل — Race Buyer 10 · 01086545130"
+            },
+            {
+                "customer_id": 1,
+                "name": "عميل أونلاين - علي محمد",
+                "module_type": null,
+                "account_balance": 1590,
+                "account_name": "ذممة عميل — عميل أونلاين - علي محمد · 01620020001"
+            },
+            {
+                "customer_id": 511,
+                "name": "Dup Booking Cust",
+                "module_type": null,
+                "account_balance": 1500,
+                "account_name": "ذممة عميل — Dup Booking Cust · 01073745784"
+            },
+            {
+                "customer_id": 498,
+                "name": "Payment Race Cust",
+                "module_type": null,
+                "account_balance": 1000,
+                "account_name": "ذممة عميل — Payment Race Cust · 01260083960"
+            },
+            {
+                "customer_id": 499,
+                "name": "Partial Pay Cust",
+                "module_type": null,
+                "account_balance": 1000,
+                "account_name": "ذممة عميل — Partial Pay Cust · 01519384101"
+            },
+            {
+                "customer_id": 510,
+                "name": "Debt Race Buyer",
+                "module_type": null,
+                "account_balance": 750,
+                "account_name": "ذممة عميل — Debt Race Buyer · 01257935300"
+            },
+            {
+                "customer_id": 502,
+                "name": "Debt Race Buyer",
+                "module_type": null,
+                "account_balance": 750,
+                "account_name": "ذممة عميل — Debt Race Buyer · 01213197117"
+            },
+            {
+                "customer_id": 54,
+                "name": "WALLET_TEST_CUST_Sara",
+                "module_type": null,
+                "account_balance": 300,
+                "account_name": "ذممة عميل — WALLET_TEST_CUST_Sara · 01730032002"
+            },
+            {
+                "customer_id": 505,
+                "name": "Last Ticket Buyer",
+                "module_type": null,
+                "account_balance": 200,
+                "account_name": "ذممة عميل — Last Ticket Buyer · 01154914835"
+            },
+            {
+                "customer_id": 493,
+                "name": "Auto Passenger",
+                "module_type": null,
+                "account_balance": 200,
+                "account_name": "ذممة عميل — Auto Passenger · 01576345040"
+            },
+            {
+                "customer_id": 495,
+                "name": "Auto Passenger",
+                "module_type": null,
+                "account_balance": 200,
+                "account_name": "ذممة عميل — Auto Passenger · 01593482692"
+            },
+            {
+                "customer_id": 500,
+                "name": "Pay Cancel Cust",
+                "module_type": null,
+                "account_balance": 180,
+                "account_name": "ذممة عميل — Pay Cancel Cust · 01019531097"
+            },
+            {
+                "customer_id": 284,
+                "name": "Hot Seat Buyer",
+                "module_type": null,
+                "account_balance": 150,
+                "account_name": "ذممة عميل — Hot Seat Buyer · 01095077633"
+            },
+            {
+                "customer_id": 491,
+                "name": "Golden Passenger 652",
+                "module_type": null,
+                "account_balance": 150,
+                "account_name": "ذممة عميل — Golden Passenger 652 · 01296457443"
+            },
+            {
+                "customer_id": 65,
+                "name": "Hot Seat Buyer",
+                "module_type": null,
+                "account_balance": 150,
+                "account_name": "ذممة عميل — Hot Seat Buyer · 01054639862"
+            },
+            {
+                "customer_id": 71,
+                "name": "Hot Seat Buyer",
+                "module_type": null,
+                "account_balance": 150,
+                "account_name": "ذممة عميل — Hot Seat Buyer · 01058853730"
+            }
+        ],
+        "top_supplier_accounts": [
+            {
+                "id": 691,
+                "name": "حساب شركة باصات: P5_Stress_Operator_2_569",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -20000
+            },
+            {
+                "id": 91,
+                "name": "حساب وكيل التأشيرة: Visa Audit Agent",
+                "module_type": "visas",
+                "module": "visas",
+                "balance": -8000
+            },
+            {
+                "id": 693,
+                "name": "حساب شركة باصات: P5_Stress_Operator_4_438",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -8000
+            },
+            {
+                "id": 690,
+                "name": "حساب شركة باصات: P5_Stress_Operator_1_960",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -4160
+            },
+            {
+                "id": 190,
+                "name": "حساب شركة باصات: AUDIT_GoBus_Lines_1786802568",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -3580
+            },
+            {
+                "id": 804,
+                "name": "Visa Agent Golden Account",
+                "module_type": "visas",
+                "module": "visas",
+                "balance": -2000
+            },
+            {
+                "id": 455,
+                "name": "حساب شركة باصات: Stress_Operator_3910",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -2000
+            },
+            {
+                "id": 237,
+                "name": "حساب شركة باصات: Stress_Operator_3980",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -1990
+            },
+            {
+                "id": 680,
+                "name": "حساب شركة باصات: Race_Comp_10_8816",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -1000
+            },
+            {
+                "id": 677,
+                "name": "حساب شركة باصات: Supplier_Debt_Race_Comp_8068",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -500
+            },
+            {
+                "id": 803,
+                "name": "حساب شركة باصات: P2_Reg_Comp_497",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -500
+            },
+            {
+                "id": 445,
+                "name": "حساب شركة باصات: Pay_Audit_Operator_2179",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -200
+            },
+            {
+                "id": 203,
+                "name": "حساب شركة باصات: Pay_Audit_Operator_9724",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -200
+            },
+            {
+                "id": 656,
+                "name": "حساب شركة باصات: GOLDEN_Bus_Lines_1786802780",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -200
+            },
+            {
+                "id": 227,
+                "name": "حساب شركة باصات: Pay_Audit_Operator_8378",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -200
+            },
+            {
+                "id": 216,
+                "name": "حساب شركة باصات: Pay_Audit_Operator_1526",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -200
+            },
+            {
+                "id": 196,
+                "name": "حساب شركة باصات: E2E_Bus_Operator_3751",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -160
+            },
+            {
+                "id": 210,
+                "name": "حساب شركة باصات: E2E_Bus_Operator_8615",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -160
+            },
+            {
+                "id": 436,
+                "name": "حساب شركة باصات: E2E_Bus_Operator_7540",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -160
+            },
+            {
+                "id": 221,
+                "name": "حساب شركة باصات: E2E_Bus_Operator_8116",
+                "module_type": "bus",
+                "module": "bus",
+                "balance": -160
+            }
+        ],
+        "bus_inventory": {
+            "bookings": 897,
+            "companies": 65,
+            "inventories": 110,
+            "payments": 42,
+            "companies_with_negative_balance": 41,
+            "bus_test_vault_variance": 1000000
+        },
+        "customer_account_coverage": {
+            "customers_total": 570,
+            "customers_with_account": 565,
+            "customers_missing_account": 5
+        },
+        "fk_orphan_checks": [],
+        "1": {
+            "phase": "PHASE_F",
+            "msg": "report consistency matrix done",
+            "extra": {
+                "0": {
+                    "phase": "PHASE_F",
+                    "msg": "Report consistency matrix",
+                    "extra": null,
+                    "t": "2026-08-17T14:19:55+00:00"
+                },
+                "independent_pl": {
+                    "income": {
+                        "credit": 91780,
+                        "debit": 91780,
+                        "count": 1800
+                    },
+                    "expense": {
+                        "debit": 48680,
+                        "credit": 48680,
+                        "count": 1824
+                    },
+                    "transfer": {
+                        "debit": 778214.75,
+                        "credit": 777827.43,
+                        "count": 418
+                    },
+                    "profit": 43100
+                },
+                "income_by_module": [
+                    {
+                        "module": "bus",
+                        "income": 82780,
+                        "count": 1794
+                    },
+                    {
+                        "module": "visa",
+                        "income": 9000,
+                        "count": 6
+                    }
+                ],
+                "expense_by_module": [
+                    {
+                        "module": "bus",
+                        "expense": 48680,
+                        "count": 1824
+                    }
+                ],
+                "app_pl_error": "App\\Services\\Reports\\ProfitLossReportService::moduleBreakdown(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 106",
+                "app_daily_error": "App\\Services\\Reports\\ReportFinanceService::getDailyFinancialChart(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 114",
+                "app_financial_summary_error": "App\\Services\\Reports\\FinancialReportService::getFinancialSummary(): Argument #1 ($filters) must be of type array, null given, called in C:\\travile\\SafarakEalayna\\tests\\reports\\audit_runner_phase2.php on line 123",
+                "independent_trial_balance": {
+                    "total_debit": 918674.75,
+                    "total_credit": 918287.43,
+                    "variance": 387.32,
+                    "balanced": false
+                },
+                "trial_balance_per_module": [
+                    {
+                        "module": "bus",
+                        "debit": 209690,
+                        "credit": 209690,
+                        "variance": 0
+                    },
+                    {
+                        "module": "visa",
+                        "debit": 15000,
+                        "credit": 15000,
+                        "variance": 0
+                    },
+                    {
+                        "module": "office",
+                        "debit": 2100,
+                        "credit": 2100,
+                        "variance": 0
+                    },
+                    {
+                        "module": "online",
+                        "debit": 250,
+                        "credit": 250,
+                        "variance": 0
+                    },
+                    {
+                        "module": "wallet",
+                        "debit": 691634.75,
+                        "credit": 691247.43,
+                        "variance": 387.32
+                    }
+                ],
+                "top_customer_accounts": [
+                    {
+                        "customer_id": 512,
+                        "name": "P5 Passenger 1",
+                        "module_type": null,
+                        "account_balance": 35000,
+                        "account_name": "ذممة عميل — P5 Passenger 1 · 01200000001"
+                    },
+                    {
+                        "customer_id": 561,
+                        "name": "P5 Passenger 50",
+                        "module_type": null,
+                        "account_balance": 14000,
+                        "account_name": "ذممة عميل — P5 Passenger 50 · 01200000050"
+                    },
+                    {
+                        "customer_id": 513,
+                        "name": "P5 Passenger 2",
+                        "module_type": null,
+                        "account_balance": 7000,
+                        "account_name": "ذممة عميل — P5 Passenger 2 · 01200000002"
+                    },
+                    {
+                        "customer_id": 612,
+                        "name": "Golden Visa Applicant Customer",
+                        "module_type": null,
+                        "account_balance": 3000,
+                        "account_name": "ذممة عميل — Golden Visa Applicant Customer · 01200001111"
+                    },
+                    {
+                        "customer_id": 504,
+                        "name": "Race Buyer 10",
+                        "module_type": null,
+                        "account_balance": 2000,
+                        "account_name": "ذممة عميل — Race Buyer 10 · 01086545130"
+                    },
+                    {
+                        "customer_id": 1,
+                        "name": "عميل أونلاين - علي محمد",
+                        "module_type": null,
+                        "account_balance": 1590,
+                        "account_name": "ذممة عميل — عميل أونلاين - علي محمد · 01620020001"
+                    },
+                    {
+                        "customer_id": 511,
+                        "name": "Dup Booking Cust",
+                        "module_type": null,
+                        "account_balance": 1500,
+                        "account_name": "ذممة عميل — Dup Booking Cust · 01073745784"
+                    },
+                    {
+                        "customer_id": 498,
+                        "name": "Payment Race Cust",
+                        "module_type": null,
+                        "account_balance": 1000,
+                        "account_name": "ذممة عميل — Payment Race Cust · 01260083960"
+                    },
+                    {
+                        "customer_id": 499,
+                        "name": "Partial Pay Cust",
+                        "module_type": null,
+                        "account_balance": 1000,
+                        "account_name": "ذممة عميل — Partial Pay Cust · 01519384101"
+                    },
+                    {
+                        "customer_id": 510,
+                        "name": "Debt Race Buyer",
+                        "module_type": null,
+                        "account_balance": 750,
+                        "account_name": "ذممة عميل — Debt Race Buyer · 01257935300"
+                    },
+                    {
+                        "customer_id": 502,
+                        "name": "Debt Race Buyer",
+                        "module_type": null,
+                        "account_balance": 750,
+                        "account_name": "ذممة عميل — Debt Race Buyer · 01213197117"
+                    },
+                    {
+                        "customer_id": 54,
+                        "name": "WALLET_TEST_CUST_Sara",
+                        "module_type": null,
+                        "account_balance": 300,
+                        "account_name": "ذممة عميل — WALLET_TEST_CUST_Sara · 01730032002"
+                    },
+                    {
+                        "customer_id": 505,
+                        "name": "Last Ticket Buyer",
+                        "module_type": null,
+                        "account_balance": 200,
+                        "account_name": "ذممة عميل — Last Ticket Buyer · 01154914835"
+                    },
+                    {
+                        "customer_id": 493,
+                        "name": "Auto Passenger",
+                        "module_type": null,
+                        "account_balance": 200,
+                        "account_name": "ذممة عميل — Auto Passenger · 01576345040"
+                    },
+                    {
+                        "customer_id": 495,
+                        "name": "Auto Passenger",
+                        "module_type": null,
+                        "account_balance": 200,
+                        "account_name": "ذممة عميل — Auto Passenger · 01593482692"
+                    },
+                    {
+                        "customer_id": 500,
+                        "name": "Pay Cancel Cust",
+                        "module_type": null,
+                        "account_balance": 180,
+                        "account_name": "ذممة عميل — Pay Cancel Cust · 01019531097"
+                    },
+                    {
+                        "customer_id": 284,
+                        "name": "Hot Seat Buyer",
+                        "module_type": null,
+                        "account_balance": 150,
+                        "account_name": "ذممة عميل — Hot Seat Buyer · 01095077633"
+                    },
+                    {
+                        "customer_id": 491,
+                        "name": "Golden Passenger 652",
+                        "module_type": null,
+                        "account_balance": 150,
+                        "account_name": "ذممة عميل — Golden Passenger 652 · 01296457443"
+                    },
+                    {
+                        "customer_id": 65,
+                        "name": "Hot Seat Buyer",
+                        "module_type": null,
+                        "account_balance": 150,
+                        "account_name": "ذممة عميل — Hot Seat Buyer · 01054639862"
+                    },
+                    {
+                        "customer_id": 71,
+                        "name": "Hot Seat Buyer",
+                        "module_type": null,
+                        "account_balance": 150,
+                        "account_name": "ذممة عميل — Hot Seat Buyer · 01058853730"
+                    }
+                ],
+                "top_supplier_accounts": [
+                    {
+                        "id": 691,
+                        "name": "حساب شركة باصات: P5_Stress_Operator_2_569",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -20000
+                    },
+                    {
+                        "id": 91,
+                        "name": "حساب وكيل التأشيرة: Visa Audit Agent",
+                        "module_type": "visas",
+                        "module": "visas",
+                        "balance": -8000
+                    },
+                    {
+                        "id": 693,
+                        "name": "حساب شركة باصات: P5_Stress_Operator_4_438",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -8000
+                    },
+                    {
+                        "id": 690,
+                        "name": "حساب شركة باصات: P5_Stress_Operator_1_960",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -4160
+                    },
+                    {
+                        "id": 190,
+                        "name": "حساب شركة باصات: AUDIT_GoBus_Lines_1786802568",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -3580
+                    },
+                    {
+                        "id": 804,
+                        "name": "Visa Agent Golden Account",
+                        "module_type": "visas",
+                        "module": "visas",
+                        "balance": -2000
+                    },
+                    {
+                        "id": 455,
+                        "name": "حساب شركة باصات: Stress_Operator_3910",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -2000
+                    },
+                    {
+                        "id": 237,
+                        "name": "حساب شركة باصات: Stress_Operator_3980",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -1990
+                    },
+                    {
+                        "id": 680,
+                        "name": "حساب شركة باصات: Race_Comp_10_8816",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -1000
+                    },
+                    {
+                        "id": 677,
+                        "name": "حساب شركة باصات: Supplier_Debt_Race_Comp_8068",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -500
+                    },
+                    {
+                        "id": 803,
+                        "name": "حساب شركة باصات: P2_Reg_Comp_497",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -500
+                    },
+                    {
+                        "id": 445,
+                        "name": "حساب شركة باصات: Pay_Audit_Operator_2179",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -200
+                    },
+                    {
+                        "id": 203,
+                        "name": "حساب شركة باصات: Pay_Audit_Operator_9724",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -200
+                    },
+                    {
+                        "id": 656,
+                        "name": "حساب شركة باصات: GOLDEN_Bus_Lines_1786802780",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -200
+                    },
+                    {
+                        "id": 227,
+                        "name": "حساب شركة باصات: Pay_Audit_Operator_8378",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -200
+                    },
+                    {
+                        "id": 216,
+                        "name": "حساب شركة باصات: Pay_Audit_Operator_1526",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -200
+                    },
+                    {
+                        "id": 196,
+                        "name": "حساب شركة باصات: E2E_Bus_Operator_3751",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -160
+                    },
+                    {
+                        "id": 210,
+                        "name": "حساب شركة باصات: E2E_Bus_Operator_8615",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -160
+                    },
+                    {
+                        "id": 436,
+                        "name": "حساب شركة باصات: E2E_Bus_Operator_7540",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -160
+                    },
+                    {
+                        "id": 221,
+                        "name": "حساب شركة باصات: E2E_Bus_Operator_8116",
+                        "module_type": "bus",
+                        "module": "bus",
+                        "balance": -160
+                    }
+                ],
+                "bus_inventory": {
+                    "bookings": 897,
+                    "companies": 65,
+                    "inventories": 110,
+                    "payments": 42,
+                    "companies_with_negative_balance": 41,
+                    "bus_test_vault_variance": 1000000
+                },
+                "customer_account_coverage": {
+                    "customers_total": 570,
+                    "customers_with_account": 565,
+                    "customers_missing_account": 5
+                },
+                "fk_orphan_checks": []
+            },
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "2": {
+            "phase": "PHASE_G",
+            "msg": "Reconstructing 387.32 imbalance",
+            "extra": null,
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "smoking_gun_transactions": [
+            {
+                "tx_id": 1937,
+                "amount": 100,
+                "type": "transfer",
+                "module": "wallet",
+                "created": "2026-08-14 16:50:59",
+                "notes": null,
+                "debit": 100,
+                "credit": 3.17,
+                "variance": 96.83
+            },
+            {
+                "tx_id": 1949,
+                "amount": 100,
+                "type": "transfer",
+                "module": "wallet",
+                "created": "2026-08-14 16:52:49",
+                "notes": null,
+                "debit": 100,
+                "credit": 3.17,
+                "variance": 96.83
+            },
+            {
+                "tx_id": 1952,
+                "amount": 100,
+                "type": "transfer",
+                "module": "wallet",
+                "created": "2026-08-14 16:54:20",
+                "notes": null,
+                "debit": 100,
+                "credit": 3.17,
+                "variance": 96.83
+            },
+            {
+                "tx_id": 1964,
+                "amount": 100,
+                "type": "transfer",
+                "module": "wallet",
+                "created": "2026-08-14 16:57:42",
+                "notes": null,
+                "debit": 100,
+                "credit": 3.17,
+                "variance": 96.83
+            }
+        ],
+        "total_imbalance_reconstructed": 387.32,
+        "smoking_gun_entries": [
+            {
+                "tx_id": 1937,
+                "entries": [
+                    {
+                        "id": 4583,
+                        "account_id": 156,
+                        "debit": 100,
+                        "credit": 0,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:50:59"
+                    },
+                    {
+                        "id": 4584,
+                        "account_id": 158,
+                        "debit": 0,
+                        "credit": 3.17,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:50:59"
+                    }
+                ]
+            },
+            {
+                "tx_id": 1949,
+                "entries": [
+                    {
+                        "id": 4607,
+                        "account_id": 156,
+                        "debit": 100,
+                        "credit": 0,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:52:49"
+                    },
+                    {
+                        "id": 4608,
+                        "account_id": 158,
+                        "debit": 0,
+                        "credit": 3.17,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:52:49"
+                    }
+                ]
+            },
+            {
+                "tx_id": 1952,
+                "entries": [
+                    {
+                        "id": 4613,
+                        "account_id": 156,
+                        "debit": 100,
+                        "credit": 0,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:54:20"
+                    },
+                    {
+                        "id": 4614,
+                        "account_id": 158,
+                        "debit": 0,
+                        "credit": 3.17,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:54:20"
+                    }
+                ]
+            },
+            {
+                "tx_id": 1964,
+                "entries": [
+                    {
+                        "id": 4637,
+                        "account_id": 156,
+                        "debit": 100,
+                        "credit": 0,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:57:42"
+                    },
+                    {
+                        "id": 4638,
+                        "account_id": 158,
+                        "debit": 0,
+                        "credit": 3.17,
+                        "notes": null,
+                        "created_at": "2026-08-14 16:57:42"
+                    }
+                ]
+            }
+        ],
+        "3": {
+            "phase": "PHASE_G",
+            "msg": "smoking gun reconstructed",
+            "extra": {
+                "count": 4,
+                "total_variance": 387.32
+            },
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "4": {
+            "phase": "PHASE_H",
+            "msg": "Statement coverage",
+            "extra": null,
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "sample_customer": {
+            "id": 1,
+            "full_name": "عميل أونلاين - علي محمد",
+            "module_type": null,
+            "account_id": 1,
+            "account_balance": 1590,
+            "account_entry_count": 24
+        },
+        "customer_report_service_available": true,
+        "5": {
+            "phase": "PHASE_H",
+            "msg": "done",
+            "extra": null,
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "6": {
+            "phase": "PHASE_I",
+            "msg": "Computing verdict",
+            "extra": null,
+            "t": "2026-08-17T14:19:55+00:00"
+        },
+        "7": {
+            "phase": "PHASE_I",
+            "msg": "verdict decided",
+            "extra": {
+                "has_ledger_variance": true,
+                "ledger_variance_amount": 387.32,
+                "has_balance_variance": true,
+                "balance_variance_account_count": 20,
+                "has_unbalanced_transactions": true,
+                "unbalanced_tx_count": 4,
+                "has_fk_orphans": false,
+                "fk_orphans": [],
+                "note": "Audit fixtures (customer\/employee) were created and removed cleanly. The pre-existing defects are NOT caused by this audit — they are the audit findings."
+            },
+            "t": "2026-08-17T14:19:55+00:00"
+        }
+    },
+    "post_recomputed": {
+        "debits": 918674.75,
+        "credits": 918287.43,
+        "balance_sum": 741245.25,
+        "diff_debits_credits": 387.32
+    },
+    "balance_variance_account_count": 20
+}

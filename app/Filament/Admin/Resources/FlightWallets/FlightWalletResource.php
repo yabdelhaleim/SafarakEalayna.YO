@@ -39,8 +39,11 @@ class FlightWalletResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('module_type', 'flights')
-            ->where('type', AccountType::Wallet);
+            ->where('type', AccountType::Wallet)
+            ->where(function (Builder $q): void {
+                $q->whereIn('module', ['flights', 'flight'])
+                    ->orWhereIn('module_type', ['flights', 'flight']);
+            });
     }
 
     public static function form(Schema $schema): Schema

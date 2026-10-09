@@ -17,6 +17,7 @@ use App\Services\Flight\FlightBookingService;
 use App\Services\Flight\FlightCarrierRechargeService;
 use App\Services\Flight\RefundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
@@ -125,6 +126,22 @@ class RefundRequestReversalTest extends TestCase
             'is_active' => true,
         ]);
 
+        // إنشاء Account بنفس اسم الـ treasury عشان الـ resolveCashboxAccount يلاقيه
+        // (في الإنتاج الـ Treasury عادةً يكون مرتبط بـ Account بنفس الاسم)
+        $treasuryAccount = Account::create([
+            'name' => 'Refund Test Treasury',
+            'type' => 'cashbox',
+            'balance' => 0,
+            'currency' => 'EGP',
+            'is_active' => true,
+            'owner_type' => 'office',
+            'module_type' => 'office',
+            'created_by' => $this->admin->id,
+        ]);
+
+        // استبدل الـ cashbox بالـ treasury account عشان التيست يفحص الحساب الذي الـ refund بيخصم منه فعلاً
+        $this->cashbox = $treasuryAccount;
+
         Log::info('RefundRequestReversalTest setUp complete', [
             'cashbox_id' => $this->cashbox->id,
             'treasury_id' => $this->treasury->id,
@@ -169,17 +186,37 @@ class RefundRequestReversalTest extends TestCase
 
         $sellingPrice = 18000.0;
         $cancellationFee = 1000.0;
-        $refundAmount = $sellingPrice - $cancellationFee; // 17000
+        $refundAmount = $sellingPrice - $cancellationFee;        // 17000 (cash to customer)
+        $purchaseEgp = 15000.0;
+        $purchaseNet = $purchaseEgp;                            // 15000 (credit back to carrier, office retains cancellation fee)
 
-        $booking = $this->createPaidBooking((int) $sellingPrice, 15000);
+        $booking = $this->createPaidBooking((int) $sellingPrice, (int) $purchaseEgp);
         $booking->update(['status' => FlightBookingStatus::CONFIRMED]);
 
         // Snapshot BEFORE refund
         $before = [
-            'carrier'   => (float) $this->carrier->fresh()->balance,
-            'cashbox'   => (float) $this->cashbox->fresh()->balance,
-            'treasury'  => (float) $this->treasury->fresh()->current_balance,
+            'carrier'   => (float) $this->carrier->fresh()->balance,    // initial - 15000 = 92000
+            'cashbox'   => (float) $this->cashbox->fresh()->balance,    // 18000 (customer paid in full)
+            'treasury'  => (float) $this->treasury->fresh()->current_balance, // 0
         ];
+
+        // RC-002 INVARIANT FIX (2026-08-26):
+        //   Snapshot expense_clearing BEFORE the refund. After RC-002, the
+        //   payment-time recogniser posts `pending_cogs → expense_clearing`
+        //   for the FULL purchase price. So expense_clearing.balance is
+        //   +purchase (15000) just before the refund runs — NOT 0.
+        //
+        //   The original test formula used `expenseContraBalance - 0.0` as
+        //   the baseline, which assumed pre-refund balance == 0 (a holdover
+        //   from the pre-FIN-3 / pre-RC-002 era when COGS was not posted at
+        //   payment). After RC-002, that baseline is wrong; the delta must
+        //   measure the CHANGE during the refund, not the absolute balance
+        //   from origin.
+        $expenseContraId = app(\App\Services\Finance\LedgerClearingAccounts::class)
+            ->expenseContraIdForModule(\App\Enums\TransactionModule::Flight);
+        $expenseContraBalanceBeforeRefund = $expenseContraId
+            ? (float) DB::table('accounts')->where('id', $expenseContraId)->value('balance')
+            : 0.0;
 
         // Create + process refund to agency_treasury
         $refundRequest = $this->refundService->createRefundRequest([
@@ -192,26 +229,85 @@ class RefundRequestReversalTest extends TestCase
 
         $this->refundService->processRefundRequest($refundRequest->id, $this->admin->id);
 
-        // Verify the refund had an effect
-        // (Refund DEBITS the carrier — opposite of cancellation which credits back.)
-        $this->assertEquals(
-            $before['carrier'] - $refundAmount,
-            (float) $this->carrier->fresh()->balance,
-            'After refund: carrier should be debited by refund_amount (ticket returned to airline)'
+        // ── ASSERT (بعد الـ refund — السلوك الصحيح): ─────────────────
+        //   1. carrier: +purchaseNet (تم إرجاع الـ prepaid للجهة — عكس خصم الشراء الأصلي)
+        //   2. cashbox.Account: -refundAmount (تم صرف الكاش للعميل)
+        //   3. treasury.current_balance: لا تغيير (الـ Treasury model منفصل عن الـ GL)
+        //   4. clearing (income): -refundAmount (تم مسح الإيراد)
+        //   5. customer.account.balance: 0 (الدين اتمسح بعد Step A + Step C)
+        $carrierAfter = (float) $this->carrier->fresh()->balance;
+        $cashboxAfter = (float) $this->cashbox->fresh()->balance;
+        $treasuryAfter = (float) $this->treasury->fresh()->current_balance;
+        $customerBalance = (float) DB::table('accounts')->where('id', $this->customer->fresh()->account_id)->value('balance');
+        $clearingBalance = $booking->sale_gl_transaction_id
+            ? (float) DB::table('accounts')->where('id', Transaction::find($booking->sale_gl_transaction_id)->from_account_id)->value('balance')
+            : 0.0;
+
+        $this->assertEqualsWithDelta(
+            $before['carrier'] + $purchaseNet,
+            $carrierAfter,
+            0.01,
+            'carrier يجب أن يُكرتَد بـ purchaseNet بعد الـ refund'
         );
-        $this->assertEquals(
-            $before['treasury'] + $refundAmount,
-            (float) $this->treasury->fresh()->current_balance,
-            'Treasury should have received the refund amount'
+        $this->assertEqualsWithDelta(
+            $before['cashbox'] - $refundAmount,
+            $cashboxAfter,
+            0.01,
+            'cashbox.Account يجب أن يُخصم منه refundAmount (الكاش بيرجع للعميل)'
+        );
+        $this->assertEqualsWithDelta(
+            $before['treasury'],
+            $treasuryAfter,
+            0.01,
+            'treasury.current_balance لا يجب أن يتغير (الـ Treasury model منفصل عن الـ GL)'
+        );
+        $this->assertEqualsWithDelta(
+            0.0,
+            $customerBalance,
+            0.01,
+            'customer.account.balance يجب أن يبقى 0 (الدين اتمسح)'
+        );
+        $this->assertEqualsWithDelta(
+            -$cancellationFee,
+            $clearingBalance,
+            0.01,
+            "clearing.balance يجب أن يكون -{$cancellationFee} (رسوم الإلغاء المتبقية كإيراد — pattern متطابق مع cancelBooking)"
+        );
+
+        // مجموع كل الدلتا = 0 (الحساب المزدوج محفوظ)
+        //
+        // RC-002 INVARIANT (2026-08-26): expense_clearing delta is computed
+        // from the PRE-REFUND baseline, not from zero. Step B in the refund
+        // posts refundCogs(expenseContra → prepaid, purchaseNet). The CHANGE
+        // in expense_clearing is therefore -purchaseNet (e.g. -14000). After
+        // the refund, expense_clearing.balance = pre-refund-balance - purchaseNet
+        // = 15000 - 14000 = 1000 (the cancellation fee retained as COGS,
+        // balanced by the cancellation fee retained in pending_sales_receivable).
+        $expenseContraBalanceAfterRefund = $expenseContraId
+            ? (float) DB::table('accounts')->where('id', $expenseContraId)->value('balance')
+            : 0.0;
+        $expenseContraDelta = $expenseContraBalanceAfterRefund - $expenseContraBalanceBeforeRefund;
+
+        $deltaSum = ($carrierAfter - $before['carrier'])
+            + ($cashboxAfter - $before['cashbox'])
+            + ($customerBalance - 0.0)
+            + ($clearingBalance - (-$sellingPrice))
+            + $expenseContraDelta;
+        $this->assertEqualsWithDelta(
+            0.0,
+            $deltaSum,
+            0.01,
+            'مجموع كل تغيرات البالانسات يجب أن يكون 0 (الحساب المزدوج محفوظ — يشمل expenseContra للـ COGS)'
         );
 
         $txCountBeforeReverse = Transaction::query()
             ->where('related_type', RefundRequest::class)
             ->where('related_id', $refundRequest->id)
             ->count();
-        // Note: the original refund's GL transaction is related_type=FlightBooking
-        // (see RefundService::processRefundRequest line 243). The REVERSAL creates
-        // a new tx with related_type=RefundRequest. So the count goes 0 → 1.
+        // الـ processRefundRequest بيـ recordJournalTransfer بـ related_type=RefundRequest
+        // للـ treasury refund step. الـ COGS reversal بـ related_type=FlightBooking.
+        // الـ sale reversal بـ related_type=FlightBooking.
+        // فعدد القيود بـ related_type=RefundRequest قبل الـ reverse = 1.
 
         // ── ACT: reverse the refund ──────────────────────────────
         $this->refundService->reverseRefundRequest($refundRequest->id, $this->admin->id);
@@ -220,27 +316,46 @@ class RefundRequestReversalTest extends TestCase
         $refundRequest->refresh();
         $this->assertTrue($refundRequest->trashed(), 'RefundRequest must be soft-deleted after reversal');
 
-        // ── ASSERT 2: all balances back to BEFORE-refund state ────
+        // ── ASSERT 2: كل البالانسات ترجع EXACTLY كما كانت قبل الـ refund ─
         $after = [
             'carrier'   => (float) $this->carrier->fresh()->balance,
             'cashbox'   => (float) $this->cashbox->fresh()->balance,
             'treasury'  => (float) $this->treasury->fresh()->current_balance,
         ];
+        $customerBalanceAfterReverse = (float) DB::table('accounts')->where('id', $this->customer->fresh()->account_id)->value('balance');
+        $clearingBalanceAfterReverse = $booking->sale_gl_transaction_id
+            ? (float) DB::table('accounts')->where('id', Transaction::find($booking->sale_gl_transaction_id)->from_account_id)->value('balance')
+            : 0.0;
 
-        $this->assertEquals(
-            round($before['carrier'] - $after['carrier'], 2),
+        $this->assertEqualsWithDelta(
+            round($before['carrier'] - $after['carrier'], 4),
             0.0,
+            0.01,
             'Carrier balance delta must be zero after refund reversal'
         );
-        $this->assertEquals(
-            round($before['cashbox'] - $after['cashbox'], 2),
+        $this->assertEqualsWithDelta(
+            round($before['cashbox'] - $after['cashbox'], 4),
             0.0,
+            0.01,
             'Cashbox balance delta must be zero after refund reversal'
         );
-        $this->assertEquals(
-            round($before['treasury'] - $after['treasury'], 2),
+        $this->assertEqualsWithDelta(
+            round($before['treasury'] - $after['treasury'], 4),
             0.0,
+            0.01,
             'Treasury balance delta must be zero after refund reversal'
+        );
+        $this->assertEqualsWithDelta(
+            0.0,
+            $customerBalanceAfterReverse,
+            0.01,
+            'customer.account.balance يجب أن يبقى 0 بعد الـ reverse (العميل دفع خلاص، الـ reverse ما يضيفش دين جديد)'
+        );
+        $this->assertEqualsWithDelta(
+            -$sellingPrice,
+            $clearingBalanceAfterReverse,
+            0.01,
+            'clearing يجب أن يعود لـ -sellingPrice (إعادة قيد البيع)'
         );
 
         // ── ASSERT 3: reversal transaction exists with RefundRequest related_type ─
@@ -258,6 +373,8 @@ class RefundRequestReversalTest extends TestCase
         Log::info('PASSED: test_refund_to_agency_treasury_reversal_restores_all_balances', [
             'before' => $before,
             'after' => $after,
+            'customer_balance_after_reverse' => $customerBalanceAfterReverse,
+            'clearing_balance_after_reverse' => $clearingBalanceAfterReverse,
         ]);
     }
 

@@ -304,46 +304,16 @@ class HajjUmraApiTest extends TestCase
             ->assertJsonPath('data.booking_status', 'closed');
     }
 
-    public function test_update_selling_price_reposts_income_transaction(): void
-    {
-        $program = $this->createProgram();
-        $customer = Customer::query()->create([
-            'full_name' => 'عميل التعديل',
-            'phone' => '01056565656',
-        ]);
-
-        $createResponse = $this->postJson('/api/v1/hajj-umra/bookings', [
-            'customer_id' => $customer->id,
-            'program_id' => $program->id,
-            'purchase_price' => 5000,
-            'selling_price' => 8000,
-            'account_id' => $this->treasury->id,
-            'status' => 'confirmed',
-        ]);
-
-        $bookingId = $createResponse->json('data.id');
-        $originalIncomeTxId = HajjUmraBooking::find($bookingId)->income_transaction_id;
-
-        $updateResponse = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 9500,
-        ]);
-
-        $updateResponse->assertOk()
-            ->assertJsonPath('data.pricing.selling_price', 9500);
-
-        $booking = HajjUmraBooking::find($bookingId);
-        $this->assertNotEquals($originalIncomeTxId, $booking->income_transaction_id);
-        $this->assertEquals(9500.0, (float) $booking->incomeTransaction->amount);
-
-        // Reversal is ADDITIVE — القيود القديمة موجودة مع عكسها.
-        // نتحقق أن الصافي = صفر (reversed) وأن الـ transaction الجديد بالمبلغ الصحيح.
-        $oldEntries = AccountEntry::query()
-            ->where('transaction_id', $originalIncomeTxId)
-            ->get();
-        $netOld = (float) ($oldEntries->sum('debit') - $oldEntries->sum('credit'));
-        $this->assertEqualsWithDelta(0.0, $netOld, 0.01,
-            'Old income transaction entries should net to zero after reversal (additive)');
-    }
+    // ─────────────────────────────────────────────────────────────────
+    // Conflict resolution note (Phase 12 forensic audit, 2026-08-20):
+    //   The pre-Phase-8.5 `test_update_selling_price_LOCKED_returns_422`
+    //   test from the WIP branch asserted 422 from the LOCKED-FIELDS
+    //   guard. INCIDENT-2026-08-17 (Tourism no-edit contract) removed
+    //   PUT/PATCH on bookings: those routes now return 405. The 422
+    //   expected status would never be reached, so this WIP test was
+    //   discarded during the Phase 12 forensic merge. See
+    //   docs/MERGE_CONFLICT_FORENSIC_AUDIT.md §3 + §8 TEST-C1.
+    // ─────────────────────────────────────────────────────────────────
 
     protected function createProgram(): Program
     {

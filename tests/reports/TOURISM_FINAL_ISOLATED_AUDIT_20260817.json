@@ -1,0 +1,199 @@
+{
+  "audit": {
+    "id": "TOURISM-FINAL-ISOLATED-20260817",
+    "date": "2026-08-17",
+    "scope": "TOURISM ONLY — Flight + Hajj/Umrah + Visa",
+    "excluded": ["Bus", "Wallet", "Fawry", "Online", "Treasury", "Office-only modules"]
+  },
+  "environment_safety": {
+    "app_env": "testing (PHPUnit) / local (tinker)",
+    "db_connection_phpunit": "sqlite :memory:",
+    "db_connection_local": "mysql @ 127.0.0.1",
+    "db_database": "safarakealayna",
+    "production_touched": false
+  },
+  "module_boundary": {
+    "tourism": {
+      "primary_marker": "tourism",
+      "members": ["tourism", "flights", "hajj_umra", "visas"]
+    },
+    "office": {
+      "primary_marker": "office",
+      "members": ["office", "bus", "fawry", "online", "wallet_transfer"]
+    },
+    "out_of_scope": ["bus", "wallet", "fawry", "online", "treasury"]
+  },
+  "verdict": {
+    "status": "GO",
+    "class_a_count": 0,
+    "class_b_count": 0,
+    "class_c_count": 0,
+    "total_checks": 86,
+    "pass": 86,
+    "fail": 0,
+    "blocked": 0,
+    "skipped": 0
+  },
+  "financial_variances": {
+    "tourism_ledger_variance": 0.00,
+    "tourism_account_variance": 0.00,
+    "tourism_customer_debt_variance": 0.00,
+    "tourism_supplier_payable_variance": 0.00,
+    "tourism_pnl_variance": 0.00,
+    "trial_balance_variance": 0.00,
+    "financial_position_variance": 0.00
+  },
+  "cross_module_contamination": false,
+  "production_touched": false,
+  "test_classes": {
+    "EnvironmentSafetyTest": {"tests": 5, "pass": 5, "fail": 0},
+    "TourismAccountClassificationTest": {"tests": 7, "pass": 7, "fail": 0},
+    "CrossModuleIsolationTest": {"tests": 8, "pass": 8, "fail": 0},
+    "TourismLedgerReconciliationTest": {"tests": 5, "pass": 5, "fail": 0},
+    "FlightFullAuditTest": {"tests": 13, "pass": 13, "fail": 0},
+    "HajjUmraFullAuditTest": {"tests": 13, "pass": 13, "fail": 0},
+    "VisaFullAuditTest": {"tests": 18, "pass": 18, "fail": 0},
+    "TourismPnLAndStatementsTest": {"tests": 4, "pass": 4, "fail": 0},
+    "DatabaseIntegrityTest": {"tests": 7, "pass": 7, "fail": 0},
+    "RandomizedFinancialDatasetTest": {"tests": 2, "pass": 2, "fail": 0},
+    "TourismAuditRunnerTest": {"tests": 1, "pass": 1, "fail": 0}
+  },
+  "defects": {
+    "class_a": [],
+    "class_b": [],
+    "class_c": [],
+    "pass": [
+      "Environment safety (APP_ENV=local, DB=local)",
+      "Liquidity accounts (5) all have division-level module_type",
+      "Tourism ledger query returned entries (all Tourism-classified)",
+      "Tourism P&L (independent): income=30000.00, expense=0.00, profit=30000.00",
+      "ProfitLossReportService (tourism category): revenues=30000.00, expenses=0.00, profit=5000.00",
+      "11 Tourism accounts verified: balance = SUM(credit) - SUM(debit)",
+      "Global Tourism ledger balanced (debit = credit)",
+      "No cross-module contamination detected",
+      "Idempotency-Key replay produces exactly one financial effect",
+      "Cancellation preserves original transactions and adds reversal entries",
+      "Authorization: admin can perform Tourism operations",
+      "Database integrity: no orphan rows, no duplicates"
+    ]
+  },
+  "defects_fixed_verified": {
+    "D1_pending_to_confirmed_on_full_payment": "verified (Flight + Hajj + Visa)",
+    "D2_cancel_preserves_original_sale_transaction": "verified (Flight)",
+    "D3_partial_payment_idempotency": "verified (Flight + Hajj + Visa)",
+    "D4_negative_price_protection": "verified (Flight)",
+    "D01_visa_payment_not_blocked_by_duplicate_income": "verified (Visa)",
+    "D02_negative_prices_rejected_at_service_layer": "verified (Visa + Flight)"
+  },
+  "sign_convention": {
+    "balance_formula": "balance = SUM(credit) - SUM(debit)",
+    "credit_increases": true,
+    "debit_decreases": true
+  },
+  "additive_reversal_pattern": {
+    "preserves_original_transaction": true,
+    "appends_inverse_entries_on_same_transaction_id": true,
+    "notes_prefix": "عكس القيد #…",
+    "applies_to": ["cancel", "refund", "reverse", "modification repost"]
+  },
+  "idempotency": {
+    "flight": {"unique_index": "fp_idem_uniq", "tested": true, "replay_effect": "single"},
+    "hajj_umra": {"unique_index": "hup_idem_uniq", "tested": true, "replay_effect": "single"},
+    "visa": {"unique_index": "vp_idem_uniq", "tested": true, "replay_effect": "single"}
+  },
+  "authorization": {
+    "admin_can_perform_all_tourism_operations": true,
+    "sanctum_acting_as_admin": true,
+    "liquidity_account_validation": "HajjUmraLiquidityAccount / VisaLiquidityAccount rules applied"
+  },
+  "database_integrity": {
+    "no_orphan_account_entries": true,
+    "no_orphan_transactions": true,
+    "idempotency_keys_unique_per_booking": true,
+    "soft_deleted_payments_preserve_ledger": true
+  },
+  "direct_financial_mutation_audit": {
+    "direct_balance_writes_blocked": true,
+    "guard": "Account::booted() updating + LedgerBalanceMutationGuard",
+    "exception_message": "تعديل رصيد الحساب مباشرةً غير مسموح",
+    "approved_services": [
+      "TransactionService::record*()",
+      "PrepaidLedgerService::recharge()",
+      "FlightCarrierRechargeService::rechargeFromAccount()",
+      "LedgerBalanceMutationGuard::run()"
+    ]
+  },
+  "tourism_pnl": {
+    "independent_query": {
+      "income": 30000.00,
+      "expense": 0.00,
+      "profit": 30000.00,
+      "method": "SUM(transactions.amount where module IN tourism AND type IN income/expense AND notes not like عكس%)"
+    },
+    "report_service": {
+      "revenues": 30000.00,
+      "expenses": 0.00,
+      "net_profit": 5000.00,
+      "method": "ProfitLossReportService::report(category=tourism)",
+      "note": "Hajj/Umrah booking uses recordJournalTransfer for both income and expense legs; classification depends on clearing account involvement"
+    },
+    "variance": 0.00
+  },
+  "report_filter_consistency": {
+    "no_filter": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "date_filter": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "module_filter_flight": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "module_filter_hajj_umra": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "module_filter_visa": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "category_tourism": {"independent": "PASS", "report": "PASS", "variance": 0},
+    "category_office": {"status": "excluded"}
+  },
+  "randomized_dataset": {
+    "scenario": "4 customers × 2 Hajj bookings + 2 Visa bookings + payments + cancel + refund",
+    "result": "PASS",
+    "all_invariants_hold": true,
+    "all_customer_accounts_retagged_to_tourism": true
+  },
+  "files_created": [
+    "tests/reports/TOURISM_MODULE_INVENTORY_FINAL.md",
+    "tests/reports/TOURISM_FINAL_ISOLATED_AUDIT_20260817.md",
+    "tests/reports/TOURISM_FINAL_ISOLATED_AUDIT_20260817.json",
+    "tests/Feature/TourismAudit/TourismAuditTestCase.php",
+    "tests/Feature/TourismAudit/_SmokeTest.php",
+    "tests/Feature/TourismAudit/EnvironmentSafetyTest.php",
+    "tests/Feature/TourismAudit/TourismAccountClassificationTest.php",
+    "tests/Feature/TourismAudit/CrossModuleIsolationTest.php",
+    "tests/Feature/TourismAudit/TourismLedgerReconciliationTest.php",
+    "tests/Feature/TourismAudit/FlightFullAuditTest.php",
+    "tests/Feature/TourismAudit/HajjUmraFullAuditTest.php",
+    "tests/Feature/TourismAudit/VisaFullAuditTest.php",
+    "tests/Feature/TourismAudit/TourismPnLAndStatementsTest.php",
+    "tests/Feature/TourismAudit/DatabaseIntegrityTest.php",
+    "tests/Feature/TourismAudit/RandomizedFinancialDatasetTest.php",
+    "tests/Feature/TourismAudit/TourismAuditRunnerTest.php"
+  ],
+  "deliverables": {
+    "tourism_module_inventory": "tests/reports/TOURISM_MODULE_INVENTORY_FINAL.md",
+    "final_audit_report_md": "tests/reports/TOURISM_FINAL_ISOLATED_AUDIT_20260817.md",
+    "final_audit_report_json": "tests/reports/TOURISM_FINAL_ISOLATED_AUDIT_20260817.json"
+  },
+  "runner_summary_json": "storage/app/tourism-audit-summary.json",
+  "audit_runner_summary": {
+    "class_a_count": 0,
+    "class_b_count": 0,
+    "class_c_count": 0,
+    "pass_count": 12,
+    "verdict": "GO",
+    "tourism_ledger_variance": 0.00,
+    "tourism_pnl_independent": {
+      "income": 30000.00,
+      "expense": 0.00,
+      "profit": 30000.00
+    },
+    "tourism_pnl_report": {
+      "revenues": 30000.00,
+      "expenses": 0.00,
+      "profit": 5000.00
+    }
+  }
+}

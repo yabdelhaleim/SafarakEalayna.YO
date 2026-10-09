@@ -20,8 +20,10 @@ class StoreBusBookingRequest extends FormRequest
             // ─── Route Mode B: manual / auto-created inventory ─────────────────
             'company_id'     => 'required_without:inventory_id|nullable|integer|exists:bus_companies,id',
             'route'          => 'required_without:inventory_id|nullable|string|max:500',
-            'cost_price'     => 'required_without:inventory_id|nullable|numeric|min:0',   // سعر الشراء — مديونية الشركة
-            'selling_price'  => 'required_without:inventory_id|nullable|numeric|min:0',   // سعر البيع — إيراد العميل
+            // Step 3 fix: cost_price must be > 0 (was min:0 — exploitable).
+            // Cross-field: selling_price must be >= cost_price (no-loss booking).
+            'cost_price'     => 'required_without:inventory_id|nullable|numeric|min:0.01',
+            'selling_price'  => 'required_without:inventory_id|nullable|numeric|min:0.01|gte:cost_price',
             'travel_date'    => 'nullable|date',
             'departure_time' => 'nullable|string|max:10',
 
@@ -43,9 +45,10 @@ class StoreBusBookingRequest extends FormRequest
             'company_id.exists'              => 'شركة النقل المحددة غير صالحة',
             'route.required_without'         => 'يجب كتابة المسار',
             'cost_price.required_without'    => 'يجب إدخال سعر الشراء (الآجل للشركة)',
-            'cost_price.min'                => 'سعر الشراء يجب أن يكون موجباً',
+            'cost_price.min'                 => 'سعر الشراء يجب أن يكون أكبر من صفر (0.01 على الأقل)',
             'selling_price.required_without' => 'يجب إدخال سعر البيع (للعميل)',
-            'selling_price.min'              => 'سعر البيع يجب أن يكون موجباً',
+            'selling_price.min'              => 'سعر البيع يجب أن يكون أكبر من صفر (0.01 على الأقل)',
+            'selling_price.gte'              => 'سعر البيع يجب أن يكون أكبر من أو يساوي سعر الشراء (لا رحلات بخسارة)',
             'customer_name.required_without' => 'اسم العميل مطلوب',
             'customer_phone.required_without'=> 'رقم هاتف العميل مطلوب',
             'quantity.required'              => 'عدد التذاكر مطلوب',

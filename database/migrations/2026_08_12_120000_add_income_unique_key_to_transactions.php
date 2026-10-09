@@ -21,16 +21,31 @@ use Illuminate\Support\Facades\Schema;
  * IMPORTANT: existing duplicates (46 records — see dryrun_dup_bus_income.php)
  * must be cleaned BEFORE this migration runs, otherwise the unique index creation
  * will fail. The cleanup script is scripts/fix_dup_bus_income.php.
+ *
+ * FIX (2026-08-14): The original migration used MySQL-only syntax:
+ *   - SHOW COLUMNS FROM transactions LIKE '...'   (MySQL only)
+ *   - ALTER TABLE ... GENERATED ALWAYS AS (...) STORED  (MySQL/PG, NOT SQLite)
+ * Both broke the entire PHPUnit suite (sqlite :memory:). Replaced with
+ * Schema::hasColumn() (cross-driver) and a driver check that skips the
+ * column-add on SQLite — the app-level guard remains the sole protection on
+ * that driver.
+ *
+ * @audit-fix BUG-VISA-2026-08-14-001
  */
 return new class extends Migration {
     public function up(): void
     {
+        // SQLite does not support STORED generated columns — the column-add
+        // would fail. Skip on SQLite; the app-level guard in
+        // TransactionService::recordJournalTransfer is the only protection
+        // on that driver.
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         // Idempotent: if the column was already added in a previous failed run,
         // drop it first so we can add it + the unique index together.
-        $hasColumn = collect(DB::select("SHOW COLUMNS FROM transactions LIKE 'income_unique_key'"))->isNotEmpty();
-        if ($hasColumn) {
-            // Drop the column if it exists (no index can exist on it either, since
-            // the previous run failed BEFORE adding the unique index).
+        if (Schema::hasColumn('transactions', 'income_unique_key')) {
             DB::statement('ALTER TABLE transactions DROP COLUMN income_unique_key');
         }
 
@@ -56,14 +71,17 @@ return new class extends Migration {
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         Schema::table('transactions', function (Blueprint $table) {
             $table->dropUnique('transactions_income_unique_key_unique');
         });
 
         // Drop the column only if it exists (defensive — the previous failed up()
         // may have left it behind).
-        $hasColumn = collect(DB::select("SHOW COLUMNS FROM transactions LIKE 'income_unique_key'"))->isNotEmpty();
-        if ($hasColumn) {
+        if (Schema::hasColumn('transactions', 'income_unique_key')) {
             DB::statement('ALTER TABLE transactions DROP COLUMN income_unique_key');
         }
     }

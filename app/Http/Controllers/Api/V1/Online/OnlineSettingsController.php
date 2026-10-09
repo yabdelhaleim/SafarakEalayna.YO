@@ -17,6 +17,19 @@ use Illuminate\Http\JsonResponse;
 
 class OnlineSettingsController extends Controller
 {
+    /**
+     * Apply no-store headers so CDNs / reverse proxies / browsers don't
+     * cache master-data responses. Without these, a fresh environment
+     * with no `payment_methods` rows can keep serving `payment_methods: []`
+     * for hours after the table is populated.
+     */
+    private function noCache(JsonResponse $response): JsonResponse
+    {
+        return $response
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
+    }
+
     public function serviceTypes(): JsonResponse
     {
         $types = OnlineServiceType::active()->get()->map(fn (OnlineServiceType $t) => [
@@ -31,7 +44,7 @@ class OnlineSettingsController extends Controller
             'order' => $t->order,
         ]);
 
-        return ApiResponse::success('تم جلب أنواع الخدمات النشطة.', $types);
+        return $this->noCache(ApiResponse::success('تم جلب أنواع الخدمات النشطة.', $types));
     }
 
     public function providers(): JsonResponse
@@ -52,7 +65,7 @@ class OnlineSettingsController extends Controller
             'order' => $p->order,
         ]);
 
-        return ApiResponse::success('تم جلب مزودي الخدمات النشطين.', $providers);
+        return $this->noCache(ApiResponse::success('تم جلب مزودي الخدمات النشطين.', $providers));
     }
 
     public function paymentMethods(): JsonResponse
@@ -68,7 +81,7 @@ class OnlineSettingsController extends Controller
             'account_type' => PaymentMethodAccountType::resolve($m->code)?->value,
         ]);
 
-        return ApiResponse::success('تم جلب طرق الدفع النشطة.', $methods);
+        return $this->noCache(ApiResponse::success('تم جلب طرق الدفع النشطة.', $methods));
     }
 
     public function accounts(): JsonResponse
@@ -89,10 +102,10 @@ class OnlineSettingsController extends Controller
                 'currency' => $a->currency,
                 'wallet_provider' => $a->wallet_provider,
                 'wallet_number' => $a->wallet_number,
-                'module_type' => $a->module_type instanceof \BackedEnum ? $a->module_type->value : $a->module_type,
-            ]);
+            'module_type' => $a->module_type instanceof \BackedEnum ? $a->module_type->value : $a->module_type,
+        ]);
 
-        return ApiResponse::success('تم جلب الحسابات النشطة.', $accounts);
+        return $this->noCache(ApiResponse::success('تم جلب الحسابات النشطة.', $accounts));
     }
 
     public function customers(): JsonResponse
@@ -117,7 +130,7 @@ class OnlineSettingsController extends Controller
                 'module_type' => $c->module_type instanceof \BackedEnum ? $c->module_type->value : $c->module_type,
             ]);
 
-        return ApiResponse::success('تم جلب العملاء.', $customers);
+        return $this->noCache(ApiResponse::success('تم جلب العملاء.', $customers));
     }
 
     public function employees(): JsonResponse
@@ -135,7 +148,7 @@ class OnlineSettingsController extends Controller
                 'position' => $e->position,
             ]);
 
-        return ApiResponse::success('تم جلب الموظفين.', $employees);
+        return $this->noCache(ApiResponse::success('تم جلب الموظفين.', $employees));
     }
 
     public function statuses(): JsonResponse
@@ -146,7 +159,7 @@ class OnlineSettingsController extends Controller
             'color' => $s->color(),
         ]);
 
-        return ApiResponse::success('تم جلب حالات المعاملة.', $statuses);
+        return $this->noCache(ApiResponse::success('تم جلب حالات المعاملة.', $statuses));
     }
 
     public function all(): JsonResponse
@@ -157,12 +170,12 @@ class OnlineSettingsController extends Controller
         $accounts = $this->accounts()->getData(true)['data'];
         $statuses = $this->statuses()->getData(true)['data'];
 
-        return ApiResponse::success('تم جلب إعدادات وحدة الخدمات الأونلاين.', [
+        return $this->noCache(ApiResponse::success('تم جلب إعدادات وحدة الخدمات الأونلاين.', [
             'service_types' => $serviceTypes,
             'providers' => $providers,
             'payment_methods' => $paymentMethods,
             'accounts' => $accounts,
             'statuses' => $statuses,
-        ]);
+        ]));
     }
 }

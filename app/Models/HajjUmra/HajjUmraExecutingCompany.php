@@ -18,6 +18,15 @@ class HajjUmraExecutingCompany extends Model
     {
         static::saving(function (HajjUmraExecutingCompany $company): void {
             if (! $company->account_id) {
+                // FX SAFETY (2026-08-21): the company AP account is created
+                // in the company's *first-used* currency. We default to EGP
+                // because HajjUmra's historical contract was EGP-only; if
+                // the first booking that touches this company is USD/SAR,
+                // HajjUmraBookingService::create() will look up the per-
+                // currency AP account and create it on demand (mirroring
+                // VisaBookingService::ensureCustomerAccount()). Pre-fix:
+                // hard-coded EGP meant USD/SAR bookings silently masked the
+                // cross-currency mismatch via `?? 1.0` downstream.
                 $account = \App\Models\Account::create([
                     'name' => 'حساب الشركة المنفذة للحج/العمرة: '.($company->name ?: 'غير مسمى'),
                     'type' => \App\Enums\AccountType::Supplier->value,

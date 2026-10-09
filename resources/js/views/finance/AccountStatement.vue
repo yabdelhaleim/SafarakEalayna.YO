@@ -76,6 +76,19 @@
         </div>
         
         <div class="flex items-center gap-3 print:hidden">
+          <!-- Manual refresh — bypasses any debounced filter change and
+               forces a fresh fetch. Useful when the user suspects stale data
+               (e.g. after a payment was just made elsewhere). -->
+          <button
+            v-if="statementTargetType === 'account' ? account : selectedCustomer"
+            @click="refreshStatement"
+            :disabled="loading"
+            class="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 bg-white/5 text-text-muted hover:text-white hover:bg-white/10 transition-all font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="إعادة تحميل البيانات الآن"
+          >
+            <RotateCcw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          </button>
+
           <button
             @click="printStatement"
             class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-300 hover:text-white hover:bg-rose-500/20 transition-all font-bold text-sm"
@@ -123,25 +136,89 @@
         </div>
       </div>
 
-      <!-- Switcher Tabs -->
-      <div class="mt-8 flex items-center justify-center gap-4 border-b border-white/10 pb-6 print:hidden">
+      <!-- Switcher Tabs + freshness indicator -->
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 border-b border-white/10 pb-6 print:hidden">
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            @click="setTargetType('account')"
+            class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+            :class="statementTargetType === 'account' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          >
+            <Wallet class="w-4 h-4" />
+            <span>حسابات الخزائن والبنوك</span>
+          </button>
+          <button
+            type="button"
+            @click="setTargetType('customer')"
+            class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
+            :class="statementTargetType === 'customer' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          >
+            <User class="w-4 h-4" />
+            <span>كشوفات العملاء والشركات</span>
+          </button>
+        </div>
+
+        <!-- Freshness chip — only visible after the first successful fetch
+             and only when there is data to display. Replaces silent failures
+             with an explicit "last refresh" timestamp. -->
+        <div
+          v-if="lastUpdated && !loading && (statementTargetType === 'account' ? account : selectedCustomer)"
+          class="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-text-muted"
+          :title="'آخر تحديث: ' + lastUpdated.toLocaleString('ar-EG')"
+        >
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60 opacity-75"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
+          </span>
+          <span>آخر تحديث: {{ lastUpdated.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) }}</span>
+        </div>
+      </div>
+
+      <!-- Error Banners (visible only on failure of each block, with retry) -->
+      <div
+        v-if="accountLoadError"
+        role="alert"
+        class="mt-6 flex items-start gap-4 rounded-2xl border border-error/30 bg-error/10 p-5 text-error print:hidden"
+      >
+        <div class="shrink-0 rounded-xl bg-error/15 p-2.5">
+          <X class="h-5 w-5" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-black text-error">تعذّر تحميل بيانات الحساب</p>
+          <p class="mt-1 text-xs font-bold text-error/80 break-words">
+            {{ accountLoadError }}
+          </p>
+        </div>
         <button
           type="button"
-          @click="setTargetType('account')"
-          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
-          :class="statementTargetType === 'account' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          @click="retryAccount"
+          class="shrink-0 rounded-xl border border-error/30 bg-error/5 px-4 py-2 text-xs font-black text-error transition-all hover:bg-error/20"
         >
-          <Wallet class="w-4 h-4" />
-          <span>حسابات الخزائن والبنوك</span>
+          إعادة المحاولة
         </button>
+      </div>
+
+      <div
+        v-if="statementLoadError"
+        role="alert"
+        class="mt-6 flex items-start gap-4 rounded-2xl border border-warning/30 bg-warning/10 p-5 text-warning print:hidden"
+      >
+        <div class="shrink-0 rounded-xl bg-warning/15 p-2.5">
+          <X class="h-5 w-5" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-black text-warning">تعذّر تحميل كشف الحساب</p>
+          <p class="mt-1 text-xs font-bold text-warning/80 break-words">
+            {{ statementLoadError }}
+          </p>
+        </div>
         <button
           type="button"
-          @click="setTargetType('customer')"
-          class="px-6 py-3.5 rounded-2xl font-black text-base transition-all duration-500 relative overflow-hidden flex items-center gap-2.5"
-          :class="statementTargetType === 'customer' ? 'bg-gradient-to-r from-gold to-amber-500 text-black shadow-xl shadow-gold/20 scale-105' : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-white'"
+          @click="retryStatement"
+          class="shrink-0 rounded-xl border border-warning/30 bg-warning/5 px-4 py-2 text-xs font-black text-warning transition-all hover:bg-warning/20"
         >
-          <User class="w-4 h-4" />
-          <span>كشوفات العملاء والشركات</span>
+          إعادة المحاولة
         </button>
       </div>
 
@@ -381,7 +458,7 @@
           <label for="filtersModule" class="stmt-filter-label">الموديول / القسم</label>
           <select id="filtersModule" name="filtersModule" v-model="filters.module" class="stmt-filter-select flight-select w-full" @change="fetchStatement">
             <option value="">كل التفاصيل</option>
-            <option v-for="m in financeStore.meta.transactionModules" :key="m.value" :value="m.value">{{ m.label }}</option>
+            <option v-for="m in availableStatementModules" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </div>
 
@@ -418,8 +495,10 @@
 
       <!-- Main Statement Table -->
       <div class="flight-panel !p-0 overflow-hidden border border-white/5 shadow-2xl relative">
-        <!-- Loading Overlay -->
-        <div v-if="loading" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
+        <!-- Loading Overlay — only shown when statement has rows to preserve
+             (prevents the table from disappearing during background refresh).
+             Initial load uses the inline skeleton rows instead. -->
+        <div v-if="loading && statement.length" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
           <div class="flex flex-col items-center gap-4">
             <div class="w-12 h-12 border-4 border-gold/20 border-t-gold rounded-full animate-spin"></div>
             <p class="text-base font-black text-gold">جاري تحديث السجل...</p>
@@ -441,11 +520,40 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-              <tr v-if="!statement.length && !loading">
-                <td colspan="8" class="px-6 py-20 text-center">
-                  <div class="flex flex-col items-center gap-4 opacity-30">
-                    <History class="w-16 h-16" />
-                    <p class="text-lg font-black">لا توجد حركات مالية مسجلة لهذا الحساب في الفترة المحددة</p>
+              <!-- Skeleton rows while loading so the table doesn't "jump" -->
+              <template v-if="loading && !statement.length">
+                <tr v-for="i in 8" :key="'skeleton-' + i" class="border-b border-white/5">
+                  <td v-for="j in 8" :key="'skeleton-' + i + '-' + j" class="px-6 py-5">
+                    <div class="h-4 w-full max-w-[120px] rounded bg-white/5 animate-pulse"></div>
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Empty state — shows different copy for "no selection yet" vs "no rows in period" -->
+              <tr v-else-if="!statement.length">
+                <td colspan="8" class="px-6 py-16">
+                  <div class="flex flex-col items-center gap-5 max-w-md mx-auto text-center">
+                    <div class="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center border border-white/10">
+                      <History class="w-10 h-10 text-text-muted" />
+                    </div>
+                    <div>
+                      <p class="text-base font-black text-text-main">
+                        {{ hasActiveFilters ? 'لا توجد حركات مطابقة للبحث الحالي' : 'لا توجد حركات مالية لهذا الحساب' }}
+                      </p>
+                      <p class="mt-2 text-sm font-bold text-text-muted">
+                        {{ hasActiveFilters
+                            ? 'جرّب توسيع الفترة الزمنية أو إعادة ضبط الفلاتر.'
+                            : 'ابدأ بتسجيل أول إيداع أو سحب من خلال زر "إيداع / سحب سريع".' }}
+                      </p>
+                    </div>
+                    <button
+                      v-if="hasActiveFilters"
+                      @click="resetFilters"
+                      class="px-5 py-2.5 rounded-xl border border-gold/30 bg-gold/10 text-gold hover:bg-gold/20 text-xs font-black transition-all flex items-center gap-2"
+                    >
+                      <RotateCcw class="w-4 h-4" />
+                      إعادة ضبط الفلاتر
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -1317,6 +1425,83 @@ const route = useRoute();
 const accountStore = useAccountStore();
 const financeStore = useFinanceStore();
 
+/**
+ * Centralized toast helpers so we never silently swallow an error.
+ * Always logs the full axios error to the console for ops, AND surfaces
+ * a translated toast + an in-page error banner so the user understands
+ * what failed and can retry.
+ *
+ * `window.addToast` is provided globally by the Vue layout (`addToast`
+ * registered in app.js). Falls back gracefully if it isn't installed.
+ */
+function notifyError(logLabel, err, userMessage) {
+  // eslint-disable-next-line no-console
+  console.error(`[AccountStatement] ${logLabel}:`, err);
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(userMessage || 'حدث خطأ غير متوقع', 'error');
+  }
+}
+
+function notifySuccess(message) {
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(message, 'success');
+  }
+}
+
+function notifyInfo(message) {
+  if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+    window.addToast(message, 'info');
+  }
+}
+
+// Page-level error state. Each block keeps its own slot so the banner can
+// say *which* API failed (e.g. "account metadata failed" vs "statement
+// failed") and offer a "retry" affordance scoped to that block.
+const accountLoadError = ref(null);
+const statementLoadError = ref(null);
+
+// Last-successful-fetch timestamp for the statement. Surfaced in the UI
+// header so the user knows how fresh the rows are; reset on each error.
+const lastUpdated = ref(null);
+
+// `hasActiveFilters` is the computed used by the empty-state copy above
+// to decide between "no rows in the period" vs "your filters are too narrow".
+// We compute this from `filters.value` reactively.
+const hasActiveFilters = computed(() => {
+  const f = filters.value;
+  return Boolean(
+    (f.search && f.search.trim()) ||
+    f.type ||
+    f.module ||
+    f.from_date ||
+    f.to_date
+  );
+});
+
+function retryAccount() {
+  fetchAccountData();
+}
+
+function retryStatement() {
+  fetchStatement();
+}
+
+/**
+ * Manual refresh entry-point bound to the refresh button in the header.
+ * Identical to retryStatement() but surfaces a success toast so the user
+ * gets visible feedback that the refresh actually ran.
+ */
+async function refreshStatement() {
+  try {
+    await fetchStatement();
+    if (!statementLoadError.value) {
+      notifySuccess('تم تحديث كشف الحساب');
+    }
+  } catch {
+    // fetchStatement already toasted + set the error banner — nothing to do.
+  }
+}
+
 // Entry Details Modal State
 const selectedEntryDetails = ref(null);
 
@@ -1523,38 +1708,87 @@ const layoutMode = computed(() => {
   return 'commercial';
 });
 
+// Shared division → module mapping. Single source of truth for BOTH
+// `availableAccountModules` (the module dropdown) AND `availableAccounts`
+// (the account list). Mirrors the canonical lists in
+// `App\Support\Finance\AccountModuleDivision::TOURISM` / `::OFFICE` and
+// adds the legacy singular aliases that older rows still carry in
+// `accounts.module` / `accounts.module_type`.
+const DIVISION_TOURISM_MODULES = ['tourism', 'flights', 'hajj_umra', 'visas', 'flight', 'visa', 'hajj'];
+const DIVISION_OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general', 'wallet', 'service'];
+
+// Returns true iff the account is considered part of the selected division
+// (tourism vs office). Pure helper, no Vue dependencies, so the same logic
+// can power both the module dropdown and the account list.
+function accountBelongsToDivision(acc, division) {
+  if (!division || division === '') return true;
+  const list = division === 'tourism' ? DIVISION_TOURISM_MODULES : DIVISION_OFFICE_MODULES;
+  return list.includes(acc.module_type) || list.includes(acc.module);
+}
+
+// Inverse of accountBelongsToDivision — derives the division an account is
+// attached to (based on its module_type / module). Returns '' when the
+// account doesn't map to a known division (no filtering applied then).
+function divisionFromAccount(acc) {
+  if (!acc) return '';
+  const moduleType = acc.module_type || '';
+  const module = acc.module || '';
+  if (DIVISION_TOURISM_MODULES.includes(moduleType) || DIVISION_TOURISM_MODULES.includes(module)) {
+    return 'tourism';
+  }
+  if (DIVISION_OFFICE_MODULES.includes(moduleType) || DIVISION_OFFICE_MODULES.includes(module)) {
+    return 'office';
+  }
+  return '';
+}
+
+// Module dropdown — derive from the ACCOUNTS that actually belong to the
+// selected division rather than from a hard-coded module list. This is the
+// "new system" the user wants for BOTH tourism and office: the dropdown
+// shows only modules that have at least one account linked to the chosen
+// division. Empty divisions correctly collapse to an empty dropdown
+// instead of leaking legacy entries (e.g. "general" appearing under office
+// when no office subject-accounts exist).
 const availableAccountModules = computed(() => {
   const modules = financeStore.meta.transactionModules || [];
   if (!accountModuleTypeFilter.value) return modules;
 
-  const tourismModules = ['flight', 'hajj_umra', 'visa'];
-  const officeModules = ['bus', 'wallet', 'online', 'fawry', 'general', 'service'];
+  const usedModuleValues = new Set();
+  accounts.value.forEach((acc) => {
+    if (!acc.is_active) return;
+    if (!accountBelongsToDivision(acc, accountModuleTypeFilter.value)) return;
+    if (acc.module) usedModuleValues.add(acc.module);
+    if (acc.module_type) usedModuleValues.add(acc.module_type);
+  });
 
-  if (accountModuleTypeFilter.value === 'tourism') {
-    return modules.filter((m) => tourismModules.includes(m.value));
-  }
-  if (accountModuleTypeFilter.value === 'office') {
-    return modules.filter((m) => officeModules.includes(m.value));
-  }
-  return modules;
+  return modules.filter((m) => usedModuleValues.has(m.value));
+});
+
+// Module dropdown inside "تصفية كشف الحساب" — filters by the division of
+// the CURRENTLY LOADED account, not the discovery form selection. Same
+// single source of truth (DIVISION_*_MODULES) as the discovery dropdown,
+// but driven by `account.module_type` / `account.module` so the user only
+// sees modules that could realistically apply to the account they opened.
+// Falls back to the full module list when no account is loaded yet.
+const availableStatementModules = computed(() => {
+  const modules = financeStore.meta.transactionModules || [];
+  if (!account.value) return modules;
+
+  const division = divisionFromAccount(account.value);
+  if (!division) return modules;
+
+  const list = division === 'tourism' ? DIVISION_TOURISM_MODULES : DIVISION_OFFICE_MODULES;
+  return modules.filter((m) => list.includes(m.value));
 });
 
 const availableAccounts = computed(() => {
   if (!Array.isArray(accounts.value)) return [];
-  
-  const TOURISM_MODULES = ['tourism', 'flights', 'hajj_umra', 'visas', 'flight', 'visa', 'hajj'];
-  const OFFICE_MODULES = ['office', 'bus', 'fawry', 'online', 'wallet_transfer', 'general', 'wallet', 'service'];
 
   return accounts.value.filter(acc => {
     const matchActive = acc.is_active;
-    
-    let matchModuleType = true;
-    if (accountModuleTypeFilter.value === 'tourism') {
-      matchModuleType = TOURISM_MODULES.includes(acc.module_type) || TOURISM_MODULES.includes(acc.module);
-    } else if (accountModuleTypeFilter.value === 'office') {
-      matchModuleType = OFFICE_MODULES.includes(acc.module_type) || OFFICE_MODULES.includes(acc.module);
-    }
-    
+
+    const matchModuleType = accountBelongsToDivision(acc, accountModuleTypeFilter.value);
+
     let matchModule = true;
     if (accountModuleFilter.value) {
       if (accountModuleFilter.value === 'general') {
@@ -1566,18 +1800,18 @@ const availableAccounts = computed(() => {
         const accModuleType = acc.module_type || '';
         const normAccModule = accModule.endsWith('s') ? accModule.slice(0, -1) : accModule;
         const normAccModuleType = accModuleType.endsWith('s') ? accModuleType.slice(0, -1) : accModuleType;
-        
+
         matchModule = normAccModule === normalizedVal || normAccModuleType === normalizedVal;
-        
+
         // Specially handle wallet modules
         if (normalizedVal === 'wallet') {
-          matchModule = matchModule || 
-                       accModule.includes('wallet') || 
+          matchModule = matchModule ||
+                       accModule.includes('wallet') ||
                        accModuleType.includes('wallet');
         }
       }
     }
-    
+
     return matchActive && matchModuleType && matchModule;
   });
 });
@@ -1622,8 +1856,12 @@ async function fetchAccountData() {
   try {
     const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}`);
     account.value = res.data?.data || null;
+    accountLoadError.value = null;
   } catch (err) {
-    console.error('Failed to fetch account:', err);
+    const message = err.response?.data?.message || 'تعذّر جلب بيانات الحساب';
+    accountLoadError.value = message;
+    notifyError('فشل تحميل بيانات الحساب', err, message);
+    account.value = null;
   }
 }
 
@@ -1637,11 +1875,12 @@ async function fetchStatement() {
       statement.value = data.items || [];
       if (data.stats) stats.value = data.stats;
       if (data.pagination) pagination.value = data.pagination;
+      statementLoadError.value = null;
+      lastUpdated.value = new Date();
     } catch (err) {
-      console.error('Failed to fetch customer statement:', err);
-      if (window.addToast) {
-        window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
-      }
+      const message = err.response?.data?.message || 'تعذّر جلب كشف العميل';
+      statementLoadError.value = message;
+      notifyError('فشل تحميل كشف العميل', err, 'فشل تحميل الكشف، يرجى المحاولة لاحقاً');
       statement.value = [];
     } finally {
       loading.value = false;
@@ -1652,12 +1891,12 @@ async function fetchStatement() {
   if (!route.params.id) return;
   loading.value = true;
   try {
-    const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}/statement`, { 
-      params: filters.value 
+    const res = await axios.get(`/api/v1/finance/accounts/${route.params.id}/statement`, {
+      params: filters.value
     });
     const data = res.data?.data || {};
     statement.value = data.items || [];
-    
+
     if (data.pagination) {
       pagination.value = data.pagination;
     }
@@ -1665,11 +1904,12 @@ async function fetchStatement() {
     if (data.stats) {
       stats.value = data.stats;
     }
+    statementLoadError.value = null;
+    lastUpdated.value = new Date();
   } catch (err) {
-    console.error('Failed to fetch statement:', err);
-    if (window.addToast) {
-      window.addToast('فشل تحميل الكشف، يرجى المحاولة لاحقاً', 'error');
-    }
+    const message = err.response?.data?.message || 'تعذّر جلب كشف الحساب من الخادم';
+    statementLoadError.value = message;
+    notifyError('فشل تحميل كشف الحساب', err, 'فشل تحميل الكشف، يرجى المحاولة لاحقاً');
     statement.value = [];
   } finally {
     loading.value = false;
@@ -1681,23 +1921,31 @@ async function printFullStatement() {
   const originalStatement = [...statement.value];
   loading.value = true;
   try {
-    const url = statementTargetType.value === 'customer' 
+    const url = statementTargetType.value === 'customer'
       ? `/api/v1/customers/${selectedCustomer.value.id}/statement`
       : `/api/v1/finance/accounts/${route.params.id}/statement`;
-      
-    const res = await axios.get(url, { 
-      params: { ...filters.value, per_page: 5000, page: 1 } 
+
+    // per_page=all is the sentinel the backend (AccountService.php:297)
+    // recognizes to bypass the 100-row cap and stream the full filtered set.
+    // Sending 5000 was silently clamped to 100 on the server, which is why
+    // the "Print All" button only ever printed a partial set.
+    const res = await axios.get(url, {
+      params: { ...filters.value, per_page: 'all', page: 1 }
     });
     const data = res.data?.data || {};
     statement.value = data.items || [];
-    
+
     await nextTick();
+    // Finish every entrance animation BEFORE snapshotting — without this,
+    // rows that have `animationDelay: ${idx * 30}ms` are still translated
+    // off-screen when window.print() captures the page, producing an empty
+    // table even though `statement.value` is populated.
+    flushAnimations();
     window.print();
-    
+
     statement.value = originalStatement;
   } catch (err) {
-    console.error('Failed to fetch full statement for printing:', err);
-    if (window.addToast) window.addToast('فشل تحميل التقرير الكامل للطباعة', 'error');
+    notifyError('فشل تحميل التقرير الكامل للطباعة', err, 'فشل تحميل التقرير الكامل للطباعة');
   } finally {
     loading.value = false;
   }
@@ -1804,14 +2052,83 @@ function getModuleLabel(val) {
   return customMap[val] || financeStore.meta.transactionModules?.find(m => m.value === val)?.label || val;
 }
 
-function printStatement() {
+function flushAnimations() {
+  // window.print() snapshots whatever is currently painted. Every row in the
+  // table has `animate-in slide-in-from-right-4 fade-in` with
+  // `animationDelay: ${idx * 30}ms`, so on a 20-row page the last row is still
+  // translated ~1rem + faded for nearly a full second. Finishing all animations
+  // before print guarantees the snapshot is fully laid-out.
+  if (typeof document === 'undefined' || !document.body?.getAnimations) return;
+  try {
+    document.body.getAnimations({ subtree: true }).forEach((a) => {
+      try { a.finish(); } catch { /* ignore */ }
+    });
+  } catch {
+    // getAnimations may throw if the document is detached — non-fatal.
+  }
+}
+
+async function printStatement() {
+  await nextTick();
+  flushAnimations();
   window.print();
 }
 
-const exportExcel = () => {
+const exportExcel = async () => {
+  // Customer statements stay on the in-browser CSV path for now — adding
+  // a customer export endpoint is out of scope for this fix. Account
+  // statements go through the new server-side XLSX endpoint which:
+  //   - streams the FULL filtered set (not just the 20 rows on the page),
+  //   - respects every active filter (search, dates, type, module),
+  //   - produces a real Excel file with RTL layout, summary card, totals
+  //     row, and formatted date/number columns.
+  if (statementTargetType.value === 'customer') {
+    return exportExcelLegacyCsv();
+  }
+  if (loading.value) return;
+  loading.value = true;
+  try {
+    const res = await axios.get(
+      `/api/v1/finance/accounts/${route.params.id}/statement/export`,
+      {
+        params: { ...filters.value, per_page: 'all', page: 1 },
+        responseType: 'blob',
+      }
+    );
+
+    // Derive a filename from the response Content-Disposition when the
+    // server provides one, fall back to a sensible default otherwise.
+    const cd = res.headers?.['content-disposition'] || '';
+    const match = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+    const filename = match
+      ? decodeURIComponent(match[1])
+      : `كشف_حساب_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+
+    if (typeof window !== 'undefined' && typeof window.addToast === 'function') {
+      window.addToast('تم تصدير كشف الحساب إلى Excel بنجاح', 'success');
+    }
+  } catch (err) {
+    notifyError('فشل تصدير Excel', err, 'فشل تصدير كشف الحساب، يرجى المحاولة لاحقاً');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Kept as a fallback for the customer-statement view, which is out of
+// scope for this fix. Mirrors the original CSV builder.
+const exportExcelLegacyCsv = () => {
   if (!statement.value.length) return;
   const headers = ['التاريخ', 'القسم/الموظف', 'رقم المرجع/PNR', 'البيان/الوصف', 'مدين (-)', 'دائن (+)', 'الرصيد بعد الحركة'];
-  
+
   const formatDateLocal = (dateString) => {
     if (!dateString) return '';
     try {
@@ -1836,10 +2153,10 @@ const exportExcel = () => {
     const debit = entry.debit > 0 ? entry.debit : 0;
     const credit = entry.credit > 0 ? entry.credit : 0;
     const balance = entry.balance_after || 0;
-    
+
     return [date, moduleUser, pnr, description, debit, credit, balance];
   });
-  
+
   const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -2033,6 +2350,21 @@ onMounted(async () => {
   tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  /* Strip entrance animations from the table so window.print() doesn't snapshot
+   * rows that are still translated/faded-out from `slide-in-from-right-4` + `animationDelay: ${idx * 30}ms`. */
+  .stmt-table tr,
+  .stmt-table tbody tr,
+  .stmt-table tr[class*="animate-in"],
+  .stmt-table tr[class*="slide-in"] {
+    animation: none !important;
+    animation-delay: 0ms !important;
+    animation-duration: 0ms !important;
+    transform: none !important;
+    opacity: 1 !important;
+    transition: none !important;
+    visibility: visible !important;
   }
 
   th, td {

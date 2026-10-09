@@ -229,9 +229,9 @@ export const useWalletStore = defineStore('wallet', {
       }
     },
 
-    async fetchAccountTransactions(accountId) {
+    async fetchAccountTransactions(accountId, params = {}) {
       try {
-        const res = await axios.get(`/api/v1/wallet/treasury/accounts/${accountId}/transactions`);
+        const res = await axios.get(`/api/v1/wallet/treasury/accounts/${accountId}/transactions`, { params });
         return res.data?.data;
       } catch (err) {
         console.error('Failed to fetch account transactions:', err);

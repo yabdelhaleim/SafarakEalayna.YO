@@ -11,7 +11,8 @@ class CreateFlightWallet extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['module_type'] = 'flights';
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'flights';
         return $data;
     }
 }

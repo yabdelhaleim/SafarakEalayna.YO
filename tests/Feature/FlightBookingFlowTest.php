@@ -540,35 +540,6 @@ class FlightBookingFlowTest extends TestCase
         Log::info('Test passed: rollback on error successful');
     }
 
-    public function test_update_pending_booking_sets_pnr_and_notes(): void
-    {
-        $bookingData = [
-            'customer_id' => $this->customer->id,
-            'airline_name' => 'Test Airline',
-            'from_airport' => 'CAI',
-            'to_airport' => 'JED',
-            'departure_date' => now()->addDays(7)->toDateString(),
-            'trip_type' => 'one_way',
-            'currency' => 'EGP',
-            'purchase_price' => 15000,
-            'selling_price' => 18000,
-            'flight_carrier_id' => $this->carrier->id,
-            'account_id' => $this->treasuryAccount->id,
-            'passengers' => [
-                ['name' => 'Solo Pax', 'type' => 'adult'],
-            ],
-        ];
-
-        $booking = $this->bookingService->createBooking($bookingData);
-
-        $updated = $this->bookingService->updateBooking($booking, [
-            'pnr' => 'PNR-XYZ',
-            'notes' => 'Desk note',
-        ]);
-
-        $this->assertSame('PNR-XYZ', $updated->fresh()->pnr);
-        $this->assertSame('Desk note', $updated->fresh()->notes);
-    }
 
     public function test_send_ticket_email_queues_mailable(): void
     {

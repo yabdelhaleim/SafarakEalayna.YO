@@ -4,6 +4,8 @@ namespace App\Filament\Admin\Widgets;
 
 use App\Models\Account;
 use App\Models\Flight\FlightBooking;
+use App\Services\Reports\ProfitLossReportService;
+use App\Support\Finance\AccountModuleDivision;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
@@ -15,22 +17,57 @@ class FlightStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $totalBalance = Account::query()
-            ->where('is_active', true)
-            ->where('module_type', 'flights')
-            ->sum('balance') ?? 0;
+        // Liquidity accounts for the tourism division carry module_type
+        // = 'tourism' (see AccountModuleContract::LIQUIDITY_TYPES). The
+        // previous `where('module_type','flights')` only matched
+        // type='customer' AR accounts whose module_type IS 'flights',
+        // so "إجمالي أرصدة الطيران" was always wrong (under-reported).
+        // Use the canonical tourism-division module_type list so we
+        // include division-unified vaults (cashboxes named for flight)
+        // AND specific 'flights'/customer AR rows.
+        $tourismModuleTypes = AccountModuleDivision::TOURISM;
 
-        $totalBookings = FlightBooking::count();
-        $revenueThisMonth = FlightBooking::whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->sum('selling_price') ?? 0;
+        $totalBalance = (float) Account::query()
+            ->where('is_active', true)
+            ->whereIn('module_type', $tourismModuleTypes)
+            ->where(function ($q): void {
+                // Only show actual liquidity (cashbox/wallet/bank) plus
+                // internal clearing lines — leave customer/supplier AR
+                // rows for the customer ledger card.
+                $q->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
+                    ->orWhereIn('type', ['expense', 'revenue', 'liability', 'owner']);
+            })
+            ->sum('balance');
+
+        $totalBookings = FlightBooking::whereNull('deleted_at')->count();
+
+        // Revenue must follow the double-entry P&L (cash-basis), not the
+        // raw selling_price column. selling_price counts cancelled /
+        // refund-pending bookings; the P&L service correctly nets out
+        // cancellations and refunds. This matches the operator-visible
+        // meaning of "إيرادات الشهر".
+        $now = now();
+        $plService = app(ProfitLossReportService::class);
+
+        $revenueThisMonth = 0.0;
+        $breakdown = $plService->moduleBreakdown([
+            'from_date' => $now->copy()->startOfMonth()->toDateString(),
+            'to_date'   => $now->copy()->endOfMonth()->toDateString(),
+            'category'  => 'tourism',
+        ]);
+        foreach ($breakdown['by_module'] ?? [] as $row) {
+            if ($this->normalizeModule($row['module'] ?? '') === 'flight') {
+                $revenueThisMonth = (float) ($row['income'] ?? 0);
+                break;
+            }
+        }
 
         $dailyBookings = $this->dailyBookingCounts();
         $dailyRevenue = $this->dailyRevenueTotals();
 
         return [
             Stat::make('إجمالي أرصدة الطيران', number_format($totalBalance, 2).' ج.م')
-                ->description('إجمالي أرصدة الحسابات والمحافظ')
+                ->description('السيولة + التسويات لقسم السياحة')
                 ->descriptionIcon('heroicon-o-banknotes')
                 ->color('primary')
                 ->chart($dailyRevenue)
@@ -39,7 +76,7 @@ class FlightStatsWidget extends BaseWidget
                 ]),
 
             Stat::make('حجوزات الطيران', number_format($totalBookings))
-                ->description('إجمالي الحجوزات المسجلة')
+                ->description('إجمالي الحجوزات النشطة')
                 ->descriptionIcon('heroicon-o-paper-airplane')
                 ->color('success')
                 ->chart($dailyBookings)
@@ -48,7 +85,7 @@ class FlightStatsWidget extends BaseWidget
                 ]),
 
             Stat::make('إيرادات الشهر', number_format($revenueThisMonth, 2).' ج.م')
-                ->description('إجمالي مبيعات الشهر الحالي')
+                ->description('صافي إيرادات الطيران (دفتر الأستاذ)')
                 ->descriptionIcon('heroicon-o-arrow-trending-up')
                 ->color('warning')
                 ->chart($dailyRevenue)
@@ -65,6 +102,7 @@ class FlightStatsWidget extends BaseWidget
     {
         return collect(range($days - 1, 0))
             ->map(fn (int $daysAgo): int => FlightBooking::query()
+                ->whereNull('deleted_at')
                 ->whereDate('created_at', now()->subDays($daysAgo))
                 ->count())
             ->all();
@@ -75,10 +113,37 @@ class FlightStatsWidget extends BaseWidget
      */
     private function dailyRevenueTotals(int $days = 7): array
     {
+        $plService = app(ProfitLossReportService::class);
+
         return collect(range($days - 1, 0))
-            ->map(fn (int $daysAgo): float => (float) (FlightBooking::query()
-                ->whereDate('created_at', now()->subDays($daysAgo))
-                ->sum('selling_price') ?? 0))
+            ->map(function (int $daysAgo) use ($plService): float {
+                $date = now()->subDays($daysAgo);
+                $breakdown = $plService->moduleBreakdown([
+                    'from_date' => $date->copy()->toDateString(),
+                    'to_date'   => $date->copy()->toDateString(),
+                    'category'  => 'tourism',
+                ]);
+
+                foreach ($breakdown['by_module'] ?? [] as $row) {
+                    if ($this->normalizeModule($row['module'] ?? '') === 'flight') {
+                        return (float) ($row['income'] ?? 0);
+                    }
+                }
+
+                return 0.0;
+            })
             ->all();
+    }
+
+    private function normalizeModule(string $module): string
+    {
+        $m = strtolower(trim($module));
+
+        return match ($m) {
+            'flights' => 'flight',
+            'visas' => 'visa',
+            'hajj', 'umrah', 'hajj_umra' => 'hajj_umra',
+            default => $m,
+        };
     }
 }

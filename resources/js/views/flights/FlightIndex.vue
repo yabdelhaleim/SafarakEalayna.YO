@@ -31,32 +31,56 @@
       </div>
     </header>
 
-    <div class="mx-auto max-w-7xl space-y-10 px-4 sm:px-6 lg:px-8 mt-8">
+    <div class="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8 mt-8">
     <!-- Filters Bar -->
     <div class="flight-panel !p-4 sm:!p-5">
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-wrap items-center gap-3">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-500/10 text-sky-300">
+            <SlidersHorizontal class="h-4 w-4" />
+          </div>
+          <div>
+            <h2 class="text-sm font-extrabold text-text-main">البحث والتصفية</h2>
+            <p class="text-[11px] text-text-muted">حدد نطاق البحث للوصول السريع للحجوزات</p>
+          </div>
+        </div>
+        <button @click="clearFilters" class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-text-muted transition hover:border-gold/40 hover:text-gold">
+          <RotateCcw class="h-3.5 w-3.5" />
+          مسح الفلاتر
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <!-- Search -->
-        <div class="flex-1 min-w-[240px] relative">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+        <label class="relative xl:col-span-2">
+          <Search class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             v-model="filters.search"
             type="text"
             placeholder="البحث برقم الحجز، العميل، أو PNR..."
-            class="w-full pl-10 pr-4 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm"
+            class="flight-input !py-2.5 pr-10 pl-3 text-sm"
             @input="onFilterChange"
           />
-        </div>
+        </label>
 
         <!-- Trip Type Filter -->
-        <select v-model="filters.tripType" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[140px]">
+        <select v-model="filters.tripType" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">كل الرحلات</option>
           <option v-for="t in store.tripTypes" :key="t.value" :value="t.value">
             {{ t.label }}
           </option>
         </select>
 
+        <!-- Status Filter -->
+        <select v-model="filters.status" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
+          <option value="">كل الحالات</option>
+          <option v-for="s in store.bookingStatuses" :key="s.value" :value="s.value">
+            {{ s.label }}
+          </option>
+        </select>
+
         <!-- Currency Filter -->
-        <select v-model="filters.currency" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[120px]">
+        <select v-model="filters.currency" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">كل العملات</option>
           <option v-for="c in store.currencies" :key="c.code" :value="c.code">
             {{ c.name }} ({{ c.code }})
@@ -64,7 +88,7 @@
         </select>
 
         <!-- System Filter -->
-        <select v-model="filters.flightSystemId" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[140px]">
+        <select v-model="filters.flightSystemId" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">كل الأنظمة</option>
           <option v-for="system in store.systems" :key="system.id" :value="String(system.id)">
             {{ system.name }}
@@ -72,7 +96,7 @@
         </select>
 
         <!-- Carrier Filter -->
-        <select v-model="filters.flightCarrierId" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[140px]">
+        <select v-model="filters.flightCarrierId" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">كل الشركات</option>
           <option v-for="carrier in store.carriers" :key="carrier.id" :value="carrier.id">
             {{ carrier.name }}
@@ -80,22 +104,14 @@
         </select>
 
         <!-- Customer Filter -->
-        <select v-model="filters.customerId" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[160px]">
+        <select v-model="filters.customerId" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">كل العملاء</option>
           <option v-for="customer in store.customers" :key="customer.id" :value="customer.id">
             {{ customer.full_name }}
           </option>
         </select>
 
-        <!-- Status Filter -->
-        <select v-model="filters.status" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[120px]">
-          <option value="">كل الحالات</option>
-          <option v-for="s in store.bookingStatuses" :key="s.value" :value="s.value">
-            {{ s.label }}
-          </option>
-        </select>
-
-        <select v-model="filters.paymentStatus" @change="onFilterChange" class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm appearance-none cursor-pointer min-w-[140px]">
+        <select v-model="filters.paymentStatus" @change="onFilterChange" class="flight-select !py-2.5 text-sm">
           <option value="">الدفع (الكل)</option>
           <option v-for="p in store.paymentFilterStatuses" :key="p.value" :value="p.value">
             {{ p.label }}
@@ -107,7 +123,7 @@
           v-model="filters.departureDateFrom"
           type="date"
           placeholder="من تاريخ السفر"
-          class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm"
+          class="flight-input !py-2.5 text-sm"
           @change="onFilterChange"
         />
 
@@ -115,39 +131,55 @@
           v-model="filters.departureDateTo"
           type="date"
           placeholder="إلى تاريخ السفر"
-          class="px-3 py-2.5 bg-input border border-white/5 rounded-xl focus:border-gold outline-none text-sm"
+          class="flight-input !py-2.5 text-sm"
           @change="onFilterChange"
         />
-
-        <!-- Clear Filters -->
-        <button @click="clearFilters" class="text-sm text-muted hover:text-gold transition-colors px-3 py-2">
-          مسح الفلاتر
-        </button>
       </div>
     </div>
 
     <!-- Data Table -->
     <div class="flight-panel !overflow-hidden !rounded-2xl !p-0">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-gold/20 bg-gold/10 text-gold">
+            <Ticket class="h-4 w-4" />
+          </div>
+          <div>
+            <h2 class="text-sm font-extrabold text-text-main">سجل الحجوزات</h2>
+            <p class="text-[11px] text-text-muted">كل صف يمثل حجز طيران مسجل</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span v-if="!store.loading.list && !store.errors.fetch" class="inline-flex items-center gap-1.5 rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-[11px] font-bold text-sky-300">
+            <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
+            {{ store.pagination.total || filteredBookings.length }} حجز
+          </span>
+          <span class="font-mono text-xs font-bold text-text-muted">
+            صفحة {{ store.pagination.currentPage }} / {{ store.pagination.lastPage }}
+          </span>
+        </div>
+      </div>
+
       <!-- Desktop Table View -->
       <div v-if="!isMobile" class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-white/5 text-xs text-muted uppercase tracking-widest border-b border-white/10">
-              <th class="px-6 py-4 font-semibold">رقم الحجز</th>
-              <th class="px-6 py-4 font-semibold">العميل</th>
-              <th class="px-6 py-4 font-semibold">المسار</th>
-              <th class="px-6 py-4 font-semibold">المسافرون</th>
-              <th class="px-6 py-4 font-semibold">السيستم</th>
-              <th class="px-6 py-4 font-semibold">الموظف</th>
-              <th class="px-6 py-4 font-semibold">{{ isAdmin ? 'السعر / الربح' : 'السعر' }}</th>
-              <th class="px-6 py-4 font-semibold">الحالة</th>
-              <th class="px-6 py-4 font-semibold text-right">الإجراءات</th>
+            <tr class="bg-white/[0.035] text-[10px] font-bold uppercase tracking-widest text-text-muted border-b border-white/10">
+              <th class="px-5 py-4">رقم الحجز</th>
+              <th class="px-5 py-4">العميل</th>
+              <th class="px-5 py-4">المسار</th>
+              <th class="px-5 py-4">المسافرون</th>
+              <th class="px-5 py-4">السيستم</th>
+              <th class="px-5 py-4">الموظف</th>
+              <th class="px-5 py-4">{{ isAdmin ? 'السعر / الربح' : 'السعر' }}</th>
+              <th class="px-5 py-4">الحالة</th>
+              <th class="px-5 py-4 text-center">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
             <template v-if="store.loading.list">
               <tr v-for="i in 8" :key="i" class="border-b border-white/5">
-                <td v-for="j in 9" :key="j" class="px-6 py-4">
+                <td v-for="j in 9" :key="j" class="px-5 py-4">
                   <div class="h-4 animate-shimmer rounded w-full"></div>
                 </td>
               </tr>
@@ -155,21 +187,21 @@
             <template v-else-if="filteredBookings.length > 0">
               <template v-for="(booking, idx) in filteredBookings" :key="booking.id || idx">
                 <tr v-if="booking && booking.id"
-                  class="border-b border-white/5 hover:bg-white/5 transition-colors group"
+                  class="border-b border-white/5 transition-colors hover:bg-white/[0.035] group"
                   :style="{ animationDelay: `${idx * 50}ms` }">
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-2 relative">
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-2 relative min-w-[160px]">
                     <div class="flex flex-col min-w-0">
                       <span
                         v-if="booking.pnr"
-                        class="font-mono text-gold font-bold cursor-pointer hover:underline underline-offset-4 decoration-gold/30"
+                        class="font-mono text-gold font-bold text-sm cursor-pointer hover:underline underline-offset-4 decoration-gold/30"
                         :title="'PNR — انقر للنسخ'"
                         @click="copyToClipboard(booking.pnr)"
                       >
                         {{ booking.pnr }}
                       </span>
                       <span
-                        class="font-mono cursor-pointer hover:underline underline-offset-4"
+                        class="font-mono cursor-pointer hover:underline underline-offset-4 truncate max-w-[140px]"
                         :class="booking.pnr ? 'text-[10px] text-muted mt-0.5' : 'text-gold font-bold decoration-gold/30'"
                         :title="booking.pnr ? 'مرجع المكتب — انقر للنسخ' : 'انقر للنسخ'"
                         @click="copyToClipboard(booking.bookingNumber)"
@@ -180,83 +212,121 @@
                     <Copy class="w-3 h-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0" />
                     <div
                       v-if="copiedTooltip === booking.pnr || copiedTooltip === booking.bookingNumber"
-                      class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gold text-black text-[10px] font-bold rounded whitespace-nowrap animate-in fade-in zoom-in-95"
+                      class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gold text-black text-[10px] font-bold rounded whitespace-nowrap animate-in fade-in zoom-in-95 z-10"
                     >
                       تم النسخ!
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4">
-                  <div class="flex flex-col">
-                    <span class="font-bold text-sm">{{ booking.customer?.name }}</span>
-                    <span class="text-xs text-muted">{{ booking.customer?.phone }}</span>
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-2 font-mono text-xs">
-                    <span class="font-bold">{{ booking.fromAirportCity }}</span>
-                    <ArrowRight class="w-3 h-3 text-muted" />
-                    <span class="font-bold">{{ booking.toAirportCity }}</span>
-                    <span v-if="booking.segments?.length > 1" class="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-muted">
-                      +{{ booking.segments.length - 1 }} توقف
-                    </span>
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-1.5 text-xs">
-                    <Users class="w-3 h-3 text-muted" />
-                    <span>{{ booking.passengersCount }}</span>
-                    <span v-if="booking.passengers?.length" class="text-[10px] text-muted">({{ paxBreakdown(booking.passengers) }})</span>
-                  </div>
-                </td>
-                <!-- GDS/System name (or Carrier name if booked directly from carrier) -->
-                <td class="px-6 py-4">
-                  <span class="text-xs font-semibold text-slate-300">
-                    {{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }}
-                  </span>
-                </td>
-                <!-- Creator/Employee name -->
-                <td class="px-6 py-4">
-                  <span class="text-xs text-slate-300">
-                    {{ booking.employee?.name || booking.createdByName || '—' }}
-                  </span>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex flex-col">
-                    <span class="font-mono text-sm">{{ booking.pricing.sellingPrice.toLocaleString() }} {{ booking.pricing.currency || 'EGP' }}</span>
-                    <div v-if="isAdmin" :class="['flex items-center gap-1 text-[10px] font-bold', booking.pricing.profit >= 0 ? 'text-success' : 'text-error']">
-                      <TrendingUp v-if="booking.pricing.profit >= 0" class="w-3 h-3" />
-                      <TrendingDown v-else class="w-3 h-3" />
-                      {{ booking.pricing.profit.toLocaleString() }}
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-3 min-w-[150px]">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-black text-text-main">
+                      {{ customerInitials(booking) }}
+                    </div>
+                    <div class="min-w-0">
+                      <p class="truncate font-bold text-sm text-text-main">{{ booking.customer?.name || 'عميل غير محدد' }}</p>
+                      <p class="truncate text-[11px] text-text-muted">{{ booking.customer?.phone || '—' }}</p>
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4">
-                  <div :class="['inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', statusStyles[booking.status]]">
-                    <span v-if="booking.status === 'confirmed'" class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-                    {{ getStatusLabelAr(booking.status) }}
+                <td class="px-5 py-4">
+                  <div class="min-w-[200px]">
+                    <span v-if="booking.tripType" class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black mb-1.5" :class="tripTypeBadgeClass(booking.tripType)">
+                      <component :is="tripTypeIcon(booking.tripType)" class="h-2.5 w-2.5" />
+                      {{ tripTypeLabel(booking.tripType) }}
+                    </span>
+                    <div class="flex items-center gap-2">
+                      <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ booking.fromAirportCity || '—' }}</span>
+                      <div class="relative flex flex-1 items-center justify-center">
+                        <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-l from-sky-400/60 via-sky-400/20 to-transparent"></div>
+                        <Plane class="relative h-3 w-3 -rotate-12 text-sky-400" />
+                      </div>
+                      <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ booking.toAirportCity || '—' }}</span>
+                    </div>
+                    <p v-if="booking.segments?.length > 1" class="mt-1.5 inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-text-muted">
+                      <Route class="h-2.5 w-2.5" />
+                      {{ booking.segments.length }} محطات · {{ booking.segments.length - 1 }} توقف
+                    </p>
                   </div>
                 </td>
-                <td class="px-6 py-4 text-right">
-                  <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-2 text-xs min-w-[90px]">
+                    <div class="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted">
+                      <Users class="h-3.5 w-3.5" />
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-bold text-text-main">{{ booking.passengersCount }}</span>
+                      <span v-if="booking.passengers?.length" class="text-[10px] text-text-muted">{{ paxBreakdown(booking.passengers) }}</span>
+                    </div>
+                  </div>
+                </td>
+                <!-- GDS/System name (or Carrier name if booked directly from carrier) -->
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-2 min-w-[120px]">
+                    <div class="flex h-7 w-7 items-center justify-center rounded-md border border-sky-400/15 bg-sky-500/10 text-sky-300">
+                      <Building2 class="h-3.5 w-3.5" />
+                    </div>
+                    <span class="text-xs font-semibold text-text-main truncate max-w-[140px]">
+                      {{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }}
+                    </span>
+                  </div>
+                </td>
+                <!-- Creator/Employee name -->
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-2 min-w-[100px]">
+                    <div class="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[10px] font-black text-text-main">
+                      {{ employeeInitials(booking) }}
+                    </div>
+                    <span class="truncate text-xs text-text-main max-w-[100px]">
+                      {{ booking.employee?.name || booking.createdByName || '—' }}
+                    </span>
+                  </div>
+                </td>
+                <td class="px-5 py-4">
+                  <div class="flex flex-col min-w-[110px]">
+                    <span class="font-mono text-sm font-black text-text-main">{{ (booking.pricing?.sellingPrice ?? 0).toLocaleString() }} {{ booking.pricing?.currency || 'EGP' }}</span>
+                    <div v-if="isAdmin" :class="['mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold', (booking.pricing?.profit ?? 0) >= 0 ? 'text-success' : 'text-error']">
+                      <span class="rounded bg-current/10 px-1.5 py-0.5">
+                        <TrendingUp v-if="(booking.pricing?.profit ?? 0) >= 0" class="inline h-2.5 w-2.5" />
+                        <TrendingDown v-else class="inline h-2.5 w-2.5" />
+                        {{ (booking.pricing?.profit ?? 0).toLocaleString() }} ربح
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-5 py-4">
+                  <span :class="['inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black', statusStyles[booking.status]?.borderClass]">
+                    <span :class="['h-1.5 w-1.5 rounded-full', statusStyles[booking.status]?.dotClass, { 'animate-pulse': booking.status === 'confirmed' }]"></span>
+                    {{ getStatusLabelAr(booking.status) }}
+                  </span>
+                </td>
+                <td class="px-5 py-4">
+                  <div class="flex items-center justify-center gap-1">
                     <button
                       @click="printTicket(booking)"
-                      class="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-gold transition-all"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-gold/40 hover:bg-gold/10 hover:text-gold"
                       title="طباعة التذكرة"
+                      aria-label="طباعة التذكرة"
                     >
-                      <Printer class="w-4 h-4" />
+                      <Printer class="h-3.5 w-3.5" />
                     </button>
                     <router-link :to="{ name: 'flights.show', params: { id: booking.id } }"
-                      class="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-white transition-all" title="عرض التفاصيل">
-                      <Eye class="w-4 h-4" />
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-sky-400/40 hover:bg-sky-500/15 hover:text-sky-300"
+                      title="عرض التفاصيل"
+                      aria-label="عرض التفاصيل">
+                      <Eye class="h-3.5 w-3.5" />
                     </router-link>
                     <router-link :to="{ name: 'flights.edit', params: { id: booking.id } }"
-                      class="p-2 hover:bg-white/10 rounded-lg text-muted hover:text-gold transition-all" title="تعديل الحجز">
-                      <Edit2 class="w-4 h-4" />
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-gold/40 hover:bg-gold/10 hover:text-gold"
+                      title="تعديل الحجز"
+                      aria-label="تعديل الحجز">
+                      <Edit2 class="h-3.5 w-3.5" />
                     </router-link>
                     <button @click="confirmDelete(booking)"
-                      class="p-2 hover:bg-error/10 rounded-lg text-muted hover:text-error transition-all" title="حذف الحجز">
-                      <Trash2 class="w-4 h-4" />
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-error/40 hover:bg-error/15 hover:text-error"
+                      title="حذف الحجز"
+                      aria-label="حذف الحجز">
+                      <Trash2 class="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </td>
@@ -315,12 +385,12 @@
           <template v-for="(booking, idx) in filteredBookings" :key="booking.id || idx">
             <div
               v-if="booking && booking.id"
-              class="p-4 space-y-3 hover:bg-white/5 transition-colors"
+              class="p-4 space-y-3 hover:bg-white/[0.035] transition-colors"
               :style="{ animationDelay: `${idx * 40}ms` }"
             >
-            <!-- Top Row: Booking # + Status -->
-            <div class="flex items-center justify-between">
-              <div class="min-w-0">
+            <!-- Top Row: Booking # + Status + Trip Type -->
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
                 <span
                   v-if="booking.pnr"
                   class="font-mono text-gold font-bold text-sm cursor-pointer hover:underline block"
@@ -329,68 +399,90 @@
                   {{ booking.pnr }}
                 </span>
                 <span
-                  class="font-mono cursor-pointer hover:underline block"
+                  class="font-mono cursor-pointer hover:underline block truncate"
                   :class="booking.pnr ? 'text-[10px] text-muted' : 'text-gold font-bold text-sm'"
                   @click="copyToClipboard(booking.bookingNumber)"
                 >
                   {{ booking.bookingNumber }}
                 </span>
+                <span v-if="booking.tripType" class="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black" :class="tripTypeBadgeClass(booking.tripType)">
+                  <component :is="tripTypeIcon(booking.tripType)" class="h-2.5 w-2.5" />
+                  {{ tripTypeLabel(booking.tripType) }}
+                </span>
               </div>
-              <div :class="['px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', statusStyles[booking.status]]">
-                <span v-if="booking.status === 'confirmed'" class="inline-block w-1 h-1 rounded-full bg-current mr-1 animate-pulse"></span>
+              <span :class="['inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black', statusStyles[booking.status]?.borderClass]">
+                <span :class="['h-1.5 w-1.5 rounded-full', statusStyles[booking.status]?.dotClass, { 'animate-pulse': booking.status === 'confirmed' }]"></span>
                 {{ getStatusLabelAr(booking.status) }}
-              </div>
+              </span>
             </div>
 
             <!-- Middle: Customer + Route -->
             <div class="space-y-2">
-              <div class="font-bold text-sm">{{ booking.customer?.name }}</div>
-              <div class="flex items-center gap-2 font-mono text-xs">
-                <span class="font-bold">{{ booking.fromAirportCity }}</span>
-                <ArrowRight class="w-3 h-3 text-muted" />
-                <span class="font-bold">{{ booking.toAirportCity }}</span>
-                <span v-if="booking.segments?.length > 1" class="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-muted">
-                  +{{ booking.segments.length - 1 }} توقف
-                </span>
+              <div class="flex items-center gap-2">
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[10px] font-black text-text-main">
+                  {{ customerInitials(booking) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate font-bold text-sm text-text-main">{{ booking.customer?.name || 'عميل غير محدد' }}</p>
+                  <p class="truncate text-[11px] text-text-muted">{{ booking.customer?.phone || '—' }}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ booking.fromAirportCity || '—' }}</span>
+                <div class="relative flex flex-1 items-center justify-center">
+                  <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-l from-sky-400/60 via-sky-400/20 to-transparent"></div>
+                  <Plane class="relative h-3 w-3 -rotate-12 text-sky-400" />
+                </div>
+                <span class="rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] font-black text-text-main">{{ booking.toAirportCity || '—' }}</span>
               </div>
             </div>
 
-            <!-- Bottom: Date + PAX + Profit -->
-            <div class="flex items-center justify-between text-xs">
-              <div class="flex items-center gap-3 text-muted">
-                <span>{{ formatDate(booking.createdAt) }}</span>
-                <span class="flex items-center gap-1">
-                  <Users class="w-3 h-3" />
-                  {{ booking.passengersCount }}
-                </span>
-                <span class="text-[10px] text-muted">
-                  ({{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }})
-                </span>
+            <!-- Bottom: System + PAX + Price -->
+            <div class="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-2.5 text-xs">
+              <div class="flex items-center gap-2 text-text-muted">
+                <Building2 class="h-3 w-3" />
+                <span class="truncate max-w-[100px]">{{ booking.systemDisplay || booking.flightSystem?.name || booking.flightCarrier?.name || booking.systemTypeLabel || '—' }}</span>
               </div>
-              <div :class="['flex items-center gap-1 font-bold font-mono', booking.pricing?.profit >= 0 ? 'text-success' : 'text-error']">
-                {{ booking.pricing?.profit >= 0 ? '+' : '' }}{{ (booking.pricing?.profit || 0).toLocaleString() }}
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 text-text-muted">
+                  <Users class="h-3 w-3" />
+                  {{ booking.passengersCount }}
+                </div>
+                <div class="font-mono font-black text-text-main">
+                  {{ (booking.pricing?.sellingPrice ?? 0).toLocaleString() }} {{ booking.pricing?.currency || 'EGP' }}
+                </div>
               </div>
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex gap-2 pt-2 border-t border-white/5">
+            <div class="flex gap-2 pt-1">
+              <button
+                @click="printTicket(booking)"
+                class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-bold text-text-muted transition hover:border-gold/40 hover:text-gold"
+                title="طباعة"
+              >
+                <Printer class="h-3.5 w-3.5" />
+              </button>
               <router-link
                 :to="{ name: 'flights.show', params: { id: booking.id } }"
-                class="flex-1 py-2 text-center bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors"
+                class="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20"
               >
+                <Eye class="h-3.5 w-3.5" />
                 عرض
               </router-link>
               <router-link
                 :to="{ name: 'flights.edit', params: { id: booking.id } }"
-                class="flex-1 py-2 text-center bg-gold/10 hover:bg-gold/20 text-gold rounded-lg text-sm font-medium transition-colors"
+                class="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 text-xs font-bold text-gold transition hover:bg-gold/20"
               >
+                <Edit2 class="h-3.5 w-3.5" />
                 تعديل
               </router-link>
               <button
                 @click="confirmDelete(booking)"
-                class="flex-1 py-2 text-center bg-error/10 hover:bg-error/20 text-error rounded-lg text-sm font-medium transition-colors"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-error/30 bg-error/10 text-error transition hover:bg-error/20"
+                title="حذف"
               >
-                حذف
+                <Trash2 class="h-3.5 w-3.5" />
               </button>
               </div>
             </div>
@@ -422,23 +514,31 @@
       </div>
 
       <!-- Pagination -->
-      <div class="px-6 py-4 bg-white/5 border-t border-white/10 flex items-center justify-between text-sm text-muted">
-        <div>عرض {{ (store.pagination.currentPage - 1) * store.pagination.perPage + 1 }} - {{ Math.min(store.pagination.currentPage * store.pagination.perPage, store.pagination.total || filteredBookings.length) }} من {{ store.pagination.total || filteredBookings.length }} نتيجة</div>
+      <div class="px-5 py-4 bg-white/[0.025] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-text-muted">
         <div class="flex items-center gap-2">
-          <select v-model="store.filters.perPage" @change="onPerPageChange" class="px-3 py-2 bg-input border border-white/5 rounded-lg focus:border-gold outline-none text-sm">
-            <option :value="10">10 لكل صفحة</option>
-            <option :value="15">15 لكل صفحة</option>
-            <option :value="25">25 لكل صفحة</option>
-            <option :value="50">50 لكل صفحة</option>
+          <span>عرض</span>
+          <b class="text-text-main">{{ (store.pagination.currentPage - 1) * store.pagination.perPage + 1 }}</b>
+          <span>إلى</span>
+          <b class="text-text-main">{{ Math.min(store.pagination.currentPage * store.pagination.perPage, store.pagination.total || filteredBookings.length) }}</b>
+          <span>من</span>
+          <b class="text-text-main">{{ store.pagination.total || filteredBookings.length }}</b>
+          <span>نتيجة</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <select v-model="store.filters.perPage" @change="onPerPageChange" class="px-3 py-2 bg-input border border-white/10 rounded-lg focus:border-gold outline-none text-sm text-text-main">
+            <option :value="10">10 / صفحة</option>
+            <option :value="15">15 / صفحة</option>
+            <option :value="25">25 / صفحة</option>
+            <option :value="50">50 / صفحة</option>
           </select>
           <div class="flex items-center gap-1">
-            <button @click="goToPage(store.pagination.currentPage - 1)" :disabled="store.pagination.currentPage === 1" class="p-2 hover:bg-white/10 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent"><ChevronLeft class="w-4 h-4" /></button>
+            <button @click="goToPage(store.pagination.currentPage - 1)" :disabled="store.pagination.currentPage === 1" class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-gold/40 hover:text-gold disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/10 disabled:hover:text-text-muted"><ChevronLeft class="w-4 h-4" /></button>
             <button v-for="page in visiblePages" :key="page"
               @click="goToPage(page)"
-              :class="['w-8 h-8 flex items-center justify-center rounded-lg font-bold transition-colors', page === store.pagination.currentPage ? 'bg-gold text-black' : 'hover:bg-white/10']">
+              :class="['inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-black transition-colors', page === store.pagination.currentPage ? 'border border-gold/40 bg-gold text-black shadow-[0_0_15px_rgba(212,168,67,0.25)]' : 'border border-white/10 bg-white/5 text-text-main hover:border-sky-400/40 hover:text-sky-300']">
               {{ page }}
             </button>
-            <button @click="goToPage(store.pagination.currentPage + 1)" :disabled="store.pagination.currentPage === store.pagination.lastPage" class="p-2 hover:bg-white/10 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent"><ChevronRight class="w-4 h-4" /></button>
+            <button @click="goToPage(store.pagination.currentPage + 1)" :disabled="store.pagination.currentPage === store.pagination.lastPage" class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-muted transition hover:border-gold/40 hover:text-gold disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/10 disabled:hover:text-text-muted"><ChevronRight class="w-4 h-4" /></button>
           </div>
         </div>
         </div>
@@ -456,7 +556,8 @@ import {
   Plus, Search, Copy, ArrowRight, Users, TrendingUp, TrendingDown,
   Eye, Edit2, Trash2, Plane, ChevronLeft, ChevronRight, AlertCircle,
   LayoutDashboard, CreditCard, DollarSign, Activity, Printer, Percent, Ticket,
-  Calendar, MapPin, Building2, Landmark
+  Calendar, MapPin, Building2, Landmark, RotateCcw, SlidersHorizontal, Route,
+  PlaneTakeoff, PlaneLanding, ArrowRightLeft
 } from 'lucide-vue-next';
 
 const store = useFlightStore();
@@ -534,11 +635,26 @@ const animatedStats = computed(() => {
 });
 
 const statusStyles = {
-  pending: 'bg-white/10 text-white',
-  confirmed: 'bg-success/10 text-success shadow-[0_0_15px_rgba(16,217,140,0.2)]',
-  ticketed: 'bg-gold/10 text-gold shadow-[0_0_15px_rgba(212,168,67,0.2)]',
-  cancelled: 'bg-error/10 text-error',
-  refunded: 'bg-muted/10 text-muted'
+  pending: {
+    borderClass: 'border-white/15 bg-white/5 text-text-muted',
+    dotClass: 'bg-text-muted',
+  },
+  confirmed: {
+    borderClass: 'border-success/30 bg-success/10 text-success shadow-[0_0_15px_rgba(16,217,140,0.15)]',
+    dotClass: 'bg-success',
+  },
+  ticketed: {
+    borderClass: 'border-gold/30 bg-gold/10 text-gold shadow-[0_0_15px_rgba(212,168,67,0.15)]',
+    dotClass: 'bg-gold',
+  },
+  cancelled: {
+    borderClass: 'border-error/30 bg-error/10 text-error',
+    dotClass: 'bg-error',
+  },
+  refunded: {
+    borderClass: 'border-white/10 bg-white/5 text-text-muted',
+    dotClass: 'bg-text-muted',
+  },
 };
 
 const statusLabelsAr = {
@@ -723,6 +839,45 @@ const paxBreakdown = (passengers) => {
   if (c) parts.push(`${c}C`);
   if (i) parts.push(`${i}I`);
   return parts.join(' ');
+};
+
+const customerInitials = (booking) => {
+  const name = booking?.customer?.name || booking?.customer?.full_name || '';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'C';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+const employeeInitials = (booking) => {
+  const name = booking?.employee?.name || booking?.createdByName || '';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '—';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+const tripTypeLabel = (tripType) => {
+  const map = {
+    one_way: 'ذهاب فقط',
+    round_trip: 'ذهاب وعودة',
+    multi_city: 'متعدد المحطات',
+  };
+  return map[tripType] || tripType || '—';
+};
+
+const tripTypeBadgeClass = (tripType) => {
+  if (tripType === 'round_trip') return 'border-gold/30 bg-gold/10 text-gold';
+  if (tripType === 'one_way') return 'border-sky-400/30 bg-sky-500/10 text-sky-300';
+  if (tripType === 'multi_city') return 'border-violet-400/30 bg-violet-500/10 text-violet-300';
+  return 'border-white/10 bg-white/5 text-text-muted';
+};
+
+const tripTypeIcon = (tripType) => {
+  if (tripType === 'round_trip') return ArrowRightLeft;
+  if (tripType === 'one_way') return PlaneTakeoff;
+  if (tripType === 'multi_city') return Route;
+  return Plane;
 };
 
 const copyToClipboard = async (text) => {

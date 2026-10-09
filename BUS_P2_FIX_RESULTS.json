@@ -1,0 +1,14 @@
+{
+    "original_vulnerability": "StoreBusInventoryRequest allowed soft-deleted bus_companies to pass validation.",
+    "exact_file_changed": "app\/Http\/Requests\/Bus\/StoreBusInventoryRequest.php",
+    "exact_rule_changed": "company_id => ['required', 'integer', Rule::exists('bus_companies', 'id')->whereNull('deleted_at')]",
+    "update_path_required_fix": false,
+    "regression_tests_count": 9,
+    "regression_failed_count": 0,
+    "before_behavior": "Soft-deleted company POST inventory returned HTTP 201.",
+    "after_behavior": "Soft-deleted company POST inventory returns HTTP 422.",
+    "financial_variance": 0,
+    "concurrency_regression_status": "PASS",
+    "new_findings": 0,
+    "final_status": "FIXED \u2014 REGRESSION PASS"
+}

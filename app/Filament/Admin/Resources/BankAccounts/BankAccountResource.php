@@ -44,7 +44,10 @@ class BankAccountResource extends Resource
     {
         return parent::getEloquentQuery()
             ->whereIn('type', [AccountType::Bank->value])
-            ->where('module_type', 'flights');
+            ->where(function (Builder $q): void {
+                $q->whereIn('module', ['flights', 'flight'])
+                    ->orWhereIn('module_type', ['flights', 'flight']);
+            });
     }
 
     public static function form(Schema $schema): Schema

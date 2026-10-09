@@ -4,8 +4,8 @@ import axios from 'axios';
 const initialFilters = {
   search: '',
   status: '',
-  service_type_id: '',
-  provider_id: '',
+  service_type_code: '',
+  provider_code: '',
   payment_method: '',
   account_id: '',
   customer_id: '',

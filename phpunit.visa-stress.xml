@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    VISA Financial Stress Test — MySQL tier config.
+
+    This file does NOT modify the regular phpunit.xml.
+    It runs the VisaFinancialStressTest against the safarak_stress MySQL DB
+    so the lockForUpdate() and concurrency semantics are real.
+
+    Usage:
+        vendor/bin/phpunit -c phpunit.visa-stress.xml
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.visa-stress.cache"
+         backupGlobals="false"
+         backupStaticProperties="false"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         failOnRisky="false"
+         failOnWarning="false">
+
+    <testsuites>
+        <testsuite name="visa-stress">
+            <file>tests/Stress/Visa/VisaFinancialStressTest.php</file>
+            <file>tests/Stress/Visa/VisaFrontendE2ETest.php</file>
+            <file>tests/Stress/Visa/VisaRefundAccountingDeepTest.php</file>
+            <file>tests/Stress/Visa/VisaDeleteAccountingDeepTest.php</file>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <env name="APP_ENV" value="stress" force="true"/>
+        <env name="APP_DEBUG" value="true" force="true"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" force="true"/>
+
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="3306" force="true"/>
+        <env name="DB_DATABASE" value="safarak_stress" force="true"/>
+        <env name="DB_USERNAME" value="root" force="true"/>
+        <env name="DB_PASSWORD" value="" force="true"/>
+
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="LOG_CHANNEL" value="stack" force="true"/>
+        <env name="LOG_LEVEL" value="error" force="true"/>
+    </php>
+</phpunit>

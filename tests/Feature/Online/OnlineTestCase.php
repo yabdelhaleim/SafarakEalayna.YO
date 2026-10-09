@@ -160,19 +160,36 @@ class OnlineTestCase extends TestCase
     }
 
     /**
-     * Asserts the project's GL invariant: cached balance == SUM(credit) - SUM(debit).
+     * Asserts the project's GL invariant: cached balance DELTA == GL net
+     * DELTA, where the delta is measured against the GL state at the first
+     * assertion. This keeps the assertion correct for accounts that start
+     * with a non-zero cached balance (e.g. the seeded cashbox with 10000).
      */
     protected function assertLedgerBalancedForAccount(int $accountId): void
     {
         $cached = $this->accountBalance($accountId);
         $gl = $this->glBalance($accountId);
+        if (! array_key_exists($accountId, $this->glBaselines)) {
+            $this->glBaselines[$accountId] = [
+                'cached' => $cached,
+                'gl' => $gl,
+            ];
+        }
+        $baseline = $this->glBaselines[$accountId];
+        $cachedDelta = $cached - $baseline['cached'];
+        $glDelta = $gl - $baseline['gl'];
         $this->assertEqualsWithDelta(
-            $cached,
-            $gl,
+            $cachedDelta,
+            $glDelta,
             0.01,
-            "Account #{$accountId} cached balance ({$cached}) disagrees with GL net ({$gl}).",
+            "Account #{$accountId} cached delta ({$cachedDelta}) disagrees with GL delta ({$glDelta}).",
         );
     }
+
+    /**
+     * Per-account (cached, gl) baselines recorded at the first assertion.
+     */
+    protected array $glBaselines = [];
 
     /**
      * Asserts that every Online transaction is balanced (debit == credit per

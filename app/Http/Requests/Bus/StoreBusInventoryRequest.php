@@ -4,6 +4,7 @@ namespace App\Http\Requests\Bus;
 
 use App\Rules\BusLiquidityAccount;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class StoreBusInventoryRequest extends FormRequest
@@ -16,13 +17,14 @@ class StoreBusInventoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'company_id' => 'required|integer|exists:bus_companies,id',
+            'company_id' => ['required', 'integer', Rule::exists('bus_companies', 'id')->whereNull('deleted_at')],
             'route' => 'required|string|max:200',
             'travel_date' => 'required|date|after_or_equal:today',
             'departure_time' => 'nullable|date_format:H:i',
             'total_tickets' => 'required|integer|min:1',
             'cost_per_ticket' => 'required|numeric|min:0.01',
-            'selling_price' => 'required|numeric|min:0.01',
+            // Step 3 fix: cross-field — selling_price must be >= cost_per_ticket.
+            'selling_price' => 'required|numeric|min:0.01|gte:cost_per_ticket',
             'payment_type' => 'required|in:cash,deferred',
             'account_id' => ['required_if:payment_type,cash', 'integer', 'exists:accounts,id', new BusLiquidityAccount],
             'notes' => 'nullable|string|max:1000',
@@ -50,6 +52,7 @@ class StoreBusInventoryRequest extends FormRequest
             'selling_price.required' => 'The selling price is required.',
             'selling_price.numeric' => 'The selling price must be a number.',
             'selling_price.min' => 'The selling price must be at least 0.01.',
+            'selling_price.gte' => 'The selling price must be greater than or equal to the cost per ticket (no loss-making trips).',
             'payment_type.required' => 'The payment type is required.',
             'payment_type.in' => 'The payment type must be cash or deferred.',
             'account_id.required_if' => 'The account is required for cash payments.',

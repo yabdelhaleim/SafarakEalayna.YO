@@ -27,16 +27,25 @@ class DashboardController extends Controller
 
         $cacheKey = "dashboard_full_{$from}_{$to}_{$carrierId}_{$systemType}";
 
-        $dashboard = \App\Helpers\CacheHelper::tags(['dashboard'])->remember($cacheKey, 300, function () use ($from, $to, $carrierId, $systemType) {
-            return $this->dashboardService->getFullDashboard(
-                $from,
-                $to,
-                $carrierId,
-                $systemType
-            );
-        });
+        // Allow ?nocache=1 to bypass the 5-minute cache during debugging or
+        // immediately after a deploy — otherwise stale snapshots keep the
+        // Vue dashboard showing 0s on KPIs that did get data after the fix.
+        $bypassCache = $request->boolean('nocache') || $request->boolean('no_cache');
 
-        return ApiResponse::success('Dashboard data retrieved successfully', $dashboard);
+        $dashboard = $bypassCache
+            ? $this->dashboardService->getFullDashboard($from, $to, $carrierId, $systemType)
+            : \App\Helpers\CacheHelper::tags(['dashboard'])->remember($cacheKey, 300, function () use ($from, $to, $carrierId, $systemType) {
+                return $this->dashboardService->getFullDashboard(
+                    $from,
+                    $to,
+                    $carrierId,
+                    $systemType
+                );
+            });
+
+        return ApiResponse::success('Dashboard data retrieved successfully', $dashboard)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     public function overview(Request $request): JsonResponse

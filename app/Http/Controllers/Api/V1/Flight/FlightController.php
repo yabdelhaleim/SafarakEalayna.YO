@@ -207,45 +207,11 @@ class FlightController extends Controller
         }
     }
 
-    /**
-     * Update booking details (airline_name, trip_details, notes).
-     */
-    public function update(UpdateFlightBookingRequest $request, FlightBooking $flightBooking): JsonResponse
-    {
-        try {
-            $booking = $this->bookingService->updateBooking($flightBooking, $request->validated());
+    // INCIDENT-2026-08-17: Tourism no-edit contract.
+//   update() and updatePrices() methods removed — PUT/PATCH returns 405 by design.
+//   Cancellation is the supported correction path.
 
-            return ApiResponse::success(
-                'Booking updated successfully.',
-                new FlightBookingResource($booking)
-            );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), null, 422);
-        }
-    }
-
-    /**
-     * Update purchase and selling prices.
-     */
-    public function updatePrices(UpdateFlightPricesRequest $request, FlightBooking $flightBooking): JsonResponse
-    {
-        try {
-            $booking = $this->bookingService->updatePrices(
-                $flightBooking,
-                $request->purchase_price,
-                $request->selling_price
-            );
-
-            return ApiResponse::success(
-                'Prices updated successfully.',
-                new FlightBookingResource($booking)
-            );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), null, 422);
-        }
-    }
-
-    /**
+/**
      * Confirm a flight booking.
      */
     public function confirm(FlightBooking $flightBooking): JsonResponse
@@ -264,11 +230,34 @@ class FlightController extends Controller
 
     /**
      * Add a payment to a flight booking.
+     *
+     * Phase 2 (B-1) fix — IDOR on Flight payment endpoint:
+     *   The customer_id comes from route-model binding (FlightBooking), NEVER
+     *   from the request payload. The policy gates which users may pay which
+     *   bookings (admin/owner OR the booking's owning employee).
+     *
+     * @see \App\Policies\FlightBookingPolicy::pay
      */
     public function addPayment(StoreFlightPaymentRequest $request, FlightBooking $flightBooking): JsonResponse
     {
+        // B-1 fix: authorize via FlightBookingPolicy. The route-model-bound
+        // FlightBooking instance carries the customer_id + employee_id used
+        // by the policy — the request payload has no customer_id field.
+        $this->authorize('pay', $flightBooking);
+
         try {
-            $this->bookingService->addPayment($flightBooking, $request->validated());
+            $payment = $this->bookingService->addPayment($flightBooking, $request->validated());
+
+            // D3 FIX (2026-08-15): when the service returns an existing
+            // payment that was created earlier with the same idempotency_key,
+            // surface HTTP 200 OK + the idempotent_replay flag instead of
+            // HTTP 201 Created. The client can distinguish a fresh payment
+            // from a replay via the `idempotent_replay` field in the payload.
+            $isReplay = (bool) ($payment->idempotent_replay ?? false);
+            $status = $isReplay ? 200 : 201;
+            $message = $isReplay
+                ? 'Payment replay detected — returning the original payment (no new financial effect).'
+                : 'Payment recorded successfully.';
 
             $flightBooking->refresh();
             $flightBooking->load([
@@ -288,9 +277,12 @@ class FlightController extends Controller
             ]);
 
             return ApiResponse::success(
-                'Payment recorded successfully.',
-                new FlightBookingResource($flightBooking),
-                201
+                $message,
+                array_merge(
+                    (new FlightBookingResource($flightBooking))->resolve($request),
+                    ['idempotent_replay' => $isReplay],
+                ),
+                $status
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
@@ -299,9 +291,18 @@ class FlightController extends Controller
 
     /**
      * Cancel a flight booking and process refund.
+     *
+     * Phase 2 (B-1) fix — authorization gate aligned with payment policy:
+     *   Only admin/owner OR the booking's owning employee can cancel.
+     *   Mirrors FlightBookingPolicy::pay to keep the rule consistent across
+     *   financial-mutation endpoints.
      */
     public function cancel(StoreFlightRefundRequest $request, FlightBooking $flightBooking): JsonResponse
     {
+        // B-1 fix: same authorization gate as addPayment. Any authenticated
+        // user with `manage_flights` is no longer sufficient.
+        $this->authorize('cancel', $flightBooking);
+
         try {
             $refund = $this->bookingService->cancelBooking($flightBooking, $request->validated());
 

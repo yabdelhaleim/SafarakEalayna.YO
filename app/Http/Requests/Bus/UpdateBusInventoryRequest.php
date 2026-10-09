@@ -18,7 +18,14 @@ class UpdateBusInventoryRequest extends FormRequest
             'route' => 'sometimes|string|max:200',
             'travel_date' => 'sometimes|date',
             'departure_time' => 'sometimes|nullable|date_format:H:i',
-            'selling_price' => 'sometimes|numeric|min:0.01',
+            // Step 3 fix: cross-field — new selling_price must be >= existing cost_per_ticket.
+            // The bound BusInventory is loaded from the route param {busInventory}.
+            'selling_price' => [
+                'sometimes',
+                'numeric',
+                'min:0.01',
+                'gte:cost_per_ticket', // compares against existing cost_per_ticket on the bound model
+            ],
             'notes' => 'sometimes|nullable|string|max:1000',
         ];
     }
@@ -32,6 +39,7 @@ class UpdateBusInventoryRequest extends FormRequest
             'departure_time.date_format' => 'The departure time must be in HH:MM format.',
             'selling_price.numeric' => 'The selling price must be a number.',
             'selling_price.min' => 'The selling price must be at least 0.01.',
+            'selling_price.gte' => 'The new selling price must be greater than or equal to the existing cost per ticket (no loss-making trips).',
             'notes.string' => 'The notes must be a valid string.',
             'notes.max' => 'The notes may not be greater than 1000 characters.',
         ];
@@ -52,6 +60,16 @@ class UpdateBusInventoryRequest extends FormRequest
             throw \Illuminate\Validation\ValidationException::withMessages(
                 array_fill_keys($unknown, 'This field is not allowed.')
             );
+        }
+
+        // Step 3 fix: inject the existing inventory's cost_per_ticket into the
+        // request data so Laravel's `gte:cost_per_ticket` can compare the new
+        // selling_price against the bound model without a custom Rule object.
+        $inventory = $this->route('busInventory');
+        if ($inventory && method_exists($inventory, 'getAttribute')) {
+            $this->merge([
+                'cost_per_ticket' => (float) $inventory->cost_per_ticket,
+            ]);
         }
     }
 }

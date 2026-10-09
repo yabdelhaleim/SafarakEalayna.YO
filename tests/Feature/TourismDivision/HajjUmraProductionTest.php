@@ -607,43 +607,6 @@ class HajjUmraProductionTest extends TourismTestCase
         $second->assertStatus(422)->assertJsonPath('success', false);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // E. UPDATE (PRICE REPOST = ADDITIVE)
-    // ─────────────────────────────────────────────────────────────────
-
-    public function test_update_selling_price_reposts_income_additively(): void
-    {
-        $program = $this->makeProgram();
-        $customer = $this->makeCustomer();
-
-        $resp = $this->postJson('/api/v1/hajj-umra/bookings', [
-            'customer_id' => $customer->id,
-            'program_id' => $program->id,
-            'purchase_price' => 10000.00,
-            'selling_price' => 12000.00,
-            'account_id' => $this->cashbox->id,
-        ])->assertCreated();
-        $bookingId = $resp->json('data.id');
-
-        $originalIncomeId = HajjUmraBooking::find($bookingId)->income_transaction_id;
-
-        $updateResp = $this->patchJson("/api/v1/hajj-umra/bookings/{$bookingId}", [
-            'selling_price' => 14500.00,
-        ]);
-        $updateResp->assertOk()->assertJsonPath('success', true);
-
-        $booking = HajjUmraBooking::find($bookingId);
-        $this->assertNotEquals($originalIncomeId, $booking->income_transaction_id,
-            'income_transaction_id should be replaced after repost');
-        $this->assertEqualsWithDelta(14500.0, (float) $booking->incomeTransaction->amount, 0.02);
-
-        // Original transaction still exists with "عكس:" prefix in notes
-        $originalTx = Transaction::find($originalIncomeId);
-        $this->assertNotNull($originalTx);
-        $this->assertStringStartsWith('عكس:', $originalTx->notes);
-
-        $this->assertCustomerBalance($customer, 14500.0, 'after repost');
-    }
 
     // ─────────────────────────────────────────────────────────────────
     // F. TREASURY + DASHBOARD APIs

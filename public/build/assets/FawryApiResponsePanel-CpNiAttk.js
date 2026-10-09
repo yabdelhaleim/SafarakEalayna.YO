@@ -1,0 +1,1 @@
+import{s as e}from"./runtime-core.esm-bundler-BF9UlHb4.js";var t={__name:`FawryApiResponsePanel`,props:{envelope:{type:[Object,null],default:null}},emits:[`clear`],setup(t){let n=t;return e(()=>n.envelope?JSON.stringify(n.envelope,null,2):``),(e,t)=>null}};export{t};

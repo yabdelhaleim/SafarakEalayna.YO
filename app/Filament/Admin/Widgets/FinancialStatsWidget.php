@@ -5,7 +5,6 @@ namespace App\Filament\Admin\Widgets;
 use App\Services\Reports\ReportFinanceService;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class FinancialStatsWidget extends BaseWidget
@@ -16,9 +15,27 @@ class FinancialStatsWidget extends BaseWidget
 
     protected static ?int $sort = 2;
 
+    /**
+     * Division scope for the three KPI cards. Defaults to 'all' so the
+     * widget shows combined tourism + office figures the same way it
+     * used to, but operators can pin it to one division via
+     * Dashboard → "نطاق المؤشرات" toggle (querystring `?division=tourism`).
+     * 'tourism' fixes the long-standing bug where flight / hajj / visa
+     * revenue appeared lower than expected because the previous filter
+     * omitted transfer-type rows.
+     */
+    public ?string $division = 'all';
+
     public static function canView(): bool
     {
         return auth()->user() && in_array(auth()->user()->role, ['admin', 'owner'], true);
+    }
+
+    public function mount(): void
+    {
+        $this->division = in_array(request()->query('division'), ['tourism', 'office', 'all'], true)
+            ? request()->query('division')
+            : 'all';
     }
 
     protected function getStats(): array
@@ -28,26 +45,27 @@ class FinancialStatsWidget extends BaseWidget
         }
 
         $now = now();
-        $currentMonth = $now->month;
-        $currentYear  = $now->year;
-
-        $previousMonth = $now->copy()->subMonth();
-        $prevMonth     = $previousMonth->month;
-        $prevYear      = $previousMonth->year;
-
-        // Use the double-entry P&L service so flight bookings (type=transfer)
-        // are correctly counted as revenue / net profit.
         $service = app(ReportFinanceService::class);
 
-        $currentSummary = $service->getFinancialSummary([
+        $currentFilters = [
             'from_date' => $now->copy()->startOfMonth()->toDateString(),
             'to_date'   => $now->copy()->endOfMonth()->toDateString(),
-        ]);
+        ];
+        $previousFilters = [
+            'from_date' => $now->copy()->subMonth()->startOfMonth()->toDateString(),
+            'to_date'   => $now->copy()->subMonth()->endOfMonth()->toDateString(),
+        ];
 
-        $prevSummary = $service->getFinancialSummary([
-            'from_date' => $previousMonth->copy()->startOfMonth()->toDateString(),
-            'to_date'   => $previousMonth->copy()->endOfMonth()->toDateString(),
-        ]);
+        if ($this->division !== 'all') {
+            $currentFilters['category'] = $this->division;
+            $previousFilters['category'] = $this->division;
+        }
+
+        // getFinancialSummary now flows through ProfitLossReportService
+        // and therefore includes type='transfer' revenue/COGS rows —
+        // fixing the under-reported tourism numbers.
+        $currentSummary = $service->getFinancialSummary($currentFilters);
+        $prevSummary = $service->getFinancialSummary($previousFilters);
 
         $income  = (float) ($currentSummary['total_income'] ?? 0);
         $expense = (float) ($currentSummary['total_expense'] ?? 0);
@@ -62,8 +80,10 @@ class FinancialStatsWidget extends BaseWidget
         $monthlyExpense = $this->monthlyFinancialTotals('total_expense');
         $monthlyProfit  = $this->monthlyFinancialTotals('net_profit');
 
+        $divLabel = $this->division === 'tourism' ? ' (السياحة)' : ($this->division === 'office' ? ' (المكتب)' : '');
+
         return [
-            Stat::make('إجمالي الدخل', number_format($income, 2).' ج.م')
+            Stat::make('إجمالي الدخل'.$divLabel, number_format($income, 2).' ج.م')
                 ->description($incomeGrowth >= 0 ? '+ '.number_format($incomeGrowth, 1).'%' : number_format($incomeGrowth, 1).'% من الشهر الماضي')
                 ->descriptionIcon($incomeGrowth >= 0 ? 'heroicon-o-arrow-trending-up' : 'heroicon-o-arrow-trending-down')
                 ->color('success')
@@ -72,7 +92,7 @@ class FinancialStatsWidget extends BaseWidget
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
 
-            Stat::make('إجمالي المصروفات', number_format($expense, 2).' ج.م')
+            Stat::make('إجمالي المصروفات'.$divLabel, number_format($expense, 2).' ج.م')
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-arrow-trending-down')
                 ->color('danger')
@@ -81,7 +101,7 @@ class FinancialStatsWidget extends BaseWidget
                     'class' => 'hover:scale-105 transition-transform duration-300',
                 ]),
 
-            Stat::make('صافي الربح', number_format($profit, 2).' ج.م')
+            Stat::make('صافي الربح'.$divLabel, number_format($profit, 2).' ج.م')
                 ->description('هذا الشهر')
                 ->descriptionIcon('heroicon-o-chart-pie')
                 ->color($profit >= 0 ? 'success' : 'danger')
@@ -104,11 +124,15 @@ class FinancialStatsWidget extends BaseWidget
         return collect(range($months - 1, 0))
             ->map(function (int $monthsAgo) use ($service, $key): float {
                 $date = now()->subMonths($monthsAgo);
-
-                $summary = $service->getFinancialSummary([
+                $filters = [
                     'from_date' => $date->copy()->startOfMonth()->toDateString(),
                     'to_date'   => $date->copy()->endOfMonth()->toDateString(),
-                ]);
+                ];
+                if ($this->division !== 'all') {
+                    $filters['category'] = $this->division;
+                }
+
+                $summary = $service->getFinancialSummary($filters);
 
                 return (float) ($summary[$key] ?? 0);
             })

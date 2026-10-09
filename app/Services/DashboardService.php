@@ -279,6 +279,12 @@ class DashboardService
             'category' => 'tourism',
         ]);
 
+        $officePl = $plService->report([
+            'from_date' => $from,
+            'to_date' => $to,
+            'category' => 'office',
+        ]);
+
         // Hajj Stats — booking counts from model, profit from ledger
         $hajjStats = HajjUmraBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(selling_price), 0) as revenue')
@@ -294,6 +300,16 @@ class DashboardService
         $onlineCount = (int) $onlineStats->count;
         $onlineRevenue = (float) ($plByModule->get('online')['income'] ?? $onlineStats->revenue);
         $onlineProfit = (float) ($plByModule->get('online')['profit'] ?? 0);
+        // Fallback for office modules when no GL postings exist — match the
+        // TreasuryService::calculateDynamicProfits logic so the dashboard tab
+        // and the /finance/treasury office section show identical numbers.
+        if ($onlineProfit === 0.0 && (float) ($plByModule->get('online')['profit'] ?? 0) === 0.0) {
+            $onlineProfit = (float) DB::table('online_transactions')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNotIn('status', ['cancelled', 'failed'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Fawry Stats
         $fawryStats = FawryTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
@@ -302,6 +318,12 @@ class DashboardService
         $fawryCount = (int) $fawryStats->count;
         $fawryRevenue = (float) ($plByModule->get('fawry')['income'] ?? $fawryStats->revenue);
         $fawryProfit = (float) ($plByModule->get('fawry')['profit'] ?? 0);
+        if ($fawryProfit === 0.0 && (float) ($plByModule->get('fawry')['profit'] ?? 0) === 0.0) {
+            $fawryProfit = (float) DB::table('fawry_transactions')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Visa Stats
         $visaStats = VisaBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
@@ -314,32 +336,53 @@ class DashboardService
         // Flight profit from ledger (flight bookings are type=transfer, not type=income)
         $flightLedgerProfit = (float) ($plByModule->get('flight')['profit'] ?? 0);
         $flightLedgerRevenue = (float) ($plByModule->get('flight')['income'] ?? 0);
+        // Fallback to flight bookings table when GL profit is empty (matches TreasuryService).
+        if ($flightLedgerProfit === 0.0 && (float) ($plByModule->get('flight')['profit'] ?? 0) === 0.0) {
+            $flightLedgerProfit = (float) DB::table('flight_bookings')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNotIn('status', ['CANCELLED', 'PENDING', 'cancelled', 'pending', 'PARTIALLY_REFUNDED', 'partially_refunded'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
         // Bus profit from ledger
         $busLedgerProfit = (float) ($plByModule->get('bus')['profit'] ?? 0);
         $busLedgerRevenue = (float) ($plByModule->get('bus')['income'] ?? 0);
+        // Fallback to booking model when GL is empty (matches TreasuryService).
+        if ($busLedgerProfit === 0.0 && (float) ($plByModule->get('bus')['profit'] ?? 0) === 0.0) {
+            $busLedgerProfit = (float) DB::table('bus_bookings')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNotIn('status', ['cancelled', 'refunded', 'partially_refunded'])
+                ->whereNull('deleted_at')
+                ->sum('profit');
+        }
 
-        // Treasury: liquidity accounts only (exclude customer/supplier ledgers)
-        $liquidityQuery = Account::query()->where('is_active', true);
+        // Treasury: liquidity accounts only (exclude customer/supplier ledgers).
+        $treasuryService = app(\App\Services\Finance\TreasuryService::class);
+
+        $liquidityQuery = Account::query()
+            ->where('is_active', true);
         AccountModuleDivision::applyLiquidityTreasuryScope($liquidityQuery);
-        $accounts = $liquidityQuery
-            ->whereIn('type', AccountModuleDivision::LIQUIDITY_TYPES)
-            ->get();
+        $accounts = $liquidityQuery->get();
 
         $cashboxBalance = 0.0;
         $bankBalance = 0.0;
         $walletBalance = 0.0;
 
         foreach ($accounts as $acc) {
-            $val = (float) $acc->balance;
+            $currency = strtoupper((string) ($acc->currency ?? 'EGP'));
+            $rate = $currency === 'EGP'
+                ? 1.0
+                : (float) $treasuryService->getAveragePurchaseRate($currency);
+            $valEgp = (float) $acc->balance * $rate;
             $type = $acc->type instanceof AccountType
                 ? $acc->type
                 : AccountType::tryFrom((string) $acc->type);
 
             match ($type) {
-                AccountType::Bank => $bankBalance += $val,
-                AccountType::Wallet => $walletBalance += $val,
-                default => $cashboxBalance += $val,
+                AccountType::Bank => $bankBalance += $valEgp,
+                AccountType::Wallet => $walletBalance += $valEgp,
+                default => $cashboxBalance += $valEgp,
             };
         }
 
@@ -366,30 +409,40 @@ class DashboardService
             'total_profit' => round((float) ($tourismPl['netProfit'] ?? 0), 2),
         ];
 
-        // Wallet Stats
+        // Wallet Stats: revenue is the service fee / commission earned by the agency, NOT the customer principal transfer
         $walletStats = WalletTransaction::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->selectRaw('COUNT(*) as count, COALESCE(SUM(amount), 0) as revenue')
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(service_fee), 0) as fees, COALESCE(SUM(amount), 0) as volume')
             ->first();
         $walletCount = (int) $walletStats->count;
-        $walletRevenue = (float) ($plByModule->get('wallet')['income'] ?? $walletStats->revenue);
-        $walletProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+        $walletGlIncome = (float) ($plByModule->get('wallet')['income'] ?? 0);
+        $walletRevenue = $walletGlIncome > 0 ? $walletGlIncome : (float) ($walletStats->fees ?? 0);
 
-        // Office category buckets online services alongside bus/fawry/wallet.
-        // Excluding 'online' from the dashboard "صافي أرباح حسابات المكتب" total
-        // prevents cancelled/soft-deleted online GL postings from inflating the
-        // office P&L when the /online screen reports zero. Online is shown
-        // separately in its own card below.
-        $officeModules = ['bus', 'fawry', 'wallet', 'wallet_transfer', 'wallets', 'general', 'service', 'office'];
-        $officeLedgerRevenue = 0.0;
-        $officeLedgerProfit = 0.0;
-        foreach ($officeModules as $mod) {
-            $row = $plByModule->get($mod);
-            if ($row === null) {
-                continue;
-            }
-            $officeLedgerRevenue += (float) ($row['income'] ?? 0);
-            $officeLedgerProfit += (float) ($row['profit'] ?? 0);
+        // Wallet profit from ledger (profit = income - cogs - expense), falling back to service_fee when GL is empty
+        $walletGlProfit = (float) ($plByModule->get('wallet')['profit'] ?? 0);
+        $walletProfit = $walletGlProfit;
+        if ($walletProfit === 0.0) {
+            $walletProfit = (float) DB::table('wallet_transactions')
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->whereNull('deleted_at')
+                ->sum('service_fee');
         }
+
+        // Office operational gross profit (sum of module margins)
+        $officeGrossProfit = (float) $busLedgerProfit
+            + (float) $fawryProfit
+            + (float) $onlineProfit
+            + (float) $walletProfit;
+
+        $officeLedgerRevenue = (float) ($busLedgerRevenue ?? 0)
+            + (float) ($fawryRevenue ?? 0)
+            + (float) ($onlineRevenue ?? 0)
+            + (float) ($walletRevenue ?? 0);
+
+        // Calculate operating expenses for the office division during the filtered period
+        $officeOperatingExpenses = $treasuryService->calculateOperatingExpenses('office', $from, $to);
+
+        // Net profit of the office division = operational gross profit - operating expenses
+        $officeNetProfit = round($officeGrossProfit - $officeOperatingExpenses, 2);
 
         $officeSummary = [
             'bus' => [
@@ -411,10 +464,13 @@ class DashboardService
                 'count' => $walletCount,
                 'revenue' => $walletRevenue,
                 'profit' => $walletProfit,
+                'volume' => (float) ($walletStats->volume ?? 0),
             ],
             'total_count' => ($busOps['bus_kpis']['total_bookings'] ?? 0) + $fawryCount + $onlineCount + $walletCount,
             'total_revenue' => round($officeLedgerRevenue, 2),
-            'total_profit' => round($officeLedgerProfit, 2),
+            'gross_profit' => round($officeGrossProfit, 2),
+            'operating_expenses' => round($officeOperatingExpenses, 2),
+            'total_profit' => round($officeNetProfit, 2),
         ];
 
         $extra = [
@@ -563,11 +619,13 @@ class DashboardService
         if ($end->lt($start)) {
             $end = $start->copy();
         }
-        $days = min(14, $start->diffInDays($end) + 1);
+        $totalDays = $start->diffInDays($end) + 1;
+        $days = min(14, $totalDays);
+        $chartStart = $totalDays > 14 ? $end->copy()->subDays(13) : $start->copy();
 
         // Per-day counts + revenue (operational, stays on model)
-        $busStats = BusBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue')
+        $busStats = BusBooking::whereBetween('created_at', [$chartStart->toDateString().' 00:00:00', $end->toDateString().' 23:59:59'])
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(total_price) as revenue, SUM(profit) as profit')
             ->where('status', '!=', BusBookingStatus::Cancelled->value)
             ->groupBy('date')
             ->get()
@@ -577,7 +635,7 @@ class DashboardService
         $glByDate = collect($rangeGl)->keyBy('date');
 
         for ($i = 0; $i < $days; $i++) {
-            $d = $start->copy()->addDays($i)->toDateString();
+            $d = $chartStart->copy()->addDays($i)->toDateString();
             Carbon::setLocale('ar');
             $label = Carbon::parse($d)->translatedFormat('D j M');
 
@@ -585,10 +643,23 @@ class DashboardService
             $cnt = $stat ? (int) $stat->count : 0;
             $rev = $stat ? (float) $stat->revenue : 0.0;
             $glEntry = $glByDate->get($d);
-            $prof = $glEntry ? (float) $glEntry['profit'] : 0.0;
+            $prof = ($glEntry && (float) $glEntry['profit'] != 0.0)
+                ? (float) $glEntry['profit']
+                : ($stat ? (float) $stat->profit : 0.0);
 
-            $bookingsChart[] = ['label' => $label, 'count' => $cnt];
-            $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
+            $bookingsChart[] = [
+                'date' => $d,
+                'label' => $label,
+                'count' => $cnt,
+                'revenue' => round($rev, 2),
+                'profit' => round($prof, 2),
+            ];
+            $revenueChart[] = [
+                'date' => $d,
+                'label' => $label,
+                'revenue' => round($rev, 2),
+                'profit' => round($prof, 2),
+            ];
         }
 
         $topRoutes = BusBooking::query()
@@ -725,8 +796,29 @@ class DashboardService
         $yesterdayGl = $plService->getDailyProfitByModule('flight', ['from_date' => $yesterday, 'to_date' => $yesterday]);
 
         $profitRange = (float) array_sum(array_column($rangeGl, 'profit'));
+        if ($profitRange === 0.0) {
+            $profitRange = (float) (clone $bookingQuery)
+                ->whereNotIn('status', ['CANCELLED', 'PENDING', 'cancelled', 'pending', 'PARTIALLY_REFUNDED', 'partially_refunded'])
+                ->sum('profit');
+        }
+
         $todayProfit = (float) array_sum(array_column($todayGl, 'profit'));
+        if ($todayProfit === 0.0) {
+            $todayProfit = (float) FlightBooking::whereBetween('created_at', [$today.' 00:00:00', $today.' 23:59:59'])
+                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+                ->whereNotIn('status', ['CANCELLED', 'PENDING', 'cancelled', 'pending', 'PARTIALLY_REFUNDED', 'partially_refunded'])
+                ->sum('profit');
+        }
+
         $yesterdayProfit = (float) array_sum(array_column($yesterdayGl, 'profit'));
+        if ($yesterdayProfit === 0.0) {
+            $yesterdayProfit = (float) FlightBooking::whereBetween('created_at', [$yesterday.' 00:00:00', $yesterday.' 23:59:59'])
+                ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
+                ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
+                ->whereNotIn('status', ['CANCELLED', 'PENDING', 'cancelled', 'pending', 'PARTIALLY_REFUNDED', 'partially_refunded'])
+                ->sum('profit');
+        }
 
         $cancelled = (clone $bookingQuery)->where('status', 'CANCELLED')->count();
 
@@ -848,11 +940,15 @@ class DashboardService
         if ($end->lt($start)) {
             $end = $start->copy();
         }
-        $days = min(14, $start->diffInDays($end) + 1);
+        $totalDays = $start->diffInDays($end) + 1;
+        $days = min(14, $totalDays);
+        // Show the most recent 14 days ending at the selected date range
+        $chartStart = $totalDays > 14 ? $end->copy()->subDays(13) : $start->copy();
 
         // Per-day counts (operational, stays on model)
-        $flightStats = FlightBooking::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue')
+        $flightStats = FlightBooking::whereBetween('created_at', [$chartStart->toDateString().' 00:00:00', $end->toDateString().' 23:59:59'])
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(selling_price) as revenue, SUM(profit) as profit')
+            ->whereNotIn('status', ['CANCELLED', 'cancelled'])
             ->when($carrierId, fn ($q) => $q->where('flight_carrier_id', (int) $carrierId))
             ->when($systemType !== null && $systemType !== '', fn ($q) => is_numeric($systemType) ? $q->where('flight_system_id', (int) $systemType) : $q->where('system_type', $systemType))
             ->groupBy('date')
@@ -863,7 +959,7 @@ class DashboardService
         $glByDate = collect($rangeGl)->keyBy('date');
 
         for ($i = 0; $i < $days; $i++) {
-            $d = $start->copy()->addDays($i)->toDateString();
+            $d = $chartStart->copy()->addDays($i)->toDateString();
             Carbon::setLocale('ar');
             $label = Carbon::parse($d)->translatedFormat('D j M');
 
@@ -871,10 +967,23 @@ class DashboardService
             $cnt = $stat ? (int) $stat->count : 0;
             $rev = $stat ? (float) $stat->revenue : 0.0;
             $glEntry = $glByDate->get($d);
-            $prof = $glEntry ? (float) $glEntry['profit'] : 0.0;
+            $prof = ($glEntry && (float) $glEntry['profit'] != 0.0)
+                ? (float) $glEntry['profit']
+                : ($stat ? (float) $stat->profit : 0.0);
 
-            $bookingsChart[] = ['label' => $label, 'count' => $cnt];
-            $revenueChart[] = ['label' => $label, 'revenue' => $rev, 'profit' => $prof];
+            $bookingsChart[] = [
+                'date' => $d,
+                'label' => $label,
+                'count' => $cnt,
+                'revenue' => round($rev, 2),
+                'profit' => round($prof, 2),
+            ];
+            $revenueChart[] = [
+                'date' => $d,
+                'label' => $label,
+                'revenue' => round($rev, 2),
+                'profit' => round($prof, 2),
+            ];
         }
 
         $topRoutes = FlightBooking::query()

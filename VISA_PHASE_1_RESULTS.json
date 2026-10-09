@@ -1,0 +1,14 @@
+{
+    "environment": "local",
+    "database": "safarakealayna",
+    "visa_tables_count": 5,
+    "visa_models_count": 3,
+    "visa_services_count": 3,
+    "visa_controllers_count": 5,
+    "visa_api_endpoints_count": 40,
+    "p0_findings": 0,
+    "p1_findings": 0,
+    "p2_findings": 1,
+    "p3_findings": 1,
+    "final_verdict": "PASS WITH FINDINGS"
+}

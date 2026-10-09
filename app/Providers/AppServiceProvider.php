@@ -70,6 +70,25 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ─────────────────────────────────────────────────────────────────
+        //  Vite asset loader: force production assets when a build manifest
+        //  is present, even if APP_ENV=local.
+        //
+        //  Laravel's Vite helper switches to HMR (http://127.0.0.1:5173)
+        //  when the file at public_path('hot') exists. On staging, APP_ENV
+        //  can be "local" while no Vite dev server is reachable — the
+        //  browser then fails with CORS. If a production manifest exists
+        //  in public/build/manifest.json, we override the hot file path to
+        //  a non-existent location so the helper falls back to manifest
+        //  URLs (built assets). Local dev keeps working because in that
+        //  case the manifest file does not exist yet.
+        // ─────────────────────────────────────────────────────────────────
+        if (is_file(public_path('build/manifest.json'))) {
+            \Illuminate\Support\Facades\Vite::useHotFile(
+                storage_path('framework/.vite-hot-disabled')
+            );
+        }
+
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
@@ -79,6 +98,17 @@ class AppServiceProvider extends ServiceProvider
         // is enough for legitimate use without giving an attacker room.
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(5)->by($request->ip());
+        });
+
+        // Level 2 / Problem 3: dedicated limiter for the two financial-write
+        // endpoints of the bus module:
+        //   POST /api/v1/bus/bookings            (store)
+        //   POST /api/v1/bus/bookings/{id}/pay   (pay)
+        // Same limit (60/min) as the default `api` limiter for consistency.
+        // Keyed by user-id when authenticated (so two cashiers don't share a
+        // budget) and falls back to IP for unauthenticated requests.
+        RateLimiter::for('bus-write', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
         Customer::observe(CustomerLedgerObserver::class);

@@ -192,16 +192,23 @@ class FlightPaymentReversalTest extends TestCase
             'Income clearing balance delta must be zero after reversal');
 
         // ── ASSERT 2: original payment transaction preserved ──────
-        // Note: the original addPayment creates a transaction with related_type=FlightBooking
-        // (per line 1614 in FlightBookingService). The REVERSAL transaction gets
-        // related_type=FlightPayment (line 2178). The original must remain unchanged.
+        // Phase 11 audit fix (2026-09-02): per the D3 FIX (2026-08-15), the
+        // original addPayment now creates a transaction with
+        // related_type=FlightPayment (not FlightBooking) — each payment
+        // gets its own slot so the duplicate-income guard allows partial
+        // payments on the same booking. The REVERSAL transaction uses
+        // related_type=FlightPayment too but with the SWAPPED legs.
         $this->assertDatabaseHas('transactions', [
             'id' => $payment->transaction_id,
-            'related_type' => FlightBooking::class,
-            'related_id' => $booking->id,
+            'related_type' => FlightPayment::class,
+            'related_id' => $payment->id,
         ]);
 
         // ── ASSERT 3: reversal transaction exists with opposite legs ─
+        // Find the mirror transaction that posts on deleteBookingWithReversal.
+        // Use the original to_account_id (cashbox) as the discriminator —
+        // the reversal's from_account_id must equal the original's
+        // to_account_id, so we filter on a related-id in the same booking.
         $reversalTx = Transaction::query()
             ->where('related_type', FlightPayment::class)
             ->where('related_id', $payment->id)

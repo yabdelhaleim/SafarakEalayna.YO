@@ -1,0 +1,66 @@
+{
+  "audit_date": "2026-08-24",
+  "audit_scope": "Flight Bookings Lifecycle",
+  "audit_type": "read-only E2E testing",
+  "branch": "phase-10-tourism-production-audit-hajj-umra",
+  "test_file": "tests/Feature/Flight/BookingLifecycleAuditTest.php",
+  "summary": {
+    "total_tests": 26,
+    "passed": 25,
+    "failed": 1,
+    "pass_rate": "96.2%",
+    "real_defects_found": 1,
+    "duration_seconds": 7.63,
+    "assertions": 51
+  },
+  "defects": [
+    {
+      "id": "DEFECT-001",
+      "severity": "HIGH",
+      "operation": "Add Payment",
+      "scenario": "5f_idempotency_after_soft_delete",
+      "file": "app/Services/Flight/FlightBookingService.php",
+      "line": 1866,
+      "title": "Idempotency-Key Fails After Soft-Deleted Payment",
+      "description": "When a payment is soft-deleted, replaying with the same idempotency_key returns 422 instead of creating a new payment. The pre-check uses default scope (excludes soft-deleted) but the DB unique constraint includes them.",
+      "reproduction_steps": [
+        "1. Create a booking",
+        "2. Add a payment with idempotency_key='KEY_X'",
+        "3. Soft-delete the payment (admin action)",
+        "4. Try to add another payment with same idempotency_key='KEY_X'",
+        "5. Observe 422 response"
+      ],
+      "expected_behavior": "New payment created (200 or 201)",
+      "actual_behavior": "422 validation error",
+      "suggested_fix": "Use FlightPayment::withTrashed() in pre-check, or clear idempotency_key on soft-deleted rows",
+      "impact": "Breaks legitimate retry scenarios where a payment was reversed and needs to be re-created",
+      "status": "OPEN",
+      "discovered_in": "Phase 1 audit"
+    }
+  ],
+  "observations": {
+    "working_features": [
+      "Create booking (EGP + KWD)",
+      "Multiple passengers",
+      "Carrier debit logic",
+      "Prepaid account auto-creation",
+      "Clearing account auto-creation",
+      "Cash basis revenue recognition",
+      "Idempotency replay (same key)",
+      "Cancel with full reversal",
+      "Overpayment handling",
+      "Currency mismatch handling",
+      "Soft-delete with reversal"
+    ],
+    "safety_guards_observed": [
+      "Direct DB UPDATE on protected balance columns → warning logged",
+      "CustomerLedgerObserver module_type check → fallback to 'bus'",
+      "DeadlockRetry on flight transactions"
+    ]
+  },
+  "baseline_comparison": {
+    "baseline_failures": 84,
+    "audit_failures": 1,
+    "hypothesis": "Existing tests fail due to older fixture patterns, not core logic bugs. Audit uses minimal fixtures matching current code paths."
+  }
+}

@@ -69,12 +69,24 @@ class AirlineAccountDebitService
         // For booking=EGP, account=foreign: convert via booking exchange rate.
         // For booking=foreign, account=EGP: convert via booking exchange rate (reverse).
         // For same currency or one-side EGP: no conversion needed.
+        // FIX P2.1 (2026-08-20): NEVER silently fall back to 1.0 when rate is missing.
+        // convertToAccountCurrency already throws on $exchangeRate <= 0 — the previous
+        // ?? 1.0 fallback could mask a booking without a captured rate and produce
+        // silent incorrect conversions.
+        $bookingRate = $booking->exchange_rate_used ?? $booking->exchange_rate ?? null;
+        if ($bookingRate === null || (float) $bookingRate <= 0) {
+            throw new \RuntimeException(
+                "Cannot compute modification debit: booking {$booking->id} has no captured exchange rate ".
+                "(exchange_rate_used=" . var_export($booking->exchange_rate_used, true) . ", ".
+                "exchange_rate=" . var_export($booking->exchange_rate, true) . ")."
+            );
+        }
         $fee = (float) $modification->airline_change_fee;
         $debitAmount = $this->convertToAccountCurrency(
             $fee,
             $bookingCurrency,
             $accountCurrency,
-            (float) ($booking->exchange_rate_used ?? $booking->exchange_rate ?? 1.0)
+            (float) $bookingRate
         );
 
         return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId, $debitAmount, $bookingCurrency, $accountCurrency) {
@@ -211,11 +223,18 @@ class AirlineAccountDebitService
         $fee = (float) ($modification->airline_change_fee_snapshot ?? $modification->airline_change_fee);
         $snapshotCurrency = strtoupper((string) ($modification->currency_snapshot ?? $bookingCurrency));
 
+        // FIX P2.1 (2026-08-20): same as above — never silently fall back to 1.0.
+        $bookingRate = $booking->exchange_rate_used ?? $booking->exchange_rate ?? null;
+        if ($bookingRate === null || (float) $bookingRate <= 0) {
+            throw new \RuntimeException(
+                "Cannot compute modification credit-back: booking {$booking->id} has no captured exchange rate."
+            );
+        }
         $creditAmount = $this->convertToAccountCurrency(
             $fee,
             $snapshotCurrency,
             $accountCurrency,
-            (float) ($booking->exchange_rate_used ?? $booking->exchange_rate ?? 1.0)
+            (float) $bookingRate
         );
 
         return LedgerBalanceMutationGuard::run(function () use ($airlineAccount, $booking, $modification, $userId, $creditAmount, $fee, $snapshotCurrency, $accountCurrency) {

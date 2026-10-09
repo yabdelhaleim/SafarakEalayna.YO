@@ -12,7 +12,8 @@ class CreateVisaBankAccount extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['module_type'] = 'visas';
+        $data['module_type'] = 'tourism';
+        $data['module'] = 'visas';
         return $data;
     }
 }

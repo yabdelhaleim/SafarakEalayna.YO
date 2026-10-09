@@ -228,7 +228,13 @@ class AccountService
             return $this->getFlightGroupStatementForAccount($flightGroup, $account, $filters);
         }
 
+        // FIX FIN-AUDIT-2026-08-27: Exclude opening entries
+        // (transaction_id IS NULL) from periodTotals, initialBalance,
+        // and openingBalance calculations. Opening entries are pre-existing
+        // equity postings created by FIN-1 — they are NOT operational
+        // movements and must not be summed into period income/expense.
         $query = $account->entries()
+            ->whereNotNull('transaction_id')
             ->with([
                 'transaction.createdBy',
                 'transaction.fromAccount',
@@ -237,7 +243,14 @@ class AccountService
                     $morph->morphWith([
                         FlightBooking::class => ['customer', 'passengers', 'fromAirport', 'toAirport'],
                         BusBooking::class => ['customer', 'inventory.company'],
-                        OnlineTransaction::class => ['serviceType', 'provider'],
+                        // OnlineTransaction relations live in *Row suffixed helpers
+                        // (serviceTypeRow / providerRow) after migration
+                        // 2026_08_28_000000_convert_online_service_type_and_provider_to_text
+                        // converted the FK columns to free-text codes. Referencing
+                        // the old names here crashes with `Call to undefined
+                        // method ::serviceType()` / `::provider()` and surfaces
+                        // as HTTP 500 on /finance/accounts/{id}/statement.
+                        OnlineTransaction::class => ['serviceTypeRow', 'providerRow'],
                         VisaBooking::class => ['customer', 'visaDetail'],
                         HajjUmraBooking::class => ['customer', 'program'],
                     ]);
@@ -245,7 +258,7 @@ class AccountService
             ]);
 
         // Base query for stats (without eager loading and pagination)
-        $statsQuery = $account->entries();
+        $statsQuery = $account->entries()->whereNotNull('transaction_id');
 
         // Apply filters to both queries
         $this->applyStatementFilters($query, $filters);
@@ -254,24 +267,64 @@ class AccountService
         // Calculate Period Totals
         $periodTotals = (clone $statsQuery)->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
 
-        // Calculate Initial Balance (account balance minus all entry mutations)
-        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
+        // Calculate Initial Balance (account balance minus all OPERATIONAL
+        // entry mutations). Opening entries are excluded because they
+        // represent the seed, not a movement.
+        $allEntriesTotals = $account->entries()
+            ->whereNotNull('transaction_id')
+            ->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')
+            ->first();
         $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
         $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
         $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
 
-        // Calculate Opening Balance (initial balance + mutations before from_date)
+        // Calculate Opening Balance (initial balance + operational
+        // mutations before from_date).
         $openingBalance = $initialBalance;
         if (! empty($filters['from_date'])) {
             $beforeBalance = $account->entries()
+                ->whereNotNull('transaction_id')
                 ->where('created_at', '<', $filters['from_date'])
                 ->selectRaw('SUM(credit) - SUM(debit) as balance')
                 ->value('balance') ?? 0;
             $openingBalance += (float) $beforeBalance;
         }
 
-        $perPage = min($filters['per_page'] ?? 20, 100);
-        $paginator = $query->orderBy('account_entries.created_at', 'desc')
+        // per_page=all is a sentinel used by print/export flows (AccountStatement.vue
+        // printFullStatement / AccountStatementExportController) to bypass the 100-row
+        // cap so the full filtered set actually prints / exports end-to-end.
+        // Anything else is clamped to [1, 100] as before.
+        $perPage = ($filters['per_page'] ?? null) === 'all'
+            ? PHP_INT_MAX
+            : min(max((int) ($filters['per_page'] ?? 20), 1), 100);
+
+        if ($perPage === PHP_INT_MAX) {
+            $rows = (clone $query)->orderBy('account_entries.created_at', 'desc')
+                ->orderBy('account_entries.id', 'desc')
+                ->get();
+
+            return [
+                'items' => $rows,
+                'pagination' => [
+                    'total' => $rows->count(),
+                    'per_page' => $rows->count(),
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'from' => $rows->count() > 0 ? 1 : null,
+                    'to' => $rows->count() > 0 ? $rows->count() : null,
+                ],
+                'stats' => [
+                    'opening_balance' => (float) $openingBalance,
+                    'period_credit' => (float) ($periodTotals->total_credit ?? 0),
+                    'period_debit' => (float) ($periodTotals->total_debit ?? 0),
+                    'closing_balance' => (float) ($openingBalance + ($periodTotals->total_credit ?? 0) - ($periodTotals->total_debit ?? 0)),
+                    'account_balance' => (float) $account->balance,
+                ],
+            ];
+        }
+
+        $paginator = $query
+            ->orderBy('account_entries.created_at', 'desc')
             ->orderBy('account_entries.id', 'desc')
             ->paginate($perPage);
 
@@ -450,13 +503,11 @@ class AccountService
 
         $allTransactions = $allTxQuery->get();
 
-        // Calculate Initial Balance (account balance minus all entry mutations)
-        $allEntriesTotals = $account->entries()->selectRaw('SUM(credit) as total_credit, SUM(debit) as total_debit')->first();
-        $allCredit = (float) ($allEntriesTotals->total_credit ?? 0);
-        $allDebit = (float) ($allEntriesTotals->total_debit ?? 0);
-        $initialBalance = (float) $account->balance - ($allCredit - $allDebit);
+        // Note: account.balance and account_entries are surfaced separately in stats;
+        // the flight-group statement derives its running balance purely from
+        // flight_group_transactions (independent ledger for B2B group debt/payments).
 
-        $running = $initialBalance;
+        $running = 0.0;
 
         foreach ($allTransactions as $tx) {
             if ($tx->type === 'payment') {
@@ -524,10 +575,11 @@ class AccountService
         }
 
         // Stats calculations
+        // Opening balance for a flight-group statement starts at 0 — the running balance
+        // is derived purely from flight_group_transactions, while account.balance is
+        // surfaced separately in stats.account_balance for transparency.
+        // Replaces undefined $firstEntry reference (pre-fix bug).
         $openingBalance = 0.0;
-        if ($firstEntry) {
-            $openingBalance += ($firstEntry->credit - $firstEntry->debit);
-        }
 
         if ($fromDate) {
             $lastTxBefore = $allTransactions->filter(function ($tx) use ($fromDate) {

@@ -259,7 +259,7 @@
               <!-- اختصار لإضافة محفظة قسم مكتب جديدة -->
               <p class="text-white/60 pt-2 border-t border-white/10">
                 <a
-                  href="/admin/accounts/create?type=wallet&module_type=office&wallet_provider={{ selectedWalletType?.code }}"
+                  :href="newOfficeWalletUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-500/20"
@@ -540,37 +540,102 @@
           </div>
         </section>
 
-        <!-- STEP 5: Cash Account -->
+        <!-- STEP 5: Counterparty Account (cash/bank/wallet) -->
         <section class="rounded-2xl border border-white/10 bg-[#111111] p-6">
           <div class="mb-5 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400">
               <Landmark class="h-5 w-5" />
             </div>
             <div class="flex-1">
-              <h2 class="text-base font-bold text-white">5. الحساب النقدي</h2>
-              <p class="text-xs text-white/40">الخزينة أو البنك الذي ستصرف منه / إليه نقدياً</p>
+              <h2 class="text-base font-bold text-white">5. الحساب المقابل</h2>
+              <p class="text-xs text-white/40">اختر نوع الحساب ثم الحساب الذي ستصرف منه / إليه نقدياً</p>
             </div>
           </div>
 
-          <div>
-            <label class="mb-2 block text-xs font-bold text-white/60 uppercase tracking-wider">
-              الحساب النقدي <span class="text-rose-400">*</span>
-            </label>
-            <select
-              v-model="form.cash_account_id"
-              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10"
-              :class="{ '!border-rose-500': errors.cash_account_id }"
+          <!-- Account type chips (mirrors Fawry's settlementCategoryChips) -->
+          <label class="block text-sm font-semibold text-white/80 mb-2">نوع حساب التحصيل</label>
+          <div class="flex flex-wrap gap-2 mb-4" dir="rtl">
+            <button
+              v-for="chip in settlementCategoryChips"
+              :key="chip.id"
+              type="button"
+              @click="settlementCategoryUi = chip.id"
+              :disabled="!categoryAvailability[chip.id]"
+              :class="[
+                'flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold',
+                settlementCategoryUi === chip.id
+                  ? 'bg-white/10 border-amber-500 text-amber-300'
+                  : 'bg-white/[0.02] border-white/10 text-white/60 hover:border-white/20',
+                !categoryAvailability[chip.id] && 'opacity-40 cursor-not-allowed hover:border-white/10'
+              ]"
+              :title="!categoryAvailability[chip.id] ? 'لا توجد حسابات في هذا التصنيف — يتم العرض من الخزائن النقدية' : ''"
             >
-              <option value="">— اختر الحساب —</option>
-              <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">
-                {{ acc.name }} — {{ formatCurrency(acc.balance) }}
-              </option>
-            </select>
-            <p v-if="cashAccounts.length === 0" class="mt-2 text-xs text-amber-300 leading-relaxed">
-              لا توجد حسابات نقدية مفعّلة. أضف خزينة أو بنك من
-              <router-link to="/finance/accounts" class="font-bold underline hover:text-amber-200">إدارة الحسابات والخزائن</router-link>.
+              <component :is="chip.icon" :class="['h-3.5 w-3.5', chip.iconClass]" />
+              {{ chip.label }}
+            </button>
+          </div>
+
+          <!-- Filtered account dropdown -->
+          <label class="block text-sm font-medium text-white/60 mb-2">
+            حساب التسوية / الخزينة <span class="text-rose-400">*</span>
+          </label>
+          <select
+            v-model="form.cash_account_id"
+            class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500 focus:bg-white/10"
+            :class="{ '!border-rose-500': errors.cash_account_id }"
+          >
+            <option value="">— اختر الحساب —</option>
+            <option v-for="acc in counterpartyAccountOptions" :key="acc.id" :value="acc.id">
+              {{ acc.name }} — {{ formatCurrency(acc.balance) }}
+              <template v-if="acc.is_module_vault"> ⭐ الخزنة الموحدة</template>
+            </option>
+          </select>
+          <p v-if="counterpartyAccountOptions.length === 0" class="mt-2 text-xs text-amber-300">
+            لا توجد حسابات متاحة في هذا التصنيف.
+          </p>
+          <p v-else-if="settlementCategoryUi !== 'cash' && !categoryAvailability[settlementCategoryUi]"
+             class="mt-2 text-xs text-white/60">
+            لا توجد حسابات في تصنيف «{{ settlementCategoryChips.find(c => c.id === settlementCategoryUi)?.label }}»
+            — يتم عرض الخزائن النقدية بدلاً منها.
+          </p>
+          <p v-if="errors.cash_account_id" class="mt-1.5 text-xs text-rose-400">{{ errors.cash_account_id }}</p>
+
+          <!-- Balance Preview (mirrors Fawry's balancePreview box) -->
+          <div
+            v-if="balancePreview"
+            class="mt-4 space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm"
+          >
+            <div class="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">رصيد حساب التحصيل</div>
+            <div class="flex justify-between gap-2 text-white/60">
+              <span>الرصيد الحالي</span>
+              <span class="font-mono font-bold text-white tabular-nums">
+                {{ formatCurrency(balancePreview.current, balancePreview.currency) }}
+              </span>
+            </div>
+            <div
+              v-if="balancePreview.delta !== 0"
+              class="flex justify-between gap-2 border-t border-white/10 pt-2"
+            >
+              <span
+                class="flex items-center gap-1"
+                :class="balancePreview.delta > 0 ? 'text-emerald-400' : 'text-rose-400'"
+              >
+                <ArrowUpRight v-if="balancePreview.delta > 0" class="h-4 w-4" />
+                <ArrowDownRight v-else class="h-4 w-4" />
+                {{ balancePreview.delta > 0
+                  ? 'بعد تسجيل المعاملة (+ المبلغ)'
+                  : 'بعد تسجيل المعاملة (- المبلغ)' }}
+              </span>
+              <span
+                class="font-mono text-base font-black tabular-nums"
+                :class="balancePreview.delta > 0 ? 'text-emerald-400' : 'text-rose-400'"
+              >
+                {{ formatCurrency(balancePreview.after, balancePreview.currency) }}
+              </span>
+            </div>
+            <p v-else class="border-t border-white/10 pt-2 text-[11px] text-white/50">
+              أدخل مبلغاً في «المبلغ» ليظهر تقدير الرصيد بعد الزيادة / الخصم.
             </p>
-            <p v-if="errors.cash_account_id" class="mt-1.5 text-xs text-rose-400">{{ errors.cash_account_id }}</p>
           </div>
 
           <div class="mt-5">
@@ -725,7 +790,9 @@
               </li>
               <li class="flex items-center gap-2">
                 <component :is="form.cash_account_id ? Check : Circle" class="h-4 w-4" :class="form.cash_account_id ? 'text-emerald-400' : 'text-white/30'" />
-                <span :class="form.cash_account_id ? 'text-white' : 'text-white/40'">الحساب النقدي</span>
+                <span :class="form.cash_account_id ? 'text-white' : 'text-white/40'">
+                  حساب التحصيل ({{ counterpartyTypeOption.label }})
+                </span>
               </li>
             </ul>
           </div>
@@ -746,12 +813,15 @@ import {
   fetchSettlementAccounts,
   accountMatchesWalletType,
   normalizeWalletProviderCode,
+  walletProviderLabel,
 } from '@/composables/useTreasuryAccountGroups';
 import {
   ArrowRight,
   ArrowUpCircle,
   ArrowDownCircle,
   ArrowLeftRight,
+  ArrowUpRight,
+  ArrowDownRight,
   CheckCircle2,
   Check,
   Circle,
@@ -790,6 +860,7 @@ function createDefaultForm() {
     service_fee: '',
     amount_paid: 0,
     wallet_account_id: '',
+    counterparty_account_type: 'cash', // 'cash' | 'bank' | 'wallet'
     cash_account_id: '',
     notes: '',
   };
@@ -805,8 +876,10 @@ function resetForm() {
 
 const errors = ref({});
 const globalError = ref('');
-const walletAccounts = ref([]);
-const cashAccounts = ref([]);
+// Account pools: 3 أنواع منفصلة عشان dropdown الـ counterparty يفلتر على حسب النوع
+const walletAccounts   = ref([]);
+const cashboxAccounts  = ref([]);
+const bankAccounts     = ref([]);
 const customers = ref([]);
 
 /* ═══════ Computed totals ═══════ */
@@ -852,6 +925,18 @@ const selectedWalletType = computed(() => {
   const id = form.value.wallet_type_id;
   if (!id) return null;
   return activeWalletTypes.value.find((w) => String(w.id) === String(id)) ?? null;
+});
+
+/**
+ * رابط اختصار «إضافة محفظة قسم مكتب جديدة» — يفتح تبويبًا جديدًا على
+ * صفحة إنشاء محفظة في Filament مع تحديد نوع المحفظة مسبقًا.
+ * المسار الصحيح هو /admin/wallet-accounts/create
+ * (المشتق من اسم Resource class حسب آلية Filament v3)
+ * وليس /admin/accounts/create كما كان مكتوباً مسبقاً.
+ */
+const newOfficeWalletUrl = computed(() => {
+  const code = selectedWalletType.value?.code ?? '';
+  return `/admin/wallet-accounts/create?type=wallet&module_type=office&wallet_provider=${code}`;
 });
 
 const filteredWalletAccounts = computed(() => {
@@ -949,7 +1034,7 @@ const unmatchedWalletProviders = computed(() => {
   if (!type || walletAccounts.value.length === 0) return [];
   return walletAccounts.value
     .filter((a) => !accountMatchesWalletType(a, type))
-    .map((a) => normalizeWalletProviderCode(a.wallet_provider) || '(غير محدد)')
+    .map((a) => walletProviderLabel(a.wallet_provider))
     .filter((v, i, arr) => arr.indexOf(v) === i);
 });
 
@@ -962,6 +1047,103 @@ watch(visibleWalletAccounts, (newAccounts) => {
   }
 });
 
+/* ═══════ Counterparty / Collection account (Step 5) ═══════
+ * النمط مأخوذ من FawryCreate.vue (settlementCategoryChips) — نفس الـ UX:
+ *   1. ثلاثة chips: نقدي / خزينة | محافظ | بنك
+ *   2. الـ dropdown يعرض الحسابات اللي تطابق الـ chip المختار
+ *   3. لو الـ chip المختار مفيهاش حسابات → fallback للـ cash تلقائياً
+ *   4. الـ chips المعطّلة (categoryAvailability = false) تطلع بصرياً disabled
+ *   5. تحت الـ dropdown يظهر "رصيد حساب التحصيل" — الرصيد الحالي + بعد المعاملة
+ *
+ * الـ `cash_account_id` في الـ form هو الـ ID اللي يتبعت للـ backend — مصدره
+ * ممكن يكون cashbox أو bank أو wallet حسب اختيار المستخدم.
+ */
+const settlementCategoryUi = ref('cash');
+
+const settlementCategoryChips = [
+  { id: 'cash',   label: 'نقدي / خزينة', icon: Banknote, iconClass: 'text-gold' },
+  { id: 'wallet', label: 'محافظ',         icon: Wallet,   iconClass: 'text-sky-300' },
+  { id: 'bank',   label: 'بنك',           icon: Landmark, iconClass: 'text-info' },
+];
+
+// هل الـ category فيه حسابات مفعّلة؟ (يستخدم لتعطيل الـ chips الفاضية)
+const categoryAvailability = computed(() => ({
+  cash:   cashboxAccounts.value.length > 0,
+  wallet: walletAccounts.value.length > 0,
+  bank:   bankAccounts.value.length > 0,
+}));
+
+// الـ accounts المعروضة في الـ dropdown — لو الـ chip المختار مفيهاش حاجة،
+// fallback للـ cash (cashboxes) عشان الـ dropdown ما يفضاش أبداً.
+const counterpartyAccountOptions = computed(() => {
+  let result;
+  if (settlementCategoryUi.value === 'cash') {
+    result = cashboxAccounts.value;
+  } else if (settlementCategoryUi.value === 'wallet') {
+    result = walletAccounts.value;
+  } else if (settlementCategoryUi.value === 'bank') {
+    result = bankAccounts.value;
+  } else {
+    result = [];
+  }
+  // Fallback: لو الـ category المختارة فاضية، اعرض cashboxes عشان الـ user
+  // ما يفضلش في empty state.
+  if (result.length === 0 && settlementCategoryUi.value !== 'cash') {
+    return cashboxAccounts.value;
+  }
+  return result;
+});
+
+const counterpartyTypeOption = computed(() =>
+  settlementCategoryChips.find((c) => c.id === settlementCategoryUi.value)
+    || settlementCategoryChips[0]
+);
+
+const selectedCounterpartyAccount = computed(() => {
+  const id = form.value.cash_account_id;
+  if (id == null || id === '') return null;
+  return counterpartyAccountOptions.value.find((a) => String(a.id) === String(id)) ?? null;
+});
+
+/* ─── Auto-reset: لو الـ chip المختار بقت فاضية (مثلاً بعد reload)،
+        ارجع للـ cash تلقائياً عشان الـ UI يفضل متّسق مع الـ dropdown ─── */
+watch(
+  [cashboxAccounts, walletAccounts, bankAccounts, settlementCategoryUi],
+  () => {
+    if (cashboxAccounts.value.length === 0 && walletAccounts.value.length === 0 && bankAccounts.value.length === 0) return;
+    if (!categoryAvailability.value[settlementCategoryUi.value]) {
+      settlementCategoryUi.value = 'cash';
+    }
+    // لو الـ ID المختار مش في الـ pool المعروض، امسحه
+    const validIds = new Set(counterpartyAccountOptions.value.map((a) => a.id));
+    if (form.value.cash_account_id && !validIds.has(Number(form.value.cash_account_id))) {
+      form.value.cash_account_id = '';
+    }
+  },
+  { immediate: true }
+);
+
+/* ─── Balance preview: رصيد حالي + بعد المعاملة ───
+ * للـ 'send': نخصم الـ totalAmount (amount + fee) من رصيد الـ counterparty
+ * للـ 'receive': نضيف الـ totalAmount لرصيد الـ counterparty
+ */
+const balancePreview = computed(() => {
+  const acc = selectedCounterpartyAccount.value;
+  if (!acc) return null;
+  const current = Number(acc.balance || 0);
+  const tot = Number(totalAmount.value) || 0;
+  if (tot <= 0) {
+    return { current, after: current, delta: 0, currency: acc.currency || 'EGP' };
+  }
+  const delta = form.value.type === 'send' ? tot : -tot;
+  return {
+    current,
+    after: roundMoney(current + delta),
+    delta,
+    currency: acc.currency || 'EGP',
+  };
+});
+
 /* ═══════ Progress ═══════ */
 const totalSteps = 6;
 const completedSteps = computed(() => {
@@ -971,7 +1153,7 @@ const completedSteps = computed(() => {
   if (form.value.wallet_account_id) n++;
   if (form.value.customer_name) n++;
   if (form.value.amount > 0) n++;
-  if (form.value.cash_account_id) n++;
+  if (form.value.counterparty_account_type && form.value.cash_account_id) n++;
   return n;
 });
 
@@ -1027,14 +1209,14 @@ async function fetchAccounts() {
 
   try {
     const overview = await store.fetchTransferTreasury();
-    const treasuryWallets = Array.isArray(overview?.wallets) ? overview.wallets : [];
-    const treasuryCash = [
-      ...(Array.isArray(overview?.cashboxes) ? overview.cashboxes : []),
-      ...(Array.isArray(overview?.banks) ? overview.banks : []),
-    ];
-    if (treasuryWallets.length > 0 || treasuryCash.length > 0) {
-      walletAccounts.value = treasuryWallets;
-      cashAccounts.value = treasuryCash;
+    const treasuryWallets   = Array.isArray(overview?.wallets)   ? overview.wallets   : [];
+    const treasuryCashboxes = Array.isArray(overview?.cashboxes) ? overview.cashboxes : [];
+    const treasuryBanks     = Array.isArray(overview?.banks)     ? overview.banks     : [];
+
+    if (treasuryWallets.length > 0 || treasuryCashboxes.length > 0 || treasuryBanks.length > 0) {
+      walletAccounts.value   = treasuryWallets;
+      cashboxAccounts.value  = treasuryCashboxes;
+      bankAccounts.value     = treasuryBanks;
       return;
     }
   } catch (e) {
@@ -1043,20 +1225,25 @@ async function fetchAccounts() {
 
   try {
     const all = await fetchSettlementAccounts(axios, { module: 'wallet' });
-    walletAccounts.value = all.filter((a) => typeOf(a) === 'wallet');
-    cashAccounts.value = all.filter((a) => ['cashbox', 'bank'].includes(typeOf(a)));
+    walletAccounts.value   = all.filter((a) => typeOf(a) === 'wallet');
+    cashboxAccounts.value  = all.filter((a) => typeOf(a) === 'cashbox');
+    bankAccounts.value     = all.filter((a) => typeOf(a) === 'bank');
   } catch (e) {
     console.error('Failed to load accounts', e);
-    walletAccounts.value = [];
-    cashAccounts.value = [];
+    walletAccounts.value  = [];
+    cashboxAccounts.value = [];
+    bankAccounts.value    = [];
   }
 }
 
 /* ═══════ Formatters ═══════ */
-function formatCurrency(amount) {
+function formatCurrency(amount, currency = 'EGP') {
+  const code = String(currency || 'EGP').toUpperCase();
+  // Intl requires ISO-4217 codes; anything else falls back to EGP
+  const supported = ['EGP', 'SAR', 'USD', 'AED', 'KWD', 'EUR', 'GBP'];
   return new Intl.NumberFormat('ar-EG', {
     style: 'currency',
-    currency: 'EGP',
+    currency: supported.includes(code) ? code : 'EGP',
   }).format(Number(amount) || 0);
 }
 
@@ -1075,11 +1262,30 @@ async function submit() {
 
   if (Object.keys(errors.value).length > 0) return;
 
+  // WLT-1 (2026-09-02) — Receive-destination flexibility.
+  //
+  // For RECEIVE transactions, when the user picks a non-cash counterparty
+  // (bank, another wallet, etc.) from the settlementCategoryChips, the
+  // chosen account id is sent to the backend as
+  // `receive_destination_account_id` — the backend routes the Expense leg
+  // there instead of the legacy default (customer account for registered
+  // customers; cashbox for anonymous).
+  //
+  // For SEND, or when the user picks the cash category, no override is
+  // sent — the backend uses its pre-fix behaviour unchanged.
+  const receiveDestinationAccountId =
+    form.value.type === 'receive' &&
+    settlementCategoryUi.value !== 'cash' &&
+    form.value.cash_account_id
+      ? Number(form.value.cash_account_id)
+      : null;
+
   try {
     await store.createTransaction({
       ...form.value,
       service_fee: parseFloat(form.value.service_fee) || 0,
       amount_paid: parseFloat(form.value.amount_paid) || 0,
+      receive_destination_account_id: receiveDestinationAccountId,
     });
     router.push('/wallet');
   } catch (e) {
