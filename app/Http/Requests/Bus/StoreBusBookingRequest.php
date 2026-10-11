@@ -63,6 +63,16 @@ class StoreBusBookingRequest extends FormRequest
             $user = auth()->user();
             if ($user->employee) {
                 $this->merge(['employee_id' => $user->employee->id]);
+            } elseif ($user->role === 'employee') {
+                $emp = \App\Models\Employee::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'full_name' => $user->name,
+                        'status' => 'active',
+                        'salary' => 0,
+                    ]
+                );
+                $this->merge(['employee_id' => $emp->id]);
             }
         }
     }

@@ -184,6 +184,10 @@ class BusBookingController extends Controller
     {
         try {
             $bookingModel = BusBooking::findOrFail($busBooking);
+
+            // Authorize cancel/refund: Admin/owner, creator, assigned employee, or manage_refunds/manage_bus
+            $this->authorize('cancel', $bookingModel);
+
             $this->bookingService->cancelBooking($bookingModel, $request->validated());
 
             $bookingModel->refresh();
@@ -202,6 +206,8 @@ class BusBookingController extends Controller
                 'تم إلغاء الحجز وتسجيل الاسترداد بنجاح.',
                 new BusBookingResource($bookingModel)
             );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('ليس لديك صلاحية إلغاء أو استرداد هذا الحجز.', null, 403);
         } catch (\InvalidArgumentException $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         } catch (\Exception $e) {

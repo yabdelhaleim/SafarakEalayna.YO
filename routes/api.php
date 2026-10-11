@@ -330,7 +330,6 @@ Route::prefix('v1')->middleware([
         Route::middleware('admin')->group(function () {
             Route::post('companies/{company}/pay-debt', [BusCompanyController::class, 'payDebt']);
             Route::post('inventories/{busInventory}/pay-debt', [BusInventoryController::class, 'payDebt']);
-            Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [BusBookingController::class, 'cancel']);
             // Destructive CRUD — admin only (fix Step 1).
             // Booking creation stays accessible to cashiers via the apiResource below.
             Route::apiResource('companies', BusCompanyController::class);
@@ -353,6 +352,9 @@ Route::prefix('v1')->middleware([
         Route::post('bookings', [BusBookingController::class, 'store'])
             ->middleware('throttle:bus-write');
         Route::post('bookings/{busBooking}/pay', [BusBookingController::class, 'pay'])
+            ->middleware('throttle:bus-write');
+        // Cancellation / Refund: authorized via BusBookingPolicy::cancel (admin, creator, or manage_refunds)
+        Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [BusBookingController::class, 'cancel'])
             ->middleware('throttle:bus-write');
 
         // Bus Refund System — process/store moves money — admin only
