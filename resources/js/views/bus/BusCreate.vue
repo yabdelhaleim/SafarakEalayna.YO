@@ -943,7 +943,6 @@ const selectCompany = async (company) => {
 // ─── Route suggestions ─────────────────────────────────────────────────────
 const buildRouteSuggestions = async (field, query, target) => {
   if (!form.value.company_id || query.length < 2) { target.value = []; return; }
-  if (!authStore.isAdmin) { target.value = []; return; }
   clearTimeout(suggTimeout);
   suggTimeout = setTimeout(async () => {
     try {

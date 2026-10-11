@@ -327,14 +327,24 @@ Route::prefix('v1')->middleware([
         // Statement open to all authenticated users.
         // Debt-payment / refund flows move money between accounts — admin only.
         Route::get('companies/{company}/statement', [BusCompanyController::class, 'statement']);
+        // Read companies and inventories (accessible to authenticated employees and admins)
+        Route::apiResource('companies', BusCompanyController::class)
+            ->only(['index', 'show'])
+            ->names('bus_companies');
+        Route::apiResource('inventories', BusInventoryController::class)
+            ->parameters(['inventories' => 'busInventory'])
+            ->only(['index', 'show'])
+            ->names('bus_inventories');
+
         Route::middleware('admin')->group(function () {
             Route::post('companies/{company}/pay-debt', [BusCompanyController::class, 'payDebt']);
             Route::post('inventories/{busInventory}/pay-debt', [BusInventoryController::class, 'payDebt']);
-            // Destructive CRUD — admin only (fix Step 1).
+            // Destructive / administrative CRUD — admin only.
             // Booking creation stays accessible to cashiers via the apiResource below.
-            Route::apiResource('companies', BusCompanyController::class);
+            Route::apiResource('companies', BusCompanyController::class)->except(['index', 'show']);
             Route::apiResource('inventories', BusInventoryController::class)
-                ->parameters(['inventories' => 'busInventory']);
+                ->parameters(['inventories' => 'busInventory'])
+                ->except(['index', 'show']);
             Route::delete('bookings/{busBooking}', [BusBookingController::class, 'destroy']);
         });
         // Booking read + create remain open to all authenticated users

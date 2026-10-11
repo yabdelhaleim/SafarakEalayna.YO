@@ -297,20 +297,7 @@ axios.interceptors.response.use(
             }
 
         } else if (status === 403) {
-            // Skip toast for requests that handle 403 internally (they have their own
-            // fallback / catch blocks). Prevents ghost toasts on permission-scoped
-            // endpoints that employees legitimately cannot access.
-            const url = error.config?.url || '';
-            const skip403Toast =
-                error.config?._skipGlobal403Toast === true ||
-                // bus/companies list & show — admin only; busStore falls back to public endpoint
-                /\/api\/v1\/bus\/companies(\/\d+)?(\?.*)?$/.test(url) ||
-                // bus/inventories list & show — admin only; only used in admin context
-                /\/api\/v1\/bus\/inventories(\/\d+)?(\?.*)?$/.test(url) ||
-                // bus/treasury overview — not gated but guard in case
-                url.includes('/bus/treasury/overview') ||
-                // finance accounts — admin only; some components guard with isAdmin
-                url.includes('/finance/accounts');
+            const skip403Toast = error.config?._skipGlobal403Toast === true;
 
             if (!skip403Toast && window.addToast) {
                 window.addToast('ليس لديك الصلاحية للقيام بهذا الإجراء', 'error');

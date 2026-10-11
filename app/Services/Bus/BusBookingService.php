@@ -265,15 +265,19 @@ class BusBookingService
                     if ($user->employee) {
                         $employeeId = $user->employee->id;
                     } elseif ($user->role === 'employee') {
-                        $employee = Employee::firstOrCreate(
-                            ['user_id' => $user->id],
-                            [
-                                'full_name' => $user->name,
-                                'status' => 'active',
-                                'salary' => 0,
-                            ]
-                        );
-                        $employeeId = $employee->id;
+                        try {
+                            $employee = Employee::firstOrCreate(
+                                ['user_id' => $user->id],
+                                [
+                                    'full_name' => $user->name ?? 'موظف',
+                                    'status' => 'active',
+                                    'salary' => 0,
+                                ]
+                            );
+                            $employeeId = $employee?->id;
+                        } catch (\Throwable $e) {
+                            \Log::warning('BusBookingService: failed to auto-create employee record: ' . $e->getMessage());
+                        }
                     }
                 }
                 if (! $employeeId) {
