@@ -264,6 +264,16 @@ class BusBookingService
                     $user = Auth::user();
                     if ($user->employee) {
                         $employeeId = $user->employee->id;
+                    } elseif ($user->role === 'employee') {
+                        $employee = Employee::firstOrCreate(
+                            ['user_id' => $user->id],
+                            [
+                                'full_name' => $user->name,
+                                'status' => 'active',
+                                'salary' => 0,
+                            ]
+                        );
+                        $employeeId = $employee->id;
                     }
                 }
                 if (! $employeeId) {
