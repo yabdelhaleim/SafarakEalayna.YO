@@ -297,7 +297,10 @@ axios.interceptors.response.use(
             }
 
         } else if (status === 403) {
-            if (window.addToast) {
+            const isGetRequest = (error.config?.method || 'get').toLowerCase() === 'get';
+            const skip403Toast = error.config?._skipGlobal403Toast === true || isGetRequest;
+
+            if (!skip403Toast && window.addToast) {
                 window.addToast('ليس لديك الصلاحية للقيام بهذا الإجراء', 'error');
             }
 

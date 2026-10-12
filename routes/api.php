@@ -327,15 +327,23 @@ Route::prefix('v1')->middleware([
         // Statement open to all authenticated users.
         // Debt-payment / refund flows move money between accounts — admin only.
         Route::get('companies/{company}/statement', [BusCompanyController::class, 'statement']);
+        // Read companies and inventories (accessible to authenticated employees and admins)
+        Route::get('companies', [BusCompanyController::class, 'index'])->name('bus_companies.index');
+        Route::get('companies/{company}', [BusCompanyController::class, 'show'])->name('bus_companies.show');
+        Route::get('inventories', [BusInventoryController::class, 'index'])->name('bus_inventories.index');
+        Route::get('inventories/{busInventory}', [BusInventoryController::class, 'show'])->name('bus_inventories.show');
+
         Route::middleware('admin')->group(function () {
             Route::post('companies/{company}/pay-debt', [BusCompanyController::class, 'payDebt']);
             Route::post('inventories/{busInventory}/pay-debt', [BusInventoryController::class, 'payDebt']);
             Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [BusBookingController::class, 'cancel']);
-            // Destructive CRUD — admin only (fix Step 1).
-            // Booking creation stays accessible to cashiers via the apiResource below.
-            Route::apiResource('companies', BusCompanyController::class);
-            Route::apiResource('inventories', BusInventoryController::class)
-                ->parameters(['inventories' => 'busInventory']);
+            // Destructive / administrative CRUD — admin only.
+            Route::post('companies', [BusCompanyController::class, 'store'])->name('bus_companies.store');
+            Route::match(['put', 'patch'], 'companies/{company}', [BusCompanyController::class, 'update'])->name('bus_companies.update');
+            Route::delete('companies/{company}', [BusCompanyController::class, 'destroy'])->name('bus_companies.destroy');
+            Route::post('inventories', [BusInventoryController::class, 'store'])->name('bus_inventories.store');
+            Route::match(['put', 'patch'], 'inventories/{busInventory}', [BusInventoryController::class, 'update'])->name('bus_inventories.update');
+            Route::delete('inventories/{busInventory}', [BusInventoryController::class, 'destroy'])->name('bus_inventories.destroy');
             Route::delete('bookings/{busBooking}', [BusBookingController::class, 'destroy']);
         });
         // Booking read + create remain open to all authenticated users

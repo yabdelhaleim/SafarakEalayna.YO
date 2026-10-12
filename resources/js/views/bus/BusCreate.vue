@@ -916,7 +916,7 @@ const selectCompany = async (company) => {
     // Also try to get company account balance for real debt figure (admin only to avoid 403 for employees)
     if (authStore.isAdmin) {
       try {
-        const compRes = await axios.get(`/api/v1/bus/companies/${company.id}`);
+        const compRes = await axios.get(`/api/v1/bus/companies/${company.id}`, { _skipGlobal403Toast: true });
         const balance  = compRes.data?.data?.account?.balance ?? null;
         if (balance !== null) {
           // Company account balance in our ledger: negative = we owe them
@@ -949,6 +949,7 @@ const buildRouteSuggestions = async (field, query, target) => {
     try {
       const res = await axios.get('/api/v1/bus/inventories', {
         params: { company_id: form.value.company_id, per_page: 50 },
+        _skipGlobal403Toast: true,
       });
       const items = res.data?.data?.items || res.data?.data || [];
       const seen  = new Set();
