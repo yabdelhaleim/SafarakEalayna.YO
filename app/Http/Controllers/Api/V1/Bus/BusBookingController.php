@@ -86,10 +86,17 @@ class BusBookingController extends Controller
 
             return ApiResponse::success(
                 'Booking created successfully.',
-                new BusBookingResource($booking),
+                (new BusBookingResource($booking))->resolve(),
                 201
             );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Log::error('Bus booking creation failed: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'payload' => $request->all(),
+            ]);
+
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
@@ -171,11 +178,19 @@ class BusBookingController extends Controller
 
             return ApiResponse::success(
                 'Payment recorded successfully.',
-                new BusBookingResource($booking)
+                (new BusBookingResource($booking))->resolve()
             );
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
             return ApiResponse::error('ليس لديك صلاحية دفع هذا الحجز.', null, 403);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Log::error('Bus booking payment failed: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'booking_id' => $busBooking,
+                'payload' => $request->all(),
+            ]);
+
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
