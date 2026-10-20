@@ -792,17 +792,35 @@ class TreasuryService
                 }
             }
 
-            $accumulate = function ($acc, bool $trustAsReceivable) use (&$dueToUs, &$dueFromUs, &$seenIds) {
+            $divisionModules = $division === 'tourism'
+                ? ['flight', 'flights', 'hajj_umra', 'hajj', 'visa', 'visas', 'tourism']
+                : ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'office', 'general'];
+
+            $accumulate = function ($acc, bool $trustAsReceivable) use (&$dueToUs, &$dueFromUs, &$seenIds, $divisionModules) {
                 if (isset($seenIds[(int) $acc->id])) {
                     return;
                 }
-                $balance = (float) $acc->balance;
-                // FIX FIN-AUDIT-2026-08-27: removed sign flip for flight_group.
-                // The balance on the Account row is the source of truth —
-                // positive = receivable (they owe us), negative = payable
-                // (we owe them). This matches the convention used by
-                // calculateReceivablesAndPayables step (1) and the unified
-                // debts report, so we trust it directly.
+
+                // If account has ledger entries, restrict balance calculation strictly to this division's modules
+                // to prevent any cross-division debt contamination.
+                $hasEntries = DB::table('account_entries')->where('account_id', $acc->id)->exists();
+                if ($hasEntries) {
+                    $balance = (float) DB::table('account_entries')
+                        ->leftJoin('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
+                        ->where('account_entries.account_id', $acc->id)
+                        ->where(function ($q) use ($divisionModules, $acc) {
+                            $q->whereIn('transactions.module', $divisionModules)
+                              ->orWhere(function ($sub) use ($divisionModules, $acc) {
+                                  $sub->whereNull('transactions.module')
+                                      ->whereIn(DB::raw("'{$acc->module_type}'"), $divisionModules);
+                              });
+                        })
+                        ->selectRaw('COALESCE(SUM(account_entries.credit) - SUM(account_entries.debit), 0) as balance')
+                        ->value('balance');
+                } else {
+                    $balance = (float) $acc->balance;
+                }
+
                 if ($balance === 0.0) {
                     return;
                 }
