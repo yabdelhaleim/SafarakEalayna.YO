@@ -1036,16 +1036,10 @@ class HajjUmraBookingService
                 && strtoupper((string) $primary->currency) === $currency
             ) {
                 // Primary account matches the requested currency — use it.
-                // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
-                // 'office'-tagged account the moment a Customer row is
-                // inserted. When that customer is later used in a HajjUmra
-                // booking flow we re-tag the account to 'hajj_umra' so it
-                // surfaces in the strict module_type='hajj_umra' queries
-                // (TreasuryService line 521). Wrapped in
-                // LedgerBalanceMutationGuard because touching `balance`
-                // — even to confirm 0.00 — would otherwise trip the
-                // Account::updating boot guard.
-                if ($primary->module_type !== 'hajj_umra') {
+                // Re-tag to 'hajj_umra' ONLY if the account is in a generic/unassigned state.
+                // Specific module tags ('flights', 'bus', etc.) must NEVER be overwritten.
+                $isGeneric = in_array($primary->module_type, ['office', 'tourism', 'general', null, ''], true);
+                if ($isGeneric && $primary->module_type !== 'hajj_umra') {
                     LedgerBalanceMutationGuard::run(function () use ($primary) {
                         $primary->module_type = 'hajj_umra';
                         $primary->save();

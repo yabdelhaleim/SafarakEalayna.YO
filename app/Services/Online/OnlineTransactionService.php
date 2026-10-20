@@ -1182,16 +1182,10 @@ class OnlineTransactionService
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
             if ($account) {
-                // Phase 1.Bend3 fix: CustomerLedgerObserver creates a generic
-                // 'office'-tagged account the moment a Customer row is
-                // inserted. When that customer is later used in an Online
-                // transaction flow we re-tag the account to 'online' so it
-                // surfaces in the Online dashboards / strict module_type
-                // queries (e.g. OnlineStats widget, TreasuryService). Wrapped
-                // in LedgerBalanceMutationGuard because touching `balance`
-                // — even to confirm 0.00 — would otherwise trip the
-                // Account::updating boot guard.
-                if ($account->module_type !== 'online') {
+                // Re-tag to 'online' ONLY if the account is in a generic/unassigned state.
+                // Specific module tags ('flights', 'bus', etc.) must NEVER be overwritten.
+                $isGeneric = in_array($account->module_type, ['office', 'tourism', 'general', null, ''], true);
+                if ($isGeneric && $account->module_type !== 'online') {
                     LedgerBalanceMutationGuard::run(function () use ($account) {
                         $account->module_type = 'online';
                         $account->save();

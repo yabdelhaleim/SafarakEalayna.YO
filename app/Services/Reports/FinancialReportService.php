@@ -604,33 +604,44 @@ class FinancialReportService
             }
 
             // Apply module-specific conditions for customers.
-            //
-            // Fix: do NOT rely on `accounts.module_type` to filter customers. Each
-            // module's `ensureCustomerAccount()` rewrites that column whenever a
-            // different module touches the same customer — so a customer who used
-            // Fawry first and Wallet later would have `module_type='wallet_transfer'`
-            // and drop out of every other module's filter. Match purely on the
-            // existence of related transactions; that is stable and unique per
-            // module.
+            // Match based on related transactions or account module_type.
             if ($module) {
                 switch ($module) {
                     case 'flight':
-                        $customerQuery->whereHas('flightBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('flightBookings')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['flights', 'flight']));
+                        });
                         break;
                     case 'bus':
-                        $customerQuery->whereHas('busBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('busBookings')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['bus']));
+                        });
                         break;
                     case 'hajj_umra':
-                        $customerQuery->whereHas('hajjUmraBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('hajjUmraBookings')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['hajj_umra', 'hajj']));
+                        });
                         break;
                     case 'visa':
-                        $customerQuery->whereHas('visaBookings');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('visaBookings')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['visas', 'visa']));
+                        });
                         break;
                     case 'fawry':
-                        $customerQuery->whereHas('fawryTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('fawryTransactions')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['fawry']));
+                        });
                         break;
                     case 'online':
-                        $customerQuery->whereHas('onlineTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('onlineTransactions')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['online']));
+                        });
                         break;
                     case 'general':
                         $customerQuery->whereDoesntHave('flightBookings')
@@ -642,7 +653,10 @@ class FinancialReportService
                             ->whereDoesntHave('walletTransactions');
                         break;
                     case 'wallet':
-                        $customerQuery->whereHas('walletTransactions');
+                        $customerQuery->where(function ($q) {
+                            $q->whereHas('walletTransactions')
+                              ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['wallet_transfer', 'wallet']));
+                        });
                         break;
                 }
             } elseif ($department) {
@@ -650,7 +664,8 @@ class FinancialReportService
                     $customerQuery->where(function ($q) {
                         $q->whereHas('hajjUmraBookings')
                             ->orWhereHas('visaBookings')
-                            ->orWhereHas('flightBookings');
+                            ->orWhereHas('flightBookings')
+                            ->orWhereHas('ledgerAccount', fn ($a) => $a->whereIn('module_type', ['tourism', 'flights', 'flight', 'hajj_umra', 'visas']));
                     });
                 } elseif ($department === 'office') {
                     $customerQuery->where(function ($q) {
@@ -679,114 +694,124 @@ class FinancialReportService
 
             $customers = $customerQuery->get();
 
+            // Pre-load all account entries for these customers' ledger accounts
+            // grouped by account_id and transaction module to isolate per-module debts.
+            $accountIds = $customers->pluck('account_id')->filter()->unique()->all();
+            $entriesByAccount = [];
+
+            if (! empty($accountIds)) {
+                $glRows = DB::table('account_entries')
+                    ->leftJoin('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
+                    ->whereIn('account_entries.account_id', $accountIds)
+                    ->select('account_entries.account_id', 'transactions.module')
+                    ->selectRaw('COALESCE(SUM(account_entries.credit) - SUM(account_entries.debit), 0) as balance')
+                    ->groupBy('account_entries.account_id', 'transactions.module')
+                    ->get();
+
+                foreach ($glRows as $row) {
+                    $entriesByAccount[(int) $row->account_id][] = $row;
+                }
+            }
+
+            $normalizeModule = function (?string $mod): string {
+                return match (strtolower((string) $mod)) {
+                    'flight', 'flights' => 'flight',
+                    'bus' => 'bus',
+                    'wallet', 'wallet_transfer' => 'wallet',
+                    'online', 'online_service' => 'online',
+                    'fawry' => 'fawry',
+                    'hajj_umra', 'hajj', 'umrah' => 'hajj_umra',
+                    'visa', 'visas' => 'visa',
+                    default => 'general',
+                };
+            };
+
+            $moduleDepartment = function (string $mod): string {
+                return match ($mod) {
+                    'flight', 'hajj_umra', 'visa' => 'tourism',
+                    'bus', 'fawry', 'online', 'wallet', 'general' => 'office',
+                    default => 'office',
+                };
+            };
+
             foreach ($customers as $c) {
-                $balance = $c->ledgerAccount ? (float) $c->ledgerAccount->balance : 0.0;
-                if ($balance == 0.0) {
+                $account = $c->ledgerAccount;
+                $totalBalance = $account ? (float) $account->balance : 0.0;
+                if ($totalBalance == 0.0) {
                     continue;
                 }
 
-                // Customer balance > 0 is Receivable (customer owes company)
-                // Customer balance < 0 is Payable (company owes customer)
-                $dir = $balance > 0 ? 'receivables' : 'payables';
+                $accountId = (int) ($account?->id ?? 0);
+                $primaryMod = $normalizeModule($account?->module_type ?: 'general');
 
-                if ($direction !== 'all' && $direction !== $dir) {
-                    continue;
-                }
+                $moduleBalances = [];
+                $sumEntries = 0.0;
 
-                // Deduce customer active department and module.
-                //
-                // Fix: prefer booking/transaction counts — they are stable per
-                // module and never get overwritten. The ledger account's
-                // `module_type` is intentionally skipped as a primary signal
-                // because `ensureCustomerAccount()` rewrites it whenever any
-                // module touches the customer (so a Fawry+Wallet customer would
-                // otherwise always be classified under whichever module touched
-                // them last).
-                //
-                // When the caller has filtered by a specific module, that
-                // module wins priority so the customer surfaces under the
-                // filter they asked for (a customer with Fawry+Wallet usage
-                // must appear in BOTH `?module=fawry` AND `?module=wallet`
-                // filters, not just the priority winner).
-                $custDept = 'office';
-                $custMod = 'general';
-
-                $hasTourism = $c->flight_bookings_count > 0
-                    || $c->hajj_umra_bookings_count > 0
-                    || $c->visa_bookings_count > 0;
-                $hasBus = $c->bus_bookings_count > 0;
-                $hasFawry = $c->fawry_transactions_count > 0;
-                $hasOnline = $c->online_transactions_count > 0;
-                $hasWallet = $c->wallet_transactions_count > 0;
-
-                // If caller filtered by a module this customer uses,
-                // honour that filter directly.
-                if ($module === 'flight' && $c->flight_bookings_count > 0) {
-                    $custDept = 'tourism';
-                    $custMod = 'flight';
-                } elseif ($module === 'hajj_umra' && $c->hajj_umra_bookings_count > 0) {
-                    $custDept = 'tourism';
-                    $custMod = 'hajj_umra';
-                } elseif ($module === 'visa' && $c->visa_bookings_count > 0) {
-                    $custDept = 'tourism';
-                    $custMod = 'visa';
-                } elseif ($module === 'bus' && $hasBus) {
-                    $custDept = 'office';
-                    $custMod = 'bus';
-                } elseif ($module === 'fawry' && $hasFawry) {
-                    $custDept = 'office';
-                    $custMod = 'fawry';
-                } elseif ($module === 'online' && $hasOnline) {
-                    $custDept = 'office';
-                    $custMod = 'online';
-                } elseif ($module === 'wallet' && $hasWallet) {
-                    $custDept = 'office';
-                    $custMod = 'wallet';
-                } elseif ($hasTourism) {
-                    $custDept = 'tourism';
-                    if ($c->flight_bookings_count > 0) {
-                        $custMod = 'flight';
-                    } elseif ($c->hajj_umra_bookings_count > 0) {
-                        $custMod = 'hajj_umra';
-                    } else {
-                        $custMod = 'visa';
+                if ($accountId > 0 && isset($entriesByAccount[$accountId])) {
+                    foreach ($entriesByAccount[$accountId] as $entryRow) {
+                        $rawMod = $entryRow->module;
+                        $normMod = $rawMod !== null ? $normalizeModule($rawMod) : $primaryMod;
+                        $entryBal = (float) $entryRow->balance;
+                        $moduleBalances[$normMod] = ($moduleBalances[$normMod] ?? 0.0) + $entryBal;
+                        $sumEntries += $entryBal;
                     }
-                } elseif ($hasBus) {
-                    $custDept = 'office';
-                    $custMod = 'bus';
-                } elseif ($hasFawry) {
-                    $custDept = 'office';
-                    $custMod = 'fawry';
-                } elseif ($hasOnline) {
-                    $custDept = 'office';
-                    $custMod = 'online';
-                } elseif ($hasWallet) {
-                    $custDept = 'office';
-                    $custMod = 'wallet';
                 }
 
-                if ($department && $custDept !== $department) {
-                    continue;
-                }
-                if ($module && $custMod !== $module) {
-                    continue;
+                // If there is any delta between the ledger balance and the sum of GL entries
+                // (e.g. initial opening balance without entries, or manual adjustments),
+                // allocate that difference to the account's primary module.
+                $delta = round($totalBalance - $sumEntries, 2);
+                if (abs($delta) > 0.01) {
+                    $moduleBalances[$primaryMod] = ($moduleBalances[$primaryMod] ?? 0.0) + $delta;
                 }
 
-                $results[] = [
-                    'id' => $c->id,
-                    'name' => $c->full_name ?: $c->name,
-                    'phone' => $c->phone,
-                    'entity_type' => 'customer',
-                    'entity_type_label' => 'عميل',
-                    'department' => $custDept,
-                    'department_label' => $custDept === 'tourism' ? 'قسم سياحه' : 'قسم مكتب',
-                    'module' => $custMod,
-                    'module_label' => $this->getModuleLabel($custMod),
-                    'balance' => $balance,
-                    'currency' => $c->ledgerAccount ? $c->ledgerAccount->currency : 'EGP',
-                    'account_id' => $c->account_id,
-                    'statement_url' => $c->account_id ? "/finance/account-statement/{$c->account_id}" : null,
-                ];
+                if (empty($moduleBalances)) {
+                    $moduleBalances[$primaryMod] = $totalBalance;
+                }
+
+                $activeModuleCount = count(array_filter($moduleBalances, fn ($b) => abs($b) > 0.005));
+
+                foreach ($moduleBalances as $normMod => $modBalance) {
+                    $modBalance = round($modBalance, 2);
+                    if (abs($modBalance) < 0.005) {
+                        continue;
+                    }
+
+                    $custDept = $moduleDepartment($normMod);
+
+                    // Department filter
+                    if ($department && $custDept !== $department) {
+                        continue;
+                    }
+
+                    // Module filter
+                    if ($module && $normMod !== $module) {
+                        continue;
+                    }
+
+                    // Direction filter (balance > 0 is receivable, < 0 is payable)
+                    $dir = $modBalance > 0 ? 'receivables' : 'payables';
+                    if ($direction !== 'all' && $direction !== $dir) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'id' => $activeModuleCount > 1 ? "{$c->id}_{$normMod}" : (string) $c->id,
+                        'customer_id' => $c->id,
+                        'name' => $c->full_name ?: $c->name,
+                        'phone' => $c->phone,
+                        'entity_type' => 'customer',
+                        'entity_type_label' => 'عميل',
+                        'department' => $custDept,
+                        'department_label' => $custDept === 'tourism' ? 'قسم سياحه' : 'قسم مكتب',
+                        'module' => $normMod,
+                        'module_label' => $this->getModuleLabel($normMod),
+                        'balance' => $modBalance,
+                        'currency' => $account ? $account->currency : 'EGP',
+                        'account_id' => $c->account_id,
+                        'statement_url' => $c->account_id ? "/finance/account-statement/{$c->account_id}" : null,
+                    ];
+                }
             }
         }
 
@@ -1623,13 +1648,14 @@ foreach ($results as $item) {
             ->where('is_active', true)
             ->sum('balance');
 
-        $receivables = Customer::whereHas('ledgerAccount', function ($q) use ($currency) {
-            $q->where('currency', $currency)->where('balance', '>', 0);
-        })->where(function ($q) {
-            $q->whereHas('flightBookings')
-                ->orWhereHas('hajjUmraBookings')
-                ->orWhereHas('visaBookings');
-        })->with('ledgerAccount')->get()->sum(fn ($c) => (float) $c->ledgerAccount->balance);
+        $tourismDebts = $this->getDebtsReport([
+            'department' => 'tourism',
+            'direction' => 'receivables',
+            'entity_type' => 'customer',
+        ]);
+        $receivables = collect($tourismDebts['items'])
+            ->where('currency', $currency)
+            ->sum('balance');
 
         $payables = 0.0;
         $groups = FlightGroup::with('carrier')->get();
@@ -1673,52 +1699,14 @@ foreach ($results as $item) {
             ->where('is_active', true)
             ->sum('balance');
 
-        $receivables = Customer::whereHas('ledgerAccount', function ($q) use ($currency) {
-            $q->where('currency', $currency)->where('balance', '>', 0);
-        })->where(function ($q) {
-            $q->whereHas('busBookings')
-                ->orWhereHas('fawryTransactions')
-                ->orWhereHas('onlineTransactions')
-                ->orWhereHas('walletTransactions')
-                ->orWhere(function ($sub) {
-                    $sub->whereDoesntHave('flightBookings')
-                        ->whereDoesntHave('hajjUmraBookings')
-                        ->whereDoesntHave('visaBookings');
-                });
-        })->with('ledgerAccount')->get()->sum(function ($c) {
-            // Phase C.2 fix: when the customer is in the office department
-            // (bus/fawry/online/wallet), the ledgerAccount.balance sums
-            // ALL transactions across all modules on that account. We must
-            // restrict to module='fawry' only when this customer is
-            // surfaced via the Fawry filter. Caller passes the filter via
-            // the outer scope (department/module); here we sum the
-            // GL-restricted Fawry debt instead of the full balance when
-            // the relevant module is Fawry.
-            //
-            // Heuristic: if the customer has fawryTransactions but no
-            // busBookings/onlineTransactions/walletTransactions, the
-            // balance is purely Fawry and is safe to sum. Otherwise we
-            // fall back to summing only the Fawry GL entries (credit -
-            // debit on transactions where module='fawry') to avoid
-            // mixing modules.
-            $hasOnlyFawry = $c->fawry_transactions_count > 0
-                && $c->bus_bookings_count === 0
-                && $c->online_transactions_count === 0
-                && $c->wallet_transactions_count === 0;
-
-            if ($hasOnlyFawry) {
-                return (float) $c->ledgerAccount->balance;
-            }
-
-            $fawryDebt = \DB::table('account_entries')
-                ->join('transactions', 'account_entries.transaction_id', '=', 'transactions.id')
-                ->where('account_entries.account_id', $c->ledgerAccount->id)
-                ->where('transactions.module', TransactionModule::Fawry->value)
-                ->selectRaw('SUM(account_entries.credit) - SUM(account_entries.debit) as debt')
-                ->value('debt') ?? 0.0;
-
-            return (float) $fawryDebt;
-        });
+        $officeDebts = $this->getDebtsReport([
+            'department' => 'office',
+            'direction' => 'receivables',
+            'entity_type' => 'customer',
+        ]);
+        $receivables = collect($officeDebts['items'])
+            ->where('currency', $currency)
+            ->sum('balance');
 
         $busPayables = BusCompany::whereHas('account', function ($q) use ($currency) {
             $q->where('currency', $currency)->where('balance', '<', 0);

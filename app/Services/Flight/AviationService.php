@@ -155,6 +155,7 @@ class AviationService
                     'city' => $data['customer']['city'] ?? null,
                     'affiliation' => $data['customer']['affiliation'] ?? null,
                     'customer_tier' => $data['customer']['customer_tier'] ?? 'STANDARD',
+                    'module_type' => 'flights',
                 ]
             );
 
