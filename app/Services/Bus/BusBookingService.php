@@ -1241,12 +1241,12 @@ class BusBookingService
         if ($customer->account_id) {
             $account = Account::find($customer->account_id);
             if ($account) {
-                // Re-tag the account to 'bus' if it was created as 'office'
-                // by the generic CustomerLedgerObserver. Wrapped in
-                // LedgerBalanceMutationGuard because touching `balance` —
-                // even to confirm 0.00 — would otherwise trip the
-                // Account::updating boot guard.
-                if ($account->module_type !== 'bus') {
+                // Re-tag the account to 'bus' ONLY if it is currently in a generic
+                // or unassigned state ('office', 'tourism', 'general', null).
+                // Specific module tags ('flights', 'hajj_umra', 'visas', 'fawry', etc.)
+                // must NEVER be overwritten to avoid cross-module debt contamination.
+                $isGeneric = in_array($account->module_type, ['office', 'tourism', 'general', null, ''], true);
+                if ($isGeneric && $account->module_type !== 'bus') {
                     LedgerBalanceMutationGuard::run(function () use ($account) {
                         $account->module_type = 'bus';
                         $account->save();

@@ -1260,17 +1260,10 @@ class WalletTransactionService
             if ($customer->account_id) {
                 $account = Account::find($customer->account_id);
                 if ($account) {
-                    // Phase 8 fix: CustomerLedgerObserver creates a generic
-                    // 'office'-tagged account the moment a Customer row is
-                    // inserted. When that customer is later used by a wallet
-                    // transaction, we re-tag the account to 'wallet_transfer'
-                    // so it surfaces in the TransferDashboardController stats
-                    // and TransferAccounts/* resources (which filter strictly
-                    // by module_type='wallet_transfer'). The re-tag is wrapped
-                    // in LedgerBalanceMutationGuard because touching `balance`
-                    // — even to confirm 0.00 — would otherwise trip the
-                    // `Account::updating` boot guard.
-                    if ($account->module_type !== 'wallet_transfer') {
+                    // Re-tag to 'wallet_transfer' ONLY if the account is in a generic/unassigned state.
+                    // Specific module tags ('flights', 'bus', etc.) must NEVER be overwritten.
+                    $isGeneric = in_array($account->module_type, ['office', 'tourism', 'general', null, ''], true);
+                    if ($isGeneric && $account->module_type !== 'wallet_transfer') {
                         LedgerBalanceMutationGuard::run(function () use ($account) {
                             $account->module_type = 'wallet_transfer';
                             $account->save();
