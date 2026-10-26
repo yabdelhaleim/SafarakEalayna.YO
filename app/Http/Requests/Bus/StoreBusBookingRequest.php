@@ -59,10 +59,26 @@ class StoreBusBookingRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! $this->has('employee_id') && auth()->check()) {
+        if (empty($this->employee_id) && auth()->check()) {
             $user = auth()->user();
             if ($user->employee) {
                 $this->merge(['employee_id' => $user->employee->id]);
+            } elseif ($user->role === 'employee') {
+                try {
+                    $emp = \App\Models\Employee::firstOrCreate(
+                        ['user_id' => $user->id],
+                        [
+                            'full_name' => $user->name ?? 'موظف',
+                            'status' => 'active',
+                            'salary' => 0,
+                        ]
+                    );
+                    if ($emp) {
+                        $this->merge(['employee_id' => $emp->id]);
+                    }
+                } catch (\Throwable $e) {
+                    \Log::warning('StoreBusBookingRequest: failed to auto-create employee record: ' . $e->getMessage());
+                }
             }
         }
     }

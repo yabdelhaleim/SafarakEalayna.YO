@@ -362,6 +362,9 @@ Route::prefix('v1')->middleware([
             ->middleware('throttle:bus-write');
         Route::post('bookings/{busBooking}/pay', [BusBookingController::class, 'pay'])
             ->middleware('throttle:bus-write');
+        // Cancellation / Refund: authorized via BusBookingPolicy::cancel (admin, creator, or manage_refunds)
+        Route::match(['post', 'patch'], 'bookings/{busBooking}/cancel', [BusBookingController::class, 'cancel'])
+            ->middleware('throttle:bus-write');
 
         // Bus Refund System — process/store moves money — admin only
         Route::prefix('refunds')->group(function () {

@@ -86,10 +86,17 @@ class BusBookingController extends Controller
 
             return ApiResponse::success(
                 'Booking created successfully.',
-                new BusBookingResource($booking),
+                (new BusBookingResource($booking))->resolve(),
                 201
             );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Log::error('Bus booking creation failed: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'payload' => $request->all(),
+            ]);
+
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
@@ -171,11 +178,19 @@ class BusBookingController extends Controller
 
             return ApiResponse::success(
                 'Payment recorded successfully.',
-                new BusBookingResource($booking)
+                (new BusBookingResource($booking))->resolve()
             );
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
             return ApiResponse::error('ليس لديك صلاحية دفع هذا الحجز.', null, 403);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Log::error('Bus booking payment failed: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'booking_id' => $busBooking,
+                'payload' => $request->all(),
+            ]);
+
             return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
@@ -184,6 +199,10 @@ class BusBookingController extends Controller
     {
         try {
             $bookingModel = BusBooking::findOrFail($busBooking);
+
+            // Authorize cancel/refund: Admin/owner, creator, assigned employee, or manage_refunds/manage_bus
+            $this->authorize('cancel', $bookingModel);
+
             $this->bookingService->cancelBooking($bookingModel, $request->validated());
 
             $bookingModel->refresh();
@@ -202,6 +221,8 @@ class BusBookingController extends Controller
                 'تم إلغاء الحجز وتسجيل الاسترداد بنجاح.',
                 new BusBookingResource($bookingModel)
             );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return ApiResponse::error('ليس لديك صلاحية إلغاء أو استرداد هذا الحجز.', null, 403);
         } catch (\InvalidArgumentException $e) {
             return ApiResponse::error($e->getMessage(), null, 422);
         } catch (\Exception $e) {
