@@ -552,7 +552,10 @@ class ReportFinanceService
                         $sub->where('transactions.type', 'transfer')
                             ->where('to_account.type', 'expense');
                     });
-            });
+            })
+            // استثناء تكاليف الحجوزات التلقائية (فوري، باص، أونلاين، إلخ)
+            // المصروف اليدوي الحقيقي لا يكون مربوطاً بحجز (related_type = NULL)
+            ->whereNull('transactions.related_type');
         }
 
         if (! empty($filters['search'])) {
