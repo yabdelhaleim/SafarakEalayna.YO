@@ -47,6 +47,7 @@ class OnlineTransactionService
             'customer',
             'employee.user',
             'account',
+            'purchaseAccount',
             'paymentMethodRow',
             'createdBy',
         ]);
@@ -100,6 +101,7 @@ class OnlineTransactionService
             'customer',
             'employee.user',
             'account',
+            'purchaseAccount',
             'paymentMethodRow',
             'expenseTransaction',
             'incomeTransaction',
@@ -254,6 +256,7 @@ class OnlineTransactionService
                             'profit' => $profit,
                             'payment_method' => $data['payment_method'],
                             'account_id' => $data['account_id'],
+                            'purchase_account_id' => $data['purchase_account_id'] ?? null,
                             'reference_number' => $data['reference_number'] ?? null,
                             'idempotency_key' => $idempotencyKey,
                             'status' => $status->value,
@@ -311,6 +314,7 @@ class OnlineTransactionService
                     'customer',
                     'employee.user',
                     'account',
+                    'purchaseAccount',
                     'paymentMethodRow',
                     'expenseTransaction',
                     'incomeTransaction',
@@ -357,6 +361,7 @@ class OnlineTransactionService
                 // runs, getOriginal() will return the pre-update values anyway,
                 // but capturing them here is cleaner and avoids subtle bugs.
                 $originalAccountId = (int) $tx->account_id;
+                $originalPurchaseAccountId = (int) ($tx->purchase_account_id ?? 0);
                 $originalCustomerId = (int) ($tx->customer_id ?? 0);
                 $originalStatus = $tx->status;
 
@@ -379,6 +384,8 @@ class OnlineTransactionService
                     && (float) $data['amount_paid'] !== (float) $tx->amount_paid;
                 $accountChanged = array_key_exists('account_id', $data)
                     && (int) $data['account_id'] !== $originalAccountId;
+                $purchaseAccountChanged = array_key_exists('purchase_account_id', $data)
+                    && (int) ($data['purchase_account_id'] ?? 0) !== $originalPurchaseAccountId;
                 $customerChanged = array_key_exists('customer_id', $data)
                     && (int) $data['customer_id'] !== $originalCustomerId;
 
@@ -495,9 +502,9 @@ class OnlineTransactionService
                         }
                     }
 
-                    if ($purchaseChanged) {
+                    if ($purchaseChanged || $purchaseAccountChanged) {
                         $newPurchase = (float) ($data['purchase_price'] ?? $tx->purchase_price);
-                        $newExpense = $this->repostExpenseTransaction($tx, $newPurchase);
+                        $newExpense = $this->repostExpenseTransaction($tx, $newPurchase, $purchaseAccountChanged);
                         if ($newExpense) {
                             OnlineTransaction::runProfitMutation(function () use ($tx, $newExpense) {
                                 $tx->expense_transaction_id = $newExpense->id;
@@ -536,6 +543,7 @@ class OnlineTransactionService
                     'customer',
                     'employee.user',
                     'account',
+                    'purchaseAccount',
                     'paymentMethodRow',
                     'expenseTransaction',
                     'incomeTransaction',
@@ -616,10 +624,40 @@ class OnlineTransactionService
      *   - else if amountPaid > 0 → vault (cash covers the cost)
      *   - else → income clearing account (vault has nothing to debit)
      */
-    protected function repostExpenseTransaction(OnlineTransaction $tx, float $newPurchase): ?Transaction
-    {
+    protected function repostExpenseTransaction(
+        OnlineTransaction $tx,
+        float $newPurchase,
+        bool $forceRepost = false,
+    ): ?Transaction {
         if (! $tx->expense_transaction_id) {
-            return null;
+            if ($newPurchase <= 0) {
+                return null;
+            }
+            $provider = $tx->provider_code
+                ? OnlineServiceProvider::where('code', $tx->provider_code)->first()
+                : null;
+            $amountPaid = (float) ($tx->amount_paid ?? $tx->selling_price);
+
+            if (! empty($tx->purchase_account_id)) {
+                $sourceAccountId = $tx->purchase_account_id;
+            } elseif ($provider?->default_purchase_account_id) {
+                $sourceAccountId = $provider->default_purchase_account_id;
+            } elseif ($amountPaid > 0) {
+                $sourceAccountId = $tx->account_id;
+            } else {
+                $sourceAccountId = app(LedgerClearingAccounts::class)
+                    ->incomeContraIdForModule('online') ?? $tx->account_id;
+            }
+
+            return $this->transactionService->recordExpense([
+                'amount' => $newPurchase,
+                'from_account_id' => $sourceAccountId,
+                'module' => TransactionModule::Online->value,
+                'related_type' => OnlineTransaction::class,
+                'related_id' => $tx->id,
+                'notes' => 'تسجيل تكلفة خدمة أونلاين — '.$tx->customer_name,
+                'created_by' => Auth::id() ?? 1,
+            ]);
         }
 
         $oldTx = Transaction::find($tx->expense_transaction_id);
@@ -628,7 +666,7 @@ class OnlineTransactionService
         }
 
         $oldAmount = (float) $oldTx->amount;
-        if (abs($oldAmount - $newPurchase) < 0.000001) {
+        if (! $forceRepost && abs($oldAmount - $newPurchase) < 0.000001) {
             return $oldTx; // no-op
         }
 
@@ -637,7 +675,9 @@ class OnlineTransactionService
             : null;
         $amountPaid = (float) ($tx->amount_paid ?? $tx->selling_price);
 
-        if ($provider?->default_purchase_account_id) {
+        if (! empty($tx->purchase_account_id)) {
+            $sourceAccountId = $tx->purchase_account_id;
+        } elseif ($provider?->default_purchase_account_id) {
             $sourceAccountId = $provider->default_purchase_account_id;
         } elseif ($amountPaid > 0) {
             $sourceAccountId = $tx->account_id;
@@ -1152,7 +1192,9 @@ class OnlineTransactionService
         if ($purchase > 0) {
             $clearing = app(LedgerClearingAccounts::class);
 
-            if ($provider?->default_purchase_account_id) {
+            if (! empty($tx->purchase_account_id)) {
+                $sourceAccountId = $tx->purchase_account_id;
+            } elseif ($provider?->default_purchase_account_id) {
                 $sourceAccountId = $provider->default_purchase_account_id;
             } elseif ($amountPaid > 0) {
                 $sourceAccountId = $tx->account_id;

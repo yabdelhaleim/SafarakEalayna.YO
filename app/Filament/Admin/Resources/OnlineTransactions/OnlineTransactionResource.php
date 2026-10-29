@@ -214,6 +214,18 @@ class OnlineTransactionResource extends Resource
                                 ->searchable(['name'])
                                 ->required(),
 
+                            Select::make('purchase_account_id')
+                                ->label('خزينة خصم التكلفة (سعر الشراء)')
+                                ->helperText('الخزينة أو المحفظة التي خُصم منها سعر الشراء للمزود/الجهة')
+                                ->relationship('purchaseAccount', 'name', fn ($q) => $q
+                                    ->where('is_active', true)
+                                    ->whereIn('module_type', ['online', 'office']))
+                                ->getOptionLabelFromRecordUsing(fn (Account $record): string => filled($record->name)
+                                    ? $record->name
+                                    : 'حساب #'.$record->getKey())
+                                ->searchable(['name'])
+                                ->nullable(),
+
                             TextInput::make('reference_number')
                                 ->label('رقم مرجع')
                                 ->maxLength(255),

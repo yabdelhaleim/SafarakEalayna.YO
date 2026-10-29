@@ -198,7 +198,12 @@
                 </span>
                 <span v-else class="text-text-muted text-xs">—</span>
               </td>
-              <td class="px-4 py-3 font-mono">{{ formatMoney(tx.purchase_price) }}</td>
+              <td class="px-4 py-3 font-mono">
+                <div>{{ formatMoney(tx.purchase_price) }}</div>
+                <div v-if="tx.purchase_account" class="text-[10px] text-amber-400 font-sans truncate max-w-[110px]" :title="'خزينة الخصم: ' + tx.purchase_account.name">
+                  {{ tx.purchase_account.name }}
+                </div>
+              </td>
               <td class="px-4 py-3 font-mono">{{ formatMoney(tx.selling_price) }}</td>
               <td class="px-4 py-3 font-mono font-bold text-success">
                 {{ formatMoney(tx.profit) }}
@@ -207,6 +212,9 @@
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white/5">
                   {{ tx.payment_method_label || tx.payment_method }}
                 </span>
+                <div v-if="tx.account" class="text-[10px] text-sky-400/80 truncate max-w-[110px] mt-0.5" :title="'حساب التحصيل: ' + tx.account.name">
+                  {{ tx.account.name }}
+                </div>
               </td>
               <td class="px-4 py-3">
                 <span

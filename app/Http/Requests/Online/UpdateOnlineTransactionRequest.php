@@ -52,6 +52,14 @@ class UpdateOnlineTransactionRequest extends FormRequest
                     ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
                 new OnlineLiquidityAccount,
             ],
+            'purchase_account_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists((new Account)->getTable(), 'id')
+                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+                new OnlineLiquidityAccount,
+            ],
             'reference_number' => ['nullable', 'string', 'max:255'],
 
             'status' => ['nullable', Rule::in(array_column(OnlineTransactionStatus::cases(), 'value'))],

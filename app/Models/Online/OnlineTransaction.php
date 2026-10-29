@@ -35,6 +35,7 @@ class OnlineTransaction extends Model
         'profit',
         'payment_method',
         'account_id',
+        'purchase_account_id',
         'reference_number',
         'idempotency_key',
         'expense_transaction_id',
@@ -138,6 +139,11 @@ class OnlineTransaction extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'account_id');
+    }
+
+    public function purchaseAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'purchase_account_id');
     }
 
     public function paymentMethodRow(): BelongsTo

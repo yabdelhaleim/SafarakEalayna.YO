@@ -54,6 +54,13 @@ class StoreOnlineTransactionRequest extends FormRequest
                     ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
                 new OnlineLiquidityAccount,
             ],
+            'purchase_account_id' => [
+                'nullable',
+                'integer',
+                Rule::exists((new Account)->getTable(), 'id')
+                    ->where(fn ($q) => $q->where('is_active', true)->whereNull('deleted_at')),
+                new OnlineLiquidityAccount,
+            ],
             'reference_number' => ['nullable', 'string', 'max:255'],
 
             // SEC-4 idempotency. Whitelisted so it flows through

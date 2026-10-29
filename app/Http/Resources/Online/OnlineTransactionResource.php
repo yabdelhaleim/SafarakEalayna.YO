@@ -68,6 +68,13 @@ class OnlineTransactionResource extends JsonResource
             ] : null),
             'account_id' => $this->account_id,
 
+            'purchase_account' => $this->whenLoaded('purchaseAccount', fn () => $this->purchaseAccount ? [
+                'id' => $this->purchaseAccount->id,
+                'name' => $this->purchaseAccount->name,
+                'type' => $this->purchaseAccount->type,
+            ] : null),
+            'purchase_account_id' => $this->purchase_account_id,
+
             'reference_number' => $this->reference_number,
 
             'status' => $status?->value,

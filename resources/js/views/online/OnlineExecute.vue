@@ -313,6 +313,65 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Purchase Account Section (خزينة خصم التكلفة) -->
+              <div v-if="Number(form.purchase_price) > 0" class="mt-6 border-t border-white/10 pt-6 space-y-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <Wallet class="w-4 h-4 text-amber-400" />
+                    <span class="text-xs font-bold text-text-main">
+                      خزينة خصم التكلفة (سعر الشراء) <span class="text-error">*</span>
+                    </span>
+                  </div>
+                  <span class="text-[11px] text-text-muted">
+                    الخزينة أو المحفظة التي خُصم منها مبلغ {{ formatMoney(form.purchase_price) }}
+                  </span>
+                </div>
+
+                <!-- Chips to pick type for purchase account -->
+                <div class="grid grid-cols-3 gap-3">
+                  <button
+                    v-for="type in ACCOUNT_TYPE_OPTIONS"
+                    :key="'purchase-' + type"
+                    type="button"
+                    @click="pickPurchaseAccountType(type)"
+                    :disabled="filteredAccountsByType(type).length === 0"
+                    :class="[
+                      'rounded-xl border px-3 py-2 text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed',
+                      effectivePurchaseAccountType === type
+                        ? 'border-amber-400/80 bg-amber-400/10 text-amber-300 shadow-md shadow-amber-400/10'
+                        : 'border-white/10 bg-white/[0.02] text-text-muted hover:border-white/20',
+                    ]"
+                  >
+                    <div class="flex items-center justify-center gap-1.5 text-xs font-bold">
+                      <component
+                        :is="type === 'cashbox' ? Wallet : (type === 'bank' ? Landmark : Smartphone)"
+                        class="w-3.5 h-3.5"
+                      />
+                      <span>{{ ACCOUNT_TYPE_LABELS[type] }}</span>
+                    </div>
+                    <div class="text-[9px] text-text-muted mt-0.5">
+                      {{ filteredAccountsByType(type).length }} متاح
+                    </div>
+                  </button>
+                </div>
+
+                <!-- Select purchase account -->
+                <div class="space-y-1">
+                  <select
+                    v-model="form.purchase_account_id"
+                    :required="Number(form.purchase_price) > 0"
+                    class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm focus:border-amber-400/60 outline-none cursor-pointer text-text-main"
+                  >
+                    <option :value="null" class="bg-card-bg">
+                      {{ purchaseAccountsForType.length ? '— اختر الخزينة أو المحفظة التي تم الخصم منها —' : '— لا توجد حسابات متاحة لهذا النوع —' }}
+                    </option>
+                    <option v-for="a in purchaseAccountsForType" :key="'p-acc-' + a.id" :value="a.id" class="bg-card-bg">
+                      {{ a.name }} — رصيد ({{ formatMoney(a.balance) }})
+                    </option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             <!-- Collection -->
@@ -559,6 +618,14 @@
                 <span class="text-white/70">المتبقي (آجل)</span>
                 <span class="font-mono font-bold text-red-400">{{ formatMoney(Math.max((form.selling_price || 0) - (form.amount_paid || 0), 0)) }}</span>
               </div>
+              <div v-if="selectedPurchaseAccount" class="flex justify-between items-center text-xs text-amber-300/90 pt-2 border-t border-white/10">
+                <span>خصم الشراء من</span>
+                <span class="font-bold truncate max-w-[130px]">{{ selectedPurchaseAccount.name }}</span>
+              </div>
+              <div v-if="selectedCollectionAccount" class="flex justify-between items-center text-xs text-sky-300/90">
+                <span>تحصيل العميل في</span>
+                <span class="font-bold truncate max-w-[130px]">{{ selectedCollectionAccount.name }}</span>
+              </div>
             </div>
           </div>
 
@@ -639,6 +706,7 @@ const initialForm = () => ({
   customer_phone: '',
   employee_id: null,
   purchase_price: 0,
+  purchase_account_id: null,
   selling_price: 0,
   amount_paid: 0,
   payment_method: '',
@@ -664,10 +732,11 @@ const isStep2Complete = computed(() =>
   !!form.value.customer_id || !!String(form.value.customer_name || '').trim()
 );
 const isStep3Complete = computed(() =>
-  Number(form.value.purchase_price) > 0
+  Number(form.value.purchase_price) >= 0
   && Number(form.value.selling_price) > 0
   && !!form.value.payment_method
   && !!form.value.account_id
+  && (Number(form.value.purchase_price) <= 0 || !!form.value.purchase_account_id)
 );
 
 const isStepComplete = (step) => {
@@ -830,6 +899,59 @@ function filteredAccountsByType(type) {
 
 const ACCOUNT_TYPE_OPTIONS = ['cashbox', 'bank', 'wallet'];
 
+const manualPurchaseAccountType = ref(null);
+
+const effectivePurchaseAccountType = computed(() => {
+  if (manualPurchaseAccountType.value) return manualPurchaseAccountType.value;
+  if (form.value.purchase_account_id) {
+    const acc = store.accounts.find((a) => a.id === form.value.purchase_account_id);
+    if (acc) return normalizeAccountType(acc.type);
+  }
+  return null;
+});
+
+const purchaseAccountsForType = computed(() => {
+  if (!effectivePurchaseAccountType.value) {
+    return store.accounts.filter((a) => a.is_active !== false);
+  }
+  return store.accounts.filter(
+    (a) => a.is_active !== false && normalizeAccountType(a.type) === effectivePurchaseAccountType.value,
+  );
+});
+
+function pickPurchaseAccountType(type) {
+  manualPurchaseAccountType.value = type;
+  if (form.value.purchase_account_id) {
+    const acc = store.accounts.find((a) => a.id === form.value.purchase_account_id);
+    if (acc && normalizeAccountType(acc.type) !== type) {
+      form.value.purchase_account_id = null;
+    }
+  }
+}
+
+const selectedPurchaseAccount = computed(() => {
+  if (!form.value.purchase_account_id) return null;
+  return store.accounts.find((a) => a.id === form.value.purchase_account_id) ?? null;
+});
+
+const selectedCollectionAccount = computed(() => {
+  if (!form.value.account_id) return null;
+  return store.accounts.find((a) => a.id === form.value.account_id) ?? null;
+});
+
+watch(() => form.value.provider_code, (newCode) => {
+  if (newCode && !form.value.purchase_account_id) {
+    const prov = store.providers.find((p) => p.code === newCode || p.name_ar === newCode);
+    if (prov?.default_purchase_account_id) {
+      form.value.purchase_account_id = prov.default_purchase_account_id;
+      const acc = store.accounts.find((a) => a.id === prov.default_purchase_account_id);
+      if (acc) {
+        manualPurchaseAccountType.value = normalizeAccountType(acc.type);
+      }
+    }
+  }
+});
+
 const profit = computed(() => {
   const purchase = Number(form.value.purchase_price) || 0;
   const selling = Number(form.value.selling_price) || 0;
@@ -895,6 +1017,10 @@ const submit = async () => {
     store.addToast('اختر حساب التحصيل.', 'error');
     return;
   }
+  if (Number(form.value.purchase_price) > 0 && !form.value.purchase_account_id) {
+    store.addToast('اختر خزينة خصم التكلفة (سعر الشراء).', 'error');
+    return;
+  }
 
   try {
     const payload = {
@@ -902,6 +1028,7 @@ const submit = async () => {
       service_type_code: String(form.value.service_type_code ?? '').trim(),
       provider_code: String(form.value.provider_code ?? '').trim() || null,
       account_id: Number(form.value.account_id),
+      purchase_account_id: form.value.purchase_account_id ? Number(form.value.purchase_account_id) : null,
       purchase_price: Number(form.value.purchase_price),
       selling_price: Number(form.value.selling_price),
       amount_paid: Number(form.value.amount_paid),
