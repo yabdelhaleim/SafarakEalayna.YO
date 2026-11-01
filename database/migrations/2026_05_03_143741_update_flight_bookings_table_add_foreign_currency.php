@@ -13,27 +13,37 @@ return new class extends Migration
     {
         Schema::table('flight_bookings', function (Blueprint $table) {
             // ربط الحجز بالـ System و Carrier و Group الجديدة
-            $table->foreignId('flight_system_id')->nullable()->constrained()->onDelete('set null')->after('system_type');
-            $table->foreignId('flight_carrier_id')->nullable()->constrained()->onDelete('set null')->after('flight_system_id');
-            $table->foreignId('flight_group_id')->nullable()->constrained()->onDelete('set null')->after('flight_carrier_id');
+            if (! Schema::hasColumn('flight_bookings', 'flight_system_id')) {
+                $table->foreignId('flight_system_id')->nullable()->constrained()->onDelete('set null')->after('system_type');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'flight_carrier_id')) {
+                $table->foreignId('flight_carrier_id')->nullable()->constrained()->onDelete('set null')->after('flight_system_id');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'flight_group_id')) {
+                $table->foreignId('flight_group_id')->nullable()->constrained()->onDelete('set null')->after('flight_carrier_id');
+            }
 
             // ربط المطارات
-            $table->foreignId('from_airport_id')->nullable()->constrained('airports')->onDelete('set null')->after('from_airport');
-            $table->foreignId('to_airport_id')->nullable()->constrained('airports')->onDelete('set null')->after('to_airport');
+            if (! Schema::hasColumn('flight_bookings', 'from_airport_id')) {
+                $table->foreignId('from_airport_id')->nullable()->constrained('airports')->onDelete('set null')->after('from_airport');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'to_airport_id')) {
+                $table->foreignId('to_airport_id')->nullable()->constrained('airports')->onDelete('set null')->after('to_airport');
+            }
 
             // حقول العملة الأجنبية
-            $table->string('foreign_currency', 3)->nullable()->after('currency');
-            $table->decimal('purchase_price_foreign', 15, 2)->nullable()->after('foreign_currency');
-            $table->decimal('exchange_rate', 15, 4)->default(1.0)->after('purchase_price_foreign');
-            $table->decimal('purchase_price_egp', 15, 2)->nullable()->after('exchange_rate');
-
-            //Indexes
-            $table->index('flight_system_id');
-            $table->index('flight_carrier_id');
-            $table->index('flight_group_id');
-            $table->index('from_airport_id');
-            $table->index('to_airport_id');
-            $table->index('foreign_currency');
+            if (! Schema::hasColumn('flight_bookings', 'foreign_currency')) {
+                $table->string('foreign_currency', 3)->nullable()->after('currency');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'purchase_price_foreign')) {
+                $table->decimal('purchase_price_foreign', 15, 2)->nullable()->after('foreign_currency');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'exchange_rate')) {
+                $table->decimal('exchange_rate', 15, 4)->default(1.0)->after('purchase_price_foreign');
+            }
+            if (! Schema::hasColumn('flight_bookings', 'purchase_price_egp')) {
+                $table->decimal('purchase_price_egp', 15, 2)->nullable()->after('exchange_rate');
+            }
         });
     }
 

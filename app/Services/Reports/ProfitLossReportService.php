@@ -435,6 +435,8 @@ class ProfitLossReportService
      */
     private function applySoftDeleteExclusion(Builder $query): void
     {
+        $query->whereNull('t.deleted_at');
+
         $exclusions = [
             BusBooking::class => 'bus_bookings',
             FlightBooking::class => 'flight_bookings',

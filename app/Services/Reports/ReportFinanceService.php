@@ -545,6 +545,8 @@ class ReportFinanceService
             $query->where('transactions.type', $filters['type']);
         }
 
+        $query->whereNull('transactions.deleted_at');
+
         if (! empty($filters['expenses_only'])) {
             $query->where(function ($q): void {
                 $q->where('transactions.type', 'expense')
@@ -555,7 +557,15 @@ class ReportFinanceService
             })
             // استثناء تكاليف الحجوزات التلقائية (فوري، باص، أونلاين، إلخ)
             // المصروف اليدوي الحقيقي لا يكون مربوطاً بحجز (related_type = NULL)
-            ->whereNull('transactions.related_type');
+            ->whereNull('transactions.related_type')
+            // استثناء المعاملات المعكوسة
+            ->where(function ($q): void {
+                $q->whereNull('transactions.notes')
+                    ->orWhere(function ($sub): void {
+                        $sub->where('transactions.notes', 'not like', 'عكس:%')
+                            ->where('transactions.notes', 'not like', 'عكس %');
+                    });
+            });
         }
 
         if (! empty($filters['search'])) {

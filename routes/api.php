@@ -162,10 +162,10 @@ Route::prefix('v1')->middleware([
             Route::get('accounts/{account}/statement/export', [AccountStatementExportController::class, 'export']);
             Route::post('transfers', [AccountController::class, 'transfer']);
             Route::get('transfers', [AccountController::class, 'transferHistory']);
-
-            // Transactions resource routes
-            Route::apiResource('transactions', TransactionController::class)->except(['index', 'show'])->names('finance_transactions');
         });
+
+        // Transactions resource routes (authorization managed via TransactionPolicy)
+        Route::apiResource('transactions', TransactionController::class)->except(['index', 'show'])->names('finance_transactions');
     });
 
     // Flights API

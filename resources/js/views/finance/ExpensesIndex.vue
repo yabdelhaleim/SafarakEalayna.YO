@@ -68,21 +68,22 @@
               <th class="p-4 font-semibold">المبلغ</th>
               <th class="p-4 font-semibold">البيان / الوصف</th>
               <th class="p-4 font-semibold">بواسطة</th>
+              <th v-if="canManageExpenses" class="p-4 font-semibold text-center">الإجراءات</th>
             </tr>
           </thead>
           <tbody class="text-sm text-white divide-y divide-white/5">
             <template v-if="asyncState === 'loading'">
               <tr v-for="i in 8" :key="i" class="border-b border-white/5">
-                <td v-for="j in 7" :key="j" class="p-4">
+                <td :colspan="canManageExpenses ? 8 : 7" class="p-4">
                   <div class="h-4 bg-white/5 animate-pulse rounded w-full"></div>
                 </td>
               </tr>
             </template>
             <tr v-else-if="asyncState === 'error'" class="text-center">
-              <td colspan="7" class="p-8 text-error">حدث خطأ أثناء تحميل المصروفات</td>
+              <td :colspan="canManageExpenses ? 8 : 7" class="p-8 text-error">حدث خطأ أثناء تحميل المصروفات</td>
             </tr>
             <tr v-else-if="asyncState === 'empty'" class="text-center">
-              <td colspan="7" class="p-8 text-text-muted">لا توجد مصروفات مسجلة بعد.</td>
+              <td :colspan="canManageExpenses ? 8 : 7" class="p-8 text-text-muted">لا توجد مصروفات مسجلة بعد.</td>
             </tr>
             <template v-else>
               <tr v-for="expense in filteredExpenses" :key="expense.id" class="hover:bg-white/5 transition-colors">
@@ -115,6 +116,26 @@
                 </td>
                 <td class="p-4 text-text-muted">
                   {{ expense.created_by_name || expense.created_by?.name || '---' }}
+                </td>
+                <td v-if="canManageExpenses" class="p-4 text-center">
+                  <div class="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      @click="openEditModal(expense)"
+                      title="تعديل المصروف"
+                      class="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors border border-amber-500/20 cursor-pointer"
+                    >
+                      <Edit3 class="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      @click="openDeleteModal(expense)"
+                      title="إلغاء وحذف المصروف"
+                      class="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors border border-rose-500/20 cursor-pointer"
+                    >
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             </template>
@@ -361,6 +382,216 @@
         </form>
       </div>
     </div>
+
+    <!-- Edit Expense Modal -->
+    <div v-if="isEditModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeEditModal"></div>
+      
+      <div class="bg-card-bg border border-white/10 w-full max-w-lg rounded-2xl shadow-2xl relative z-10 overflow-hidden">
+        <div class="p-6 border-b border-white/10 bg-gradient-to-l from-amber-500/10 to-transparent">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+              <Edit3 class="w-6 h-6 text-amber-400" />
+              تعديل المصروف
+            </h3>
+            <span class="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-full font-mono">
+              #{{ editForm.id }}
+            </span>
+          </div>
+          <p class="text-xs text-text-muted mt-1">تعديل محاسبي آمن عبر إنشاء قيد عكسي وقيد جديد محدّث</p>
+        </div>
+
+        <div class="mx-6 mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-2 text-xs text-amber-200">
+          <AlertTriangle class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <span>
+            <strong>تنبيه محاسبي:</strong> لن يتم التعديل اليدوي على القيود القديمة لحفظ تاريخ المعاملة. سيقوم النظام بعمل قيد عكسي وإعادة احتساب رصيد الخزينة بدقة.
+          </span>
+        </div>
+        
+        <form @submit.prevent="submitEditExpense" class="p-6 space-y-4">
+          <div v-if="editError" class="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
+            {{ editError }}
+          </div>
+
+          <!-- المبلغ -->
+          <div>
+            <label for="edit-expense-amount" class="block text-sm font-medium text-white mb-2">المبلغ الجديد</label>
+            <div class="relative">
+              <input
+                id="edit-expense-amount"
+                name="edit_expense_amount"
+                type="number"
+                v-model.number="editForm.amount"
+                required
+                min="0.01"
+                step="0.01"
+                class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 pr-16 focus:outline-none focus:border-amber-500 transition-colors"
+                placeholder="أدخل المبلغ..."
+              />
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted font-bold">{{ editForm.from_account_currency || 'EGP' }}</span>
+            </div>
+            <p v-if="editForm.original_amount !== undefined" class="text-xs text-text-muted mt-1 flex items-center justify-between">
+              <span>المبلغ السابق: <strong class="text-white">{{ formatCurrency(editForm.original_amount, editForm.from_account_currency || 'EGP') }}</strong></span>
+              <span v-if="editForm.amount && editForm.amount !== editForm.original_amount">
+                الفرق: <strong :class="editForm.amount > editForm.original_amount ? 'text-rose-400' : 'text-emerald-400'" dir="ltr">
+                  {{ (editForm.amount - editForm.original_amount > 0 ? '+' : '') + (editForm.amount - editForm.original_amount).toFixed(2) }}
+                </strong>
+              </span>
+            </p>
+          </div>
+
+          <!-- الخزينة المسحوب منها -->
+          <div>
+            <label for="edit-expense-account-id" class="block text-sm font-medium text-white mb-2">الخزينة / طريقة الدفع</label>
+            <select
+              id="edit-expense-account-id"
+              name="edit_expense_account_id"
+              v-model="editForm.account_id"
+              required
+              class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 transition-colors"
+            >
+              <option v-for="acc in treasuryAccounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }} — ({{ formatCurrency(acc.balance, acc.currency) }})
+              </option>
+            </select>
+          </div>
+
+          <!-- بند المصروف -->
+          <div>
+            <label for="edit-expense-to-account-id" class="block text-sm font-medium text-white mb-2">بند المصروف (التصنيف)</label>
+            <select
+              id="edit-expense-to-account-id"
+              name="edit_expense_to_account_id"
+              v-model="editForm.to_account_id"
+              class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 transition-colors"
+            >
+              <option value="" disabled>اختر التصنيف...</option>
+              <option v-for="acc in expenseAccounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }}
+              </option>
+            </select>
+          </div>
+
+          <!-- التاريخ -->
+          <div>
+            <label for="edit-expense-date" class="block text-sm font-medium text-white mb-2">تاريخ المصروف</label>
+            <input
+              id="edit-expense-date"
+              name="edit_expense_date"
+              type="date"
+              v-model="editForm.date"
+              class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 transition-colors"
+            />
+          </div>
+
+          <!-- البيان / الملاحظات -->
+          <div>
+            <label for="edit-expense-notes" class="block text-sm font-medium text-white mb-2">البيان / الوصف</label>
+            <textarea
+              id="edit-expense-notes"
+              name="edit_expense_notes"
+              v-model="editForm.notes"
+              rows="3"
+              class="w-full bg-input-bg border border-white/10 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 transition-colors"
+              placeholder="اكتب تفاصيل أو سبب التعديل..."
+            ></textarea>
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button
+              type="button"
+              @click="closeEditModal"
+              class="flex-1 bg-white/5 hover:bg-white/10 text-white py-3 rounded-xl font-bold transition-colors"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              :disabled="isEditing"
+              class="flex-1 bg-gradient-to-l from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-amber-500/20 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+            >
+              <span v-if="isEditing" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span v-else>حفظ التعديلات</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Delete Expense Confirmation Modal -->
+    <div v-if="isDeleteModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeDeleteModal"></div>
+      
+      <div class="bg-card-bg border border-white/10 w-full max-w-md rounded-2xl shadow-2xl relative z-10 overflow-hidden">
+        <div class="p-6 border-b border-white/10 bg-gradient-to-l from-rose-500/10 to-transparent">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <Trash2 class="w-6 h-6" />
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">إلغاء وحذف المصروف</h3>
+              <p class="text-xs text-text-muted">استرجاع المبلغ للخزينة بقيد عكسي</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div v-if="deleteError" class="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
+            {{ deleteError }}
+          </div>
+
+          <div v-if="expenseToDelete" class="bg-white/5 rounded-xl p-4 space-y-2 text-sm border border-white/5">
+            <div class="flex justify-between items-center">
+              <span class="text-text-muted">المبلغ:</span>
+              <span class="font-bold text-rose-400 text-base">
+                {{ formatCurrency(expenseToDelete.amount, expenseToDelete.from_account_currency || 'EGP') }}
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-text-muted">بند المصروف:</span>
+              <span class="text-white">{{ expenseToDelete.to_account_name || expenseToDelete.to_account?.name || '---' }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-text-muted">الخزينة المدفوع منها:</span>
+              <span class="text-emerald-400">{{ expenseToDelete.from_account_name || expenseToDelete.from_account?.name || '---' }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-text-muted">تاريخ التسجيل:</span>
+              <span class="text-white font-mono">{{ formatDate(expenseToDelete.created_at) }}</span>
+            </div>
+            <div v-if="expenseToDelete.notes" class="pt-2 border-t border-white/5 text-xs text-text-muted">
+              البيان: {{ expenseToDelete.notes }}
+            </div>
+          </div>
+
+          <p class="text-xs text-text-muted leading-relaxed">
+            هل أنت متأكد من إلغاء هذا المصروف؟ سيقوم النظام بـ
+            <strong class="text-emerald-400">رد كامل المبلغ تلقائياً إلى الخزينة</strong>
+            بقيد محاسبي عكسي وإلغاء تأثيره من التقارير مع توثيق العملية في سجل التدقيق.
+          </p>
+
+          <div class="flex gap-3 pt-2">
+            <button
+              type="button"
+              @click="closeDeleteModal"
+              :disabled="isDeleting"
+              class="flex-1 bg-white/5 hover:bg-white/10 text-white py-3 rounded-xl font-bold transition-colors"
+            >
+              تراجع
+            </button>
+            <button
+              type="button"
+              @click="confirmDeleteExpense"
+              :disabled="isDeleting"
+              class="flex-1 bg-gradient-to-l from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-rose-500/20 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+            >
+              <span v-if="isDeleting" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span v-else>تأكيد الإلغاء ورد المبلغ</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -372,9 +603,13 @@ import {
   Coins,
   PlusCircle,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Edit3,
+  Trash2,
+  AlertTriangle
 } from 'lucide-vue-next';
 import { useAsyncState } from '@/composables/useAsyncState';
+import { useAuthStore } from '@/stores/authStore';
 import {
   formatAccountType,
   unwrapAccountItems,
@@ -386,8 +621,38 @@ import {
 } from '@/composables/useTreasuryAccountGroups';
 import axios from 'axios';
 
+const authStore = useAuthStore();
+const canManageExpenses = computed(() => {
+  if (authStore.isAdmin) return true;
+  const perms = Array.isArray(authStore.user?.permissions) ? authStore.user.permissions : [];
+  return perms.includes('manage_finance');
+});
+
 const globalError = ref('');
 const successMessage = ref('');
+
+// Edit Modal State
+const isEditModalOpen = ref(false);
+const isEditing = ref(false);
+const editError = ref('');
+const editForm = ref({
+  id: null,
+  amount: '',
+  account_id: '',
+  to_account_id: '',
+  module: 'general',
+  notes: '',
+  date: '',
+  original_amount: 0,
+  from_account_name: '',
+  from_account_currency: 'EGP'
+});
+
+// Delete Modal State
+const isDeleteModalOpen = ref(false);
+const isDeleting = ref(false);
+const deleteError = ref('');
+const expenseToDelete = ref(null);
 
 const { state: asyncState, setLoading, setSuccess, setError } = useAsyncState();
 const isModalOpen = ref(false);
@@ -713,6 +978,100 @@ const submitExpense = async () => {
     globalError.value = msg;
   } finally {
     isSubmitting.value = false;
+  }
+};
+
+const notify = (message, type = 'success') => {
+  if (typeof window !== 'undefined') {
+    if (typeof window.addToast === 'function') {
+      window.addToast(message, type);
+    } else {
+      window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+    }
+  }
+};
+
+const openEditModal = (expense) => {
+  editError.value = '';
+  editForm.value = {
+    id: expense.id,
+    amount: parseFloat(expense.amount) || '',
+    account_id: expense.from_account_id,
+    to_account_id: expense.to_account_id || '',
+    module: expense.module || 'general',
+    notes: expense.notes || '',
+    date: expense.created_at ? expense.created_at.substring(0, 10) : '',
+    original_amount: parseFloat(expense.amount) || 0,
+    from_account_name: expense.from_account_name || expense.from_account?.name || '',
+    from_account_currency: expense.from_account_currency || 'EGP'
+  };
+  isEditModalOpen.value = true;
+};
+
+const closeEditModal = () => {
+  isEditModalOpen.value = false;
+  editError.value = '';
+};
+
+const submitEditExpense = async () => {
+  if (isEditing.value) return;
+  isEditing.value = true;
+  editError.value = '';
+
+  try {
+    const payload = {
+      amount: editForm.value.amount,
+      account_id: editForm.value.account_id,
+      to_account_id: editForm.value.to_account_id || undefined,
+      notes: editForm.value.notes,
+      module: editForm.value.module,
+      date: editForm.value.date || undefined,
+    };
+
+    const res = await axios.put(`/api/v1/finance/transactions/${editForm.value.id}`, payload);
+
+    notify(res.data?.message || 'تم تحديث المصروف وإعادة احتساب الأرصدة بنجاح', 'success');
+    closeEditModal();
+    await fetchAccounts();
+    fetchTransactions(pagination.value.current_page);
+  } catch (error) {
+    const msg = error.response?.data?.message || 'حدث خطأ أثناء تعديل المصروف';
+    editError.value = msg;
+    notify(msg, 'error');
+  } finally {
+    isEditing.value = false;
+  }
+};
+
+const openDeleteModal = (expense) => {
+  expenseToDelete.value = expense;
+  deleteError.value = '';
+  isDeleteModalOpen.value = true;
+};
+
+const closeDeleteModal = () => {
+  isDeleteModalOpen.value = false;
+  expenseToDelete.value = null;
+  deleteError.value = '';
+};
+
+const confirmDeleteExpense = async () => {
+  if (!expenseToDelete.value || isDeleting.value) return;
+  isDeleting.value = true;
+  deleteError.value = '';
+
+  try {
+    const res = await axios.delete(`/api/v1/finance/transactions/${expenseToDelete.value.id}`);
+    notify(res.data?.message || 'تم حذف المصروف وإعادة المبلغ للخزينة بنجاح', 'success');
+    closeDeleteModal();
+    await fetchAccounts();
+    fetchTransactions(pagination.value.current_page);
+  } catch (error) {
+    const msg = error.response?.data?.message || 'حدث خطأ أثناء حذف المصروف';
+    deleteError.value = msg;
+    notify(msg, 'error');
+  } finally {
+    isDeleting.value = false;
   }
 };
 

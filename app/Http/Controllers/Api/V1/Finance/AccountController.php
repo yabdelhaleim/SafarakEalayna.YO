@@ -329,7 +329,12 @@ class AccountController extends Controller
 
             return ApiResponse::success('Transfer completed successfully.', new TransferResource($transfer), 201);
         } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), null, 422);
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'Insufficient balance in account:')) {
+                $accountName = trim(str_ireplace('Insufficient balance in account:', '', $msg));
+                $msg = "رصيد غير كافٍ في ({$accountName}). لا يمكن تسجيل أو صرف مبلغ يتجاوز الرصيد المتاح في الخزينة.";
+            }
+            return ApiResponse::error($msg, null, 422);
         }
     }
 

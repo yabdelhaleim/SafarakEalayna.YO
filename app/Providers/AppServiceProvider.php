@@ -117,6 +117,8 @@ class AppServiceProvider extends ServiceProvider
         HajjUmraExecutingCompany::observe(HajjUmraExecutingCompanyObserver::class);
         FlightGroup::observe(FlightGroupObserver::class);
 
+        \Illuminate\Support\Facades\Gate::policy(\App\Models\Transaction::class, \App\Policies\TransactionPolicy::class);
+
         Event::listen(
             TicketModified::class,
             ProcessTicketModificationAccounting::class
