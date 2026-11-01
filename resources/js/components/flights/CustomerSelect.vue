@@ -68,7 +68,17 @@
               {{ getInitials(customer.name || customer.full_name) }}
             </div>
             <div class="flex-1 min-w-0">
-              <div class="font-medium truncate text-right">{{ customer.name || customer.full_name }}</div>
+              <div class="font-medium truncate text-right flex items-center gap-2">
+                {{ customer.name || customer.full_name }}
+                <span
+                  class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                  :class="customer.type === 'counter' || customer.type === 'company'
+                    ? 'bg-sky-500/20 text-sky-300'
+                    : 'bg-gold/20 text-gold'"
+                >
+                  {{ customer.type === 'counter' || customer.type === 'company' ? 'شركة' : 'فرد' }}
+                </span>
+              </div>
               <div class="text-xs text-muted text-right">
                 {{ customer.phone }}
                 <span v-if="customer.national_id"> | الرقم القومي: {{ customer.national_id }}</span>
@@ -144,8 +154,38 @@
             <textarea v-model="newCustomer.notes" rows="3" class="w-full p-3 bg-input border border-white/10 rounded-xl focus:border-gold outline-none text-right" placeholder="أية ملاحظات إضافية"></textarea>
           </div>
         </div>
-        <div class="flex gap-3 mt-8">
-          <button @click="showCreateModal = false" class="flex-1 py-3 bg-white/5 rounded-xl hover:bg-white/10 transition-all text-sm">إلغاء</button>
+
+        <!-- بطاقة الاختيار الذكية عند تكرار الهاتف -->
+        <div
+          v-if="duplicateCustomer"
+          class="mt-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 flex items-center justify-between gap-3"
+          dir="rtl"
+        >
+          <div>
+            <p class="text-xs text-yellow-400/80 mb-1">💡 هذا الرقم مسجل بالفعل</p>
+            <p class="font-bold text-white">{{ duplicateCustomer.full_name || duplicateCustomer.name }}</p>
+            <p class="text-xs text-muted">
+              {{ duplicateCustomer.phone }}
+              <span
+                class="mr-2 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                :class="duplicateCustomer.type === 'counter' || duplicateCustomer.type === 'company'
+                  ? 'bg-sky-500/20 text-sky-300'
+                  : 'bg-gold/20 text-gold'"
+              >
+                {{ duplicateCustomer.type === 'counter' || duplicateCustomer.type === 'company' ? 'شركة' : 'فرد' }}
+              </span>
+            </p>
+          </div>
+          <button
+            @click="selectExisting(duplicateCustomer)"
+            class="shrink-0 px-4 py-2 bg-yellow-500 text-black text-sm font-bold rounded-xl hover:bg-yellow-400 transition-all"
+          >
+            اختياره للحجز
+          </button>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button @click="showCreateModal = false; duplicateCustomer = null" class="flex-1 py-3 bg-white/5 rounded-xl hover:bg-white/10 transition-all text-sm">إلغاء</button>
           <button @click="saveCustomer" :disabled="savingCustomer" class="flex-1 py-3 bg-gold text-black font-bold rounded-xl hover:bg-gold/80 transition-all shadow-lg shadow-gold/20 disabled:opacity-50 text-sm">
             {{ savingCustomer ? 'جارٍ الحفظ...' : 'حفظ العميل' }}
           </button>
@@ -198,10 +238,12 @@ watch(() => props.type, (newType) => {
 const savingCustomer = ref(false);
 const phoneError    = ref('');
 const whatsappError = ref('');
+const duplicateCustomer = ref(null);
 
 const onPhoneFieldInput = () => {
   newCustomer.value.phone = enforcePhoneInput(newCustomer.value.phone);
   phoneError.value = '';
+  duplicateCustomer.value = null;
 };
 const onPhoneBlur = () => {
   phoneError.value = validateEgyptianPhone(newCustomer.value.phone);
@@ -282,6 +324,7 @@ const saveCustomer = async () => {
     const saved = await store.createCustomer(newCustomer.value);
     selectCustomer(saved);
     showCreateModal.value = false;
+    duplicateCustomer.value = null;
     phoneError.value    = '';
     whatsappError.value = '';
     newCustomer.value = {
@@ -303,10 +346,38 @@ const saveCustomer = async () => {
       const firstError = Object.values(error.response.data.errors)[0];
       errorMsg = Array.isArray(firstError) ? firstError[0] : firstError;
     }
+
+    // إذا كان الخطأ "رقم الهاتف مستخدم"، نعرض بطاقة الاختيار بدل الخطأ الأحمر
+    const isPhoneTaken = errorMsg === 'رقم الهاتف مستخدم بالفعل' ||
+      error.response?.data?.errors?.phone;
+    if (isPhoneTaken && newCustomer.value.phone) {
+      try {
+        await store.fetchCustomers({ search: newCustomer.value.phone });
+        const normalize = (p) => (p || '').replace(/\D/g, '');
+        const enteredNorm = normalize(newCustomer.value.phone);
+        const found = (store.customers || []).find(
+          (c) => normalize(c.phone) === enteredNorm
+        ) || null;
+        if (found) {
+          duplicateCustomer.value = found;
+          // لا نعرض toast خطأ — البطاقة الذكية ستظهر بدلاً منه
+          return;
+        }
+      } catch (_) {
+        // لو البحث فشل، نرجع للـ toast العادي
+      }
+    }
+
     store.addToast(errorMsg, 'error');
   } finally {
     savingCustomer.value = false;
   }
+};
+
+const selectExisting = (customer) => {
+  selectCustomer(customer);
+  showCreateModal.value = false;
+  duplicateCustomer.value = null;
 };
 
 // Keyboard navigation

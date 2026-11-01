@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Customer;
 
+use App\Models\Customer;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCustomerRequest extends FormRequest
 {
@@ -13,20 +15,21 @@ class UpdateCustomerRequest extends FormRequest
 
     public function rules(): array
     {
-        $customerId = $this->route('customer')?->id;
+        $routeCustomer = $this->route('customer');
+        $customerId    = $routeCustomer instanceof Customer ? $routeCustomer->id : (int) $routeCustomer;
 
         return [
-            'full_name' => 'sometimes|string|max:100',
-            'phone' => 'sometimes|string|max:20|unique:customers,phone,'.$customerId.',id',
-            'national_id' => 'nullable|string|max:20|unique:customers,national_id,'.$customerId.',id',
+            'full_name'      => 'sometimes|string|max:100',
+            'phone'          => ['sometimes', 'string', 'max:20', Rule::unique('customers', 'phone')->ignore($customerId)->whereNull('deleted_at')],
+            'national_id'    => ['nullable', 'string', 'max:20', Rule::unique('customers', 'national_id')->ignore($customerId)->whereNull('deleted_at')],
             'passport_number' => 'nullable|string|max:20',
             'passport_expiry' => 'nullable|date',
-            'date_of_birth' => 'nullable|date',
-            'city' => 'nullable|string|max:100',
-            'affiliation' => 'nullable|string|max:100',
-            'customer_tier' => 'nullable|in:STANDARD,PREMIUM,VIP,AGENT',
-            'notes' => 'nullable|string|max:1000',
-            'type' => 'nullable|string|max:50',
+            'date_of_birth'  => 'nullable|date',
+            'city'           => 'nullable|string|max:100',
+            'affiliation'    => 'nullable|string|max:100',
+            'customer_tier'  => 'nullable|in:STANDARD,PREMIUM,VIP,AGENT',
+            'notes'          => 'nullable|string|max:1000',
+            'type'           => 'nullable|string|max:50',
             'whatsapp_number' => 'nullable|string|max:50',
             'travel_country' => 'nullable|string|max:100',
         ];
@@ -35,13 +38,14 @@ class UpdateCustomerRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'full_name.string' => 'الاسم يجب أن يكون نصاً',
-            'full_name.max' => 'الاسم يجب ألا يتجاوز 100 حرف',
-            'phone.string' => 'رقم الهاتف يجب أن يكون نصاً',
-            'phone.max' => 'رقم الهاتف يجب ألا يتجاوز 20 حرف',
-            'phone.unique' => 'رقم الهاتف مستخدم بالفعل',
-            'national_id.unique' => 'رقم الهوية مستخدم بالفعل',
-            'customer_tier.in' => 'فئة العميل يجب أن تكون: STANDARD, PREMIUM, VIP, AGENT',
+            'full_name.string'     => 'الاسم يجب أن يكون نصاً',
+            'full_name.max'        => 'الاسم يجب ألا يتجاوز 100 حرف',
+            'phone.string'         => 'رقم الهاتف يجب أن يكون نصاً',
+            'phone.max'            => 'رقم الهاتف يجب ألا يتجاوز 20 حرف',
+            'phone.unique'         => 'رقم الهاتف مستخدم بالفعل',
+            'national_id.unique'   => 'رقم الهوية مستخدم بالفعل',
+            'customer_tier.in'     => 'فئة العميل يجب أن تكون: STANDARD, PREMIUM, VIP, AGENT',
         ];
     }
 }
+

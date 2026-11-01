@@ -4111,7 +4111,16 @@ const submitBooking = async () => {
         loading.value = false;
         return;
       }
-      await persistCustomerProfile();
+      try {
+        await persistCustomerProfile();
+      } catch (profileError) {
+        // فشل تحديث الملف الشخصي — لا نوقف حفظ التذكرة، نُظهر تنبيهاً للموظف
+        const profileErrMsg = profileError?.response?.data?.errors
+          ? Object.values(profileError.response.data.errors)[0]?.[0] || 'خطأ في تحديث بيانات العميل'
+          : 'تعذّر تحديث بيانات العميل — التذكرة ستُحفظ بالبيانات القديمة، يرجى مراجعة ملف العميل بعد الحفظ';
+        store.addToast(`⚠️ تنبيه: ${profileErrMsg}`, 'warning');
+        console.warn('persistCustomerProfile failed (non-blocking):', profileError);
+      }
     }
 
     const routeFields = resolveRouteBookingFields();

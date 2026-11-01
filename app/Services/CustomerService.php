@@ -60,13 +60,20 @@ class CustomerService
         }
 
         if (isset($filters['type']) && $filters['type']) {
-            $type = $filters['type'];
-            if ($type === 'regular') {
-                $type = 'individual';
-            } elseif ($type === 'counter') {
-                $type = 'company';
+            // إذا كان البحث يبدو كرقم هاتف (8 أرقام أو أكثر)، نتجاهل فلتر النوع
+            // حتى يظهر العميل بغض النظر عن نوعه ويتجنب الموظف خطأ "الرقم مستخدم"
+            $isPhoneSearch = isset($filters['search']) &&
+                preg_match('/^\d{8,}$/', preg_replace('/\D/', '', $filters['search']));
+
+            if (! $isPhoneSearch) {
+                $type = $filters['type'];
+                if ($type === 'regular') {
+                    $type = 'individual';
+                } elseif ($type === 'counter') {
+                    $type = 'company';
+                }
+                $query->where('customers.type', $type);
             }
-            $query->where('customers.type', $type);
         }
 
         if (isset($filters['module']) && $filters['module'] && $filters['module'] !== 'all') {

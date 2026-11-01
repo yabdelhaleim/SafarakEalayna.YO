@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Customer;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreCustomerRequest extends FormRequest
 {
@@ -15,8 +16,8 @@ class StoreCustomerRequest extends FormRequest
     {
         $rules = [
             'full_name' => 'required|string|max:100',
-            'phone' => 'required|string|max:20|unique:customers,phone',
-            'national_id' => 'nullable|string|max:20|unique:customers,national_id',
+            'phone' => ['required', 'string', 'max:20', Rule::unique('customers', 'phone')->whereNull('deleted_at')],
+            'national_id' => ['nullable', 'string', 'max:20', Rule::unique('customers', 'national_id')->whereNull('deleted_at')],
             'passport_number' => 'nullable|string|max:20',
             'passport_expiry' => 'nullable|date',
             'date_of_birth' => 'nullable|date|before_or_equal:today',
@@ -30,7 +31,7 @@ class StoreCustomerRequest extends FormRequest
         ];
 
         if (! $this->isCompanyCustomer()) {
-            $rules['national_id'] = 'required|string|max:20|unique:customers,national_id';
+            $rules['national_id'] = ['required', 'string', 'max:20', Rule::unique('customers', 'national_id')->whereNull('deleted_at')];
             $rules['travel_country'] = 'required|string|max:100';
         }
 
