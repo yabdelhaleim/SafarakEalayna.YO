@@ -18,13 +18,43 @@
  *    (5) Carrier.balance = initial + COGS debit - refunds
  *    (6) booking.status صحيح في كل مرحلة
  *
- *  Usage: php deep_refund_test_all_currencies.php
+ *  Usage: php scripts/dev/deep_refund_test_all_currencies.php --confirm-destructive
  *  Output: تقرير تفصيلي + RESULTS_JSON block
  */
 
-require __DIR__.'/vendor/autoload.php';
+// ═══════════════════════════════════════════════════════════════════════
+// حارس التشغيل الآمن (2026-11-03)
+// هذا سكربت تدقيقي يهشّم بيانات حقيقية (حجوزات/دفعات/استردادات).
+// يُرفض تشغيله إلا: من سطر الأوامر (CLI)، وفي بيئة غير إنتاجية،
+// ومع تأكيد صريح — --confirm-destructive.
+// الحارس يعمل قبل تحميل Laravel.
+// ═══════════════════════════════════════════════════════════════════════
+if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, "[حارس] مرفوض: هذا السكربت يعمل من سطر الأوامر (CLI) فقط.\n");
+    exit(1);
+}
 
-$app = require_once __DIR__.'/bootstrap/app.php';
+$appEnv = strtoupper(trim((string) (getenv('APP_ENV') ?: '')));
+if ($appEnv === '' && is_readable(__DIR__.'/../../.env')) {
+    $envContents = (string) @file_get_contents(__DIR__.'/../../.env');
+    if (preg_match('/^\s*APP_ENV\s*=\s*["\']?([A-Za-z0-9_-]+)/m', $envContents, $envMatch)) {
+        $appEnv = strtoupper($envMatch[1]);
+    }
+}
+if ($appEnv === 'PRODUCTION') {
+    fwrite(STDERR, "[حارس] مرفوض: APP_ENV=production — لا يُسمح بتشغيل سكربتات تدريبية على بيانات الإنتاج.\n");
+    exit(1);
+}
+
+if (! in_array('--confirm-destructive', $argv ?? [], true)) {
+    fwrite(STDERR, "[حارس] مرفوض: أضف --confirm-destructive لتأكيد تشغيل هذا السكربت.\n");
+    fwrite(STDERR, "         مثال: php scripts/dev/deep_refund_test_all_currencies.php --confirm-destructive\n");
+    exit(1);
+}
+
+require __DIR__.'/../../vendor/autoload.php';
+
+$app = require_once __DIR__.'/../../bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 

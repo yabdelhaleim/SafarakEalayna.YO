@@ -2233,15 +2233,20 @@ class RefundFullSuiteTest extends TestCase
      * J2 تأكد إن السكريبتات المدمّرة (audit_refund_flow.php, audit_refund_multi_currency.php,
      * deep_refund_test_all_currencies.php) غير موجودة أو محمية بـ guard.
      *
+     * (2026-11-03) نُقلت السكربتات المدمّرة إلى scripts/dev/ وأُضيف لها حارس
+     * تشغيل (CLI فقط + منع الإنتاج + ‎--confirm-destructive‎) قبل تحميل Laravel.
+     * القائمة هنا تفحص المسارات الجديدة — لم يتغيّر أي assertion ولا أي رقم
+     * متوقع في هذا الاختبار، فقط المسارات المفحوصة.
+     *
      * @group known-bug
      */
     public function test_J2_destructive_scripts_absent_or_guarded(): void
     {
         $this->currentScenarioId = 'J2';
         $scripts = [
-            'audit_refund_flow.php',
-            'audit_refund_multi_currency.php',
-            'deep_refund_test_all_currencies.php',
+            'scripts/dev/audit_refund_flow.php',
+            'scripts/dev/audit_refund_multi_currency.php',
+            'scripts/dev/deep_refund_test_all_currencies.php',
         ];
 
         $failures = [];
