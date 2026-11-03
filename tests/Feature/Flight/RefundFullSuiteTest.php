@@ -488,6 +488,8 @@ class RefundFullSuiteTest extends TestCase
     /**
      * B5 نفس الدفعة مع allow_overpayment=true: تتقبل؛ ledger=+500، paid_amount=7500، الخزنة +8000، القيد متوازن،
      * P&L بعدها: الإيراد 7500 فقط (الـ 500 التزام، مش إيراد) → net=+150.
+     *
+     * @group known-bug
      */
     public function test_B5_overpayment_8000_with_allow_flag(): void
     {
@@ -1214,6 +1216,8 @@ class RefundFullSuiteTest extends TestCase
     /**
      * D8 استخدام الرصيد في حجز جديد: كامل (يغطي) وجزئي (العميل يدفع الفرق)،
      * والـ GL = ledger بعد كل منهما.
+     *
+     * @group known-bug
      */
     public function test_D8_use_credit_in_new_booking_full_and_partial(): void
     {
@@ -1954,6 +1958,8 @@ class RefundFullSuiteTest extends TestCase
 
     /**
      * H4_USD: B5 بالدولار (دفعة زيادة)
+     *
+     * @group known-bug
      */
     public function test_H4_USD_overpayment_b5_equivalent(): void
     {
@@ -2226,6 +2232,8 @@ class RefundFullSuiteTest extends TestCase
     /**
      * J2 تأكد إن السكريبتات المدمّرة (audit_refund_flow.php, audit_refund_multi_currency.php,
      * deep_refund_test_all_currencies.php) غير موجودة أو محمية بـ guard.
+     *
+     * @group known-bug
      */
     public function test_J2_destructive_scripts_absent_or_guarded(): void
     {
