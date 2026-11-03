@@ -762,7 +762,8 @@ class FlightMultiCurrencyDeepTest extends TestCase
     //   S1: إيراد 1200 − تكلفة 1000 = +200
     //   S4: إيراد 0    − تكلفة 250  = −250
     //   S5: إيراد 250  − تكلفة 250  = 0
-    //   S6: الدفعة الزائدة (8000) تُحتسب إيراداً كاملاً والتكلفة لا تتغيّر.
+    //   S6: الإيراد = المبلغ المطبَّق على الحجز (7500) فقط؛ الدفعة الزائدة
+    //        (500) التزام على العميل لا إيراد، والتكلفة لا تتغيّر ⇒ صافي 150.
     //
     // التحقق المطلوب في كل عملة:
     //   (1) تقرير الأرباح والخسائر (نفس محرك الإنتاج ProfitLossReportService).
@@ -1435,18 +1436,27 @@ class FlightMultiCurrencyDeepTest extends TestCase
             "S6[{$currency}]: رصيد حساب العميل ({$arBalance}) لا يطابق دفتر الرصيد ({$ledgerCredit} {$currency})"
         );
 
-        // تقرير الأرباح والخسائر: الدفعة الزائدة تُحتسب إيراداً كاملاً، والتكلفة لا تتغيّر
+        // تقرير الأرباح والخسائر: الإيراد = المبلغ المطبَّق على الحجز فقط
+        // (7500)؛ الزيادة (500) التزام على العميل وليست إيراداً، والتكلفة لا
+        // تتغيّر (7350) ⇒ صافي 7500 − 7350 = 150.
+        //
+        // (2026-11-03) استثناء مصرّح به على قاعدة «عدم تعديل التوقعات»:
+        // التوقع السابق كان الإيراد = كامل الدفعة (8000) وصافي 650 — وهو
+        // السلوك القديم الذي أوقفه "fix(flight): split overpayment into applied
+        // revenue + customer-credit transfer". البندان B5 و H4_USD في
+        // RefundFullSuiteTest يغطّيان نفس السيناريو بالضبط (بيع 7500 / تكلفة
+        // 7350 / تحصيل 8000) ويتوقعان أصلاً الإيراد 7500 وصافي 150.
         $this->assertEqualsWithDelta(
-            self::SCENARIO_OVERPAYMENT_EGP, $plAfter['totalRevenues'], $this->roundingTolerance($exchangeRate),
-            "S6[{$currency}]: الإيراد = كامل الدفعة (8000) — الفعلي: {$plAfter['totalRevenues']}"
+            self::SCENARIO_SELLING_EGP, $plAfter['totalRevenues'], $this->roundingTolerance($exchangeRate),
+            "S6[{$currency}]: الإيراد = المبلغ المطبَّق على الحجز (7500) — الفعلي: {$plAfter['totalRevenues']}"
         );
         $this->assertEqualsWithDelta(
             self::SCENARIO_PURCHASE_EGP, $plAfter['totalCogs'], $this->roundingTolerance($exchangeRate),
             "S6[{$currency}]: التكلفة لا تتغيّر (7350) — الفعلي: {$plAfter['totalCogs']}"
         );
         $this->assertEqualsWithDelta(
-            650.0, $plAfter['netProfit'], $this->roundingTolerance($exchangeRate),
-            "S6[{$currency}]: صافي الربح = 8000 − 7350 = 650 — الفعلي: {$plAfter['netProfit']}"
+            150.0, $plAfter['netProfit'], $this->roundingTolerance($exchangeRate),
+            "S6[{$currency}]: صافي الربح = 7500 − 7350 = 150 — الفعلي: {$plAfter['netProfit']}"
         );
         $this->assertNoNegativeLiquidity([$cashbox]);
     }
