@@ -662,6 +662,30 @@
                   placeholder="—"
                 />
               </div>
+
+              <!-- تنبيه دفعة زيادة تتحول لرصيد دائن -->
+              <div
+                v-if="extraPaymentAmountNum > getRemainingBalance() + 0.005"
+                class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200"
+              >
+                <div class="flex items-center gap-2 font-bold text-amber-300">
+                  <AlertTriangle class="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>تنبيه: دفعة زيادة بقيمة {{ (extraPaymentAmountNum - getRemainingBalance()).toFixed(2) }} {{ booking.currency || 'EGP' }}</span>
+                </div>
+                <p class="mt-1 text-amber-200/90 leading-relaxed">
+                  المبلغ المدخل يتجاوز المتبقي على الحجز ({{ getRemainingBalance().toFixed(2) }}). ستتم تسوية الحجز بالكامل، وسيتحول المبلغ الفائض تلقائياً كرصيد دائن للعميل/الشركة في سجل الأرصدة الموحد. يمكنك تعديل المبلغ أو المتابعة.
+                </p>
+                <div class="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    class="rounded-lg bg-amber-500/20 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-500/30"
+                    @click="extraPayment.amount = getRemainingBalance().toFixed(2)"
+                  >
+                    تعديل للمبلغ المتبقي بالضبط ({{ getRemainingBalance().toFixed(2) }})
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
                 class="btn-airline flex w-full items-center justify-center gap-2 py-3 text-sm font-black disabled:opacity-50"
@@ -1516,7 +1540,14 @@ const openPrintDialog = () => {
   showPrintModal.value = true;
 };
 
-const submitExtraPayment = async () => {
+// QA FIX (2026-11-03): the API rejects a payment that exceeds the remaining
+// selling price of the booking, unless `allow_overpayment=true` is sent
+// explicitly. The flag is only sent after the user confirms that the excess
+// moves to the customer's unified credit balance.
+const isOverpaymentRejection = (message) =>
+  /exceed selling price|يتجاوز.*المتبقي|الدفعة الزائد/i.test(String(message || ''));
+
+const submitExtraPayment = async (allowOverpayment = false) => {
   if (!booking.value?.id || !canSubmitExtraPayment.value) return;
   submittingExtraPayment.value = true;
   const paidAmount = extraPaymentAmountNum.value;
@@ -1527,6 +1558,7 @@ const submitExtraPayment = async () => {
       payment_method: extraPayment.value.payment_method,
       account_id: accId,
       notes: extraPayment.value.notes?.trim() || undefined,
+      allow_overpayment: allowOverpayment === true,
     });
     if (settlementFlashTimer) {
       clearTimeout(settlementFlashTimer);
@@ -1548,6 +1580,17 @@ const submitExtraPayment = async () => {
     store.addToast('تم تسجيل الدفعة بنجاح');
   } catch (e) {
     const msg = e.response?.data?.message || e.response?.data?.errors?.amount?.[0] || e.message || 'تعذر تسجيل الدفعة';
+    if (!allowOverpayment && isOverpaymentRejection(msg)) {
+      const confirmed = window.confirm(
+        'المبلغ المدفوع يتجاوز المتبقي على الحجز. هل تريد تحويل الزيادة إلى رصيد العميل الدائن الموحد؟',
+      );
+      if (confirmed) {
+        await submitExtraPayment(true);
+        return;
+      }
+      store.addToast('تم إلغاء الدفعة — المبلغ يتجاوز المتبقي على الحجز.', 'error');
+      return;
+    }
     store.addToast(String(msg), 'error');
   } finally {
     submittingExtraPayment.value = false;

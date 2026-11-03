@@ -35,6 +35,7 @@ class Customer extends Model
         'customer_tier',
         'notes',
         'type',
+        'company_id',
         'module_type', // Phase 3.5 fix: declare which business module owns this customer (flights, hajj_umra, visas, bus, …).
         'created_by',
         'nationality',
@@ -68,6 +69,37 @@ class Customer extends Model
     public function flightBookings(): HasMany
     {
         return $this->hasMany(FlightBooking::class);
+    }
+
+    public function flightPaymentAllocations(): HasMany
+    {
+        return $this->hasMany(\App\Models\Flight\FlightPaymentAllocation::class);
+    }
+
+    public function creditLedgerEntries(): HasMany
+    {
+        return $this->hasMany(CustomerCreditLedger::class, 'customer_id');
+    }
+
+    public function companyCreditLedgerEntries(): HasMany
+    {
+        return $this->hasMany(CustomerCreditLedger::class, 'company_id');
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, 'company_id');
+    }
+
+    public function employees(): HasMany
+    {
+        return $this->hasMany(Customer::class, 'company_id');
+    }
+
+    public function getAvailableCreditAttribute(): float
+    {
+        $companyId = $this->type === CustomerType::Company ? $this->id : $this->company_id;
+        return CustomerCreditLedger::getAvailableCredit($companyId ? null : $this->id, $companyId);
     }
 
     public function busBookings(): HasMany

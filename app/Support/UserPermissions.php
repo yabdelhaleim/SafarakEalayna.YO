@@ -18,6 +18,10 @@ class UserPermissions
 
     public const MANAGE_REFUNDS = 'manage_refunds';
 
+    public const DISBURSE_REFUND = 'disburse_refund';
+
+    public const FORCE_REFUND_PAYOUT = 'force_refund_payout';
+
     public const MANAGE_FINANCE = 'manage_finance';
 
     public const MANAGE_EMPLOYEES = 'manage_employees';
@@ -67,6 +71,18 @@ class UserPermissions
                 'name' => 'الاسترداد المالي',
                 'desc' => 'تنفيذ طلبات الاسترداد على الحجوزات (طيران، حج وعمرة، تأشيرات)',
                 'group' => 'modules',
+            ],
+            [
+                'id' => self::DISBURSE_REFUND,
+                'name' => 'صرف رصيد الاسترداد',
+                'desc' => 'صرف الرصيد الدائن للعميل نقداً أو تحويلاً بنكياً',
+                'group' => 'modules',
+            ],
+            [
+                'id' => self::FORCE_REFUND_PAYOUT,
+                'name' => 'صرف استرداد استثنائي',
+                'desc' => 'صرف رصيد العميل قبل تأكيد استرداد المورد',
+                'group' => 'admin',
             ],
             [
                 'id' => self::MANAGE_FINANCE,

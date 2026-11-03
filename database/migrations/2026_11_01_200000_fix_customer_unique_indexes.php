@@ -6,21 +6,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * إصلاح فهارس تفرد العملاء
+ * إصلاح فهارس تفرد العملاء (Additive First)
  *
- * المشكلة: القيد المركب (phone, national_id, is_active_for_unique) لا يحقق
- * التفرد المستقل لكل من رقم الهاتف والرقم القومي. يسمح بعميلين نشطين
+ * المشكلة السابقة:
+ * القيد المركب (phone, national_id, is_active_for_unique) كان يسمح بعميلين نشطين
  * بنفس الهاتف طالما الرقم القومي مختلف، ويسمح بتكرار NULL لأن MySQL
  * يعامل NULL != NULL في الفهارس الفريدة.
  *
- * الحل: استبدال القيد المركب بعمودين افتراضيين (Generated Virtual Columns)
- * وفهرسين فريدين مستقلين:
- *   - active_phone: يعرض رقم الهاتف فقط للعملاء النشطين، NULL للمحذوفين
- *   - active_national_id: يعرض الرقم القومي فقط للعملاء النشطين غير الفارغين
- *
- * بما أن MySQL يسمح بتكرار NULL في الفهارس الفريدة:
- *   - العملاء المحذوفون (active_phone = NULL) لا يتعارضون مع أحد
- *   - العملاء بدون رقم قومي (active_national_id = NULL) لا يتعارضون مع بعض
+ * التصميم الآمن (Additive First):
+ * 1. فحص استباقي للبيانات يمنع بدء التعديل في حال وجود تكرار.
+ * 2. إضافة الأعمدة الافتراضية الجديدة أولاً (active_phone, active_national_id).
+ * 3. إنشاء الفهارس الفريدة الجديدة المستقلة والتأكد من نجاحها تماماً.
+ * 4. فقط بعد نجاح الفهارس الجديدة، يتم حذف الفهرس المركب القديم والعمود القديم.
+ * 5. في down(): لا يتم حذف الفهارس الجديدة إلا بعد التحقق من سلامة البيانات
+ *    وإعادة بناء الفهرس القديم بنجاح.
  */
 return new class extends Migration
 {
@@ -29,26 +28,43 @@ return new class extends Migration
         $driver = DB::connection()->getDriverName();
 
         if ($driver === 'mysql') {
-            // ---- 1. إزالة القيد المركب الخاطئ القديم ----
-
-            // إزالة الفهرس المركب القديم الخاطئ
-            if ($this->uniqueIndexExists('customers', 'customers_phone_national_id_active_unique')) {
-                DB::statement("ALTER TABLE `customers` DROP INDEX `customers_phone_national_id_active_unique`");
+            // ============================================================
+            // الخطوة 0: فحص استباقي لمنع Partial Failure لو وُجدت بيانات مكررة
+            // ============================================================
+            $dupPhones = DB::select(
+                'SELECT phone, COUNT(*) AS cnt
+                 FROM customers
+                 WHERE deleted_at IS NULL
+                 GROUP BY phone
+                 HAVING COUNT(*) > 1'
+            );
+            if (! empty($dupPhones)) {
+                $count = count($dupPhones);
+                $examples = collect($dupPhones)->take(3)->pluck('phone')->implode(', ');
+                throw new \RuntimeException(
+                    "تعذر تطبيق Migration تفرد العملاء: يوجد {$count} رقم هاتف نشط مكرر في جدول customers (أمثلة: {$examples}). " .
+                    "يجب معالجة وتصحيح السجلات المكررة أولاً قبل تطبيق الفهرس الفريد."
+                );
             }
 
-            // إزالة العمود الافتراضي القديم الذي كان يدعم القيد المركب
-            if ($this->columnExists('customers', 'is_active_for_unique')) {
-                DB::statement("ALTER TABLE `customers` DROP COLUMN `is_active_for_unique`");
+            $dupNatIds = DB::select(
+                'SELECT national_id, COUNT(*) AS cnt
+                 FROM customers
+                 WHERE deleted_at IS NULL AND national_id IS NOT NULL
+                 GROUP BY national_id
+                 HAVING COUNT(*) > 1'
+            );
+            if (! empty($dupNatIds)) {
+                $count = count($dupNatIds);
+                throw new \RuntimeException(
+                    "تعذر تطبيق Migration تفرد العملاء: يوجد {$count} رقم قومي نشط مكرر في جدول customers. " .
+                    "يجب معالجة وتصحيح السجلات المكررة أولاً قبل تطبيق الفهرس الفريد."
+                );
             }
 
-            // إزالة أي فهرس قديم للهاتف+الرقم القومي بدون مراعاة deleted_at
-            if ($this->uniqueIndexExists('customers', 'customers_phone_national_id_unique')) {
-                DB::statement("ALTER TABLE `customers` DROP INDEX `customers_phone_national_id_unique`");
-            }
-
-            // ---- 2. إضافة عمود افتراضي للهاتف النشط ----
-            // يعرض رقم الهاتف فقط عندما يكون العميل نشطاً (deleted_at IS NULL)
-            // يكون NULL عندما يكون العميل محذوفاً → لا يتعارض مع أحد
+            // ============================================================
+            // المرحلة الأولى (Additive First): إنشاء الأعمدة الافتراضية الجديدة
+            // ============================================================
             if (! $this->columnExists('customers', 'active_phone')) {
                 DB::statement(
                     "ALTER TABLE `customers`
@@ -59,10 +75,6 @@ return new class extends Migration
                 );
             }
 
-            // ---- 3. إضافة عمود افتراضي للرقم القومي النشط ----
-            // يعرض الرقم القومي فقط عندما يكون العميل نشطاً وغير فارغ
-            // يكون NULL عند الحذف أو عند كون national_id فارغاً
-            // → يسمح بتعدد NULL (شركات بدون رقم قومي، عملاء محذوفون)
             if (! $this->columnExists('customers', 'active_national_id')) {
                 DB::statement(
                     "ALTER TABLE `customers`
@@ -73,9 +85,9 @@ return new class extends Migration
                 );
             }
 
-            // ---- 4. إنشاء الفهرسين الفريدين المستقلين ----
-
-            // فهرس تفرد الهاتف للعملاء النشطين
+            // ============================================================
+            // المرحلة الثانية: إنشاء الفهارس الفريدة الجديدة المستقلة
+            // ============================================================
             if (! $this->uniqueIndexExists('customers', 'customers_active_phone_unique')) {
                 DB::statement(
                     "ALTER TABLE `customers`
@@ -83,35 +95,63 @@ return new class extends Migration
                 );
             }
 
-            // فهرس تفرد الرقم القومي للعملاء النشطين
-            // NULL مكرر مسموح به (شركات بدون رقم قومي)
             if (! $this->uniqueIndexExists('customers', 'customers_active_national_id_unique')) {
                 DB::statement(
                     "ALTER TABLE `customers`
                      ADD UNIQUE INDEX `customers_active_national_id_unique` (`active_national_id`)"
                 );
             }
+
+            // ============================================================
+            // المرحلة الثالثة: التحقق الإلزامي من وجود الفهارس الجديدة
+            // ============================================================
+            $hasActivePhoneIndex = $this->uniqueIndexExists('customers', 'customers_active_phone_unique');
+            $hasActiveNatIdIndex = $this->uniqueIndexExists('customers', 'customers_active_national_id_unique');
+
+            if (! $hasActivePhoneIndex || ! $hasActiveNatIdIndex) {
+                throw new \RuntimeException(
+                    "فشل التحقق من إنشاء الفهارس الجديدة (active_phone: " .
+                    ($hasActivePhoneIndex ? 'OK' : 'MISSING') . ", active_national_id: " .
+                    ($hasActiveNatIdIndex ? 'OK' : 'MISSING') . "). تم الإيقاف دون حذف أي قيود قديمة."
+                );
+            }
+
+            // ============================================================
+            // المرحلة الرابعة: حذف القيود القديمة بعد الاطمئنان الكامل على الجديدة
+            // ============================================================
+            if ($this->uniqueIndexExists('customers', 'customers_phone_national_id_active_unique')) {
+                DB::statement("ALTER TABLE `customers` DROP INDEX `customers_phone_national_id_active_unique`");
+            }
+
+            if ($this->columnExists('customers', 'is_active_for_unique')) {
+                DB::statement("ALTER TABLE `customers` DROP COLUMN `is_active_for_unique`");
+            }
+
+            if ($this->uniqueIndexExists('customers', 'customers_phone_national_id_unique')) {
+                DB::statement("ALTER TABLE `customers` DROP INDEX `customers_phone_national_id_unique`");
+            }
         } else {
-            // ---- SQLite (للاختبارات المحلية فقط) ----
-            // SQLite يدعم Partial Indexes مباشرة بدون Generated Columns
-
-            // إزالة الفهارس القديمة إن وُجدت
-            DB::statement("DROP INDEX IF EXISTS customers_phone_national_id_active_unique");
-            DB::statement("DROP INDEX IF EXISTS customers_phone_national_id_unique");
-            DB::statement("DROP INDEX IF EXISTS customers_active_phone_unique");
-            DB::statement("DROP INDEX IF EXISTS customers_active_national_id_unique");
-
-            // فهرس جزئي: تفرد الهاتف للعملاء النشطين فقط
+            // SQLite (لبيئة الاختبارات)
+            // 1. إنشاء الفهارس الجزئية أولاً
             DB::statement(
-                "CREATE UNIQUE INDEX customers_active_phone_unique
+                "CREATE UNIQUE INDEX IF NOT EXISTS customers_active_phone_unique
                  ON customers (phone) WHERE deleted_at IS NULL"
             );
 
-            // فهرس جزئي: تفرد الرقم القومي للعملاء النشطين غير الفارغين
             DB::statement(
-                "CREATE UNIQUE INDEX customers_active_national_id_unique
+                "CREATE UNIQUE INDEX IF NOT EXISTS customers_active_national_id_unique
                  ON customers (national_id) WHERE deleted_at IS NULL AND national_id IS NOT NULL"
             );
+
+            // 2. التحقق من نجاحها
+            if (! $this->uniqueIndexExists('customers', 'customers_active_phone_unique') ||
+                ! $this->uniqueIndexExists('customers', 'customers_active_national_id_unique')) {
+                throw new \RuntimeException("فشل إنشاء فهارس SQLite الفريدة.");
+            }
+
+            // 3. حذف الفهارس القديمة
+            DB::statement("DROP INDEX IF EXISTS customers_phone_national_id_active_unique");
+            DB::statement("DROP INDEX IF EXISTS customers_phone_national_id_unique");
         }
     }
 
@@ -120,8 +160,58 @@ return new class extends Migration
         $driver = DB::connection()->getDriverName();
 
         if ($driver === 'mysql') {
-            // ---- إزالة الفهارس والأعمدة الجديدة ----
+            // ============================================================
+            // الخطوة 0: فحص سلامة البيانات قبل التراجع
+            // إذا كانت هناك بيانات تمنع إعادة بناء الفهرس القديم، نرفض Rollback
+            // لمنع ترك الجدول بحالة جزئية دون فهارس
+            // ============================================================
+            $dupPairs = DB::select(
+                'SELECT phone, national_id, COUNT(*) AS cnt
+                 FROM customers
+                 WHERE deleted_at IS NULL AND national_id IS NOT NULL
+                 GROUP BY phone, national_id
+                 HAVING COUNT(*) > 1'
+            );
 
+            if (! empty($dupPairs)) {
+                throw new \RuntimeException(
+                    "Rollback غير آمن ومرفوض: توجد سجلات نشطة مكررة في (phone, national_id) " .
+                    "ستمنع إعادة بناء الفهرس المركب القديم. لم يتم حذف أي فهرس جديد."
+                );
+            }
+
+            // ============================================================
+            // المرحلة الأولى: إعادة بناء القيد القديم أولاً (Additive in reverse)
+            // ============================================================
+            if (! $this->columnExists('customers', 'is_active_for_unique')) {
+                DB::statement(
+                    "ALTER TABLE `customers`
+                     ADD COLUMN `is_active_for_unique`
+                         TINYINT
+                         GENERATED ALWAYS AS (IF(`deleted_at` IS NULL, 1, NULL))
+                         VIRTUAL"
+                );
+            }
+
+            if (! $this->uniqueIndexExists('customers', 'customers_phone_national_id_active_unique')) {
+                DB::statement(
+                    "ALTER TABLE `customers`
+                     ADD UNIQUE INDEX `customers_phone_national_id_active_unique`
+                     (`phone`, `national_id`, `is_active_for_unique`)"
+                );
+            }
+
+            // التحقق من أن الفهرس القديم أُعيد بنجاح
+            if (! $this->uniqueIndexExists('customers', 'customers_phone_national_id_active_unique')) {
+                throw new \RuntimeException(
+                    "فشل إعادة إنشاء الفهرس المركب القديم customers_phone_national_id_active_unique. " .
+                    "تم إيقاف التراجع لحماية الفهارس الجديدة من الحذف."
+                );
+            }
+
+            // ============================================================
+            // المرحلة الثانية: حذف الفهارس والأعمدة الجديدة بعد الاطمئنان على القديمة
+            // ============================================================
             if ($this->uniqueIndexExists('customers', 'customers_active_phone_unique')) {
                 DB::statement("ALTER TABLE `customers` DROP INDEX `customers_active_phone_unique`");
             }
@@ -137,40 +227,15 @@ return new class extends Migration
             if ($this->columnExists('customers', 'active_national_id')) {
                 DB::statement("ALTER TABLE `customers` DROP COLUMN `active_national_id`");
             }
-
-            // ---- إعادة القيد المركب القديم (للتراجع الكامل) ----
-            // ملاحظة: لو في قاعدة البيانات الإنتاجية بيانات مكررة، هذا سيفشل
-            // وهذا مقصود — التراجع غير آمن في الإنتاج بسبب البيانات المكررة الحالية
-
-            // إعادة العمود الافتراضي القديم
-            if (! $this->columnExists('customers', 'is_active_for_unique')) {
-                DB::statement(
-                    "ALTER TABLE `customers`
-                     ADD COLUMN `is_active_for_unique`
-                         TINYINT
-                         GENERATED ALWAYS AS (IF(`deleted_at` IS NULL, 1, NULL))
-                         VIRTUAL"
-                );
-            }
-
-            // إعادة الفهرس المركب القديم
-            if (! $this->uniqueIndexExists('customers', 'customers_phone_national_id_active_unique')) {
-                DB::statement(
-                    "ALTER TABLE `customers`
-                     ADD UNIQUE INDEX `customers_phone_national_id_active_unique`
-                     (`phone`, `national_id`, `is_active_for_unique`)"
-                );
-            }
         } else {
             // SQLite
-            DB::statement("DROP INDEX IF EXISTS customers_active_phone_unique");
-            DB::statement("DROP INDEX IF EXISTS customers_active_national_id_unique");
-
-            // إعادة الفهرس المركب القديم
             DB::statement(
                 "CREATE UNIQUE INDEX IF NOT EXISTS customers_phone_national_id_active_unique
                  ON customers (phone, national_id) WHERE deleted_at IS NULL"
             );
+
+            DB::statement("DROP INDEX IF EXISTS customers_active_phone_unique");
+            DB::statement("DROP INDEX IF EXISTS customers_active_national_id_unique");
         }
     }
 
@@ -178,9 +243,6 @@ return new class extends Migration
     // دوال مساعدة
     // ---------------------------------------------------------------
 
-    /**
-     * التحقق من وجود فهرس فريد في قاعدة البيانات
-     */
     private function uniqueIndexExists(string $table, string $indexName): bool
     {
         $driver = DB::connection()->getDriverName();
@@ -198,7 +260,6 @@ return new class extends Migration
             return ! empty($rows);
         }
 
-        // SQLite
         $rows = DB::select("PRAGMA index_list(\"{$table}\")");
         foreach ($rows as $row) {
             if (strtolower($row->name) === strtolower($indexName) && (int) $row->unique === 1) {
@@ -209,9 +270,6 @@ return new class extends Migration
         return false;
     }
 
-    /**
-     * التحقق من وجود عمود في جدول
-     */
     private function columnExists(string $table, string $columnName): bool
     {
         $driver = DB::connection()->getDriverName();
@@ -228,7 +286,6 @@ return new class extends Migration
             return ! empty($rows);
         }
 
-        // SQLite
         $rows = DB::select("PRAGMA table_info(\"{$table}\")");
         foreach ($rows as $row) {
             if (strtolower($row->name) === strtolower($columnName)) {

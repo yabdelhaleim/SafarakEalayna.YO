@@ -446,7 +446,7 @@ export const useFlightStore = defineStore('flight', {
     /**
      * تسجيل دفعة إضافية على حجز موجود.
      * @param {number|string} bookingId
-     * @param {{ amount: number, payment_method: string, account_id: number, notes?: string }} payload
+     * @param {{ amount: number, payment_method: string, account_id: number, notes?: string, allow_overpayment?: boolean }} payload
      */
     async addBookingPayment(bookingId, payload) {
       this.errors = {};
@@ -455,6 +455,11 @@ export const useFlightStore = defineStore('flight', {
         payment_method: payload.payment_method,
         account_id: payload.account_id,
         notes: payload.notes ?? null,
+        // QA FIX (2026-11-03): the API REJECTS a payment that exceeds the
+        // remaining selling price unless `allow_overpayment` is explicitly
+        // true. It is only sent as `true` after the user confirms that the
+        // excess moves to the customer's unified credit balance.
+        allow_overpayment: payload.allow_overpayment === true ? true : undefined,
       });
       const raw = response.data?.data;
       if (raw && this.currentBooking && String(this.currentBooking.id) === String(bookingId)) {

@@ -1581,6 +1581,7 @@ foreach ($results as $item) {
         $incomeClearing = $maps['income'];
         $expenseClearing = $maps['expense'];
         $prepaidAccounts = $clearingAccounts->prepaidAccountIdMap();
+        $systemRelabel = $maps['system_relabel'] ?? [];
 
         foreach ($currencies as $currency) {
             $tourismCapital = $this->calculateTourismCapital($currency);
@@ -1610,8 +1611,8 @@ foreach ($results as $item) {
                     'profit' => round((float) ($officePlReport['netProfit'] ?? 0), 2),
                 ];
             } else {
-                $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
-                $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts);
+                $tourismPL = $this->calculatePL($currency, 'tourism', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts, $systemRelabel);
+                $officePL = $this->calculatePL($currency, 'office', $fromDate, $toDate, $incomeClearing, $expenseClearing, $prepaidAccounts, $systemRelabel);
             }
 
             $tourismReport[$currency] = [
@@ -1738,7 +1739,8 @@ foreach ($results as $item) {
         ?string $toDate,
         array $incomeClearing,
         array $expenseClearing,
-        array $prepaidAccounts = []
+        array $prepaidAccounts = [],
+        array $systemRelabel = []
     ): array {
         $query = DB::table('transactions as t')
             ->leftJoin('accounts as to_acc', 't.to_account_id', '=', 'to_acc.id')
@@ -1816,7 +1818,7 @@ foreach ($results as $item) {
                 continue;
             }
 
-            $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $classification = $this->classifyPL($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $systemRelabel);
             if ($classification === null) {
                 continue;
             }
@@ -1837,7 +1839,17 @@ foreach ($results as $item) {
                 if ($classification === 'revenue') {
                     $classification = 'revenue_reversal';
                 } elseif ($classification === 'cogs') {
-                    $classification = 'cogs_reversal';
+                    // EXCEPTION: a row that CONSUMES the prepaid account again
+                    // (prepaid → cost clearing) is the mirror of an earlier
+                    // "cost reversal" row, not the mirror of the original cost
+                    // posting — it keeps the 'cogs' classification (posted when
+                    // a refund request is cancelled). See
+                    // ProfitLossReportService::applyReversalNoteClassification().
+                    $fromId = (int) ($tx->from_account_id ?? 0);
+                    $consumesPrepaidAgain = $fromId > 0 && isset($prepaidAccounts[$fromId]);
+                    if (! $consumesPrepaidAgain) {
+                        $classification = 'cogs_reversal';
+                    }
                 }
             }
 
@@ -1875,12 +1887,44 @@ foreach ($results as $item) {
         ];
     }
 
-    private function classifyPL(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
+    private function classifyPL(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = [], array $systemRelabel = []): ?string
     {
         $type = (string) $tx->type;
         $fromId = (int) ($tx->from_account_id ?? 0);
         $toId = (int) ($tx->to_account_id ?? 0);
         $toType = (string) ($tx->to_account_type ?? '');
+
+        // ─────────────────────────────────────────────────────────────────
+        // SYSTEM RE-LABEL TARGETS (config/accounting.php → clearing.refund_accounts
+        // + clearing.sales_pending_receivable).
+        //
+        // A transfer that ENDS in one of these accounts only re-labels money
+        // that is already inside the P&L — it never creates a new revenue or a
+        // new cost:
+        //   • the cancellation-fee revenue account: the commission kept on a
+        //     refund is already part of the revenue that survives the refund
+        //     reversal (sale revenue − refunded amount). Counting it again
+        //     double-counts the commission.
+        //   • the refund loss / variance accounts: the part of the cost the
+        //     airline did NOT refund. It is already inside the cost-of-sales
+        //     bucket, because the COGS reversal only reverses what the airline
+        //     actually paid back. Reversing it here would erase the loss
+        //     entirely (the agency that bears a non-refundable tax would show
+        //     a zero P&L instead of the real loss).
+        //   • the pending sales-receivable account: the shadow that holds the
+        //     sale until the payment / refund closes it. Moving money into
+        //     (or out of) it is a leg of the refund cycle, not a new cost.
+        //
+        // BOTH legs are inspected: the cycle of a refund always moves money
+        // between the pending sales-receivable account (acc#6) and the
+        // clearing/loss accounts, so a forward leg AND its mirror must be
+        // neutral — otherwise cancelling a refund would not restore the P&L
+        // (the mirror would be classified while the original was not).
+        // ─────────────────────────────────────────────────────────────────
+        if (($toId > 0 && isset($systemRelabel[$toId]))
+            || ($fromId > 0 && isset($systemRelabel[$fromId]))) {
+            return null;
+        }
 
         if ($type === 'income') {
             return 'revenue';

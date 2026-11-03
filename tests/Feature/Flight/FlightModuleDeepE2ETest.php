@@ -1463,10 +1463,64 @@ class FlightModuleDeepE2ETest extends TestCase
             $this->rec('5.4', 'Overpay ACCEPTED (no guard)', '⚠️', 'unexpected — overpayment allowed');
         }
 
+        // QA FIX (2026-11-03): the overpayment guard is mandatory — without an
+        // explicit `allow_overpayment=true` the payment MUST be rejected
+        // (same behaviour as `main`).
+        $this->assertTrue(
+            $rejected,
+            'Overpayment must be REJECTED when the caller does not send allow_overpayment=true'
+        );
+
         // Verify cashbox was NOT debited (no partial state)
         $this->assertBalanceInvariant($cashbox);
         $this->assertSnapshotsEqual($snap, [$cashbox], '5.4 overpay rejected');
         $this->rec('5.4', 'Cashbox untouched after rejected overpay', '✅', 'balance intact');
+
+        // ── 2nd case: the SAME overpayment IS accepted when the caller sends
+        //    `allow_overpayment=true` explicitly (the Vue client does that
+        //    after the user confirms) — the excess moves to the customer's
+        //    unified credit balance and the booking is capped at its price.
+        $fx2 = $this->buildFlightFixture('EGP', 'Over Pay Cust OK', 500_000.0, 100_000.0);
+        $booking = $this->bookingService->createBooking([
+            'customer_id' => $fx2['customer']->id,
+            'airline_name' => 'OverAirOK',
+            'from_airport' => 'CAI',
+            'to_airport' => 'JED',
+            'departure_date' => now()->addDays(15)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'EGP',
+            'purchase_price' => $purchase,
+            'selling_price' => $selling,
+            'flight_system_id' => $fx2['system']->id,
+            'flight_carrier_id' => $fx2['carrier']->id,
+            'purchase_balance_source' => 'carrier',
+            'pnr' => 'OVEROK'.uniqid(),
+            'passengers' => [
+                ['first_name' => 'Over', 'last_name' => 'PayOK', 'passenger_type' => 'adult'],
+            ],
+            'payment' => [
+                'amount' => $overpay,
+                'account_id' => $fx2['cashbox']->id,
+                'payment_method' => 'cash',
+                'notes' => 'دفع زائد بعد التأكيد',
+                'allow_overpayment' => true,
+            ],
+        ]);
+
+        $booking->refresh();
+        $paid = (float) $booking->paid_amount;
+        $this->assertEqualsWithDelta(
+            $selling,
+            $paid,
+            0.01,
+            'With allow_overpayment=true the booking is capped at its selling price'
+        );
+        $this->rec(
+            '5.4',
+            'Overpay accepted with allow_overpayment=true',
+            '✅',
+            "paid={$paid} (excess 3,000 EGP → unified credit)"
+        );
     }
 
     public function test_part5_overpayment_addpayment_rejected(): void
@@ -1544,6 +1598,53 @@ class FlightModuleDeepE2ETest extends TestCase
         $this->bookingService->deleteBookingWithReversal($booking->id, $this->admin->id);
         $this->assertSoftDeleted('flight_bookings', ['id' => $booking->id]);
         $this->rec('5.4b', 'Delete + reversal', '✅', '');
+
+        // ── 2nd case (QA FIX 2026-11-03): the SAME overpayment IS accepted when
+        //    the caller sends `allow_overpayment=true` explicitly (the Vue client
+        //    does that after the user confirms). The booking is capped at its
+        //    selling price and the excess moves to the unified credit ledger.
+        $fx2 = $this->buildFlightFixture('EGP', 'Over Pay 3', 500_000.0, 100_000.0);
+        $booking2 = $this->bookingService->createBooking([
+            'customer_id' => $fx2['customer']->id,
+            'airline_name' => 'OverAir3',
+            'from_airport' => 'CAI',
+            'to_airport' => 'JED',
+            'departure_date' => now()->addDays(16)->toDateString(),
+            'trip_type' => 'one_way',
+            'currency' => 'EGP',
+            'purchase_price' => $purchase,
+            'selling_price' => $selling,
+            'flight_system_id' => $fx2['system']->id,
+            'flight_carrier_id' => $fx2['carrier']->id,
+            'purchase_balance_source' => 'carrier',
+            'pnr' => 'OVER3'.uniqid(),
+            'passengers' => [
+                ['first_name' => 'Over', 'last_name' => 'Pay3', 'passenger_type' => 'adult'],
+            ],
+            'payment' => [
+                'amount' => 10000.0,
+                'account_id' => $fx2['cashbox']->id,
+                'payment_method' => 'cash',
+                'notes' => 'دفعة أولى',
+            ],
+        ]);
+
+        $this->bookingService->addPayment($booking2->fresh(), [
+            'amount' => 6000.0,
+            'account_id' => $fx2['cashbox']->id,
+            'payment_method' => 'cash',
+            'notes' => 'دفعة تتجاوز المتبقي بعد التأكيد',
+            'allow_overpayment' => true,
+        ]);
+
+        $total2 = (float) $booking2->fresh()->payments()->sum('amount');
+        $this->assertEqualsWithDelta(
+            $selling,
+            $total2,
+            0.01,
+            'With allow_overpayment=true the booking total is capped at the selling price'
+        );
+        $this->rec('5.4b', 'Overpay accepted with allow_overpayment=true', '✅', "total={$total2}");
     }
 
     // ═══════════════════════════════════════════════════════════════════

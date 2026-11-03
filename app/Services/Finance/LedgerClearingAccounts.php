@@ -232,6 +232,105 @@ class LedgerClearingAccounts
         return $this->ensureClearingAccountExists($name, 'general', 'treasury_operations');
     }
 
+    public function cancellationFeeRevenueAccountId(): int
+    {
+        $name = config('accounting.clearing.refund_accounts.cancellation_fee_revenue', 'إيرادات عمولات إلغاء التذاكر');
+
+        $existing = Account::query()
+            ->where('name', $name)
+            ->where('is_active', true)
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Revenue,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'flights',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب إيرادات عمولات إلغاء تذاكر الطيران المستقطعة من العملاء',
+                    'created_by' => Auth::id() ?? 1,
+                ]
+            );
+
+            return (int) $account->id;
+        }));
+    }
+
+    public function refundLossAccountId(): int
+    {
+        $name = config('accounting.clearing.refund_accounts.refund_loss', 'خسائر وغرامات استرداد التذاكر');
+
+        $existing = Account::query()
+            ->where('name', $name)
+            ->where('is_active', true)
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Expense,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'flights',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب خسائر وغرامات استرداد التذاكر (فارق الاسترداد من شركة الطيران)',
+                    'created_by' => Auth::id() ?? 1,
+                ]
+            );
+
+            return (int) $account->id;
+        }));
+    }
+
+    public function refundVarianceAccountId(): int
+    {
+        $name = config('accounting.clearing.refund_accounts.refund_variance', 'فروق استرداد التذاكر');
+
+        $existing = Account::query()
+            ->where('name', $name)
+            ->where('is_active', true)
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return LedgerBalanceMutationGuard::run(fn () => DB::transaction(function () use ($name) {
+            $account = Account::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'type' => AccountType::Expense,
+                    'balance' => 0,
+                    'currency' => 'EGP',
+                    'is_active' => true,
+                    'owner_type' => Account::OWNER_TYPE_OWNER,
+                    'module_type' => 'flights',
+                    'is_module_vault' => false,
+                    'notes' => 'حساب فروق استرداد التذاكر بين المتوقع والمسترد الفعلي من شركة الطيران',
+                    'created_by' => Auth::id() ?? 1,
+                ]
+            );
+
+            return (int) $account->id;
+        }));
+    }
+
     /**
      * Returns the unified AR (Accounts Receivable) account used to track
      * مديونيات عملاء فوري غير مسجلين (walk-in Fawry clients).
@@ -502,7 +601,7 @@ class LedgerClearingAccounts
      * `accounts` table and the rest of the GL flow treated them right;
      * only this resolver was incomplete.
      *
-     * @return array{income: array<int, string>, expense: array<int, string>}
+     * @return array{income: array<int, string>, expense: array<int, string>, system_relabel: array<int, string>}
      */
     public function moduleAccountMaps(): array
     {
@@ -549,7 +648,7 @@ class LedgerClearingAccounts
         }
 
         if ($nameToModule === []) {
-            return ['income' => [], 'expense' => []];
+            return ['income' => [], 'expense' => [], 'system_relabel' => $this->systemRelabelAccountMap()];
         }
 
         $accounts = Account::query()
@@ -571,6 +670,62 @@ class LedgerClearingAccounts
             }
         }
 
-        return ['income' => $income, 'expense' => $expense];
+        return [
+            'income' => $income,
+            'expense' => $expense,
+            'system_relabel' => $this->systemRelabelAccountMap(),
+        ];
+    }
+
+    /**
+     * Accounts that may only RE-LABEL money that is already inside the P&L —
+     * never create a new revenue or cost on their own:
+     *
+     *   • the refund-cycle accounts (config/accounting.php →
+     *     clearing.refund_accounts): the cancellation-fee revenue and the
+     *     refund loss / variance accounts;
+     *   • the pending sales-receivable accounts (clearing.sales_pending_receivable):
+     *     the shadow account that holds the sale until the payment/refund
+     *     closes it.
+     *
+     * The P&L engine (FinancialReportService::classifyPL and
+     * ProfitLossReportService::classify) skips every transfer that TOUCHES one
+     * of them — see the "system re-label" rule in both classifiers.
+     *
+     * @return array<int, string> account id => role
+     */
+    public function systemRelabelAccountMap(): array
+    {
+        $names = [];
+
+        $refundAccounts = config('accounting.clearing.refund_accounts', []);
+        foreach ((array) $refundAccounts as $role => $name) {
+            if (is_string($name) && $name !== '') {
+                $names[$name] = 'refund_'.$role;
+            }
+        }
+
+        $pendingReceivables = config('accounting.clearing.sales_pending_receivable', []);
+        foreach ((array) $pendingReceivables as $module => $name) {
+            if (is_string($name) && $name !== '') {
+                $names[$name] = 'pending_receivable_'.$this->normalizeModuleKey($module);
+            }
+        }
+
+        if ($names === []) {
+            return [];
+        }
+
+        $map = [];
+        $accounts = Account::query()
+            ->whereIn('name', array_keys($names))
+            ->where('is_active', true)
+            ->get(['id', 'name']);
+
+        foreach ($accounts as $account) {
+            $map[(int) $account->id] = $names[$account->name];
+        }
+
+        return $map;
     }
 }

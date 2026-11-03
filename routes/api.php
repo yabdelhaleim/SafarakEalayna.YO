@@ -278,9 +278,12 @@ Route::prefix('v1')->middleware([
             Route::get('/treasuries', [RefundController::class, 'treasuries']);
             Route::get('/airline-credits', [RefundController::class, 'airlineCredits']);
             Route::middleware('permission:manage_refunds')->group(function () {
+                Route::post('/preview', [RefundController::class, 'preview']);
                 Route::post('/', [RefundController::class, 'store']);
                 Route::get('/{id}', [RefundController::class, 'show']);
                 Route::post('/{id}/process', [RefundController::class, 'process']);
+                Route::post('/{id}/disburse', [RefundController::class, 'disburse']);
+                Route::post('/{id}/confirm-supplier', [RefundController::class, 'confirmSupplier']);
                 Route::delete('/{id}', [RefundController::class, 'destroy']);
             });
         });

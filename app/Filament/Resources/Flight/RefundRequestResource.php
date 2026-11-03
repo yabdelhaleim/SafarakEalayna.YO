@@ -61,6 +61,11 @@ class RefundRequestResource extends Resource
                                 $set('refund_currency', $currency);
                                 $set('refund_exchange_rate', $rate);
 
+                                $cost = (float) ($booking->cost ?: ($booking->buying_price ?: 0));
+                                $set('supplier_cost', $cost);
+                                $set('supplier_refund_amount', $cost);
+                                $set('supplier_refund_loss', 0);
+
                                 // الحساب الفوري
                                 $fee = 0;
                                 $refund = $amount - $fee;
@@ -86,14 +91,53 @@ class RefundRequestResource extends Resource
                                     ->numeric()
                                     ->readOnly(),
 
+                                Forms\Components\Select::make('refund_case')
+                                    ->label('نوع / حالة الاسترداد')
+                                    ->options([
+                                        'customer_voluntary' => 'الحالة 1: إلغاء اختياري من العميل (غرامة طيران + عمولة وكالة)',
+                                        'airline_cancelled' => 'الحالة 2: إلغاء الرحلة من شركة الطيران',
+                                        'default' => 'استرداد عام / قياسي',
+                                    ])
+                                    ->default('default')
+                                    ->live(),
+                            ]),
+
+                        Forms\Components\Grid::make(3)
+                            ->schema([
+                                Forms\Components\TextInput::make('airline_penalty')
+                                    ->label('غرامة شركة الطيران (على العميل)')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->visible(fn (Forms\Get $get): bool => $get('refund_case') === 'customer_voluntary'),
+
+                                Forms\Components\TextInput::make('agency_commission')
+                                    ->label('عمولة الوكالة')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->visible(fn (Forms\Get $get): bool => in_array($get('refund_case'), ['customer_voluntary', 'airline_cancelled'])),
+
                                 Forms\Components\TextInput::make('cancellation_fee')
-                                    ->label('رسوم الإلغاء')
+                                    ->label('إجمالي رسوم الإلغاء')
                                     ->numeric()
                                     ->default(0)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
                                         self::recalculateTotals($get, $set);
                                     }),
+                            ]),
+
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\Toggle::make('apply_commission')
+                                    ->label('تطبيق عمولة الوكالة في حالة إلغاء الطيران')
+                                    ->default(false)
+                                    ->visible(fn (Forms\Get $get): bool => $get('refund_case') === 'airline_cancelled'),
+
+                                Forms\Components\Toggle::make('non_refundable_taxes_on_customer')
+                                    ->label('تحميل الضرائب غير المستردة على العميل (إن وُجدت)')
+                                    ->helperText('إذا لم تُفعّل، تتحملها الوكالة في حساب خسائر استرداد')
+                                    ->default(false)
+                                    ->visible(fn (Forms\Get $get): bool => $get('refund_case') === 'airline_cancelled'),
                             ]),
                     ]),
 
@@ -176,6 +220,78 @@ class RefundRequestResource extends Resource
                             ->label('ملاحظات')
                             ->columnSpanFull(),
                     ]),
+
+                Forms\Components\Section::make('الطرف (أ): استرداد المورد وشركة الطيران')
+                    ->schema([
+                        Forms\Components\Grid::make(3)
+                            ->schema([
+                                Forms\Components\TextInput::make('supplier_cost')
+                                    ->label('تكلفة التذكرة الأصلية')
+                                    ->numeric()
+                                    ->readOnly(),
+
+                                Forms\Components\TextInput::make('supplier_refund_amount')
+                                    ->label('المبلغ المسترد من المورد')
+                                    ->numeric()
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
+                                        $cost = (float) $get('supplier_cost');
+                                        $refund = (float) $get('supplier_refund_amount');
+                                        $loss = max(0, $cost - $refund);
+                                        $set('supplier_refund_loss', $loss);
+                                    }),
+
+                                Forms\Components\TextInput::make('supplier_refund_loss')
+                                    ->label('خسارة/غرامة الاسترداد')
+                                    ->numeric()
+                                    ->readOnly()
+                                    ->helperText('الفرق في حال رد المورد مبلغ أقل من التكلفة'),
+                            ]),
+
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\TextInput::make('actual_airline_refund_amount')
+                                    ->label('المبلغ المسترد الفعلي من الطيران')
+                                    ->numeric()
+                                    ->helperText('إذا رد الطيران مبلغاً أقل بعد التنفيذ'),
+
+                                Forms\Components\TextInput::make('refund_variance_amount')
+                                    ->label('فروق استرداد (في حساب الفروق)')
+                                    ->numeric()
+                                    ->readOnly()
+                                    ->helperText('لا يتم تحميلها على العميل تلقائياً'),
+                            ]),
+
+                        Forms\Components\Toggle::make('supplier_refund_confirmed')
+                            ->label('تم تأكيد استرداد المورد بنجاح')
+                            ->helperText('شرط أساسي للسماح بالصرف النقدي أو البنكي للعميل إلا بصلاحية خاصة')
+                            ->default(false),
+                    ]),
+
+                Forms\Components\Section::make('الطرف (ب): تسويات وأرصدة العميل')
+                    ->schema([
+                        Forms\Components\Grid::make(4)
+                            ->schema([
+                                Forms\Components\TextInput::make('customer_debt_settled_amount')
+                                    ->label('المخصوم من مديونية العميل (FIFO)')
+                                    ->numeric()
+                                    ->readOnly(),
+
+                                Forms\Components\TextInput::make('customer_credit_amount')
+                                    ->label('رصيد دائن للعميل')
+                                    ->numeric()
+                                    ->readOnly(),
+
+                                Forms\Components\TextInput::make('disbursed_amount')
+                                    ->label('إجمالي المنصرف للعميل')
+                                    ->numeric()
+                                    ->readOnly(),
+
+                                Forms\Components\TextInput::make('disbursement_status')
+                                    ->label('حالة صرف رصيد العميل')
+                                    ->readOnly(),
+                            ]),
+                    ]),
             ]);
     }
 
@@ -215,6 +331,19 @@ class RefundRequestResource extends Resource
                     ->color('primary')
                     ->url(fn (RefundRequest $record): string => FlightBookingResource::getUrl('edit', ['record' => $record->flight_booking_id])),
 
+                Tables\Columns\BadgeColumn::make('refund_case')
+                    ->label('نوع الإلغاء')
+                    ->colors([
+                        'warning' => 'customer_voluntary',
+                        'info' => 'airline_cancelled',
+                        'secondary' => 'default',
+                    ])
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {
+                        'customer_voluntary' => 'إلغاء عميل',
+                        'airline_cancelled' => 'إلغاء طيران',
+                        default => 'استرداد عام',
+                    }),
+
                 Tables\Columns\TextColumn::make('original_amount')
                     ->label('المبلغ الأصلي')
                     ->numeric(2)
@@ -232,6 +361,53 @@ class RefundRequestResource extends Resource
                     ->sortable()
                     ->color('success')
                     ->description(fn (RefundRequest $record): string => $record->refund_currency),
+
+                Tables\Columns\TextColumn::make('supplier_refund_amount')
+                    ->label('مسترد المورد')
+                    ->numeric(2)
+                    ->sortable()
+                    ->toggleable(),
+
+                Tables\Columns\IconColumn::make('supplier_refund_confirmed')
+                    ->label('تأكيد المورد')
+                    ->boolean()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('refund_variance_amount')
+                    ->label('فروق استرداد')
+                    ->numeric(2)
+                    ->sortable()
+                    ->color(fn ($state) => (float) $state > 0 ? 'danger' : 'gray')
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('customer_credit_amount')
+                    ->label('رصيد دائن للعميل')
+                    ->numeric(2)
+                    ->sortable()
+                    ->color('info'),
+
+                Tables\Columns\TextColumn::make('disbursed_amount')
+                    ->label('المنصرف للعميل')
+                    ->numeric(2)
+                    ->sortable()
+                    ->toggleable(),
+
+                Tables\Columns\BadgeColumn::make('disbursement_status')
+                    ->label('حالة الصرف')
+                    ->colors([
+                        'secondary' => 'none',
+                        'warning' => 'unpaid',
+                        'info' => 'partially_disbursed',
+                        'success' => 'fully_disbursed',
+                    ])
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {
+                        'none' => 'لا يوجد رصيد',
+                        'unpaid' => 'معلق غير منصرف',
+                        'partially_disbursed' => 'منصرف جزئياً',
+                        'fully_disbursed' => 'منصرف كلياً',
+                        default => $state ?? '—',
+                    })
+                    ->toggleable(),
 
                 Tables\Columns\BadgeColumn::make('destination')
                     ->label('الوجهة')
@@ -295,6 +471,105 @@ class RefundRequestResource extends Resource
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('فشل الترحيل')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
+                \Filament\Actions\Action::make('confirm_supplier')
+                    ->label('تأكيد استرداد المورد')
+                    ->icon('heroicon-o-check-badge')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->modalHeading('تأكيد استرداد المورد')
+                    ->modalDescription('هل تؤكد استلام / إقرار المورد أو شركة الطيران بقيمة الاسترداد؟ هذا الإجراء يسمح بصرف رصيد العميل نقداً أو بنكياً.')
+                    ->visible(fn (RefundRequest $record): bool => $record->status === 'processed' && ! (bool) $record->supplier_refund_confirmed)
+                    ->action(function (RefundRequest $record) {
+                        try {
+                            $userId = Auth::id() ?: 1;
+                            app(RefundService::class)->confirmSupplierRefund($record->id, $userId);
+
+                            Notification::make()
+                                ->title('تم تأكيد استرداد المورد بنجاح')
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('فشل تأكيد استرداد المورد')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
+                \Filament\Actions\Action::make('disburse')
+                    ->label('صرف رصيد العميل')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('warning')
+                    ->visible(fn (RefundRequest $record): bool => $record->status === 'processed' && (float) $record->customer_credit_amount > (float) $record->disbursed_amount)
+                    ->form([
+                        Forms\Components\Select::make('type')
+                            ->label('طريقة الصرف')
+                            ->options([
+                                'cash_treasury' => 'رد نقدي من خزينة',
+                                'bank_transfer' => 'رد بنكي / تحويل',
+                                'booking_settlement' => 'تسوية في حجز تذكرة آخر',
+                            ])
+                            ->required()
+                            ->live(),
+
+                        Forms\Components\TextInput::make('amount')
+                            ->label('المبلغ المراد صرفه')
+                            ->numeric()
+                            ->required()
+                            ->default(fn (RefundRequest $record): float => (float) $record->customer_credit_amount - (float) $record->disbursed_amount)
+                            ->helperText(fn (RefundRequest $record): string => 'الرصيد الدائن المتاح: ' . number_format((float) $record->customer_credit_amount - (float) $record->disbursed_amount, 2)),
+
+                        Forms\Components\Select::make('treasury_id')
+                            ->label('الخزينة')
+                            ->options(fn () => Treasury::active()->pluck('name', 'id'))
+                            ->visible(fn (Forms\Get $get): bool => $get('type') === 'cash_treasury')
+                            ->required(fn (Forms\Get $get): bool => $get('type') === 'cash_treasury'),
+
+                        Forms\Components\Select::make('bank_account_id')
+                            ->label('الحساب البنكي')
+                            ->options(fn () => \App\Models\Account::where('type', 'bank')->pluck('name', 'id'))
+                            ->visible(fn (Forms\Get $get): bool => $get('type') === 'bank_transfer')
+                            ->required(fn (Forms\Get $get): bool => $get('type') === 'bank_transfer'),
+
+                        Forms\Components\Select::make('target_flight_booking_id')
+                            ->label('الحجز المستهدف للتسوية')
+                            ->options(function (RefundRequest $record) {
+                                $customerId = $record->booking?->customer_id;
+                                if (! $customerId) {
+                                    return [];
+                                }
+                                return FlightBooking::where('customer_id', $customerId)
+                                    ->where('id', '!=', $record->flight_booking_id)
+                                    ->where('payment_status', '!=', 'paid')
+                                    ->pluck('booking_number', 'id');
+                            })
+                            ->visible(fn (Forms\Get $get): bool => $get('type') === 'booking_settlement')
+                            ->required(fn (Forms\Get $get): bool => $get('type') === 'booking_settlement'),
+
+                        Forms\Components\Textarea::make('notes')
+                            ->label('ملاحظات الصرف')
+                            ->maxLength(500),
+                    ])
+                    ->action(function (RefundRequest $record, array $data) {
+                        try {
+                            $user = Auth::user();
+                            app(RefundService::class)->disburseCustomerCredit($record->id, $data, $user);
+
+                            Notification::make()
+                                ->title('تم صرف رصيد العميل بنجاح')
+                                ->body("تم صرف مبلغ {$data['amount']} بنجاح.")
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('فشل عملية الصرف')
                                 ->body($e->getMessage())
                                 ->danger()
                                 ->send();

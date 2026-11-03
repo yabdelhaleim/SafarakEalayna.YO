@@ -1978,9 +1978,75 @@ class FlightBookingService
                     $convertedAmount = $amount;         // foreign amount for cashbox credit
                 }
 
-                // Validate total payments won't exceed selling_price
+                // Case 3 (Overpayment handling):
+                // If the payment exceeds the remaining selling price, the excess is
+                // credited to the unified customer credit ledger — but ONLY when the
+                // caller explicitly opts in (`allow_overpayment => true`). By default
+                // the payment is REJECTED, exactly like `main` did:
+                //
+                //     "Total payments would exceed selling price. …"
+                //
+                // CURRENCY CONSISTENCY (2026-11-03 — QA finding on this branch):
+                //   `selling_price` is ALWAYS stored in EGP (see createBooking, the
+                //   2026-07-23 fix) and `FlightPayment.amount` is ALWAYS the EGP
+                //   equivalent of the money actually collected. Comparing one of them
+                //   against a raw foreign amount mixes two currencies: a 150 USD
+                //   payment on a 150 USD booking (7,275 EGP @ 48.5) was seen as a
+                //   7,125 EGP overpayment, which produced a phantom customer credit
+                //   and left the customer AR at -7,125 instead of 0.
+                //
+                //   Everything below is therefore normalised to ONE currency — the
+                //   BOOKING currency — before the comparison, and the overpayment is
+                //   stored in that same currency in the unified credit ledger (the
+                //   refund flow reads the credit with the booking/refund currency).
+                $bookingRate = (float) ($booking->exchange_rate ?? 1.0);
+                if ($bookingRate <= 0) {
+                    $bookingRate = 1.0;
+                }
+
+                // Amount already collected on this booking — always in EGP.
                 $totalPaid = $booking->payments()->sum('amount') ?? 0;
-                if ($totalPaid + $transferAmount > $booking->selling_price) {
+                // Remaining selling price — in EGP …
+                $remainingSelling = max(0.0, round((float) $booking->selling_price - $totalPaid, 2));
+                // … and in the booking currency (the currency both sides of the
+                // comparison must share).
+                if ($bookingCurrency === 'EGP') {
+                    $remainingSellingInBookingCurrency = $remainingSelling;
+                } else {
+                    $sellingPriceForeign = (float) ($booking->selling_price_foreign ?? 0.0);
+                    $remainingSellingInBookingCurrency = $sellingPriceForeign > 0
+                        ? round($sellingPriceForeign - ((float) $totalPaid / $bookingRate), 4)
+                        : round($remainingSelling / $bookingRate, 4);
+                }
+
+                // This payment — in EGP (transferAmount) and in the booking currency.
+                // `$convertedAmount` already holds the foreign/booking-currency
+                // equivalent computed in the currency block above.
+                $paymentInBookingCurrency = $bookingCurrency === 'EGP'
+                    ? round($transferAmount, 4)
+                    : round((float) ($convertedAmount ?? ($transferAmount / $bookingRate)), 4);
+
+                $bookingPaymentAmount = $transferAmount;
+                $overpaymentAmount = 0.0;                 // EGP equivalent
+                $overpaymentInBookingCurrency = 0.0;      // booking-currency amount
+
+                if ($paymentInBookingCurrency > $remainingSellingInBookingCurrency + 0.005) {
+                    $overpaymentInBookingCurrency = round(
+                        $paymentInBookingCurrency - $remainingSellingInBookingCurrency,
+                        4
+                    );
+                    $overpaymentAmount = $bookingCurrency === 'EGP'
+                        ? round($overpaymentInBookingCurrency, 2)
+                        : round($overpaymentInBookingCurrency * $bookingRate, 2);
+                    $bookingPaymentAmount = $remainingSelling;
+                }
+
+                // Overpayment is rejected unless the caller explicitly allows it.
+                // `main` always rejected it; the Vue client sends `allow_overpayment`
+                // only after the user confirms the excess goes to the customer's
+                // unified credit balance.
+                $allowOverpayment = (bool) ($data['allow_overpayment'] ?? false);
+                if ($overpaymentAmount > 0 && ! $allowOverpayment) {
                     throw new \Exception(
                         'Total payments would exceed selling price. '.
                         "Current EGP: {$totalPaid}, Adding EGP: {$transferAmount}, Total EGP: ".($totalPaid + $transferAmount).
@@ -1996,36 +2062,6 @@ class FlightBookingService
                 }
                 $paymentNotes = isset($data['notes']) ? ($data['notes'].$currencyNote) : (trim($currencyNote) ?: null);
 
-                // تحصيل الدفعة من حساب العميل (تخفيض المديونية) إلى الخزينة
-                // الإيراد مُسجَّل مسبقاً عند إنشاء الحجز في recordSaleToCustomer (clearing → customer)
-                // هذا القيد محايد (neutral) — تحويل من مديونية → نقدية فقط
-                //
-                // D3 FIX (2026-08-15): rekey the duplicate-income guard.
-                // Previously this called recordIncome with related_type=FlightBooking
-                // + related_id=$booking->id, which caused the duplicate-income guard
-                // (TransactionService::recordJournalTransfer line ~650) to reject
-                // the SECOND and subsequent payment for the same booking. The guard
-                // treats each (related_type, related_id) as a unique income slot, but
-                // the booking has only ONE slot — so partial payments were blocked.
-                //
-                // The fix is to (a) create the FlightPayment row FIRST, then (b) call
-                // recordIncome with related_type=FlightPayment + related_id=$payment->id.
-                // Each payment now gets its own slot. The duplicate-income guard
-                // still prevents the SAME FlightPayment row from generating two income
-                // transactions (i.e. a true retry that bypasses the lockForUpdate).
-                //
-                // Order of operations:
-                //   1. FlightPayment::create (no transaction_id yet)
-                //   2. recordIncome with FlightPayment as related
-                //   3. FlightPayment::update with the transaction_id
-                //   4. TreasuryLedgerMirror (depends on $transaction->id)
-                //
-                // If step 2 fails, the payment row is left with transaction_id=NULL.
-                // The idempotency_key layer-2 catch below will surface the failure.
-                //
-                // Compute the treasury_label BEFORE the create() call. The
-                // `treasury_account` column is NOT NULL in the schema, so we
-                // cannot defer it to a later update().
                 $treasuryLabel = $account
                     ? (string) $account->id.'|'.($account->name ?? '')
                     : (string) ($data['account_id'] ?? '');
@@ -2033,7 +2069,7 @@ class FlightBookingService
                 try {
                     $payment = FlightPayment::create([
                         'flight_booking_id' => $booking->id,
-                        'amount' => $transferAmount, // EGP-equivalent for ledger and total-paid calculations
+                        'amount' => $bookingPaymentAmount, // EGP-equivalent for booking total-paid calculations (capped at selling price)
                         'original_amount' => $amount,
                         'payment_method' => $data['payment_method'] ?? $data['method'] ?? FlightPaymentMethod::Cash->value,
                         'currency' => $paymentCurrency,
@@ -2090,6 +2126,40 @@ class FlightBookingService
                     'transaction_reference' => (string) $transaction->id,
                 ]);
 
+                // Case 3: Overpayment recorded to unified customer credit ledger
+                if ($overpaymentAmount > 0) {
+                    $customer = $booking->customer;
+                    $companyId = null;
+                    if ($customer) {
+                        if ($customer->type === \App\Enums\CustomerType::Company) {
+                            $companyId = $customer->id;
+                        } elseif (! empty($customer->company_id)) {
+                            $companyId = $customer->company_id;
+                        }
+                    }
+
+                    // The unified credit is denominated in the BOOKING currency — the
+                    // same currency the refund/disbursement flow reads it with
+                    // (`CustomerCreditLedger::getAvailableCredit(..., refund_currency)`).
+                    // For EGP bookings this is unchanged ('EGP'); for a foreign booking
+                    // the credit is the FOREIGN amount, not its EGP equivalent.
+                    $creditCurrency = $bookingCurrency !== 'EGP' ? $bookingCurrency : 'EGP';
+                    $creditAmount = $creditCurrency === 'EGP'
+                        ? $overpaymentAmount
+                        : $overpaymentInBookingCurrency;
+
+                    \App\Models\CustomerCreditLedger::recordEntry([
+                        'customer_id' => $customer?->id,
+                        'company_id' => $companyId,
+                        'source_type' => \App\Models\CustomerCreditLedger::SOURCE_OVERPAYMENT,
+                        'source_id' => $payment->id,
+                        'amount' => $creditAmount,
+                        'currency' => $creditCurrency,
+                        'notes' => "دفعة زيادة بمبلغ {$creditAmount} {$creditCurrency} على حجز #{$booking->booking_number} — تحويل لرصيد دائن",
+                        'created_by' => $createdBy,
+                    ]);
+                }
+
                 TreasuryLedgerMirror::mirrorFlightInboundReceipt(
                     $transaction,
                     $booking->id,
@@ -2139,6 +2209,73 @@ class FlightBookingService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * سداد حجز (كلياً أو جزئياً) باستخدام رصيد العميل/الشركة الدائن المتاح من دفتر الرصيد الموحد.
+     */
+    public function consumeCustomerCredit(FlightBooking $booking, float $amount, int $userId): \App\Models\CustomerCreditLedger
+    {
+        return DB::transaction(function () use ($booking, $amount, $userId) {
+            $lockedBooking = FlightBooking::lockForUpdate()->findOrFail($booking->id);
+            $customer = $lockedBooking->customer;
+            $companyId = null;
+            if ($customer) {
+                if ($customer->type === \App\Enums\CustomerType::Company) {
+                    $companyId = $customer->id;
+                } elseif (! empty($customer->company_id)) {
+                    $companyId = $customer->company_id;
+                }
+            }
+
+            $availableCredit = \App\Models\CustomerCreditLedger::getAvailableCredit($customer?->id, $companyId);
+            if ($amount > $availableCredit + 0.005) {
+                throw new \InvalidArgumentException(
+                    sprintf('مبلغ الخصم المطلوب (%.2f) يتجاوز رصيد العميل المتاح (%.2f).', $amount, $availableCredit)
+                );
+            }
+
+            $remaining = (float) $lockedBooking->remaining_amount;
+            if ($amount > $remaining + 0.005) {
+                throw new \InvalidArgumentException(
+                    sprintf('مبلغ الخصم المطلوب (%.2f) يتجاوز المبلغ المتبقي على الحجز (%.2f).', $amount, $remaining)
+                );
+            }
+
+            // 1. تسجيل تخصيص الدفعة على الحجز
+            \App\Models\Flight\FlightPaymentAllocation::create([
+                'transaction_id' => $lockedBooking->sale_gl_transaction_id ?? 1,
+                'flight_booking_id' => $lockedBooking->id,
+                'customer_id' => $lockedBooking->customer_id,
+                'amount' => $amount,
+                'status' => 'active',
+                'notes' => "سداد من رصيد العميل الدائن الموحد — حجز #{$lockedBooking->booking_number}",
+                'created_by' => $userId,
+                'allocated_at' => now(),
+            ]);
+
+            // 2. قيد الخصم من دفتر الرصيد الموحد (سالب)
+            $ledgerEntry = \App\Models\CustomerCreditLedger::recordEntry([
+                'customer_id' => $customer?->id,
+                'company_id' => $companyId,
+                'source_type' => \App\Models\CustomerCreditLedger::SOURCE_BOOKING_SETTLEMENT,
+                'source_id' => $lockedBooking->id,
+                'amount' => -1 * round($amount, 2),
+                'currency' => $lockedBooking->currency ?: 'EGP',
+                'notes' => "استهلاك رصيد لسداد حجز #{$lockedBooking->booking_number}",
+                'created_by' => $userId,
+            ]);
+
+            // ترقية حالة الحجز لو اكتمل
+            $lockedBooking->unsetRelation('paymentAllocations');
+            if ((float) $lockedBooking->paid_amount >= (float) $lockedBooking->selling_price - 0.01 
+                && $lockedBooking->status === FlightBookingStatus::PENDING 
+                && ! empty($lockedBooking->pnr)) {
+                $lockedBooking->update(['status' => FlightBookingStatus::CONFIRMED]);
+            }
+
+            return $ledgerEntry;
+        });
     }
 
     /**
@@ -2903,8 +3040,13 @@ class FlightBookingService
      * row without further mutation. The cancel-flight status guard at
      * the top of cancelBooking() rejects repeat cancellations of the
      * same booking anyway, so this guard is defensive only.
+     *
+     * @return list<int> ids of the income rows that were marked as reversed
+     *                    (so the caller can RESTORE them when the refund
+     *                    request itself gets cancelled — otherwise the P&L
+     *                    keeps the refund impact forever).
      */
-    public function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): void
+    public function reverseFlightBookingRevenue(FlightBooking $booking, int $userId): array
     {
         // Refresh in case Step 3 modified any cache.
         $booking->refresh();
@@ -2927,6 +3069,7 @@ class FlightBookingService
         // is therefore safe to re-run on any historical cancellation.
         $payments = $booking->payments()->whereNotNull('transaction_id')->get();
         $reversedCount = 0;
+        $reversedTransactionIds = [];
 
         foreach ($payments as $payment) {
             // The payment-side row was created by recordIncome() with type='income'.
@@ -2951,6 +3094,7 @@ class FlightBookingService
 
             $this->transactionService->markTransactionReversed($originalTx);
             $reversedCount++;
+            $reversedTransactionIds[] = (int) $originalTx->id;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -3000,6 +3144,7 @@ class FlightBookingService
         foreach ($payDebtIncomes as $tx) {
             $this->transactionService->markTransactionReversed($tx);
             $reversedCount++;
+            $reversedTransactionIds[] = (int) $tx->id;
         }
 
         if ($reversedCount > 0) {
@@ -3010,6 +3155,8 @@ class FlightBookingService
                 'user_id' => $userId,
             ]);
         }
+
+        return $reversedTransactionIds;
     }
 
     /**

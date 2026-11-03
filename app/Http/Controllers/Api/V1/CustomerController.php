@@ -216,6 +216,11 @@ class CustomerController extends Controller
             'module' => 'nullable|string',
             'exchange_rate' => 'nullable|numeric|min:0.000001',
             'converted_amount' => 'nullable|numeric|min:0.01',
+            'flight_booking_id' => 'nullable|integer|exists:flight_bookings,id',
+            'allocations' => 'nullable|array',
+            'allocations.*.flight_booking_id' => 'required_with:allocations|integer|exists:flight_bookings,id',
+            'allocations.*.amount' => 'required_with:allocations|numeric|min:0.01',
+            'allocations.*.notes' => 'nullable|string|max:500',
         ]);
 
         try {
@@ -402,6 +407,24 @@ class CustomerController extends Controller
                         'notes' => $notes,
                         'created_by' => Auth::id() ?? 1,
                     ]);
+                }
+
+                // ✈️ Flight booking-level payment allocation (Phase 1):
+                // Allocate the receipt to specific flight booking(s) if provided.
+                // If not provided, the receipt remains unallocated on the customer account.
+                if ($moduleEnum === TransactionModule::Flight && $type === 'receipt' && $journalAmount > 0) {
+                    $allocationService = app(\App\Services\Flight\FlightPaymentAllocationService::class);
+                    if (! empty($validated['allocations'])) {
+                        $allocationService->allocateMultiple($transaction, $validated['allocations'], Auth::id() ?? 1);
+                    } elseif (! empty($validated['flight_booking_id'])) {
+                        $allocationService->allocate(
+                            $transaction,
+                            \App\Models\Flight\FlightBooking::findOrFail($validated['flight_booking_id']),
+                            (float) $validated['amount'],
+                            Auth::id() ?? 1,
+                            $validated['notes'] ?? null
+                        );
+                    }
                 }
 
                 // 🛡️ Fawry per-transaction amount sync (BUG FIX 2026-08-28):

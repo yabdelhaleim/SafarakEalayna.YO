@@ -441,7 +441,7 @@ class FinancialReportController extends Controller
                     'to_account_type' => $tx->to_account_type,
                     'to_account_module_type' => null,
                     'from_account_module_type' => null,
-                ], $incomeClearing, $expenseClearing, $prepaidAccounts);
+                ], $incomeClearing, $expenseClearing, $prepaidAccounts, $maps['system_relabel'] ?? []);
                 if ($classification === null) { $skipped++; continue; }
                 $shortClass = $classification;
                 if (str_contains($shortClass, 'revenue_reversal') || str_contains($shortClass, 'refund')) $shortClass = 'refund';

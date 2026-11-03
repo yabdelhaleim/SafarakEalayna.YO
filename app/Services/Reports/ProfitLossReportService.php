@@ -91,7 +91,7 @@ class ProfitLossReportService
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
             $scanned++;
 
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $maps['system_relabel'] ?? []);
             if ($classification === null) {
                 continue;
             }
@@ -134,13 +134,7 @@ class ProfitLossReportService
             if (str_starts_with($txNotes, 'عكس:')) {
                 continue;
             }
-            if (str_starts_with($txNotes, 'عكس ')) {
-                if ($classification === 'revenue') {
-                    $classification = 'revenue_reversal';
-                } elseif ($classification === 'cogs') {
-                    $classification = 'cogs_reversal';
-                }
-            }
+            $classification = $this->applyReversalNoteClassification($tx, $classification, $prepaidAccounts);
 
             $included++;
 
@@ -289,7 +283,7 @@ class ProfitLossReportService
                 continue;
             }
 
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $maps['system_relabel'] ?? []);
             if ($classification === null) {
                 continue;
             }
@@ -297,13 +291,7 @@ class ProfitLossReportService
             // Apply the 'عكس ' (space) reversal reclassification AFTER
             // classify() so we have a classification to flip. The mirror
             // case 'عكس:' (colon) is already handled by the continue above.
-            if (str_starts_with($txNotes, 'عكس ')) {
-                if ($classification === 'revenue') {
-                    $classification = 'revenue_reversal';
-                } elseif ($classification === 'cogs') {
-                    $classification = 'cogs_reversal';
-                }
-            }
+            $classification = $this->applyReversalNoteClassification($tx, $classification, $prepaidAccounts);
 
             $section = $this->sectionForClassification($classification);
             if (! $this->matchesSection($section, $filters['section'] ?? 'all')) {
@@ -610,18 +598,19 @@ class ProfitLossReportService
      * @param  array<int, string>  $incomeClearing
      * @param  array<int, string>  $expenseClearing
      * @param  array<int, string>  $prepaidAccounts
+     * @param  array<int, string>  $systemRelabel
      */
     /**
      * Public wrapper around classify() so the FinancialReportController
      * can use the same classification engine from /profit-by-operation.
      * Same return values (revenue, cogs, expense, refund, null).
      */
-    public function classifyPublic(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
+    public function classifyPublic(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = [], array $systemRelabel = []): ?string
     {
-        return $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+        return $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $systemRelabel);
     }
 
-    private function classify(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = []): ?string
+    private function classify(object $tx, array $incomeClearing, array $expenseClearing, array $prepaidAccounts = [], array $systemRelabel = []): ?string
     {
         $type = (string) $tx->type;
         $fromId = (int) ($tx->from_account_id ?? 0);
@@ -672,6 +661,38 @@ class ProfitLossReportService
             return null;
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // SYSTEM RE-LABEL TARGETS (config/accounting.php → clearing.refund_accounts
+        // + clearing.sales_pending_receivable).
+        //
+        // A transfer that ENDS in one of these accounts only re-labels money
+        // that is already inside the P&L — it never creates a new revenue or a
+        // new cost:
+        //   • the cancellation-fee revenue account: the commission kept on a
+        //     refund is already part of the revenue that survives the refund
+        //     reversal (sale revenue − refunded amount). Counting it again
+        //     double-counts the commission.
+        //   • the refund loss / variance accounts: the part of the cost the
+        //     airline did NOT refund. It is already inside the cost-of-sales
+        //     bucket, because the COGS reversal only reverses what the airline
+        //     actually paid back. Reversing it here would erase the loss
+        //     entirely (the agency that bears a non-refundable tax would show
+        //     a zero P&L instead of the real loss).
+        //   • the pending sales-receivable account: the shadow that holds the
+        //     sale until the payment / refund closes it. Moving money into
+        //     (or out of) it is a leg of the refund cycle, not a new cost.
+        //
+        // BOTH legs are inspected: the cycle of a refund always moves money
+        // between the pending sales-receivable account (acc#6) and the
+        // clearing/loss accounts, so a forward leg AND its mirror must be
+        // neutral — otherwise cancelling a refund would not restore the P&L
+        // (the mirror would be classified while the original was not).
+        // ─────────────────────────────────────────────────────────────────
+        if (($toId > 0 && isset($systemRelabel[$toId]))
+            || ($fromId > 0 && isset($systemRelabel[$fromId]))) {
+            return null;
+        }
+
         $fromIncome = $fromId > 0 && isset($incomeClearing[$fromId]);
         $toIncome = $toId > 0 && isset($incomeClearing[$toId]);
         $fromExpense = $fromId > 0 && isset($expenseClearing[$fromId]);
@@ -714,6 +735,52 @@ class ProfitLossReportService
         }
 
         return null;
+    }
+
+    /**
+     * 'عكس ' (space, no colon) companion rows.
+     *
+     * A row whose notes start with "عكس " is a NEW companion row posted next
+     * to an unmodified original (the `recordJournalTransfer()` style used by
+     * FlightBookingService::cancelBooking). The original still counts as
+     * revenue/cogs, so the companion must cancel it out:
+     * revenue → revenue_reversal, cogs → cogs_reversal.
+     *
+     * EXCEPTION — a row that CONSUMES the prepaid account again
+     * (prepaid → cost clearing). Such a row is the mirror of an earlier
+     * "cost reversal" row (cost clearing → prepaid), NOT the mirror of the
+     * original cost posting: it is posted when a REFUND REQUEST IS CANCELLED
+     * (RefundService::reverseRefundRequest → PrepaidLedgerService::consumeCogs).
+     * It must keep the 'cogs' classification, otherwise cancelling a refund
+     * would subtract the cost twice and the P&L would NOT be restored.
+     *
+     * @param  array<int, string>  $prepaidAccounts
+     */
+    private function applyReversalNoteClassification(object $tx, ?string $classification, array $prepaidAccounts): ?string
+    {
+        if ($classification === null) {
+            return null;
+        }
+
+        $notes = (string) ($tx->notes ?? '');
+        if (! str_starts_with($notes, 'عكس ')) {
+            return $classification;
+        }
+
+        if ($classification === 'revenue') {
+            return 'revenue_reversal';
+        }
+
+        if ($classification === 'cogs') {
+            $fromId = (int) ($tx->from_account_id ?? 0);
+            if ($fromId > 0 && isset($prepaidAccounts[$fromId])) {
+                return 'cogs';
+            }
+
+            return 'cogs_reversal';
+        }
+
+        return $classification;
     }
 
     /**
@@ -1028,7 +1095,7 @@ class ProfitLossReportService
         $daily = [];
 
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $maps['system_relabel'] ?? []);
             if ($classification === null) {
                 continue;
             }
@@ -1056,13 +1123,7 @@ class ProfitLossReportService
             if (str_starts_with($txNotes, 'عكس:')) {
                 continue;
             }
-            if (str_starts_with($txNotes, 'عكس ')) {
-                if ($classification === 'revenue') {
-                    $classification = 'revenue_reversal';
-                } elseif ($classification === 'cogs') {
-                    $classification = 'cogs_reversal';
-                }
-            }
+            $classification = $this->applyReversalNoteClassification($tx, $classification, $prepaidAccounts);
 
             $date = substr((string) $tx->created_at, 0, 10); // 'YYYY-MM-DD'
             if (! isset($daily[$date])) {
@@ -1178,7 +1239,7 @@ class ProfitLossReportService
         $relatedIds = [];
 
         foreach ($query->orderBy('t.id')->cursor() as $tx) {
-            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts);
+            $classification = $this->classify($tx, $incomeClearing, $expenseClearing, $prepaidAccounts, $maps['system_relabel'] ?? []);
             if ($classification === null) {
                 continue;
             }

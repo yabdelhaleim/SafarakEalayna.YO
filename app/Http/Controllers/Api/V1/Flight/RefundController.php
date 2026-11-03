@@ -19,6 +19,38 @@ class RefundController extends Controller
     ) {}
 
     /**
+     * معاينة تفاصيل الاسترجاع المقترح (Preview) قبل التنفيذ النهائي.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'flight_booking_id' => ['required', 'integer', 'exists:flight_bookings,id'],
+            'refund_case' => ['nullable', 'string', 'in:customer_voluntary,airline_cancelled,default'],
+            'airline_penalty' => ['nullable', 'numeric', 'min:0'],
+            'agency_commission' => ['nullable', 'numeric', 'min:0'],
+            'cancellation_fee' => ['nullable', 'numeric', 'min:0'],
+            'airline_refund_amount' => ['nullable', 'numeric', 'min:0'],
+            'supplier_refund_amount' => ['nullable', 'numeric', 'min:0'],
+            'apply_commission' => ['nullable', 'boolean'],
+            'non_refundable_taxes_on_customer' => ['nullable', 'boolean'],
+            'non_refundable_taxes_amount' => ['nullable', 'numeric', 'min:0'],
+            'refund_currency' => ['nullable', 'string', 'size:3'],
+            'refund_exchange_rate' => ['nullable', 'numeric', 'min:0.000001'],
+        ]);
+
+        try {
+            $preview = $this->refundService->previewRefund($validated);
+
+            return ApiResponse::success(
+                'تم احتساب تفاصيل الاسترجاع المقترح بنجاح.',
+                $preview
+            );
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
      * إنشاء طلب استرجاع جديد للتذكرة.
      */
     public function store(Request $request): JsonResponse
@@ -27,7 +59,18 @@ class RefundController extends Controller
         // and refund_exchange_rate range to prevent silent 50x errors.
         $validated = $request->validate([
             'flight_booking_id' => ['required', 'integer', 'exists:flight_bookings,id'],
+            'refund_case' => ['nullable', 'string', 'in:customer_voluntary,airline_cancelled,default'],
+            'airline_penalty' => ['nullable', 'numeric', 'min:0'],
+            'agency_commission' => ['nullable', 'numeric', 'min:0'],
+            'airline_refund_amount' => ['nullable', 'numeric', 'min:0'],
+            'apply_commission' => ['nullable', 'boolean'],
+            'non_refundable_taxes_on_customer' => ['nullable', 'boolean'],
+            'non_refundable_taxes_amount' => ['nullable', 'numeric', 'min:0'],
             'cancellation_fee' => ['nullable', 'numeric', 'min:0'],
+            'supplier_refund_amount' => ['nullable', 'numeric', 'min:0'],
+            'supplier_cost' => ['nullable', 'numeric', 'min:0'],
+            'supplier_refund_confirmed' => ['nullable', 'boolean'],
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
             'refund_currency' => [
                 'nullable',
                 'string',
@@ -115,7 +158,61 @@ class RefundController extends Controller
 
             return ApiResponse::success(
                 'تمت معالجة طلب الاسترجاع وتحديث الأرصدة بنجاح.',
-                $refundRequest->fresh(['booking', 'treasury', 'airlineCredit'])
+                $refundRequest->fresh(['booking', 'treasury', 'airlineCredit', 'disbursements'])
+            );
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * صرف رصيد العميل الدائن (يدوياً: نقدي، بنكي، أو تسوية حجز).
+     */
+    public function disburse(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'type' => ['required', 'string', 'in:cash_treasury,bank_transfer,booking_settlement'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'treasury_id' => ['nullable', 'required_if:type,cash_treasury', 'integer', 'exists:treasuries,id'],
+            'bank_account_id' => ['nullable', 'required_if:type,bank_transfer', 'integer', 'exists:accounts,id'],
+            'target_flight_booking_id' => ['nullable', 'required_if:type,booking_settlement', 'integer', 'exists:flight_bookings,id'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $user = Auth::user();
+            $disbursement = $this->refundService->disburseCustomerCredit($id, $validated, $user);
+
+            return ApiResponse::success(
+                'تم صرف رصيد العميل بنجاح.',
+                $disbursement->load(['refundRequest', 'treasury', 'bankAccount', 'targetFlightBooking']),
+                201
+            );
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * تأكيد استرداد المورد / شركة الطيران مع فحص الفروق.
+     */
+    public function confirmSupplier(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'actual_airline_refund_amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            $userId = Auth::id() ?: 1;
+            $refundRequest = $this->refundService->confirmSupplierRefund(
+                $id,
+                $userId,
+                isset($validated['actual_airline_refund_amount']) ? (float) $validated['actual_airline_refund_amount'] : null
+            );
+
+            return ApiResponse::success(
+                'تم تأكيد استرداد المورد بنجاح.',
+                $refundRequest->fresh()
             );
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage(), null, 422);

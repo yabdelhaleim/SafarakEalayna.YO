@@ -192,6 +192,39 @@ return [
             'ACCOUNTING_TREASURY_OPS_CLEARING_NAME',
             'ضبط حركات الخزينة (نظام)'
         ),
+
+        /*
+         * Accounts for ticket refund cycle (عمولات الإلغاء وخسائر الاسترداد).
+         *
+         * These are NOT clearing accounts — they are leaf P&L accounts used by
+         * the refund flow — so they get their own map. The P&L engine reads it
+         * (see LedgerClearingAccounts::moduleAccountMaps() → 'system_relabel')
+         * and treats every transfer that TOUCHES them as a re-label of money
+         * that is already in the P&L, never as a new revenue/cost:
+         *
+         *   • cancellation_fee_revenue — the agency commission kept on a
+         *     refund. It is already part of the revenue that survives the
+         *     refund reversal (sale revenue − refunded amount); counting it
+         *     again would double-count it.
+         *   • refund_loss / refund_variance — the part of the cost the airline
+         *     did NOT refund. It is already inside the cost-of-sales bucket
+         *     (the COGS reversal only reverses what the airline paid back);
+         *     counting it again would erase the loss.
+         */
+        'refund_accounts' => [
+            'cancellation_fee_revenue' => env(
+                'ACCOUNTING_CANCELLATION_FEE_REVENUE_NAME',
+                'إيرادات عمولات إلغاء التذاكر'
+            ),
+            'refund_loss' => env(
+                'ACCOUNTING_REFUND_LOSS_NAME',
+                'خسائر وغرامات استرداد التذاكر'
+            ),
+            'refund_variance' => env(
+                'ACCOUNTING_REFUND_VARIANCE_NAME',
+                'فروق استرداد التذاكر'
+            ),
+        ],
     ],
 
     /*
