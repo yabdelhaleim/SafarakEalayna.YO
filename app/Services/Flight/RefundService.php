@@ -1502,8 +1502,23 @@ class RefundService
                             );
                         }
 
+                        // تخصيص التسوية يشير إلى قيد بيع الحجز المستهدف نفسه
+                        // (لا إلى الحجز المُستَرَد ولا إلى قيمة احتياطية).
+                        // القيمة الاحتياطية القديمة (?? 1) كانت تشير إلى أول
+                        // قيد في الجدول — وهو في الواقع قيد شحن رصيد الناقل،
+                        // أي مرجع خاطئ تماماً.
+                        $targetSaleTransactionId = $targetBooking->sale_gl_transaction_id;
+                        if (! $targetSaleTransactionId) {
+                            throw new BusinessLogicException(
+                                sprintf(
+                                    'تعذّر تسوية رصيد العميل على الحجز #%s: لا يوجد قيد بيع مسجّل لهذا الحجز.',
+                                    $targetBooking->booking_number
+                                )
+                            );
+                        }
+
                         FlightPaymentAllocation::create([
-                            'transaction_id' => $booking->sale_gl_transaction_id ?? 1,
+                            'transaction_id' => $targetSaleTransactionId,
                             'flight_booking_id' => $targetBooking->id,
                             'customer_id' => $customer->id,
                             'amount' => $settlementEgp,
