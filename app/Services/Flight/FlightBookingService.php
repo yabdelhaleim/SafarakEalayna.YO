@@ -2101,10 +2101,66 @@ class FlightBookingService
                     throw $qe;
                 }
 
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 2 (B5 / H4_USD): split the collected amount.
+                //
+                // The booking settles with at most the remaining selling price;
+                // anything beyond that becomes a customer credit (the unified
+                // ledger) — it is NOT revenue. Booking the WHOLE collected amount
+                // as income counted the excess as revenue (B5: net +650 instead
+                // of +150; H4_USD: net +650 instead of +150 EGP).
+                //
+                //   • applied part  → type='income'  (revenue, settles the booking)
+                //   • excess  part  → type='transfer' (NOT income: it is a liability
+                //                     we owe the customer — the cash IS in the
+                //                     treasury, but the booking is not revenue)
+                //
+                // The excess transfer runs in the SAME direction as the payment
+                // (customer → treasury) so the treasury still receives the full
+                // collected amount while the customer's account keeps a credit
+                // balance for the excess.
+                // ─────────────────────────────────────────────────────────────────
+                $appliedAmount = $bookingPaymentAmount;
+                $appliedConvertedAmount = $convertedAmount;
+                $excessConvertedAmount = null;
+
+                if ($overpaymentAmount > 0) {
+                    if ($convertedAmount !== null) {
+                        // Split the foreign (cash-box) amount exactly like the
+                        // EGP amount was split. For an EGP booking the excess is
+                        // known in EGP → convert it back to the cash currency;
+                        // for a foreign booking the excess is already in the
+                        // booking (= cash) currency.
+                        $excessInCashCurrency = $bookingCurrency === 'EGP'
+                            ? ($bookingRate > 0 ? round($overpaymentAmount / $bookingRate, 4) : 0.0)
+                            : (float) $overpaymentInBookingCurrency;
+
+                        $excessConvertedAmount = round($excessInCashCurrency, 4);
+                        $appliedConvertedAmount = round((float) $convertedAmount - $excessConvertedAmount, 4);
+                    }
+
+                    // When the cash-box account is in a FOREIGN currency, both legs
+                    // of every entry must carry the same VALUE at the booking
+                    // rate (the multi-currency suite asserts
+                    // "debit(EGP) == credit(foreign) × rate" per entry). So the
+                    // EGP legs are derived from the foreign legs by value rather
+                    // than taken from the EGP selling price — e.g. a KWD price of
+                    // 46.15 is 7,499.375 EGP, not 7,500 (the stored foreign price
+                    // is rounded to 2 decimals).
+                    $customerAccountCurrency = strtoupper((string) $customerAccount->currency);
+                    $cashAccountCurrency = strtoupper((string) ($account->currency ?? 'EGP'));
+                    if ($convertedAmount !== null
+                        && $customerAccountCurrency !== $cashAccountCurrency
+                        && $bookingRate > 0) {
+                        $appliedAmount = round($appliedConvertedAmount * $bookingRate, 2);
+                        $overpaymentAmount = round($excessConvertedAmount * $bookingRate, 2);
+                    }
+                }
+
                 try {
                     $transaction = $this->transactionService->recordIncome([
-                        'amount' => $transferAmount,
-                        'converted_amount' => $convertedAmount,
+                        'amount' => $appliedAmount,
+                        'converted_amount' => $appliedConvertedAmount,
                         'exchange_rate' => $booking->exchange_rate ?? null,
                         'to_account_id' => $accountId,
                         'contra_account_id' => $customerAccount->id,
@@ -2119,6 +2175,25 @@ class FlightBookingService
                     // consistent (no orphan payment without a transaction).
                     $payment->delete();
                     throw $t;
+                }
+
+                // The excess — a plain transfer (never 'income'), so the P&L
+                // engine classifies it as null and revenue stays untouched.
+                $excessTransaction = null;
+                if ($overpaymentAmount > 0) {
+                    $excessTransaction = $this->transactionService->recordJournalTransfer([
+                        'amount' => $overpaymentAmount,
+                        'converted_amount' => $excessConvertedAmount,
+                        'exchange_rate' => $booking->exchange_rate ?? null,
+                        'from_account_id' => $customerAccount->id,
+                        'to_account_id' => $accountId,
+                        'allow_from_negative' => true,
+                        'type' => \App\Enums\TransactionType::Transfer->value,
+                        'module' => TransactionModule::Flight->value,
+                        'related_type' => FlightPayment::class,
+                        'related_id' => $payment->id,
+                        'notes' => "فائض دفعة — تحويل إلى رصيد العميل الدائن (حجز #{$booking->booking_number})",
+                    ]);
                 }
 
                 $payment->update([
@@ -2167,6 +2242,18 @@ class FlightBookingService
                     (string) (Auth::user()?->name ?? 'system'),
                     $treasuryLabel,
                 );
+
+                // The excess is mirrored separately so the treasury trace shows
+                // the FULL collected amount (applied + excess) — nothing is lost.
+                if ($excessTransaction instanceof Transaction) {
+                    TreasuryLedgerMirror::mirrorFlightInboundReceipt(
+                        $excessTransaction,
+                        $booking->id,
+                        'تحصيل طيران (فائض) — حجز #'.$booking->booking_number,
+                        (string) (Auth::user()?->name ?? 'system'),
+                        $treasuryLabel,
+                    );
+                }
 
 
                 // DEFECT-1 FIX (2026-08-15): Auto-promote PENDING → CONFIRMED when
