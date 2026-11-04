@@ -23,6 +23,7 @@ use App\Models\Flight\RefundRequest;
 use App\Models\Transaction;
 use App\Models\Treasury;
 use App\Models\User;
+use App\Services\Finance\CustomerCreditLedgerService;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\PrepaidLedgerService;
 use App\Services\Finance\RefundAuditLogger;
@@ -45,6 +46,7 @@ class RefundService
         protected PrepaidLedgerService $prepaidLedgerService,
         protected FlightBookingService $flightBookingService,
         protected FlightPaymentAllocationService $paymentAllocationService,
+        protected CustomerCreditLedgerService $creditLedgerService,
     ) {}
 
     /**
@@ -559,12 +561,35 @@ class RefundService
             // استثناء: وجهة airline_credit — فهي عكس تكلفة للمورد وليس رصيداً للعميل.
             $requestedDestination = strtolower((string) ($data['destination'] ?? 'customer_credit'));
             if ($requestedDestination !== 'airline_credit' && (float) $booking->paid_amount <= 0.0) {
+                $customerAccountId = (int) ($booking->customer?->account_id ?: 0);
+
                 $generalReceipts = Transaction::query()
                     ->where('related_type', Customer::class)
                     ->where('related_id', (int) $booking->customer_id)
                     ->where('module', TransactionModule::Flight->value)
                     ->where('type', 'income')
                     ->get();
+
+                // Phase 9 (2026-11-04): سند قبض الطيران قد يكون مجزّأً إلى
+                // شق إيراد (type='income') + شق أمانات (type='transfer') — وكلاهما
+                // مالٌ قُبض من العميل ولم يُخصَّص على حجز. المسح فوق شق الإيراد
+                // وحده كان يفقد الأمانات ⇒ يعدّ التذكرة «غير مباعة» خطأً
+                // ويمنع استرجاعها مع أن للعميل رصيداً يغطيها.
+                //
+                // لذلك نضمّ شق الأمانات — وهو تحويل *من* حساب العميل *إلى* حساب
+                // الشركة (عكس سند الصرف الذي من الخزينة إلى العميل).
+                if ($customerAccountId > 0) {
+                    $surplusLegs = Transaction::query()
+                        ->where('related_type', Customer::class)
+                        ->where('related_id', (int) $booking->customer_id)
+                        ->where('module', TransactionModule::Flight->value)
+                        ->where('type', 'transfer')
+                        ->where('from_account_id', $customerAccountId)
+                        ->where('to_account_id', '!=', $customerAccountId)
+                        ->get();
+
+                    $generalReceipts = $generalReceipts->concat($surplusLegs);
+                }
 
                 $hasUnallocatedReceipt = false;
                 foreach ($generalReceipts as $receipt) {
@@ -1287,8 +1312,35 @@ class RefundService
                     }
 
                     $booking = FlightBooking::lockForUpdate()->findOrFail($refundRequest->flight_booking_id);
-                    $customer = Customer::lockForUpdate()->findOrFail($booking->customer_id);
-                    $customerAccount = $this->ensureCustomerAccount((int) $customer->id);
+                    $customerAccount = $this->ensureCustomerAccount((int) $booking->customer_id);
+
+                    // ─────────────────────────────────────────────────────────────
+                    // PHASE 8 (2026-11-03) — قفل نطاق العميل + قراءة قفلية للرصيد
+                    //
+                    // قفل صف العميل وحده لا يحمي الرصيد الدائن: الرصيد تجميع
+                    // (SUM) على عدة صفوف من `customer_credit_ledger` — وقد يقرأ
+                    // لقطة (snapshot) قديمة تحت عزل REPEATABLE READ فيرى رصيداً
+                    // لم يعد متاحاً فيُصرّف مرتين.
+                    //
+                    // لذلك كل مسار يستهلك الرصيد الدائن يمرّ بالبروتوكول الواحد
+                    // `CustomerCreditLedgerService::lockCustomerScope()`:
+                    //   ① قفل صف العميل (customers)
+                    //   ② قفل حسابه المالي (accounts)
+                    //   ③ قراءة قفلية للرصيد (SELECT … FOR UPDATE)
+                    //
+                    // النتيجة: أحدث رصيد مُلتزَم + منع أي حركة دفتر جديدة لنفس
+                    // العميل حتى انتهاء المعاملة (gap-lock على نطاق العميل).
+                    // والترتيب مقصود وثابت لتفادي الجمود (deadlock).
+                    // ─────────────────────────────────────────────────────────────
+                    $creditScope = $this->creditLedgerService->lockCustomerScope(
+                        (int) $booking->customer_id,
+                        $refundRequest->company_id,
+                        $refundRequest->refund_currency
+                    );
+
+                    $customer = $creditScope['customer'];
+                    $customerAccount = $creditScope['account'] ?? $customerAccount;
+                    $ledgerAvailable = $creditScope['available_credit'];
 
                     // ─────────────────────────────────────────────────────────────
                     // قاعدة الأمان: التحقق من تأكيد استرداد المورد أو الصلاحية الخاصة
@@ -1333,11 +1385,6 @@ class RefundService
                     }
 
                     $availableCreditInRequest = $refundRequest->available_customer_credit;
-                    $ledgerAvailable = CustomerCreditLedger::getAvailableCredit(
-                        $customer->id,
-                        $refundRequest->company_id,
-                        $refundRequest->refund_currency
-                    );
                     $effectiveAvailable = min(
                         $availableCreditInRequest,
                         $ledgerAvailable > 0 ? $ledgerAvailable : $availableCreditInRequest
@@ -1357,6 +1404,9 @@ class RefundService
                     $treasuryId = null;
                     $bankAccountId = null;
                     $targetBookingId = null;
+                    // مرجع محاسبي لتسوية الحجز: قيد بيع الحجز المستهدف
+                    // (تسوية الحجز لا تُنشئ قيد GL جديداً — البند 11).
+                    $settlementSaleTransactionId = null;
 
                     // تنفيذ الصرف حسب النوع المحدد
                     if ($disbursementType === CustomerCreditDisbursement::TYPE_CASH) {
@@ -1528,50 +1578,29 @@ class RefundService
                             'allocated_at' => now(),
                         ]);
 
-                        // البند 9 (2026-11-03): تسوية الحجز تُنشئ قيد GL مقابل خصم
-                        // الـ ledger — مدين حساب العميل (استهلاك الرصيد الدائن)
-                        // / دائن حساب المبيعات المعلّقة للحجز المستهدف (تسوية بيعه).
-                        // بدون هذا القيد يبقى رصيد العميل في الدفتر غير مطابق
-                        // لدفتر الرصيد الموحد.
-                        $targetSalesClearingId = null;
-                        if ($targetBooking->sale_gl_transaction_id) {
-                            $origTargetSaleTx = Transaction::query()->find($targetBooking->sale_gl_transaction_id);
-                            if ($origTargetSaleTx) {
-                                $targetSalesClearingId = (int) $origTargetSaleTx->from_account_id;
-                            }
-                        }
-                        if (! $targetSalesClearingId) {
-                            $targetSalesClearingId = $this->clearingAccounts->pendingSalesReceivableIdForFlight();
-                        }
-
-                        $targetClearingAccount = Account::query()->find($targetSalesClearingId);
-                        $targetCurrency = $targetClearingAccount
-                            ? strtoupper((string) $targetClearingAccount->currency)
-                            : strtoupper((string) $customerAccount->currency);
-                        $targetEgpPerUnit = $targetCurrency === 'EGP'
-                            ? 1.0
-                            : FlightBookingService::egpPerUnitOfCurrency($targetCurrency);
-                        $settlementGlAmounts = $this->glTransferAmounts(
-                            $customerAccount->currency,
-                            $targetCurrency,
-                            $targetEgpPerUnit > 0 ? round($settlementEgp / $targetEgpPerUnit, 4) : $settlementEgp,
-                            $settlementEgp,
-                            $targetEgpPerUnit
-                        );
-
-                        $glTransaction = $this->transactionService->recordJournalTransfer([
-                            'amount' => $settlementGlAmounts['amount'],
-                            'converted_amount' => $settlementGlAmounts['converted_amount'],
-                            'exchange_rate' => $settlementGlAmounts['exchange_rate'],
-                            'from_account_id' => $customerAccount->id,
-                            'to_account_id' => $targetSalesClearingId,
-                            'allow_from_negative' => true,
-                            'module' => TransactionModule::Flight->value,
-                            'related_type' => CustomerCreditDisbursement::class,
-                            'related_id' => $refundRequest->id,
-                            'notes' => $data['notes'] ?? "تسوية رصيد استرداد على حجز #{$targetBooking->booking_number} — طلب #{$refundRequest->id}",
-                            'created_by' => $userId,
-                        ]);
+                        // ─────────────────────────────────────────────────────────────
+                        // البند 11 (2026-11-03): تسوية الحجز إعادة توزيع داخلية —
+                        // بلا قيد GL على حساب العميل.
+                        //
+                        // المعادلة المحاسبية (مصدر الحقيقة الوحيد):
+                        //   رصيد العميل = الديون المفتوحة (D) − الرصيد الدائن (L)
+                        //   أي:  Account.balance = OpenDebt − AvailableCredit
+                        //
+                        // العميل خُصم منه فعلياً عند بيع التذكرة، واعتُمد له
+                        // الرصيد الدائن فعلياً عند الاسترجاع/الفائض. تسوية الحجز
+                        // بتستهلك الرصيد الدائن (L ↓) وتطفئ دين الحجز (D ↓)
+                        // بمقدار واحد — فالمركز المالي لا يتغير، ومن هنا:
+                        //   • لا يجوز تسجيل قيد مدين/دائن إضافي على حساب العميل
+                        //     (كان يسبّب خصماً مزدوجاً ويفارق بين الدفتر والدفتر
+                        //     الموحد للعميل)، و
+                        //   • لا يجوز تفريغ رصيد الرصيد الدائن في حسابات إقفال
+                        //     داخلية (acc#8) — يجب أن تصفّر حسابات الإقفال.
+                        //
+                        // المرجع المحاسبي للتسوية هو قيد بيع الحجز المستهدف نفسه
+                        // (sale_gl_transaction_id) — يُربط بسجل الصرف للمراجعة
+                        // فقط، دون أي حركة في دفتر الأستاذ.
+                        // ─────────────────────────────────────────────────────────────
+                        $settlementSaleTransactionId = $targetSaleTransactionId;
 
                         $targetBooking->unsetRelation('paymentAllocations');
                         if ((float) $targetBooking->paid_amount >= (float) $targetBooking->selling_price - 0.01
@@ -1592,23 +1621,32 @@ class RefundService
                         'treasury_id' => $treasuryId,
                         'bank_account_id' => $bankAccountId,
                         'target_flight_booking_id' => $targetBookingId,
-                        'transaction_id' => $glTransaction?->id,
+                        // التسوية لا تُنشئ قيد GL (إعادة توزيع داخلية) — نربط
+                        // سجل الصرف بقيد بيع الحجز المستهدف كمرجع محاسبي.
+                        'transaction_id' => $glTransaction?->id ?? $settlementSaleTransactionId,
                         'status' => CustomerCreditDisbursement::STATUS_COMPLETED,
                         'notes' => $data['notes'] ?? null,
                         'created_by' => $userId,
                     ]);
 
                     // خصم الرصيد المنصرف من سجل رصيد العميل الموحد (CustomerCreditLedger)
-                    CustomerCreditLedger::recordEntry([
-                        'customer_id' => $customer->id,
-                        'company_id' => $refundRequest->company_id,
-                        'source_type' => 'disbursement',
-                        'source_id' => $disbursement->id,
-                        'amount' => -$amount,
-                        'currency' => $refundRequest->refund_currency,
-                        'notes' => $data['notes'] ?? "صرف رصيد استرداد ({$disbursementType}) — طلب #{$refundRequest->id}",
-                        'created_by' => $userId,
-                    ]);
+                    //
+                    // PHASE 8: الرصيد اللاحق يأتي من القراءة القفلية نفسها
+                    // (`$ledgerAvailable`) لا من تجميع غير مقفل — حتى يبقى
+                    // الرصيد اللاحق مطابقاً للرصيد المقروء وقت الحارس.
+                    $this->creditLedgerService->recordGuardedDebit(
+                        (int) $customer->id,
+                        $refundRequest->company_id,
+                        $refundRequest->refund_currency,
+                        $amount,
+                        $ledgerAvailable,
+                        [
+                            'source_type' => CustomerCreditLedger::SOURCE_DISBURSEMENT,
+                            'source_id' => $disbursement->id,
+                            'notes' => $data['notes'] ?? "صرف رصيد استرداد ({$disbursementType}) — طلب #{$refundRequest->id}",
+                            'created_by' => $userId,
+                        ]
+                    );
 
                     // تحديث مبالغ وحالة الصرف على طلب الاسترداد
                     $newDisbursedTotal = round((float) $refundRequest->disbursed_amount + $amount, 2);

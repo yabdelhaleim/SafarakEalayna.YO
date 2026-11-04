@@ -166,6 +166,10 @@ Route::prefix('v1')->middleware([
 
         // Transactions resource routes (authorization managed via TransactionPolicy)
         Route::apiResource('transactions', TransactionController::class)->except(['index', 'show'])->names('finance_transactions');
+
+        // Phase 6 (2026-11-03): إلغاء سند قبض لعميل — عكس القيد + عكس التخصيصات
+        // + عكس فائض الرصيد الدائن (أو رفض الإلغاء إذا كان الفائض مستهلَكاً).
+        Route::post('transactions/{id}/cancel', [TransactionController::class, 'cancel'])->name('finance_transactions.cancel');
     });
 
     // Flights API

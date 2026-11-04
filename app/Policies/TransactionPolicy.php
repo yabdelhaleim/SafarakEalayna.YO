@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Enums\AccountType;
 use App\Enums\TransactionType;
+use App\Models\Customer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Finance\AccountModuleDivision;
@@ -118,5 +119,31 @@ class TransactionPolicy
         }
 
         return $this->isManualOperatingExpense($transaction);
+    }
+
+    /**
+     * Determine whether the user can cancel a customer receipt (سند قبض).
+     *
+     * Phase 6 (2026-11-03): the cancel path is limited to receipts issued to
+     * a customer (`related_type = Customer`). Manual operating expenses are
+     * handled by update/delete, and anything already reversed is immutable.
+     */
+    public function cancel(User $user, Transaction $transaction): bool
+    {
+        if (! $this->hasFinanceAccess($user)) {
+            return false;
+        }
+
+        // 1. Must be a receipt issued to a customer.
+        if ($transaction->related_type !== Customer::class) {
+            return false;
+        }
+
+        // 2. Must not be already reversed / cancelled.
+        if (str_starts_with((string) $transaction->notes, 'عكس:') || str_starts_with((string) $transaction->notes, 'عكس ')) {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -301,7 +301,36 @@ class TreasuryService
     }
 
     /**
-     * الحصول على متوسط سعر الشراء للعملة من حجوزات الطيران
+     * سعر التقييم الحالي للعملة بالجنيه المصري (EGP per 1 unit of $currency).
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ⚠️  ARCHITECTURAL FIX — قرار تصميمي جوهري (2026-11-04)
+     * ═══════════════════════════════════════════════════════════════════════
+     *
+     * المشكلة القديمة (قبل الإصلاح):
+     * ─────────────────────────────
+     * كانت الدالة تُعيد المتوسط التاريخي للحجوزات أولاً:
+     *   rate = SUM(purchase_price_egp) / SUM(purchase_price_foreign)
+     *
+     * هذا يعني أن كل تغيير في سعر الصرف يُنتج "فجوة تقييم" بين:
+     *   - الأصول الحالية (مقيَّمة بالمتوسط التاريخي المُخفَّض)
+     *   - الأرباح الجديدة (محسوبة على السعر الجديد المرتفع)
+     * → يظهر عجز (-6,169.83 ج.م.) في ميزان الحسابات على الفور.
+     *
+     * الحل (بعد الإصلاح):
+     * ─────────────────
+     * هذه الدالة تُستخدم لتقييم الأصول الجارية (رصيد النظام، الناقل، الخزينة).
+     * الأصول الجارية تُقيَّم دائماً بـ السعر الحالي الفعلي، وليس بالتكلفة التاريخية.
+     *
+     * الأرباح التاريخية محمية ثابتة في عمود `profit` بجدول `flight_bookings` ولن
+     * تتأثر بهذا التعديل أبداً — فقط تقييم الأرصدة الجارية هو ما يتغير.
+     *
+     * ترتيب الأولوية الجديد:
+     * ① السعر النشط في جدول `currencies`         ← المصدر الرئيسي (الإعداد الإداري)
+     * ② آخر سعر نشط في جدول `exchange_rates`     ← بديل مدعوم
+     * ③ المتوسط التاريخي من حجوزات الطيران        ← احتياطي (للعملات بدون إعداد صريح)
+     * ④ القيمة 1.0                                ← آخر ملاذ (عملة غير مُهيَّأة)
+     * ═══════════════════════════════════════════════════════════════════════
      */
     public function getAveragePurchaseRate(string $currency): float
     {
@@ -310,7 +339,33 @@ class TreasuryService
             return 1.0;
         }
 
-        // 1️⃣ متوسط سعر الشراء الفعلي من حجوزات الطيران
+        // 1️⃣ السعر النشط من جدول إعدادات العملات (currencies) — المصدر الحقيقي للسعر الحالي
+        //    هذا هو نفس السعر الذي تستخدمه FlightBookingService::egpPerUnitOfCurrency()
+        //    عند احتساب purchase_price_egp للحجز الجديد، فيضمن التوافق التام.
+        $activeCurrency = DB::table('currencies')
+            ->where('is_active', true)
+            ->whereRaw('upper(code) = ?', [$currency])
+            ->first();
+
+        if ($activeCurrency && (float) $activeCurrency->exchange_rate > 0) {
+            return (float) $activeCurrency->exchange_rate;
+        }
+
+        // 2️⃣ آخر سعر نشط مسجل في exchange_rates (يُدعم تاريخياً في بعض التدفقات)
+        $latestRate = DB::table('exchange_rates')
+            ->where('from_currency', $currency)
+            ->where('to_currency', 'EGP')
+            ->where('is_active', true)
+            ->orderBy('effective_date', 'desc')
+            ->value('rate');
+
+        if ($latestRate && (float) $latestRate > 0) {
+            return (float) $latestRate;
+        }
+
+        // 3️⃣ المتوسط التاريخي الموزون من حجوزات الطيران — احتياطي فقط
+        //    يُستخدم حصراً إذا لم يكن السعر مُعرَّفاً في إعدادات العملات.
+        //    ⚠️ لا يعكس السعر الجاري: يتباطأ مع الوقت بسبب ترجيح الحجوزات القديمة.
         $sumEgp = DB::table('flight_bookings')
             ->where('foreign_currency', $currency)
             ->whereNull('deleted_at')
@@ -321,33 +376,11 @@ class TreasuryService
             ->whereNull('deleted_at')
             ->sum('purchase_price_foreign');
 
-        if ($sumForeign > 0) {
+        if ((float) $sumForeign > 0 && (float) $sumEgp > 0) {
             return (float) ($sumEgp / $sumForeign);
         }
 
-        // 2️⃣ آخر سعر صرف مسجل في exchange_rates
-        $latestRate = DB::table('exchange_rates')
-            ->where('from_currency', $currency)
-            ->where('to_currency', 'EGP')
-            ->where('is_active', true)
-            ->orderBy('effective_date', 'desc')
-            ->value('rate');
-
-        if ($latestRate) {
-            return (float) $latestRate;
-        }
-
-        // 3️⃣ سعر الصرف من جدول العملات في إعدادات الإدمن
-        $dbCurrency = DB::table('currencies')
-            ->where('is_active', true)
-            ->whereRaw('upper(code) = ?', [$currency])
-            ->first();
-
-        if ($dbCurrency && (float) $dbCurrency->exchange_rate > 0) {
-            return (float) $dbCurrency->exchange_rate;
-        }
-
-        // 4️⃣ إذا كانت العملة غير مسجلة في النظام: نرجع 1.0 إذا لم تكن مستخدمة، أو نرمي استثناء لو كانت في حسابات فعلية
+        // 4️⃣ عملة غير مُعرَّفة في أي مصدر — نرجع 1.0 لتجنب قسمة على صفر
         return 1.0;
     }
 

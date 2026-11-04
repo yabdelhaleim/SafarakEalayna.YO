@@ -10,6 +10,7 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\AuditLog;
 use App\Models\Transaction;
+use App\Services\Finance\CustomerReceiptCancellationService;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\AccountModuleDivision;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +23,8 @@ use Illuminate\Validation\Rule;
 class TransactionController extends Controller
 {
     public function __construct(
-        protected TransactionService $transactionService
+        protected TransactionService $transactionService,
+        protected CustomerReceiptCancellationService $receiptCancellationService,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -328,6 +330,60 @@ class TransactionController extends Controller
         } catch (\Exception $e) {
             Log::error('Expense deletion error', ['error' => $e->getMessage(), 'id' => $id]);
             return ApiResponse::error('حدث خطأ أثناء حذف المعاملة: '.$e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * إلغاء سند قبض لعميل (Phase 6 — 2026-11-03).
+     *
+     * الإلغاء عملية ثلاثية الأطراف يجب أن تتم معاً وإلا اختلف دفتر الأستاذ عن
+     * دفتر رصيد العميل:
+     *   ① عكس القيد المحاسبي (استعادة رصيد حساب العميل ورصيد الخزينة).
+     *   ② عكس تخصيصات الحجوزات (عودة الديون المفتوحة D).
+     *   ③ عكس فائض الرصيد الدائن (L) — ما لم يكن مستهلَكاً في تسويات أخرى،
+     *      وعندها يُرفض الإلغاء بـ 422.
+     */
+    public function cancel(Request $request, $id): JsonResponse
+    {
+        $transaction = Transaction::query()->findOrFail($id);
+
+        $user = $request->user() ?? Auth::user();
+        if (! $user) {
+            return ApiResponse::error('غير مصرح لك بالوصول.', null, 401);
+        }
+
+        if ($user->cannot('cancel', $transaction)) {
+            return ApiResponse::error('ليس لديك الصلاحية لإلغاء سندات القبض.', null, 403);
+        }
+
+        try {
+            $result = $this->receiptCancellationService->cancel($transaction, (int) $user->id);
+
+            AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'transaction.cancelled',
+                'model_type' => Transaction::class,
+                'model_id' => $transaction->id,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'old_values' => [
+                    'amount' => (float) $transaction->amount,
+                    'from_account_id' => $transaction->from_account_id,
+                    'to_account_id' => $transaction->to_account_id,
+                    'notes' => $transaction->notes,
+                ],
+                'new_values' => $result,
+                'notes' => 'تم إلغاء سند قبض للعميل وعكس أثره المحاسبي',
+            ]);
+
+            CacheHelper::flushTags(['accounts', 'dashboard']);
+            CacheHelper::flushNamespace();
+
+            return ApiResponse::success('تم إلغاء سند القبض وعكس أثره على رصيد العميل بنجاح.', $result);
+        } catch (\Exception $e) {
+            Log::error('Customer receipt cancellation error', ['error' => $e->getMessage(), 'id' => $id]);
+
+            return ApiResponse::error($e->getMessage(), null, 422);
         }
     }
 

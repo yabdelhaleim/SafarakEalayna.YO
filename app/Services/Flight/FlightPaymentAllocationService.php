@@ -266,6 +266,54 @@ class FlightPaymentAllocationService
     }
 
     /**
+     * عكس كل التخصيصات النشطة المرتبطة بسند قبض معيّن (عند إلغاء السند نفسه).
+     *
+     * عكس التخصيصات يُنقص `paid_amount` للحجوزات المرتبطة (لأن `paid_amount`
+     * مشتق من مجموع التخصيصات النشطة) — أي أن `remaining_amount` يرتفع من جديد
+     * فيعود الدين المفتوح (D) ظاهراً. وهذا هو المقابل المحاسبي لاستعادة رصيد
+     * حساب العميل عند إلغاء قيد السند:
+     *
+     *     -Account.balance = L − D
+     *
+     * (استعادة الرصيد في الدفتر ⇏ ارتفاع D مجدداً ⇒ المعادلة تختل).
+     *
+     * @return float إجمالي المبالغ التي تم عكسها
+     */
+    public function reverseAllocationsForTransaction(Transaction $transaction, int $userId): float
+    {
+        return DB::transaction(function () use ($transaction, $userId) {
+            $allocations = FlightPaymentAllocation::query()
+                ->where('transaction_id', $transaction->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->get();
+
+            $total = 0.0;
+
+            foreach ($allocations as $allocation) {
+                $allocation->update([
+                    'status' => 'reversed',
+                    'reversed_at' => now(),
+                    'reversed_by' => $userId,
+                ]);
+
+                $total += (float) $allocation->amount;
+            }
+
+            if ($total > 0) {
+                Log::info('Flight payment allocations reversed (receipt cancelled)', [
+                    'transaction_id' => (int) $transaction->id,
+                    'allocations_count' => $allocations->count(),
+                    'amount' => round($total, 2),
+                    'user_id' => $userId,
+                ]);
+            }
+
+            return round($total, 2);
+        });
+    }
+
+    /**
      * Get the unallocated amount remaining on a receipt transaction.
      */
     public function getUnallocatedAmount(Transaction $transaction): float

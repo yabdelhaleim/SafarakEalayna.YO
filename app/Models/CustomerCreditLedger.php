@@ -57,6 +57,11 @@ class CustomerCreditLedger extends Model
 
     /**
      * حساب الرصيد الدائن المتاح الحالي (مجموع الحركات غير المعكوسة).
+     *
+     * ⚠️ قراءة غير قفلية (non-locking read): تُستخدم للعرض والتقارير فقط.
+     * أي مسار يستهلك الرصيد الدائن يجب أن يستخدم
+     * {@see static::lockedAvailableCredit()} بدلها — لأن هذه القراءة قد
+     * ترى snapshot قديماً تحت عزل REPEATABLE READ.
      */
     public static function getAvailableCredit(?int $customerId, ?int $companyId = null, string $currency = 'EGP'): float
     {
@@ -76,6 +81,53 @@ class CustomerCreditLedger extends Model
     }
 
     /**
+     * قراءة قفلية (SELECT ... FOR UPDATE) للرصيد الدائن المتاح.
+     *
+     * ─────────────────────────────────────────────────────────────────────────────
+     * لماذا القراءة القفلية ضرورية (Phase 8 — Concurrency & Cash Safety):
+     *
+     * الرصيد الدائن المتاح (L) *تجميع* (SUM) على عدة صفوف — فقفل صف
+     * العميل وحده لا يكفي: تحت عزل REPEATABLE READ يقرأ المجموع من
+     * snapshot المعاملة، فقد يقرأ رصيداً قديماً لو التزمت معاملة أخرى
+     * حركة صرف بين قفلنا وقراءتنا ⇒ صرف مزدوج (رصيد دائن سالب + عجز
+     * نقدي في الخزينة).
+     *
+     * القراءة القفلية تحسم الأمرين:
+     *   ① ترى آخر حالة مُلتزَمة (latest committed) لأنها locking read
+     *      تتجاوز snapshot المعاملة — فالرصيد المقروء حديث دائماً.
+     *   ② تفرض gap-locks على نطاق العميل/الشركة في الفهرس، فتمنع أي
+     *      إدراج حركة دفتر جديدة لنفس النطاق حتى انتهاء المعاملة — فلا
+     *      يمكن لطلب صرف متزامن أن يزيد الخصم فوق الرصيد المقروء.
+     *
+     * ملاحظة: على SQLite تُترجم `lockForUpdate()` إلى استعلام بلا `FOR
+     * UPDATE` (المحرك لا يدعمها) — والاختبارات تعمل على SQLite، فتبقى
+     * القفل منطقياً في طبقة التطبيق بينما الحماية الحقيقية تكون على
+     * MySQL/InnoDB في بيئة الإنتاج.
+     *
+     * يجب استدعاؤها داخل معاملة قائمة (DB::transaction) — وإلا فُكّ
+     * القفل فور انتهاء الاستعلام.
+     */
+    public static function lockedAvailableCredit(?int $customerId, ?int $companyId = null, string $currency = 'EGP'): float
+    {
+        $query = static::query()
+            ->whereNull('reversed_at')
+            ->where('currency', $currency);
+
+        if ($companyId) {
+            $query->where('company_id', $companyId);
+        } elseif ($customerId) {
+            $query->where('customer_id', $customerId);
+        } else {
+            return 0.0;
+        }
+
+        // القفل يُقرأ على مستوى الصفوف، فنجمع في PHP بعد قفل النطاق.
+        $rows = $query->lockForUpdate()->get();
+
+        return round((float) $rows->sum(fn ($row) => (float) $row->amount), 2);
+    }
+
+    /**
      * تسجيل حركة جديدة في دفتر رصيد العميل الموحد (Immutable Entry).
      *
      * @param array{
@@ -86,7 +138,8 @@ class CustomerCreditLedger extends Model
      *     amount: float,
      *     currency?: string,
      *     notes?: string|null,
-     *     created_by?: int|null
+     *     created_by?: int|null,
+     *     balance_after?: float|null
      * } $data
      */
     public static function recordEntry(array $data): self
@@ -100,9 +153,20 @@ class CustomerCreditLedger extends Model
             throw new \InvalidArgumentException('مبلغ الحركة في دفتر الرصيد يجب أن يكون أكبر من الصفر.');
         }
 
-        // قفل الرصيد الحالي وحساب الرصيد اللاحق
-        $currentBalance = static::getAvailableCredit($customerId, $companyId, $currency);
-        $balanceAfter = round($currentBalance + $amount, 2);
+        // قفل الرصيد الحالي وحساب الرصيد اللاحق.
+        //
+        // `balance_after` اختياري: يمرّره مسار الصرف المحمي (Phase 8) بقيمة
+        // مقروءة بقراءة قفلية (lockedAvailableCredit) — لأن المجموع هنا
+        // محسوب بقراءة غير قفلية قد يختلف عن الرصيد المقروء فعلياً تحت
+        // عزل REPEATABLE READ.
+        $authoritativeBalance = $data['balance_after'] ?? null;
+
+        if ($authoritativeBalance !== null && is_numeric($authoritativeBalance)) {
+            $balanceAfter = round((float) $authoritativeBalance, 2);
+        } else {
+            $currentBalance = static::getAvailableCredit($customerId, $companyId, $currency);
+            $balanceAfter = round($currentBalance + $amount, 2);
+        }
 
         return static::create([
             'customer_id' => $customerId,

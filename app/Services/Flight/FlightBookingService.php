@@ -8,6 +8,7 @@ use App\Enums\FlightBookingStatus;
 use App\Enums\FlightPaymentMethod;
 use App\Enums\FlightSystemType;
 use App\Enums\TransactionModule;
+use App\Exceptions\BusinessLogicException;
 use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Airport;
@@ -27,6 +28,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Finance\LedgerClearingAccounts;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
+use App\Services\Finance\CustomerCreditLedgerService;
 use App\Services\Finance\PrepaidLedgerService;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\TreasuryLedgerMirror;
@@ -65,16 +67,20 @@ class FlightBookingService
 
     protected PrepaidLedgerService $prepaidLedgerService;
 
+    protected CustomerCreditLedgerService $customerCreditLedgerService;
+
     public function __construct(
         TransactionService $transactionService,
         TreasuryService $treasuryService,
         LedgerClearingAccounts $ledgerClearingAccounts,
         PrepaidLedgerService $prepaidLedgerService,
+        CustomerCreditLedgerService $customerCreditLedgerService,
     ) {
         $this->transactionService = $transactionService;
         $this->treasuryService = $treasuryService;
         $this->ledgerClearingAccounts = $ledgerClearingAccounts;
         $this->prepaidLedgerService = $prepaidLedgerService;
+        $this->customerCreditLedgerService = $customerCreditLedgerService;
     }
 
     /**
@@ -2300,10 +2306,38 @@ class FlightBookingService
 
     /**
      * سداد حجز (كلياً أو جزئياً) باستخدام رصيد العميل/الشركة الدائن المتاح من دفتر الرصيد الموحد.
+     *
+     * ─────────────────────────────────────────────────────────────────────────────
+     * PHASE 10 (2026-11-04) — تسوية متعددة العملات:
+     *
+     * قاعدة عملة التخصيص (Booking Allocation Currency Rule):
+     *   • `FlightBooking.selling_price` / `paid_amount` / `remaining_amount`
+     *     **دائماً بالجنيه المصري** (EGP) — العملة الأساسية.
+     *   • `FlightPaymentAllocation.amount` **دائماً بالجنيه المصري** أيضاً.
+     *   • لكن `customer_credit_ledger` يحرّك **بعملة الرصيد الذي استُهلك**،
+     *     فقد يكون دولاراً… فتكون:
+     *
+     *         Allocation Amount (EGP) = Credit Amount Used × Exchange Rate
+     *
+     *   فالخصم من الدفتر يُسجَّل بقيمة عملة الرصيد بالضبط، بينما التخصيص
+     *   على الحجز يُسجَّل بالمعادلة بالجنيه المصري.
+     *
+     * أمّا التسوية نفسها فإعادة توزيع داخلية بلا أثر GL جديد: الدفتر سجّل
+     * البيع (ذمة) وسجّل الرصيد الدائن (التزام)، فالتسوية تُنقص L وتُنقص D
+     * بمقدار واحد ولا تُنشئ قيداً جديداً بين العميل والمبيعات.
+     *
+     * @param  float  $amount  المبلغ المطلوب تسويته ** بعملة الرصيد**.
+     * @param  string|null  $creditCurrency  عملة الرصيد (افتراضياً عملة الحجز).
+     * @param  float|null  $customRate  سعر الصرف (جنيه لكل وحدة عملة الرصيد).
      */
-    public function consumeCustomerCredit(FlightBooking $booking, float $amount, int $userId): \App\Models\CustomerCreditLedger
-    {
-        return DB::transaction(function () use ($booking, $amount, $userId) {
+    public function consumeCustomerCredit(
+        FlightBooking $booking,
+        float $amount,
+        int $userId,
+        ?string $creditCurrency = null,
+        ?float $customRate = null
+    ): \App\Models\CustomerCreditLedger {
+        return DB::transaction(function () use ($booking, $amount, $userId, $creditCurrency, $customRate) {
             $lockedBooking = FlightBooking::lockForUpdate()->findOrFail($booking->id);
             $customer = $lockedBooking->customer;
             $companyId = null;
@@ -2315,54 +2349,220 @@ class FlightBookingService
                 }
             }
 
-            $availableCredit = \App\Models\CustomerCreditLedger::getAvailableCredit($customer?->id, $companyId);
-            if ($amount > $availableCredit + 0.005) {
+            // ─────────────────────────────────────────────────────────────────
+            // PHASE 8 (2026-11-03) — الأقفال التشاؤمية + القراءة القفلية
+            //
+            // تسوية الحجز من الرصيد الدائن تستهلك الرصيد، فتخضع لنفس حماية
+            // الصرف: قفل صف العميل + حسابه، ثم قراءة قفلية للرصيد الدائن
+            // (ترى آخر حالة مُلتزَمة وتمنع أي حركة دفتر متزامنة لنفس
+            // العميل حتى انتهاء المعاملة) — كل ذلك عبر البروتوكول الواحد
+            // `CustomerCreditLedgerService::lockCustomerScope()`.
+            //
+            // PHASE 10: القفل يُصغَر الآن على **عملة الرصيد المستهلكة** لا
+            // على EGP دائماً — فالقراءة القفلية يجب أن ترى السلة التي
+            // ستُخصم فعلاً، وإلا قُرئ رصيد عملة أخرى على أنها رصيد هذه.
+            // ─────────────────────────────────────────────────────────────────
+            $resolvedCurrency = strtoupper(trim((string) ($creditCurrency ?: ($booking->currency ?: 'EGP'))));
+            if ($resolvedCurrency === '') {
+                $resolvedCurrency = 'EGP';
+            }
+
+            $availableCredit = 0.0;
+
+            if ($customer) {
+                $creditScope = $this->customerCreditLedgerService->lockCustomerScope(
+                    (int) $customer->id,
+                    $companyId,
+                    $resolvedCurrency
+                );
+
+                $customer = $creditScope['customer'];
+                $availableCredit = $creditScope['available_credit'];
+
+                // السقوط إلى الجنيه المصري: إن لم يكن للعميل رصيد بعملة
+                // الحجز/الطلب، وكان لديه رصيد بالجنيه ⇒ نُسوّي بالجنيه.
+                if ($resolvedCurrency !== 'EGP' && $availableCredit <= 0.005) {
+                    $egpScope = $this->customerCreditLedgerService->lockCustomerScope(
+                        (int) $customer->id,
+                        $companyId,
+                        'EGP'
+                    );
+
+                    if ($egpScope['available_credit'] > 0.005) {
+                        $resolvedCurrency = 'EGP';
+                        $customer = $egpScope['customer'];
+                        $availableCredit = $egpScope['available_credit'];
+                    }
+                }
+            } else {
+                $availableCredit = \App\Models\CustomerCreditLedger::lockedAvailableCredit(null, $companyId, $resolvedCurrency);
+            }
+
+            // ─────────────────────────────────────────────────────────────────
+            // سعر الصرف: EGP دائماً 1.0، وأي عملة أخرى بسعر مرجعي موجب.
+            // ─────────────────────────────────────────────────────────────────
+            $rate = $this->resolveCreditSettlementRate($lockedBooking, $resolvedCurrency, $customRate);
+
+            // ─────────────────────────────────────────────────────────────────
+            // توحيد المبالغ:
+            //   • $debitCreditAmount = ما يُخصم من الدفتر (عملة الرصيد).
+            //   • $settlementEgp      = ما يُخصم من الحجز (الجنيه المصري).
+            // ─────────────────────────────────────────────────────────────────
+            $debitCreditAmount = round($amount, 2);
+            $settlementEgp = $resolvedCurrency === 'EGP'
+                ? $debitCreditAmount
+                : round($debitCreditAmount * $rate, 2);
+
+            if ($debitCreditAmount > $availableCredit + 0.005) {
                 throw new \InvalidArgumentException(
-                    sprintf('مبلغ الخصم المطلوب (%.2f) يتجاوز رصيد العميل المتاح (%.2f).', $amount, $availableCredit)
+                    sprintf(
+                        'مبلغ الخصم المطلوب (%.2f %s) يتجاوز رصيد العميل المتاح (%.2f %s).',
+                        $debitCreditAmount,
+                        $resolvedCurrency,
+                        $availableCredit,
+                        $resolvedCurrency
+                    )
                 );
             }
 
             $remaining = (float) $lockedBooking->remaining_amount;
-            if ($amount > $remaining + 0.005) {
+            if ($settlementEgp > $remaining + 0.005) {
                 throw new \InvalidArgumentException(
-                    sprintf('مبلغ الخصم المطلوب (%.2f) يتجاوز المبلغ المتبقي على الحجز (%.2f).', $amount, $remaining)
+                    sprintf(
+                        'مبلغ التسوية (%.2f ج.م) يتجاوز المبلغ المتبقي على الحجز (%.2f ج.م).',
+                        $settlementEgp,
+                        $remaining
+                    )
                 );
             }
 
-            // 1. تسجيل تخصيص الدفعة على الحجز
+            // 1. تسجيل تخصيص الدفعة على الحجز — بالجنيه المصري دائماً
+            //    (لأن selling_price / remaining_amount بالجنيه المصري).
             \App\Models\Flight\FlightPaymentAllocation::create([
                 'transaction_id' => $lockedBooking->sale_gl_transaction_id ?? 1,
                 'flight_booking_id' => $lockedBooking->id,
                 'customer_id' => $lockedBooking->customer_id,
-                'amount' => $amount,
+                'amount' => $settlementEgp,
                 'status' => 'active',
                 'notes' => "سداد من رصيد العميل الدائن الموحد — حجز #{$lockedBooking->booking_number}",
                 'created_by' => $userId,
                 'allocated_at' => now(),
             ]);
 
-            // 2. قيد الخصم من دفتر الرصيد الموحد (سالب)
-            $ledgerEntry = \App\Models\CustomerCreditLedger::recordEntry([
-                'customer_id' => $customer?->id,
-                'company_id' => $companyId,
-                'source_type' => \App\Models\CustomerCreditLedger::SOURCE_BOOKING_SETTLEMENT,
-                'source_id' => $lockedBooking->id,
-                'amount' => -1 * round($amount, 2),
-                'currency' => $lockedBooking->currency ?: 'EGP',
-                'notes' => "استهلاك رصيد لسداد حجز #{$lockedBooking->booking_number}",
-                'created_by' => $userId,
-            ]);
+            // 2. قيد الخصم من دفتر الرصيد الموحد (سالب) — بعملة الرصيد.
+            //
+            // PHASE 8: القيد يُسجَّل عبر `recordGuardedDebit()` — نفس
+            // البروتوكول المستخدم في الصرف — فيكون الرصيد اللاحق من
+            // القراءة القفلية نفسها (لا من تجميع غير مقفل).
+            $ledgerEntry = $this->customerCreditLedgerService->recordGuardedDebit(
+                $customer?->id !== null ? (int) $customer->id : null,
+                $companyId,
+                $resolvedCurrency,
+                $debitCreditAmount,
+                $availableCredit,
+                [
+                    'source_type' => \App\Models\CustomerCreditLedger::SOURCE_BOOKING_SETTLEMENT,
+                    'source_id' => $lockedBooking->id,
+                    'notes' => "استهلاك رصيد لسداد حجز #{$lockedBooking->booking_number}",
+                    'created_by' => $userId,
+                ]
+            );
 
             // ترقية حالة الحجز لو اكتمل
             $lockedBooking->unsetRelation('paymentAllocations');
-            if ((float) $lockedBooking->paid_amount >= (float) $lockedBooking->selling_price - 0.01 
-                && $lockedBooking->status === FlightBookingStatus::PENDING 
+            if ((float) $lockedBooking->paid_amount >= (float) $lockedBooking->selling_price - 0.01
+                && $lockedBooking->status === FlightBookingStatus::PENDING
                 && ! empty($lockedBooking->pnr)) {
                 $lockedBooking->update(['status' => FlightBookingStatus::CONFIRMED]);
             }
 
+            Log::info('Flight booking settled from customer credit', [
+                'flight_booking_id' => $lockedBooking->id,
+                'credit_currency' => $resolvedCurrency,
+                'credit_amount_used' => $debitCreditAmount,
+                'exchange_rate' => $rate,
+                'settlement_egp' => $settlementEgp,
+                'available_credit_before' => $availableCredit,
+                'user_id' => $userId,
+            ]);
+
             return $ledgerEntry;
         });
+    }
+
+    /**
+     * سعر الصرف (جنيه لكل وحدة من عملة الرصيد) المستخدَم في تسوية الحجز.
+     *
+     * ⚠️ سعر الحجز (`booking_exchange_rate`) هو **جنيه لكل وحدة من عملة
+     * الحجز** — فلا يجوز استعماله لتسوية رصيد بعملة أخرى! (حجز بالجنيه
+     * وسعره 1.0 لا يصح أن يُستخدم لتحويل رصيد دولار). لذلك:
+     *
+     *   ① EGP → 1.0 دائماً.
+     *   ② السعر الممرَّر من المستدعي (`$customRate`).
+     *   ③ لو عملة الرصيد = عملة الحجز ⇒ لقطة سعر الحجز
+     *     (`booking_exchange_rate` ثم `exchange_rate`).
+     *   ④ وإلا ⇒ السعر الحيّ للعملة (`egpPerUnitOfCurrency`).
+     *
+     * أي عملة غير EGP لا يمكن لها سعر ⇒ استثناء واضح (لا 1.0 صامتة).
+     *
+     * @throws BusinessLogicException
+     */
+    protected function resolveCreditSettlementRate(
+        FlightBooking $booking,
+        string $creditCurrency,
+        ?float $customRate = null
+    ): float {
+        if ($creditCurrency === 'EGP') {
+            return 1.0;
+        }
+
+        if ($customRate !== null && $customRate > 0) {
+            return (float) $customRate;
+        }
+
+        $rate = $this->creditSettlementRate($booking, $creditCurrency);
+
+        if ($rate <= 0) {
+            throw new BusinessLogicException(
+                'سعر الصرف غير صالح لتسوية الرصيد الدائن.',
+                [
+                    'credit_currency' => $creditCurrency,
+                    'flight_booking_id' => (int) $booking->id,
+                ]
+            );
+        }
+
+        return $rate;
+    }
+
+    /**
+     * سعر الصرف المرجعي (جنيه لكل وحدة من عملة الرصيد) — نفس القاعدة التي
+     * استُخدمت عند التسوية، فيُستعمل أيضاً عند **استرجاع** الرصيد عند الإلغاء
+     * (حتى يعود الرصيد بنفس القيمة التي أُخذت به).
+     *
+     * @see self::resolveCreditSettlementRate()
+     */
+    protected function creditSettlementRate(FlightBooking $booking, string $creditCurrency): float
+    {
+        $creditCurrency = strtoupper(trim($creditCurrency));
+
+        if ($creditCurrency === 'EGP') {
+            return 1.0;
+        }
+
+        $bookingCurrency = strtoupper((string) ($booking->currency ?: 'EGP'));
+
+        if ($creditCurrency === $bookingCurrency) {
+            $rate = (float) ($booking->booking_exchange_rate ?: 0);
+            if ($rate <= 0) {
+                $rate = (float) ($booking->exchange_rate ?: 0);
+            }
+            if ($rate > 0) {
+                return $rate;
+            }
+        }
+
+        return self::egpPerUnitOfCurrency($creditCurrency);
     }
 
     /**
@@ -2458,7 +2658,27 @@ class FlightBookingService
                     })
                     ->sum('amount');
 
-                $totalPaid = $flightPaymentsPaid + $payDebtPaid;
+// ─────────────────────────────────────────────────────────────────
+                // PHASE 10 (2026-11-04) — أرجل التسوية تُحتسب ضمن "المدفوع".
+                //
+                // العميل الذي سوّى تذكرته من رصيده الدائن **دفع** ثمنها فعلاً:
+                // التخصيص (FlightPaymentAllocation) هو سند الدفع الخاص به. ولو
+                // لم نحتسبه، لبان الحجز "غير مدفوع" ⇒ الاسترجاع = صفر، وسقط
+                // مبلغ من الخزينة دون أن يُردّ للعميل.
+                //
+                // التخصيصات **بالجنيه المصري دائماً** (لأن selling_price /
+                // remaining_amount بالجنيه) — وهو نفس ما يجمعه
+                // `paid_amount` في الحجز.
+                // ─────────────────────────────────────────────────────────────────
+                $creditAllocations = $booking->paymentAllocations()
+                    ->where('status', 'active')
+                    ->get();
+
+                $allocationsPaid = (float) $creditAllocations->sum('amount');
+
+                $cashPaid = $flightPaymentsPaid + $payDebtPaid;
+
+                $totalPaid = round($cashPaid + $allocationsPaid, 2);
 
                 $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
@@ -2513,16 +2733,57 @@ class FlightBookingService
                     $refundAmount = 0;
                 }
 
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 10 (2026-11-04) — تقسيم الاسترجاع: نقدي أم رصيد دائن؟
+                //
+                // لو سوّى العميل تذكرته من رصيده الدائن فالمبلغ لم يدخل
+                // الخزينة أصلاً — فدفع مبلغ نقدي من الخزينة عند الإلغاء
+                // يُفرغ الخزينة بغير مقابل. لذلك:
+                //
+                //   • الجزء المُسدَّد من **رصيد العميل الدائن** يعود للعميل
+                //     رصيداً دائناً (لا نقداً) — لأن العميل دفع برصيده،
+                //     فيسترد برصيده.
+                //   • الجزء المدفوع نقداً (لو وُجد) يُردّ من الخزينة كالمعتاد.
+                //
+                // القاعدة: **الرصيد الدائن أولاً** — لأن ما خصمه العميل من
+                // رصيده هو ما يستحق استرداده، ثم يُردّ الباقي نقداً (وهو
+                // ≤ المدفوع نقداً دائماً).
+                //
+// ملاحظة دقيقة: "الجزء المدفوع من الرصيد الدائن" هو ما دلّ عليه
+                // **دفتر الرصيد** (قيود `booking_settlement` الخاصة بهذا
+                // الحجز) — لا كل التخصيصات. فالتخصيصات قد تكون من سند قبض
+                // نقدي مخصَّص على الحجز، وهذا نقدٌ لا رصيد دائن.
+                //
+                // كل الحسابات الداخلية بالجنيه المصري (عملة التخصيصات).
+                // ─────────────────────────────────────────────────────────────────
+                $refundAmountEgp = $bookingCurrency === 'EGP'
+                    ? round($refundAmount, 2)
+                    : round($refundAmount * $bookingExchangeRate, 2);
+
+                $creditSettledEgp = $this->creditSettledAmountInEgp($booking, $allocationsPaid);
+
+                $creditRefundEgp = min($creditSettledEgp, $refundAmountEgp);
+                $cashRefundEgp = round(max(0.0, $refundAmountEgp - $creditRefundEgp), 2);
+
+                // نصيب النقد **بعملة الحجز** (لأن حساب الصرف يجب أنعملة الحجز).
+                $cashRefundAmount = $bookingCurrency === 'EGP'
+                    ? $cashRefundEgp
+                    : round($cashRefundEgp / max($bookingExchangeRate, 0.0001), 4);
+
                 Log::info('Processing booking cancellation', [
                     'flight_booking_id' => $booking->id,
                     'booking_number' => $booking->booking_number,
                     'booking_currency' => $bookingCurrency,
                     'total_paid_egp' => $totalPaid,
+                    'cash_paid_egp' => round($cashPaid, 2),
+                    'credit_allocated_egp' => round($allocationsPaid, 2),
                     'sale_amount' => $saleAmountForComparison,
                     'airline_penalty' => $airlinePenalty,
                     'office_penalty' => $officePenalty,
                     'refund_amount' => $refundAmount,
                     'refund_currency' => $bookingCurrency,
+                    'refund_to_cash_egp' => $cashRefundEgp,
+                    'refund_to_credit_egp' => $creditRefundEgp,
                     'user_id' => $userId,
                 ]);
 
@@ -2630,12 +2891,15 @@ class FlightBookingService
                     // sale_gl_transaction_id as a bookkeeping signal.
                 }
 
-                if ($refundAmount > 0 && empty($data['account_id'])) {
+                // PHASE 10: حساب الصرف مطلوب **فقط** عند وجود استرجاع نقدي.
+                // حجز سُوِّي بالكامل من الرصيد الدائن ⇒ لا نقد يخرج من
+                // الخزينة، فلا يُشترط اختيار حساب.
+                if ($cashRefundAmount > 0 && empty($data['account_id'])) {
                     throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
                 }
 
                 // Step 3.5 (Bug #B6 fix): Validate refund account currency matches booking currency.
-                if ($refundAmount > 0 && ! empty($data['account_id'])) {
+                if ($cashRefundAmount > 0 && ! empty($data['account_id'])) {
                     $refundAccount = Account::query()->find($data['account_id']);
                     if ($refundAccount && strtoupper((string) $refundAccount->currency) !== $bookingCurrency) {
                         throw new \InvalidArgumentException(
@@ -2680,14 +2944,49 @@ class FlightBookingService
 
 
                 // Step 4: Cash refund from treasury (recorded payments)
+                //
+                // PHASE 10: يُردّ **الجزء النقدي فقط** — ما سدّده العميل نقداً.
+                // أمّا ما سدّده من رصيده الدائن فيعود إليه رصيداً (Step 4.1).
                 $refundLedgerTx = null;
-                if ($refundAmount > 0 && ! empty($data['account_id'])) {
+                if ($cashRefundAmount > 0 && ! empty($data['account_id'])) {
                     $refundLedgerTx = $this->refundTreasuryAccount(
                         $booking,
                         $data['account_id'],
-                        $refundAmount,
+                        $cashRefundAmount,
                         $userId
                     );
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // Step 4.1 (PHASE 10) — إعادة الرصيد الدائن للعميل.
+                //
+                // العميل سوّى تذكرته من رصيده الدائن ⇒ عند الإلغاء يعود هذا
+                // الرصيد إليه (بعملة الرصيد التي استُهلك بها)، وتُعكس
+                // تخصيصات التسوية (تصير غير نشطة) لأن التسوية لم تعد قائمة.
+                //
+                // الأثر المحاسبي: إعادة توزيع داخلية — لا قيد GL جديد على
+                // حساب العميل (البيع معكوس أصلاً في Step 3). والمعادلة
+                // المحاسبية تبقى سليمة:
+                //     -Account.balance = L − D
+                //   لأن L يرتفع بمقدار الاسترجاع، و D ينخفض (الحجز ملغى).
+                // ─────────────────────────────────────────────────────────────────
+                if ($creditRefundEgp > 0.005) {
+                    $this->restoreCustomerCreditForCancelledBooking(
+                        $booking,
+                        $creditRefundEgp,
+                        $creditSettledEgp,
+                        $userId
+                    );
+                }
+
+                // تخصيصات الحجز انعكست: مدفوعات الحجز (نقداً أو من الرصيد
+                // الدائن) كلها مُرَدّة بالإلغاء، فلا يبقى تخصيص نشط.
+                foreach ($creditAllocations as $allocation) {
+                    $allocation->forceFill([
+                        'status' => 'reversed',
+                        'reversed_at' => now(),
+                        'reversed_by' => $userId,
+                    ])->save();
                 }
 
                 // office_penalty accounting (Phase 11 audit, 2026-09-02):
@@ -2770,6 +3069,181 @@ class FlightBookingService
                 'flight_booking_id' => $booking->id,
             ]);
             throw new \Exception('فشل إلغاء الحجز: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * PHASE 10 — قيمة ما سُدِّد من **رصيد العميل الدائن** على هذا الحجز
+     * (بالجنيه المصري).
+     *
+     * المصدر: قيود الصرف في دفتر الرصيد (`source_type = booking_settlement`
+     * و`source_id = booking.id`) — فهي المرجع الوحيد الذي يميّز "الدفع من
+     * الرصيد الدائن" عن "الدفع نقداً (سند قبض مخصَّص على الحجز)". وكلاهما
+     * يُسجَّل كتخصيص على الحجز، فلا يصلح التخصيص وحده للتمييز.
+     *
+     * التحويل بالجنيه يستعمل **نفس** سعر التسوية
+     * ({@see self::creditSettlementRate()})، فيعود الرصيد بالقيمة نفسها.
+     *
+     * @param  float  $allocationsPaid  إجمالي التخصيصات النشطة (بالجنيه).
+     */
+    protected function creditSettledAmountInEgp(FlightBooking $booking, float $allocationsPaid): float
+    {
+        $entries = $this->creditSettlementEntries($booking);
+
+        if ($entries->isEmpty()) {
+            return 0.0;
+        }
+
+        $total = 0.0;
+
+        foreach ($entries->groupBy(fn ($entry) => strtoupper((string) ($entry->currency ?: 'EGP'))) as $currency => $group) {
+            $consumed = round((float) $group->sum(fn ($entry) => abs((float) $entry->amount)), 2);
+
+            if ($consumed <= 0.005) {
+                continue;
+            }
+
+            $rate = $this->creditSettlementRate($booking, $currency);
+            $total += $consumed * $rate;
+        }
+
+        // لا يتجاوز ما سُدِّد من الرصيد إجمالي التخصيصات على الحجز.
+        if ($allocationsPaid > 0.005) {
+            $total = min($total, $allocationsPaid);
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * قيود صرف دفتر الرصيد الخاصة بتسوية هذا الحجز (غير المعكوسة).
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\CustomerCreditLedger>
+     */
+    protected function creditSettlementEntries(FlightBooking $booking)
+    {
+        return \App\Models\CustomerCreditLedger::query()
+            ->where('source_type', \App\Models\CustomerCreditLedger::SOURCE_BOOKING_SETTLEMENT)
+            ->where('source_id', $booking->id)
+            ->whereNull('reversed_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * PHASE 10 — إعادة الرصيد الدائن للعميل عند إلغاء حجز سُوِّي من رصيده.
+     *
+     * تُستدعى من `cancelBooking()` بعد عكس قيد البيع:
+     *   • تحدّد قيود الصرف التي استهلكت رصيد العميل لتسوية هذا الحجز
+     *     (`source_type = booking_settlement`, `source_id = booking.id`).
+     *   • وتعيد لكل عملة قيمتها المستردّة — تناسبياً مع حصتها من التسوية.
+     *
+     * _حساب العملات_:
+     *   • قيد الصرف في الدفتر ** بعملة الرصيد** (قد تكون أجنبية).
+     *   • والاسترجاع يعود **بعملة الرصيد نفسها** وبنفس السعر المرجعي
+     *     ({@see self::creditSettlementRate()}) ⇒ يعود الرصيد كما كان.
+     *
+     * الأثر: قيد **دائن** (موجب) في دفتر الرصيد — بلا أي قيد GL جديد،
+     * لأن التسوية إعادة توزيع داخلية (انظر البند 11 في `RefundService`).
+     *
+     * @param  float  $creditRefundEgp  قيمة الاسترجاع العائدة للعميل (بالجنيه).
+     * @param  float  $creditSettledEgp  إجمالي ما سُدِّد من الرصيد الدائن (بالجنيه).
+     */
+    protected function restoreCustomerCreditForCancelledBooking(
+        FlightBooking $booking,
+        float $creditRefundEgp,
+        float $creditSettledEgp,
+        int $userId
+    ): void {
+        if ($creditRefundEgp <= 0.005 || $creditSettledEgp <= 0.005) {
+            return;
+        }
+
+        $customer = $booking->customer;
+        $companyId = null;
+        if ($customer) {
+            if ($customer->type === \App\Enums\CustomerType::Company) {
+                $companyId = $customer->id;
+            } elseif (! empty($customer->company_id)) {
+                $companyId = $customer->company_id;
+            }
+        }
+
+        $entries = $this->creditSettlementEntries($booking);
+
+        if ($entries->isEmpty()) {
+            Log::warning('Flight booking cancellation: no credit-ledger settlement entry to restore', [
+                'flight_booking_id' => (int) $booking->id,
+                'booking_number' => $booking->booking_number,
+            ]);
+
+            return;
+        }
+
+        $groups = $entries->groupBy(fn ($entry) => strtoupper((string) ($entry->currency ?: 'EGP')));
+
+        foreach ($groups as $currency => $group) {
+            $consumed = round((float) $group->sum(fn ($entry) => abs((float) $entry->amount)), 2);
+
+            if ($consumed <= 0.005) {
+                continue;
+            }
+
+            $rate = $this->creditSettlementRate($booking, $currency);
+
+            if ($rate <= 0) {
+                continue;
+            }
+
+            // قيمة هذه العملة من التسوية بالجنيه + حصّتها من الاسترجاع.
+            $groupEgp = round($consumed * $rate, 2);
+
+            $shareEgp = $creditSettledEgp > 0.005
+                ? round($creditRefundEgp * ($groupEgp / $creditSettledEgp), 2)
+                : 0.0;
+
+            if ($shareEgp <= 0.005) {
+                continue;
+            }
+
+            $restoreAmount = $currency === 'EGP'
+                ? $shareEgp
+                : round($shareEgp / $rate, 2);
+
+            if ($restoreAmount <= 0.005) {
+                continue;
+            }
+
+            // القراءة القفلية للرصيد قبل التسجيل — نفس بروتوكول الصرف.
+            $scope = $this->customerCreditLedgerService->lockCustomerScope(
+                (int) $booking->customer_id,
+                $companyId,
+                $currency
+            );
+
+            $this->customerCreditLedgerService->recordGuardedCredit(
+                (int) $booking->customer_id,
+                $companyId,
+                $currency,
+                $restoreAmount,
+                $scope['available_credit'],
+                [
+                    'source_type' => \App\Models\CustomerCreditLedger::SOURCE_REFUND,
+                    'source_id' => (int) $booking->id,
+                    'notes' => "استرجاع رصيد دائن عند إلغاء حجز #{$booking->booking_number}",
+                    'created_by' => $userId,
+                ]
+            );
+
+            Log::info('Customer credit restored after booking cancellation', [
+                'flight_booking_id' => (int) $booking->id,
+                'booking_number' => $booking->booking_number,
+                'currency' => $currency,
+                'restored_amount' => $restoreAmount,
+                'restored_egp' => $shareEgp,
+                'exchange_rate' => $rate,
+                'user_id' => $userId,
+            ]);
         }
     }
 

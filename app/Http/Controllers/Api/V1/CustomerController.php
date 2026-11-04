@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\AccountType;
 use App\Enums\FlightBookingStatus;
 use App\Enums\TransactionModule;
+use App\Enums\TransactionType;
 use App\Helpers\ApiResponse;
 use App\Helpers\CacheHelper;
 use App\Http\Controllers\Controller;
@@ -22,10 +23,12 @@ use App\Models\AccountEntry;
 use App\Models\Customer;
 use App\Models\Fawry\FawryTransaction;
 use App\Models\Flight\FlightBooking;
+use App\Models\Transaction;
 use App\Services\CustomerService;
 use App\Services\Finance\LedgerEntryDescriptionResolver;
 use App\Services\Finance\TransactionService;
 use App\Support\Finance\AccountModuleDivision;
+use App\Support\Finance\SplitReceiptMarker;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -258,27 +261,90 @@ class CustomerController extends Controller
                 $fromAccount = $customerAccount; // Customer's ledger account
 
                 $type = $validated['type'] ?? 'receipt'; // 'receipt' (سند قبض) or 'payment' (سند صرف)
+                $isReceipt = ($type === 'receipt');
 
-                // Both receipt and payment reduce the customer AR balance under
-                // the project's convention (positive balance = receivable).
-                // - سند قبض (receipt): customer pays us → customer balance ↓
-                // - سند صرف (payment): we pay/refund customer → customer balance ↓
-                // The label differs; the journal direction does not. Previously
-                // this branch swapped from/to for type='payment', which made the
-                // customer's balance grow by `amount` instead of shrink by `amount`
-                // (Bug TX-201 — 119,047 + 50,000 = 169,047 instead of 69,047).
-                $fromId = $fromAccount->id; // customer is always the journal "from"
-                $toId   = $toAccount->id;   // treasury/bank is always the journal "to"
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 8 (2026-11-03) — الأقفال التشاؤمية (Pessimistic Locking)
+                // ─────────────────────────────────────────────────────────────────
+                //
+                // قبل أي قراءة للرصيد الدائن، نقفل نطاق العميل كاملاً:
+                //   ① صف العميل (customers)
+                //   ② حسابه المالي + حساب الخزينة (accounts) — بترتيب المعرّف
+                //      تصاعدياً كما يفعل `recordJournalTransfer`، تفادياً للجمود
+                //   ③ لاحقاً: قراءة دفتر الرصيد بـ FOR UPDATE
+                //
+                // الفائدة: طلبان متزامنان للصرف لنفس العميل لا يمرّان معاً —
+                // الثاني ينتظر القفل، ثم يقرأ الرصيد المحدَّث فيُرفض إن لم
+                // يعد كافٍ ⇒ لا رصيد دائن سالب ولا عجز نقدي في الخزينة.
+                // ─────────────────────────────────────────────────────────────────
+                $lockedCustomer = Customer::where('id', $customer->id)->lockForUpdate()->firstOrFail();
+
+                // ترتيب تصاعدي بمعرّف الحساب (نفس ترتيب recordJournalTransfer)
+                $accountIds = [$customerAccount->id, (int) $toAccount->id];
+                sort($accountIds);
+                $lockedAccounts = Account::whereIn('id', array_unique($accountIds))
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                $customerAccount = $lockedAccounts->get($customerAccount->id) ?? $customerAccount;
+                $toAccount = $lockedAccounts->get((int) $toAccount->id) ?? $toAccount;
+                $fromAccount = $customerAccount;
+                $customer = $lockedCustomer;
+
+                // ─────────────────────────────────────────────────────────────────
+                // اتجاه القيد المالي (Phase 5 — 2026-11-03)
+                //
+                // سند القبض (receipt): العميل يدفع لنا
+                //     مدين  حساب العميل  →  دائن الخزينة/البنك
+                //     (من = حساب العميل، إلى = الخزينة)
+                //
+                // سند الصرف (payment): نحن نصرف للعميل من رصيده الدائن
+                //     مدين  الخزينة/البنك  →  دائن حساب العميل
+                //     (من = الخزينة، إلى = حساب العميل)
+                //
+                // `recordJournalTransfer` يترجم (من → إلى) إلى (مدين على from /
+                // دائن على to) بحسب عرف المشروع: balance = credit − debit.
+                //
+                // ملاحظة (TX-201): الاتجاه "العميل دائماً من" كان يجعل سند
+                // الصرف يُنزل رصيد حساب العميل بدل أن يرفعه. ومع دفتر الرصيد
+                // الدائن الموحد (CustomerCreditLedger) صار هذا خللاً بنيوياً:
+                // الصرف يجب أن (1) يرفع رصيد حساب العميل، و(2) ينقص الرصيد
+                // الدائن المتاح بمقدار المبلغ المصروف — وإلا اختلف الدفتر عن
+                // المعادلة المحاسبية (-Account.balance = L − D).
+                // ─────────────────────────────────────────────────────────────────
+                $fromId = $isReceipt ? $fromAccount->id : $toAccount->id;
+                $toId   = $isReceipt ? $toAccount->id   : $fromAccount->id;
 
                 $moduleStr = $validated['module'] ?? 'flight';
                 $moduleEnum = TransactionModule::tryFrom($moduleStr) ?? TransactionModule::Flight;
 
                 $moduleLabel = $moduleEnum->label();
 
-                $fromCurrency = strtoupper((string) $fromAccount->currency);
-                $toCurrency = strtoupper((string) $toAccount->currency);
+                // ─────────────────────────────────────────────────────────────────
+                // PHASE 8 (2026-11-03) — عملة المرجع القاطعة (Multi-Currency Guard)
+                // ─────────────────────────────────────────────────────────────────
+                //
+                // تسمية المتغيرات هنا كانت ملتبسة (from/to حسب اتجاه القيد لا
+                // حسب دور الحساب)، فكانت تُقرأ خطأً: عملة حساب العميل ليست
+                // عملة الخزينة. لذلك نسمّيها صراحةً:
+                //
+                //   $customerCurrency = عملة حساب العميل (مرجع دفتر الرصيد الدائن)
+                //   $treasuryCurrency = عملة حساب الخزينة/البنك (طرف السند)
+                //
+                // المرجع المحاسبي لقيد واحد: الرصيد الدائن يُقارَن ويُسجَّل
+                // بعملة حساب العميل دائماً — لا بعملة الطرف الآخر.
+                // ─────────────────────────────────────────────────────────────────
+                $customerCurrency = strtoupper((string) ($customerAccount->currency ?: 'EGP'));
+                $treasuryCurrency = strtoupper((string) ($toAccount->currency ?: 'EGP'));
 
-                $hasConversion = ($fromCurrency !== $toCurrency);
+                // أسماء قديمة داخل هذا النطاق فقط (لتفادي تعديل بقية الكود):
+                //   fromAccount = حساب العميل، toAccount = حساب الخزينة.
+                $fromCurrency = $customerCurrency;
+                $toCurrency = $treasuryCurrency;
+
+                $hasConversion = ($customerCurrency !== $treasuryCurrency);
 
                 $journalAmount = (float) $validated['amount'];
                 $journalConverted = null;
@@ -344,6 +410,81 @@ class CustomerController extends Controller
                     }
                 }
 
+                // ═════════════════════════════════════════════════════════════════
+                // PHASE 5 (2026-11-03) — صرف رصيد العميل الدائن (سند صرف)
+                // ═════════════════════════════════════════════════════════════════
+                //
+                // مبلغ القيد على حساب العميل ( بعملة حساب العميل ):
+                //   - نفس العملة    : $journalAmount
+                //   - مع تحويل عملة : $convertedAmount (قيمة حساب العميل)
+                $customerLegAmount = $hasConversion ? (float) $convertedAmount : (float) $journalAmount;
+
+                // نطاق الشركة: رصيد الشركة مُشترك بين كل موظفيها — نفس منطق
+                // `Customer::getAvailableCreditAttribute` و`RefundService::resolveCompanyId`.
+                $companyId = $customer->type === \App\Enums\CustomerType::Company
+                    ? (int) $customer->id
+                    : ($customer->company_id ? (int) $customer->company_id : null);
+
+                $lockedAvailableCredit = null;
+
+                if (! $isReceipt) {
+                    // ── حارس ما قبل الترحيل (Pre-flight guard) ───────────────────
+                    // لا يجوز صرف أكثر من الرصيد الدائن المتاح للعميل، وإلا
+                    // صار رصيد العميل الدائن سالباً واختلف الدفتر عن المعادلة
+                    // المحاسبية (-Account.balance = L − D).
+                    //
+                    // PHASE 8 — قراءتان قفلتان:
+                    //   ① قراءة قفلية للرصيد الدائن (`lockedAvailableCredit`):
+                    //      ترى آخر حالة مُلتزَمة وتمنع أي إدراج حركة دفتر لنفس
+                    //      العميل حتى انتهاء المعاملة — فلا يمرّر طلبان
+                    //      متزامنان معاً ⇒ لا صرف مزدوج ولا رصيد سالب.
+                    //   ② قراءة قفلية لرصيد الخزينة: لا يجوز أن يقل رصيد
+                    //      الخزينة عن الصفر بالصرف (نفس حارس `RefundService`
+                    //      — البند 8) — فتبقى الخزينة آمنة نقدياً.
+                    $availableCredit = \App\Models\CustomerCreditLedger::lockedAvailableCredit(
+                        (int) $customer->id,
+                        $companyId,
+                        $customerCurrency
+                    );
+                    $lockedAvailableCredit = $availableCredit;
+
+                    if ($customerLegAmount > $availableCredit + 0.005) {
+                        throw new \App\Exceptions\BusinessLogicException(
+                            "المبلغ المطلوب صرفه يتجاوز الرصيد الدائن المتاح للعميل ({$availableCredit})",
+                            [
+                                'customer_id' => (int) $customer->id,
+                                'company_id' => $companyId,
+                                'requested_amount' => $customerLegAmount,
+                                'available_credit' => $availableCredit,
+                                'currency' => $customerCurrency,
+                            ]
+                        );
+                    }
+
+                    // ── حارس النقد في الخزينة (Cash Safety — Phase 8) ───────────
+                    // الطرف_OUT من الصرف هو الخزينة/البنك: `$journalAmount`
+                    // بعملة الخزينة دائماً (سند الصرف: من = الخزينة).
+                    $treasuryAvailable = (float) $toAccount->balance;
+                    $cashOutAmount = (float) $journalAmount;
+
+                    if ($treasuryAvailable < $cashOutAmount - 0.005) {
+                        throw new \App\Exceptions\BusinessLogicException(
+                            sprintf(
+                                'رصيد الخزينة (%s %.2f) لا يكفي لصرف %.2f — لا يمكن أن يقل رصيد الخزينة عن الصفر.',
+                                $treasuryCurrency,
+                                $treasuryAvailable,
+                                $cashOutAmount
+                            ),
+                            [
+                                'account_id' => (int) $toAccount->id,
+                                'available' => $treasuryAvailable,
+                                'required' => $cashOutAmount,
+                                'currency' => $treasuryCurrency,
+                            ]
+                        );
+                    }
+                }
+
                 $notes = $validated['notes'] ?? ($type === 'payment'
                     ? ('سند صرف - دفع للعميل: '.$customer->full_name)
                     : ("سند قبض - تسديد مديونية عميل {$moduleLabel}: ".$customer->full_name));
@@ -379,7 +520,87 @@ class CustomerController extends Controller
                 $isOfficeModule = in_array($resolvedModuleType, AccountModuleDivision::OFFICE, true)
                     || in_array($moduleEnum->value, ['bus', 'fawry', 'online', 'wallet', 'wallet_transfer', 'office'], true);
 
-                if ($isOfficeModule) {
+                // ═══════════════════════════════════════════════════════════════
+                // PHASE 9 (2026-11-03) — عزل فائض سند القبض عن قائمة الأرباح
+                // ═══════════════════════════════════════════════════════════════
+                //
+                // المشكلة المحاسبية التي يعالجها هذا الكود:
+                //
+                // سند قبض طيران بقيمة 15,000 ج.م، مخصَّص منه 5,000 ج.م لحجز
+                // طيران، والمتبقي 10,000 ج.م رصيد متاح للعميل. قبل Phase 9
+                // كان السند كاملاً يُسجَّل كإيراد:
+                //
+                //     $transactionService->recordIncome(['amount' => 15000, …]);
+                //
+                // و`ProfitLossReportService::classify()` يصنّف أي قيد يحمل
+                // type='income' كإيراد مبيعات فوري ⇒ ضخّم الإيراد بـ 10,000
+                // وصافي الربح بأرباح وهمية لم تتحقق.
+                //
+                // المعالجة المحاسبية الصحيحة (IFRS 15):
+                //   • الجزء المخصَّص على الحجوزات فقط = إيراد محقق (Recognized
+                //     Revenue) — هو ما يقابل التزام أداء مُنجز.
+                //   • الجزء الفائض غير المطبَّق = التزام في الميزانية العمومية
+                //     (Customer Deposit / Liability) — لا يجوز دخوله قائمة الأرباح
+                //     لأنه لا يقابله أي التزام أداء حتى الآن.
+                //
+                // ملاحظة على الترتيب: خطة التخصيص لازم تُحسب **قبل** ترحيل
+                // القيد، لأن القيد نفسه هو ما يجب تقسيمه إلى شقين داخل نفس
+                // المعاملة (DB::transaction) — وإلا لقّدنا السند كاملاً كإيراد
+                // ثم نضطر لعكس جزء منه (وهو ما سبّب تضخيم الأرباح).
+                // ═══════════════════════════════════════════════════════════════
+                $isFlightReceipt = ($moduleEnum === TransactionModule::Flight && $isReceipt && $journalAmount > 0);
+
+                $allocationItems = null;
+                $allocationBookingId = null;
+                $plannedAllocationTotal = 0.0;
+
+                if ($isFlightReceipt) {
+                    if (! empty($validated['allocations'])) {
+                        $allocationItems = $validated['allocations'];
+
+                        foreach ($allocationItems as $item) {
+                            $plannedAllocationTotal += (float) ($item['amount'] ?? 0);
+                        }
+                    } elseif (! empty($validated['flight_booking_id'])) {
+                        $allocationBookingId = (int) $validated['flight_booking_id'];
+
+                        // التخصيص يُقاس بعملة الحجز (ج.م) = قيمة شق حساب العميل
+                        // من السند (وهو $journalAmount في حالة القبض).
+                        $plannedAllocationTotal = (float) $journalAmount;
+                    }
+
+                    $plannedAllocationTotal = round($plannedAllocationTotal, 2);
+                }
+
+                // سقف التخطيط: لو طلب المُرسِل تخصيصاً أكبر من قيمة السند،
+                // نترك شق الإيراد مساوياً للسند كاملاً — عندها يرمي
+                // `FlightPaymentAllocationService` خطأ «التخصيص الأكبر من
+                // السند» (422) وتُلغى العملية كاملة، تماماً كما قبل Phase 9.
+                $splitRevenueAmount = min($plannedAllocationTotal, (float) $journalAmount);
+                $splitSurplusAmount = round($journalAmount - $splitRevenueAmount, 2);
+
+                // نسبة شق الخزينة (بعملة الحساب المستقبِل) لكل وحدة من شق حساب
+                // العميل — تُستخدم لتقسيم المبلغ المحوّل على الشقين بلا فرق
+                // (مجموع الشقين = المبلغ الأصلي بالضبط).
+                $convertedRatio = null;
+                if ($hasConversion && (float) $journalAmount > 0) {
+                    $convertedRatio = (float) $journalConverted / (float) $journalAmount;
+                }
+
+                $revenueTransaction = null;
+                $surplusTransaction = null;
+
+                if ($isOfficeModule || ! $isReceipt) {
+                    // ─────────────────────────────────────────────────────────────
+                    // سند الصرف (payment) ليس إيراداً أبداً: هو تحويل نقدي من
+                    // الخزينة/البنك إلى رصيد العميل الدائن. لو قُوّد عبر
+                    // `recordIncome` لصُنِّف تلقائياً كـ "revenue" في قائمة
+                    // الأرباح (ProfitLossReportService::classify) — أي إيراد
+                    // مكرر عن دفعة سبق الاعتراف بإيرادها عند استلامها.
+                    //
+                    // ملاحظة: سند القبض لوحدات المكتب يبقى Transfer أيضاً
+                    // (مقايضة أصول: ذمم → خزينة) كما كان قبل Phase 5.
+                    // ─────────────────────────────────────────────────────────────
                     $transaction = $transactionService->recordJournalTransfer([
                         'amount' => $journalAmount,
                         'converted_amount' => $journalConverted,
@@ -393,6 +614,69 @@ class CustomerController extends Controller
                         'notes' => $notes,
                         'created_by' => Auth::id() ?? 1,
                     ]);
+                } elseif ($splitSurplusAmount > 0.005) {
+                    // ─────────────────────────────────────────────────────────────
+                    // PHASE 9 — سند قبض فيه فائض: القيد يُقسَّم إلى شقين.
+                    //
+                    // ① شق الإيراد المحقق (type='income') — المبلغ المخصَّص
+                    //    على حجوزات الطيران فقط. هذا هو الإيراد المحقق.
+                    // ② شق الأمانات/الفائض (type='transfer') — مبلغ محتفظ به
+                    //    للعميل (Customer Deposit / Liability) — محايد تماماً
+                    //    في قائمة الأرباح.
+                    //
+                    // مجمع القيدين على حساب العميل = المبلغ كله، وعلى الخزينة
+                    // = المبلغ كله — فلا فرق في الأرصدة، فقط في تصنيف الإيراد.
+                    // ─────────────────────────────────────────────────────────────
+                    $revenueConverted = null;
+
+                    if ($splitRevenueAmount > 0.005) {
+                        $revenueConverted = $convertedRatio !== null
+                            ? round($splitRevenueAmount * $convertedRatio, 2)
+                            : null;
+
+                        $revenueTransaction = $transactionService->recordIncome([
+                            'amount' => $splitRevenueAmount,
+                            'converted_amount' => $revenueConverted,
+                            'exchange_rate' => $hasConversion ? $exchangeRate : ($validated['exchange_rate'] ?? null),
+                            'to_account_id' => $toId,
+                            'contra_account_id' => $fromId,
+                            'allow_contra_negative' => true, // preserve pre-fix AR-can-go-negative convention
+                            'module' => $moduleEnum->value,
+                            'related_type' => Customer::class,
+                            'related_id' => $customer->id,
+                            'notes' => $notes . " [إيراد مبيعات مخصص للحجوزات: {$splitRevenueAmount}]",
+                            'created_by' => Auth::id() ?? 1,
+                        ]);
+                    }
+
+                    // شق الأمانات: الباقي من شق الخزينة بعد قَطع شق الإيراد
+                    // (حساب المبلغ المحوّل يتم بالطرح لضمان عدم وجود فرق).
+                    $surplusConverted = null;
+                    if ($convertedRatio !== null) {
+                        $surplusConverted = round((float) $journalConverted - (float) ($revenueConverted ?? 0), 2);
+                    }
+
+                    $surplusTransaction = $transactionService->recordJournalTransfer([
+                        'amount' => $splitSurplusAmount,
+                        'converted_amount' => $surplusConverted,
+                        'exchange_rate' => $hasConversion ? $exchangeRate : ($validated['exchange_rate'] ?? null),
+                        'from_account_id' => $fromId,
+                        'to_account_id' => $toId,
+                        'allow_from_negative' => true,
+                        'type' => TransactionType::Transfer->value,
+                        'module' => $moduleEnum->value,
+                        'related_type' => Customer::class,
+                        'related_id' => $customer->id,
+                        // ملاحظات السند الأصلية تُحفظ مع شق الأمانات — وإلا
+                        // ضاع البحث في كشف الحساب بالعبارة الأصلية.
+                        'notes' => $notes.' — فائض سند قبض محتفظ به كأمانات ورصيد متاح للعميل #'.$customer->id
+                            . ($revenueTransaction instanceof Transaction
+                                ? ' '.SplitReceiptMarker::stamp((int) $revenueTransaction->id)
+                                : ''),
+                        'created_by' => Auth::id() ?? 1,
+                    ]);
+
+                    $transaction = $revenueTransaction ?? $surplusTransaction;
                 } else {
                     $transaction = $transactionService->recordIncome([
                         'amount' => $journalAmount,
@@ -407,24 +691,107 @@ class CustomerController extends Controller
                         'notes' => $notes,
                         'created_by' => Auth::id() ?? 1,
                     ]);
+
+                    // سند غير مجزّأ: القيد نفسه هو شق الإيراد.
+                    $revenueTransaction = $transaction;
                 }
 
                 // ✈️ Flight booking-level payment allocation (Phase 1):
                 // Allocate the receipt to specific flight booking(s) if provided.
                 // If not provided, the receipt remains unallocated on the customer account.
-                if ($moduleEnum === TransactionModule::Flight && $type === 'receipt' && $journalAmount > 0) {
+                //
+                // PHASE 9: التخصيص يُربط دائماً بشق الإيراد (القيد من نوع
+                // 'income') — لأنه الشق الذي يمثّل قيمة السند المطبَّقة على
+                // الحجوزات، وهو المرجع الذي يحسبه `FlightPaymentAllocationService`
+                // لتحديد سقف التخصيص المتاح.
+                $flightAllocatedTotal = 0.0;
+                if ($isFlightReceipt) {
                     $allocationService = app(\App\Services\Flight\FlightPaymentAllocationService::class);
-                    if (! empty($validated['allocations'])) {
-                        $allocationService->allocateMultiple($transaction, $validated['allocations'], Auth::id() ?? 1);
-                    } elseif (! empty($validated['flight_booking_id'])) {
-                        $allocationService->allocate(
-                            $transaction,
-                            \App\Models\Flight\FlightBooking::findOrFail($validated['flight_booking_id']),
-                            (float) $validated['amount'],
+                    $allocationTarget = $revenueTransaction ?? $transaction;
+
+                    if ($allocationItems !== null) {
+                        $createdAllocations = $allocationService->allocateMultiple($allocationTarget, $allocationItems, Auth::id() ?? 1);
+                        $flightAllocatedTotal = (float) $createdAllocations->sum('amount');
+                    } elseif ($allocationBookingId !== null) {
+                        $createdAllocation = $allocationService->allocate(
+                            $allocationTarget,
+                            \App\Models\Flight\FlightBooking::findOrFail($allocationBookingId),
+                            $plannedAllocationTotal,
                             Auth::id() ?? 1,
                             $validated['notes'] ?? null
                         );
+                        $flightAllocatedTotal = (float) ($createdAllocation->amount ?? 0);
                     }
+                }
+
+                // ✈️ فائض سند القبض / دفعة مقدمة (Phase 4 — 2026-11-03):
+                //
+                // المعادلة المحاسبية (مصدر الحقيقة الوحيد):
+                //     رصيد العميل الصافي = الرصيد الدائن المتاح (L) − الديون المفتوحة (D)
+                //     ≡ -Account.balance
+                //
+                // السند قبض (receipt) يُنزل رصيد حساب العميل في الدفتر بمقدار
+                // المبلغ كله. والجزء المخصَّص على حجوزات الطيران يُطفئ دين
+                // الحجز (D ↓) — أما الجزء غير المخصَّص فهو مبلغ محتفظ به
+                // للعميل (دفعة مقدمة / فائض)، فيجب أن يظهر كرصيد دائن متاح
+                // في دفتر رصيد العميل الموحد، وإلا اختلف الدفتر عن المركز
+                // المالي للعميل.
+                //
+                // PHASE 9: الفائض صار له **قيد مستقل** (شق الأمانات) هو
+                // الذي يحمل حركة دفتر الرصيد — لا شق الإيراد. فحركة الدفتر
+                // تُربط بمعرّف قيد الأمانات (وهو الذي يملك أصل النقد المحتفظ
+                // به للعميل)، وبذلك يمكن عكسها عند إلغاء السند.
+                if ($surplusTransaction instanceof Transaction) {
+                    /** @var \App\Services\Finance\CustomerFinancialPositionService $positionService */
+                    $positionService = app(\App\Services\Finance\CustomerFinancialPositionService::class);
+                    $openDebt = $positionService->getOpenDebt((int) $customer->id);
+
+                    $creditCurrency = $customerCurrency;
+                    $excessOverDebt = round($splitSurplusAmount - $openDebt, 2);
+
+                    \App\Models\CustomerCreditLedger::recordEntry([
+                        'customer_id' => $customer->id,
+                        'company_id'  => $companyId,
+                        'source_type' => \App\Models\CustomerCreditLedger::SOURCE_OVERPAYMENT,
+                        'source_id'   => $surplusTransaction->id,
+                        'amount'      => $splitSurplusAmount,
+                        'currency'    => $creditCurrency,
+                        'notes'       => "فائض سند قبض #{$surplusTransaction->id} — رصيد أمانات متاح"
+                            .($excessOverDebt > 0.005 ? " (فائض عن الديون المفتوحة: {$excessOverDebt})" : ''),
+                        'created_by'  => Auth::id() ?? 1,
+                    ]);
+                }
+
+                // 💸 صرف من رصيد العميل الدائن (Phase 5 — 2026-11-03):
+                //
+                // سند الصرف (payment) ينقل النقد من الخزينة/البنك إلى حساب
+                // العميل (دائن) — أي أن رصيد العميل في الدفتر يرتفع.
+                // في المقابل يجب أن ينقص الرصيد الدائن المتاح (L) بمقدار
+                // المبلغ المصروف، وإلا اختلف الدفتر عن المعادلة المحاسبية:
+                //     -Account.balance = AvailableCredit (L) − OpenDebt (D)
+                //
+                // الحركة تُسجَّل بقيمة القيد على حساب العميل (عملة حساب العميل)
+                // وبإشارة سالبة.
+                //
+                // PHASE 8: العملة هنا هي `work currency` حساب العميل دائماً
+                // (وليس عملة الخزينة) — حتى يبقى دفتر الرصيد الدائن مطابقاً
+                // لمعادلة دفتر الأستاذ (-Account.balance = L − D) حتى مع
+                // تعدد العملات. والرصيد اللاحق يأتي من القراءة القفلية
+                // نفسها (لا من تجميع غير مقفل).
+                if (! $isReceipt && $customerLegAmount > 0) {
+                    \App\Models\CustomerCreditLedger::recordEntry([
+                        'customer_id' => $customer->id,
+                        'company_id'  => $companyId,
+                        'source_type' => \App\Models\CustomerCreditLedger::SOURCE_DISBURSEMENT,
+                        'source_id'   => $transaction->id,
+                        'amount'      => -$customerLegAmount,
+                        'currency'    => $customerCurrency,
+                        'notes'       => "سند صرف #{$transaction->id} — صرف من رصيد العميل الدائن",
+                        'created_by'  => Auth::id() ?? 1,
+                        'balance_after' => $lockedAvailableCredit !== null
+                            ? round($lockedAvailableCredit - $customerLegAmount, 2)
+                            : null,
+                    ]);
                 }
 
                 // 🛡️ Fawry per-transaction amount sync (BUG FIX 2026-08-28):
@@ -495,6 +862,10 @@ class CustomerController extends Controller
 
                 return ApiResponse::success($type === 'payment' ? 'تم صرف المبلغ للعميل بنجاح وقيد سند الصرف.' : 'تم سداد المبلغ بنجاح وقيد سند القبض.', [
                     'transaction_id' => $transaction->id,
+                    // PHASE 9: عند تجزئة السند (إيراد + أمانات) نُرجع معرّفي
+                    // الشقين صراحةً حتى يتتبّع السند كاملاً (الإلغاء مثلاً).
+                    'revenue_transaction_id' => $revenueTransaction?->id,
+                    'surplus_transaction_id' => $surplusTransaction?->id,
                     'new_balance' => (float) $fromAccount->fresh()->balance,
                     'fawry_allocated' => round($fawryAllocatedTotal, 2),
                 ]);
