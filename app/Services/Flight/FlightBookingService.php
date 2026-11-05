@@ -13,12 +13,14 @@ use App\Models\Account;
 use App\Models\AccountEntry;
 use App\Models\Airport;
 use App\Models\Customer;
+use App\Models\CustomerCreditLedger;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightCarrier;
 use App\Models\Flight\FlightGroup;
 use App\Models\Flight\FlightGroupTransaction;
 use App\Models\Flight\FlightPassenger;
 use App\Models\Flight\FlightPayment;
+use App\Models\Flight\FlightPaymentAllocation;
 use App\Models\Flight\FlightRefund;
 use App\Models\Flight\FlightSegment;
 use App\Models\Flight\FlightSystem;
@@ -2680,7 +2682,14 @@ class FlightBookingService
 
                 $totalPaid = round($cashPaid + $allocationsPaid, 2);
 
-                $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
+                $refundCase = $data['refund_case'] ?? 'customer_voluntary';
+                $destination = $data['destination'] ?? (! empty($data['account_id']) ? 'cash' : 'customer_credit');
+
+                if ($refundCase === 'airline_cancelled') {
+                    $airlinePenalty = 0.0;
+                } else {
+                    $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
+                }
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
                 // Bug #1 fix (2026-07-29): PENALTIES ARE IN EGP — per the production API
@@ -2891,15 +2900,15 @@ class FlightBookingService
                     // sale_gl_transaction_id as a bookkeeping signal.
                 }
 
-                // PHASE 10: حساب الصرف مطلوب **فقط** عند وجود استرجاع نقدي.
-                // حجز سُوِّي بالكامل من الرصيد الدائن ⇒ لا نقد يخرج من
+                // PHASE 10 + Real-World Business Scenarios: حساب الصرف مطلوب **فقط** عند اختيار الصرف النقدي ووجود استرجاع نقدي.
+                // حجز سُوِّي بالكامل من الرصيد الدائن أو اختار العميل إبقاء المبلغ كرصيد دائن أو تسوية ديون ⇒ لا نقد يخرج من
                 // الخزينة، فلا يُشترط اختيار حساب.
-                if ($cashRefundAmount > 0 && empty($data['account_id'])) {
-                    throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع للعميل.');
+                if ($destination === 'cash' && $cashRefundAmount > 0 && empty($data['account_id'])) {
+                    throw new \InvalidArgumentException('يجب اختيار حساب الصرف عند وجود مبلغ مرتجع نقداً للعميل.');
                 }
 
                 // Step 3.5 (Bug #B6 fix): Validate refund account currency matches booking currency.
-                if ($cashRefundAmount > 0 && ! empty($data['account_id'])) {
+                if ($destination === 'cash' && $cashRefundAmount > 0 && ! empty($data['account_id'])) {
                     $refundAccount = Account::query()->find($data['account_id']);
                     if ($refundAccount && strtoupper((string) $refundAccount->currency) !== $bookingCurrency) {
                         throw new \InvalidArgumentException(
@@ -2943,18 +2952,33 @@ class FlightBookingService
                 $this->reverseFlightBookingRevenue($booking, $userId);
 
 
-                // Step 4: Cash refund from treasury (recorded payments)
-                //
-                // PHASE 10: يُردّ **الجزء النقدي فقط** — ما سدّده العميل نقداً.
-                // أمّا ما سدّده من رصيده الدائن فيعود إليه رصيداً (Step 4.1).
+                // Step 4: Refund settlement according to chosen destination
                 $refundLedgerTx = null;
-                if ($cashRefundAmount > 0 && ! empty($data['account_id'])) {
-                    $refundLedgerTx = $this->refundTreasuryAccount(
-                        $booking,
-                        $data['account_id'],
-                        $cashRefundAmount,
-                        $userId
-                    );
+                if ($destination === 'cash') {
+                    if ($cashRefundAmount > 0 && ! empty($data['account_id'])) {
+                        $refundLedgerTx = $this->refundTreasuryAccount(
+                            $booking,
+                            $data['account_id'],
+                            $cashRefundAmount,
+                            $userId
+                        );
+                    }
+                } elseif ($destination === 'company_offset') {
+                    if ($cashRefundEgp > 0.005) {
+                        $this->offsetCompanyDebtsOrCredit(
+                            $booking,
+                            $cashRefundEgp,
+                            $userId
+                        );
+                    }
+                } elseif ($destination === 'customer_credit') {
+                    if ($cashRefundEgp > 0.005) {
+                        $this->addCustomerCreditForRefund(
+                            $booking,
+                            $cashRefundEgp,
+                            $userId
+                        );
+                    }
                 }
 
                 // ─────────────────────────────────────────────────────────────────
@@ -3031,16 +3055,25 @@ class FlightBookingService
                 // Removed in this audit.
 
                 // Step 5: Create refund record
+                $destinationLabel = match ($destination) {
+                    'cash' => 'صرف نقدي فوري',
+                    'customer_credit' => 'إضافة كرصيد دائن',
+                    'company_offset' => 'تسوية مديونية الشركة (FIFO)',
+                    default => $destination,
+                };
+                $caseLabel = $refundCase === 'airline_cancelled' ? 'إلغاء من شركة الطيران' : 'إلغاء برغبة العميل';
+                $auditNotes = "[{$caseLabel} | {$destinationLabel}]".(! empty($data['notes']) ? ' - '.$data['notes'] : '');
+
                 $refund = FlightRefund::create([
                     'flight_booking_id' => $booking->id,
                     'airline_penalty' => $airlinePenalty,
                     'office_penalty' => $officePenalty,
                     'total_paid' => $totalPaid,
                     'refund_amount' => $refundAmount,
-                    'account_id' => $data['account_id'] ?? null,
+                    'account_id' => ($destination === 'cash') ? ($data['account_id'] ?? null) : null,
                     'transaction_id' => $refundLedgerTx?->id,
                     'status' => $refundAmount > 0 ? 'processed' : 'no_refund',
-                    'notes' => $data['notes'] ?? null,
+                    'notes' => $auditNotes,
                     'created_by' => $userId,
                 ]);
 
@@ -3245,6 +3278,160 @@ class FlightBookingService
                 'user_id' => $userId,
             ]);
         }
+    }
+
+    /**
+     * إضافة المبلغ المسترد إلى رصيد العميل / الشركة الدائن (أمانات).
+     */
+    protected function addCustomerCreditForRefund(
+        FlightBooking $booking,
+        float $amountEgp,
+        int $userId
+    ): CustomerCreditLedger {
+        $bookingCurrency = strtoupper((string) ($booking->currency ?: 'EGP'));
+        $customer = $booking->customer;
+        $companyId = null;
+        if ($customer) {
+            if ($customer->type === \App\Enums\CustomerType::Company) {
+                $companyId = $customer->id;
+            } elseif (! empty($customer->company_id)) {
+                $companyId = $customer->company_id;
+            }
+        }
+
+        $rate = $this->creditSettlementRate($booking, $bookingCurrency);
+        $creditAmount = $bookingCurrency === 'EGP'
+            ? round($amountEgp, 2)
+            : round($amountEgp / max($rate, 0.0001), 2);
+
+        $scope = $this->customerCreditLedgerService->lockCustomerScope(
+            (int) $booking->customer_id,
+            $companyId,
+            $bookingCurrency
+        );
+
+        return $this->customerCreditLedgerService->recordGuardedCredit(
+            (int) $booking->customer_id,
+            $companyId,
+            $bookingCurrency,
+            $creditAmount,
+            $scope['available_credit'],
+            [
+                'source_type' => CustomerCreditLedger::SOURCE_REFUND,
+                'source_id' => (int) $booking->id,
+                'notes' => "إضافة رصيد دائن للعميل بدل الاسترداد النقدي لإلغاء حجز #{$booking->booking_number}",
+                'created_by' => $userId,
+            ]
+        );
+    }
+
+    /**
+     * تسوية المبلغ المسترد مقابل مديونيات الشركة بنظام FIFO، وإيداع أي فائض في رصيدها الدائن.
+     */
+    protected function offsetCompanyDebtsOrCredit(
+        FlightBooking $booking,
+        float $amountEgp,
+        int $userId
+    ): float {
+        $customer = $booking->customer;
+        $companyId = null;
+        if ($customer) {
+            if ($customer->type === \App\Enums\CustomerType::Company) {
+                $companyId = $customer->id;
+            } elseif (! empty($customer->company_id)) {
+                $companyId = $customer->company_id;
+            }
+        }
+
+        $unpaidBookings = FlightBooking::query()
+            ->where('id', '!=', $booking->id)
+            ->whereIn('status', [FlightBookingStatus::CONFIRMED, FlightBookingStatus::PENDING])
+            ->where(function ($q) use ($booking, $companyId) {
+                if ($companyId) {
+                    $q->where(function ($cq) use ($companyId) {
+                        $cq->where('company_id', $companyId)
+                           ->orWhereHas('customer', fn ($sub) => $sub->where('company_id', $companyId)->orWhere('id', $companyId));
+                    });
+                } else {
+                    $q->where('customer_id', $booking->customer_id);
+                }
+            })
+            ->orderBy('id', 'asc') // FIFO
+            ->lockForUpdate()
+            ->get();
+
+        $remainingToOffset = round($amountEgp, 2);
+
+        foreach ($unpaidBookings as $unpaidBooking) {
+            if ($remainingToOffset <= 0.005) {
+                break;
+            }
+
+            $rem = (float) $unpaidBooking->remaining_amount;
+            if ($rem <= 0.005) {
+                continue;
+            }
+
+            $alloc = min($remainingToOffset, $rem);
+            $alloc = round($alloc, 2);
+
+            // يربط التخصيص بقيد GL الأصلي للحجز المدين (نفس نمط سداد الرصيد الدائن)
+            $offsetTxId = $unpaidBooking->sale_gl_transaction_id
+                ?? \App\Models\Transaction::where('flight_booking_id', $unpaidBooking->id)
+                    ->orderBy('id', 'asc')->value('id')
+                ?? 1; // fallback آمن — لن يحدث في الإنتاج
+
+            FlightPaymentAllocation::create([
+                'transaction_id' => $offsetTxId,
+                'flight_booking_id' => $unpaidBooking->id,
+                'customer_id' => $unpaidBooking->customer_id,
+                'amount' => $alloc,
+                'allocated_at' => now(),
+                'status' => 'active',
+                'notes' => "تسوية مديونية من استرداد حجز #{$booking->booking_number}",
+                'created_by' => $userId,
+            ]);
+
+            $unpaidBooking->unsetRelation('paymentAllocations');
+            if ((float) $unpaidBooking->paid_amount >= (float) $unpaidBooking->selling_price - 0.01
+                && $unpaidBooking->status === FlightBookingStatus::PENDING
+                && ! empty($unpaidBooking->pnr)) {
+                $unpaidBooking->update(['status' => FlightBookingStatus::CONFIRMED]);
+            }
+
+            $remainingToOffset = round($remainingToOffset - $alloc, 2);
+        }
+
+        // إذا تبقى مبلغ بعد تسوية كافة الديون (أو لم تكن هناك ديون أصلاً)، يُودع في رصيد العميل/الشركة الدائن
+        if ($remainingToOffset > 0.005) {
+            $bookingCurrency = strtoupper((string) ($booking->currency ?: 'EGP'));
+            $rate = $this->creditSettlementRate($booking, $bookingCurrency);
+            $creditAmount = $bookingCurrency === 'EGP'
+                ? round($remainingToOffset, 2)
+                : round($remainingToOffset / max($rate, 0.0001), 2);
+
+            $scope = $this->customerCreditLedgerService->lockCustomerScope(
+                (int) $booking->customer_id,
+                $companyId,
+                $bookingCurrency
+            );
+
+            $this->customerCreditLedgerService->recordGuardedCredit(
+                (int) $booking->customer_id,
+                $companyId,
+                $bookingCurrency,
+                $creditAmount,
+                $scope['available_credit'],
+                [
+                    'source_type' => CustomerCreditLedger::SOURCE_REFUND,
+                    'source_id' => (int) $booking->id,
+                    'notes' => "رصيد دائن متبقي بعد تسوية المديونيات من إلغاء حجز #{$booking->booking_number}",
+                    'created_by' => $userId,
+                ]
+            );
+        }
+
+        return $remainingToOffset;
     }
 
     /**

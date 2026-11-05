@@ -88,9 +88,57 @@
         <StepHeader
           :step="2"
           :total="totalSteps"
-          title="خصم الطيران وعمولة الإلغاء"
-          subtitle="أدخل الغرامات بالجنيه المصري — يُحسب منها المبلغ المرتجع للعميل."
+          title="سبب الإلغاء والخصومات"
+          subtitle="حدد سبب الإلغاء والغرامات بالجنيه المصري — يُحسب منها المبلغ المرتجع للعميل."
         />
+
+        <!-- اختيار سبب الإلغاء -->
+        <div class="space-y-2">
+          <label class="block text-xs text-gold uppercase tracking-widest font-mono">حالة الإلغاء والتذكرة *</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              :class="[
+                'p-4 rounded-2xl border-2 text-right transition-all flex flex-col justify-between',
+                form.refundCase === 'customer_voluntary'
+                  ? 'bg-gold/10 border-gold shadow-md shadow-gold/10'
+                  : 'bg-white/5 border-white/10 hover:border-white/20'
+              ]"
+              @click="setRefundCase('customer_voluntary')"
+            >
+              <div class="font-bold text-white text-sm flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full border-2 border-gold flex items-center justify-center">
+                  <span v-if="form.refundCase === 'customer_voluntary'" class="w-1.5 h-1.5 rounded-full bg-gold"></span>
+                </span>
+                إلغاء بناءً على رغبة العميل
+              </div>
+              <p class="text-[11px] text-muted mt-2 leading-relaxed">
+                يتحمل العميل غرامة شركة الطيران المقررة + عمولة إلغاء المكتب.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              :class="[
+                'p-4 rounded-2xl border-2 text-right transition-all flex flex-col justify-between',
+                form.refundCase === 'airline_cancelled'
+                  ? 'bg-sky-500/10 border-sky-400 shadow-md shadow-sky-500/10'
+                  : 'bg-white/5 border-white/10 hover:border-white/20'
+              ]"
+              @click="setRefundCase('airline_cancelled')"
+            >
+              <div class="font-bold text-sky-300 text-sm flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full border-2 border-sky-400 flex items-center justify-center">
+                  <span v-if="form.refundCase === 'airline_cancelled'" class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                </span>
+                إلغاء من شركة الطيران
+              </div>
+              <p class="text-[11px] text-muted mt-2 leading-relaxed">
+                استرداد كامل من الخط الجوي (غرامة الخط = 0 تلقائياً).
+              </p>
+            </button>
+          </div>
+        </div>
 
         <div class="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-100">
           <span class="font-bold text-amber-50">تنبيه:</span>
@@ -107,7 +155,12 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label class="block text-xs text-muted mb-2 font-mono">خصم الطيران — ج.م</label>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs text-muted font-mono">خصم الطيران — ج.م</label>
+              <span v-if="form.refundCase === 'airline_cancelled'" class="text-[10px] text-sky-300 bg-sky-500/15 px-2 py-0.5 rounded-md font-bold">
+                ملغى من الطيران = 0
+              </span>
+            </div>
             <div class="relative">
               <input
                 v-model.number="form.airlinePenalty"
@@ -115,14 +168,20 @@
                 min="0"
                 step="0.01"
                 placeholder="0.00"
-                class="w-full p-4 pl-14 bg-input border border-white/10 rounded-2xl focus:border-gold outline-none font-mono text-xl text-white text-right"
+                :disabled="form.refundCase === 'airline_cancelled'"
+                :class="[
+                  'w-full p-4 pl-14 bg-input border rounded-2xl focus:border-gold outline-none font-mono text-xl text-right',
+                  form.refundCase === 'airline_cancelled' ? 'border-sky-500/30 text-sky-200 opacity-60 cursor-not-allowed' : 'border-white/10 text-white'
+                ]"
               />
               <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">ج.م</span>
             </div>
-            <p class="mt-1.5 text-[10px] text-muted">غرامة شركة الطيران محوّلة للجنيه (ليس بالدينار/الدولار)</p>
+            <p class="mt-1.5 text-[10px] text-muted">
+              {{ form.refundCase === 'airline_cancelled' ? 'لا توجد غرامة طيران عند إلغاء الرحلة من قبل الناقل.' : 'غرامة شركة الطيران محوّلة للجنيه (ليس بالدينار/الدولار)' }}
+            </p>
           </div>
           <div>
-            <label class="block text-xs text-muted mb-2 font-mono">عمولة الإلغاء — ج.م</label>
+            <label class="block text-xs text-muted mb-2 font-mono">عمولة الإلغاء (المكتب) — ج.م</label>
             <div class="relative">
               <input
                 v-model.number="form.officePenalty"
@@ -134,6 +193,7 @@
               />
               <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">ج.م</span>
             </div>
+            <p class="mt-1.5 text-[10px] text-muted">رسوم خدمة المكتب إن وجدت (يمكن تركها 0).</p>
           </div>
         </div>
 
@@ -161,41 +221,145 @@
         </p>
       </div>
 
-      <!-- الخطوة 3: حساب الاسترداد -->
+      <!-- الخطوة 3: وجهة وطريقة التسوية -->
       <div v-if="currentStep === 3" class="space-y-6">
         <StepHeader
           :step="3"
           :total="totalSteps"
-          title="حساب صرف الاسترداد"
-          subtitle="اختر الحساب (بنك / خزينة) الذي يُصرف منه المبلغ المرتجع للعميل بالجنيه المصري."
+          title="طريقة تسوية الاسترداد"
+          subtitle="حدد وجهة وطريقة تسوية المبلغ المسترد للعميل أو الشركة."
         />
 
-        <div v-if="customerRefundAmount > 0">
-          <label class="block text-xs text-gold mb-3 uppercase tracking-widest font-mono">حساب الصرف *</label>
+        <div v-if="customerRefundAmount > 0" class="space-y-5">
+          <div>
+            <label class="block text-xs text-gold mb-3 uppercase tracking-widest font-mono">طريقة التسوية المطلوبة *</label>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <!-- خيار 1: صرف نقدي -->
+              <button
+                type="button"
+                :class="[
+                  'p-4 rounded-2xl border-2 text-right transition-all flex flex-col justify-between',
+                  form.destination === 'cash' ? 'bg-gold/10 border-gold shadow-md shadow-gold/10' : 'bg-white/5 border-white/10 hover:border-white/20'
+                ]"
+                @click="form.destination = 'cash'"
+              >
+                <div>
+                  <div class="font-bold text-white text-sm flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full border-2 border-gold flex items-center justify-center">
+                      <span v-if="form.destination === 'cash'" class="w-1.5 h-1.5 rounded-full bg-gold"></span>
+                    </span>
+                    صرف نقدي فوري
+                  </div>
+                  <p class="text-[11px] text-muted mt-2 leading-relaxed">
+                    صرف نقدي أو تحويل بنكي فوري من خزينة المكتب للعميل.
+                  </p>
+                </div>
+                <div class="mt-3 pt-2 border-t border-white/5 text-[10px] text-gold font-mono">
+                  يتطلب اختيار الخزينة/البنك
+                </div>
+              </button>
 
-          <div v-if="settlementAccounts.length === 0" class="p-4 rounded-xl bg-error/10 border border-error/20 text-center">
-            <p class="text-xs text-error font-mono">لا توجد حسابات تسوية متاحة. تأكد من إعداد الخزائن/المحافظ.</p>
+              <!-- خيار 2: رصيد دائن -->
+              <button
+                type="button"
+                :class="[
+                  'p-4 rounded-2xl border-2 text-right transition-all flex flex-col justify-between',
+                  form.destination === 'customer_credit' ? 'bg-emerald-500/10 border-emerald-400 shadow-md shadow-emerald-500/10' : 'bg-white/5 border-white/10 hover:border-white/20'
+                ]"
+                @click="form.destination = 'customer_credit'"
+              >
+                <div>
+                  <div class="font-bold text-emerald-300 text-sm flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full border-2 border-emerald-400 flex items-center justify-center">
+                      <span v-if="form.destination === 'customer_credit'" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    </span>
+                    إضافة كرصيد دائن (أمانات)
+                  </div>
+                  <p class="text-[11px] text-muted mt-2 leading-relaxed">
+                    يبقى المبلغ في رصيد العميل بالسيستم ليُخصم تلقائياً من حجوزاته القادمة.
+                  </p>
+                </div>
+                <div class="mt-3 pt-2 border-t border-white/5 text-[10px] text-emerald-400 font-mono">
+                  بدون خروج نقد من الخزينة
+                </div>
+              </button>
+
+              <!-- خيار 3: تسوية ديون شركة -->
+              <button
+                type="button"
+                :class="[
+                  'p-4 rounded-2xl border-2 text-right transition-all flex flex-col justify-between',
+                  form.destination === 'company_offset' ? 'bg-purple-500/10 border-purple-400 shadow-md shadow-purple-500/10' : 'bg-white/5 border-white/10 hover:border-white/20'
+                ]"
+                @click="form.destination = 'company_offset'"
+              >
+                <div>
+                  <div class="font-bold text-purple-300 text-sm flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full border-2 border-purple-400 flex items-center justify-center">
+                      <span v-if="form.destination === 'company_offset'" class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                    </span>
+                    خصم من مديونية الشركة (FIFO)
+                  </div>
+                  <p class="text-[11px] text-muted mt-2 leading-relaxed">
+                    تسوية الحجوزات غير المسددة للشركة بالترتيب، وإيداع أي فائض في رصيدها.
+                  </p>
+                </div>
+                <div class="mt-3 pt-2 border-t border-white/5 text-[10px] text-purple-300 font-mono">
+                  تخفيض تلقائي للمديونية
+                </div>
+              </button>
+            </div>
           </div>
 
-          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
-            <button
-              v-for="acc in settlementAccounts"
-              :key="acc.id"
-              type="button"
-              :class="[
-                'p-4 rounded-xl border-2 text-right transition-all',
-                form.accountId === acc.id ? 'bg-gold/10 border-gold' : 'bg-white/5 border-white/10 hover:border-white/20',
-              ]"
-              @click="form.accountId = acc.id"
-            >
-              <div class="font-bold text-white text-sm">{{ acc.name }}</div>
-              <div class="text-[11px] text-muted mt-1">{{ accountTypeLabel(acc.type) }} — {{ formatMoney(acc.balance, acc.currency) }}</div>
-            </button>
+          <!-- تفاصيل حسب الخيار المختار -->
+          <!-- في حالة الصرف النقدي: اختيار الخزينة -->
+          <div v-if="form.destination === 'cash'" class="space-y-3 pt-2">
+            <label class="block text-xs text-gold uppercase tracking-widest font-mono">حساب الصرف (الخزينة / البنك) *</label>
+
+            <div v-if="settlementAccounts.length === 0" class="p-4 rounded-xl bg-error/10 border border-error/20 text-center">
+              <p class="text-xs text-error font-mono">لا توجد حسابات تسوية متاحة. تأكد من إعداد الخزائن/المحافظ.</p>
+            </div>
+
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
+              <button
+                v-for="acc in settlementAccounts"
+                :key="acc.id"
+                type="button"
+                :class="[
+                  'p-4 rounded-xl border-2 text-right transition-all',
+                  form.accountId === acc.id ? 'bg-gold/10 border-gold' : 'bg-white/5 border-white/10 hover:border-white/20',
+                ]"
+                @click="form.accountId = acc.id"
+              >
+                <div class="font-bold text-white text-sm">{{ acc.name }}</div>
+                <div class="text-[11px] text-muted mt-1">{{ accountTypeLabel(acc.type) }} — {{ formatMoney(acc.balance, acc.currency) }}</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- في حالة الرصيد الدائن -->
+          <div v-else-if="form.destination === 'customer_credit'" class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-100 leading-relaxed space-y-1">
+            <div class="font-bold text-emerald-300 flex items-center gap-1.5">
+              <span>✓</span> أمانات عميل (Customer Credit)
+            </div>
+            <p>
+              سيتم قيد مبلغ <span class="font-bold text-white">{{ formatEgp(customerRefundAmount) }}</span> مباشرة في دفتر رصيد العميل كأمانات، ليتمكن من سداد حجوزات قادمة به. لا يتم خصم أي نقد من خزائن المكتب.
+            </p>
+          </div>
+
+          <!-- في حالة تسوية ديون الشركة -->
+          <div v-else-if="form.destination === 'company_offset'" class="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-100 leading-relaxed space-y-1">
+            <div class="font-bold text-purple-300 flex items-center gap-1.5">
+              <span>✓</span> تسوية مديونيات وحجوزات آجلة (FIFO Debt Offset)
+            </div>
+            <p>
+              سيتم تخصيص مبلغ <span class="font-bold text-white">{{ formatEgp(customerRefundAmount) }}</span> لتسديد الحجوزات المفتوحة غير المسددة التابعة للشركة بحسب الأقدمية (FIFO)، مما يخفض مديونيتها في النظام. وأي مبلغ فائض سيبقى رصيداً دائناً للشركة.
+            </p>
           </div>
         </div>
 
         <div v-else class="p-4 rounded-xl bg-white/5 border border-white/10 text-center text-sm text-muted">
-          لا يوجد مبلغ مرتجع للعميل — يمكن إتمام الإلغاء دون صرف نقدي.
+          لا يوجد مبلغ مرتجع للعميل — سيتم إلغاء الحجز دون صرف نقدي أو تسوية.
         </div>
 
         <div>
@@ -211,17 +375,27 @@
 
       <!-- الخطوة 4: المراجعة -->
       <div v-if="currentStep === 4" class="space-y-6">
-        <StepHeader :step="4" :total="totalSteps" title="مراجعة وتنفيذ الاسترداد" subtitle="تأكد من صحة الحسابات قبل التسجيل النهائي." />
+        <StepHeader :step="4" :total="totalSteps" title="مراجعة وتنفيذ الاسترداد" subtitle="تأكد من صحة الحسابات وطريقة التسوية قبل الاعتماد." />
 
         <div class="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-3 font-mono text-sm">
           <SummaryRow label="رقم الحجز" :value="displayBookingNumber" />
           <SummaryRow label="العميل" :value="customerName" />
+          <SummaryRow
+            label="نوع الإلغاء"
+            :value="form.refundCase === 'airline_cancelled' ? 'إلغاء من شركة الطيران (غرامة طيران = 0)' : 'بناءً على رغبة العميل'"
+            :value-class="form.refundCase === 'airline_cancelled' ? 'text-sky-300 font-bold' : 'text-white'"
+          />
+          <SummaryRow
+            label="طريقة التسوية"
+            :value="destinationSummaryLabel"
+            value-class="text-gold font-bold"
+          />
           <SummaryRow label="المبلغ الأصلي (ج.م)" :value="formatEgp(totalPaid)" />
           <SummaryRow label="خصم الطيران (ج.م)" :value="'− ' + formatEgp(form.airlinePenalty)" value-class="text-error" />
           <SummaryRow label="عمولة الإلغاء (ج.م)" :value="'− ' + formatEgp(form.officePenalty)" value-class="text-error" />
           <SummaryRow label="المبلغ المرتجع للعميل (ج.م)" :value="formatEgp(customerRefundAmount)" value-class="text-success font-bold text-lg" />
           <SummaryRow
-            v-if="customerRefundAmount > 0"
+            v-if="form.destination === 'cash' && customerRefundAmount > 0"
             label="حساب الصرف"
             :value="selectedAccount?.name || '—'"
           />
@@ -308,6 +482,8 @@ const settlementAccounts = ref([]);
 const form = ref({
   bookingId: null,
   bookingNumber: '',
+  refundCase: 'customer_voluntary',
+  destination: 'cash',
   airlinePenalty: 0,
   officePenalty: 0,
   accountId: null,
@@ -390,6 +566,33 @@ const customerName = computed(
   () => props.initialBooking?.customer?.name ?? props.initialBooking?.customer?.full_name ?? '—',
 );
 
+const isCorporate = computed(() => {
+  const b = props.initialBooking;
+  const c = b?.customer;
+  return Boolean(c?.type === 'company' || c?.company_id || b?.company_id);
+});
+
+function setRefundCase(caseName) {
+  form.value.refundCase = caseName;
+  if (caseName === 'airline_cancelled') {
+    form.value.airlinePenalty = 0;
+  }
+}
+
+const destinationSummaryLabel = computed(() => {
+  if (customerRefundAmount.value <= 0) return 'لا يوجد استرداد (إلغاء الحجز فقط)';
+  if (form.value.destination === 'cash') {
+    return selectedAccount.value ? `صرف نقدي من (${selectedAccount.value.name})` : 'صرف نقدي فوري';
+  }
+  if (form.value.destination === 'customer_credit') {
+    return 'إضافة كرصيد دائن / أمانات بالسيستم';
+  }
+  if (form.value.destination === 'company_offset') {
+    return 'خصم من مديونية الشركة (FIFO)';
+  }
+  return form.value.destination;
+});
+
 const selectedAccount = computed(() =>
   settlementAccounts.value.find((a) => Number(a.id) === Number(form.value.accountId)) ?? null,
 );
@@ -403,7 +606,10 @@ const canGoNext = computed(() => {
   }
   if (currentStep.value === 3) {
     if (customerRefundAmount.value <= 0) return true;
-    return Boolean(form.value.accountId);
+    if (form.value.destination === 'cash') {
+      return Boolean(form.value.accountId);
+    }
+    return true;
   }
   return true;
 });
@@ -411,7 +617,9 @@ const canGoNext = computed(() => {
 const canSubmit = computed(() => {
   if (!form.value.bookingId) return false;
   if (penaltiesExceedPaid.value) return false;
-  if (customerRefundAmount.value > 0 && !form.value.accountId) return false;
+  if (form.value.destination === 'cash' && customerRefundAmount.value > 0 && !form.value.accountId) {
+    return false;
+  }
   return true;
 });
 
@@ -443,6 +651,9 @@ function setupFromBooking(booking) {
   if (!booking?.id) return;
   form.value.bookingId = booking.id;
   form.value.bookingNumber = booking.bookingNumber ?? booking.booking_number ?? '';
+  form.value.refundCase = 'customer_voluntary';
+  const isCorp = Boolean(booking.customer?.type === 'company' || booking.customer?.company_id || booking.company_id);
+  form.value.destination = isCorp ? 'company_offset' : 'cash';
   form.value.airlinePenalty = 0;
   form.value.officePenalty = 0;
   form.value.accountId = booking.account?.id ?? booking.account_id ?? booking.payments?.[0]?.account?.id ?? null;
@@ -478,11 +689,13 @@ async function submitRefund() {
 
   try {
     const payload = {
-      airline_penalty: roundMoney(form.value.airlinePenalty),
+      airline_penalty: form.value.refundCase === 'airline_cancelled' ? 0 : roundMoney(form.value.airlinePenalty),
       office_penalty: roundMoney(form.value.officePenalty),
+      refund_case: form.value.refundCase,
+      destination: form.value.destination,
       notes: form.value.notes?.trim() || null,
     };
-    if (customerRefundAmount.value > 0) {
+    if (form.value.destination === 'cash' && customerRefundAmount.value > 0) {
       payload.account_id = Number(form.value.accountId);
     }
 

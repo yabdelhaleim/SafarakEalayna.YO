@@ -19,6 +19,8 @@ class StoreFlightRefundRequest extends FormRequest
             'office_penalty' => 'required|numeric|min:0',
             'account_id' => 'nullable|integer|exists:accounts,id',
             'notes' => 'nullable|string|max:1000',
+            'refund_case' => 'nullable|string|in:customer_voluntary,airline_cancelled',
+            'destination' => 'nullable|string|in:cash,customer_credit,company_offset',
         ];
     }
 
@@ -35,6 +37,8 @@ class StoreFlightRefundRequest extends FormRequest
             'account_id.exists' => 'حساب الصرف المحدد غير صالح.',
             'notes.string' => 'الملاحظات يجب أن تكون نصاً صالحاً.',
             'notes.max' => 'الملاحظات لا يمكن أن تتجاوز 1000 حرف.',
+            'refund_case.in' => 'نوع الإلغاء غير صالح.',
+            'destination.in' => 'طريقة تسوية الاسترداد غير صالحة.',
         ];
     }
 
@@ -45,6 +49,8 @@ class StoreFlightRefundRequest extends FormRequest
             'office_penalty',
             'account_id',
             'notes',
+            'refund_case',
+            'destination',
         ];
 
         $unknown = array_diff(array_keys($this->all()), $allowed);
