@@ -3348,10 +3348,9 @@ class FlightBookingService
             ->whereIn('status', [FlightBookingStatus::CONFIRMED, FlightBookingStatus::PENDING])
             ->where(function ($q) use ($booking, $companyId) {
                 if ($companyId) {
-                    $q->where(function ($cq) use ($companyId) {
-                        $cq->where('company_id', $companyId)
-                           ->orWhereHas('customer', fn ($sub) => $sub->where('company_id', $companyId)->orWhere('id', $companyId));
-                    });
+                    // flight_bookings لا يملك عمود company_id — البحث عبر العميل فقط
+                    $q->where('customer_id', $companyId)
+                      ->orWhereHas('customer', fn ($sub) => $sub->where('company_id', $companyId)->orWhere('id', $companyId));
                 } else {
                     $q->where('customer_id', $booking->customer_id);
                 }
