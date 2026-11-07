@@ -46,6 +46,8 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         // الخزينة انخفضت بمقدار 2,800 ج.م
         $cashAfterCancel = (float) $this->cashbox->fresh()->balance;
         $this->assertEqualsWithDelta($cashBeforeCancel - 2800.0, $cashAfterCancel, 0.01);
+
+        $this->assertBalanced('Scenario 1: Counter cash refund');
     }
 
     /**
@@ -82,6 +84,8 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         // الرصيد الدائن للعميل في customer_credit_ledger أصبح 2,800 ج.م
         $credit = CustomerCreditLedger::getAvailableCredit($booking->customer_id);
         $this->assertEqualsWithDelta(2800.0, $credit, 0.01);
+
+        $this->assertBalanced('Scenario 2: Counter credit refund');
     }
 
     /**
@@ -143,6 +147,8 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         $this->assertNotNull($allocation);
         $this->assertEquals(2800.0, (float) $allocation->amount);
         $this->assertEquals('active', $allocation->status);
+
+        $this->assertBalanced('Scenario 3: Corporate FIFO offset');
     }
 
     /**
@@ -184,6 +190,8 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         // رصيد الشركة الدائن أصبح 2800
         $credit = CustomerCreditLedger::getAvailableCredit($company->id, $company->id);
         $this->assertEqualsWithDelta(2800.0, $credit, 0.01);
+
+        $this->assertBalanced('Scenario 4: Corporate zero debt adds credit');
     }
 
     /**
@@ -221,5 +229,338 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         // الناقل استرد كامل تكلفة الشراء (5000)
         $carrierBalanceAfter = (float) $this->carrier->fresh()->available_balance;
         $this->assertEqualsWithDelta($carrierBalanceBefore + 5000.0, $carrierBalanceAfter, 0.01);
+
+        $this->assertBalanced('Scenario 5: Airline cancellation');
+    }
+
+    /**
+     * السيناريو 6: تسوية ديون متعددة بنظام FIFO على طابور حجوزات للشركة.
+     * الشركة لديها 3 حجوزات مدينة:
+     * - الحجز 1: متبقي 1,500 ج.م
+     * - الحجز 2: متبقي 2,000 ج.م
+     * - الحجز 3: متبقي 5,000 ج.م
+     * الحجز الملغي يسترد 2,800 ج.م.
+     * التوزيع (FIFO):
+     * - الحجز 1 يُسدد بالكامل (1,500) ويصبح المتبقي 0.
+     * - الحجز 2 يُسدد منه 1,300 ويتبقى عليه 700 ج.م.
+     * - الحجز 3 يبقى كما هو (5,000 ج.م).
+     */
+    public function test_scenario_6_corporate_multi_debt_fifo_queue(): void
+    {
+        $company = Customer::create([
+            'full_name' => 'شركة الأهرام للسياحة',
+            'phone' => '0100000010',
+            'type' => CustomerType::Company,
+        ]);
+
+        // حجز 1: 3000 سدد 1500 => باقي 1500
+        $b1 = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 3000.0,
+            'purchase_price' => 2000.0,
+        ]);
+        $this->payBooking($b1, 1500.0);
+
+        // حجز 2: 4000 سدد 2000 => باقي 2000
+        $b2 = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 4000.0,
+            'purchase_price' => 2500.0,
+        ]);
+        $this->payBooking($b2, 2000.0);
+
+        // حجز 3: 5000 لم يسدد => باقي 5000
+        $b3 = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 5000.0,
+            'purchase_price' => 3500.0,
+        ]);
+
+        // حجز ملغي بقيمة 7000 ومسدد بالكامل
+        $cancelBooking = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 7000.0,
+            'purchase_price' => 5000.0,
+        ]);
+        $this->payBooking($cancelBooking, 7000.0);
+
+        // إلغاء واسترداد 2800 (غرامة 4000 + عمولة 200)
+        $refund = $this->bookingService->cancelBooking($cancelBooking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'company_offset',
+            'airline_penalty' => 4000.0,
+            'office_penalty' => 200.0,
+        ]);
+
+        $this->assertEquals(2800.0, (float) $refund->refund_amount);
+
+        // التحقق من الحجز 1: سُدد بالكامل
+        $b1->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $b1->remaining_amount, 0.01);
+        $this->assertEqualsWithDelta(3000.0, (float) $b1->paid_amount, 0.01);
+
+        // التحقق من الحجز 2: خُصم 1300 وبقي 700
+        $b2->refresh();
+        $this->assertEqualsWithDelta(700.0, (float) $b2->remaining_amount, 0.01);
+        $this->assertEqualsWithDelta(3300.0, (float) $b2->paid_amount, 0.01);
+
+        // التحقق من الحجز 3: لم يتغير
+        $b3->refresh();
+        $this->assertEqualsWithDelta(5000.0, (float) $b3->remaining_amount, 0.01);
+
+        // التحقق من إنشاء تخصيصين دقيقين
+        $this->assertEquals(1500.0, (float) FlightPaymentAllocation::where('flight_booking_id', $b1->id)->value('amount'));
+        $this->assertEquals(1300.0, (float) FlightPaymentAllocation::where('flight_booking_id', $b2->id)->value('amount'));
+
+        $this->assertBalanced('Scenario 6: Multi-booking FIFO queue');
+    }
+
+    /**
+     * السيناريو 7: استرداد للشركة يتجاوز كامل مديونياتها المفتوحة.
+     * الشركة عليها حجز قديم متبقي عليه 1,000 ج.م فقط.
+     * الحجز الملغي مسترد منه 3,500 ج.م.
+     * يُسدد الـ 1,000 ج.م للحجز القديم بالكامل، والـ 2,500 المتبقية تُودع في رصيد الشركة الدائن.
+     */
+    public function test_scenario_7_corporate_refund_exceeds_all_debts_remainder_to_credit(): void
+    {
+        $company = Customer::create([
+            'full_name' => 'شركة طيبة الدولية',
+            'phone' => '0100000011',
+            'type' => CustomerType::Company,
+        ]);
+
+        $oldBooking = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 3000.0,
+            'purchase_price' => 2000.0,
+        ]);
+        $this->payBooking($oldBooking, 2000.0); // متبقي 1000
+
+        $cancelBooking = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 7000.0,
+            'purchase_price' => 5000.0,
+        ]);
+        $this->payBooking($cancelBooking, 7000.0);
+
+        // استرداد 3500 (غرامة 3300 + عمولة 200)
+        $refund = $this->bookingService->cancelBooking($cancelBooking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'company_offset',
+            'airline_penalty' => 3300.0,
+            'office_penalty' => 200.0,
+        ]);
+
+        $this->assertEquals(3500.0, (float) $refund->refund_amount);
+
+        // الحجز القديم سُدد بالكامل
+        $oldBooking->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $oldBooking->remaining_amount, 0.01);
+
+        // الرصيد الدائن المتبقي = 2500 ج.م
+        $credit = CustomerCreditLedger::getAvailableCredit($company->id, $company->id);
+        $this->assertEqualsWithDelta(2500.0, $credit, 0.01);
+
+        $this->assertBalanced('Scenario 7: Debt offset with remainder to credit');
+    }
+
+    /**
+     * السيناريو 8: حجز باسم فرد/موظف تابع لشركة وإلغاء مع خيار company_offset.
+     * الموظف تابع للشركة عبر company_id.
+     * الشركة عليها حجز قديم متبقي عليه 4,000 ج.م.
+     * حجز الموظف أُلغي واسترداد 3,000 ج.م.
+     * يجب أن يتم ربط وتخفيض دين الشركة القديم ليصبح 1,000 ج.م.
+     */
+    public function test_scenario_8_company_employee_booking_offsets_company_debt(): void
+    {
+        $company = Customer::create([
+            'full_name' => 'شركة المتحدة للتجارة',
+            'phone' => '0100000012',
+            'type' => CustomerType::Company,
+        ]);
+
+        $employee = Customer::create([
+            'full_name' => 'أحمد مندوب الشركة',
+            'phone' => '0100000013',
+            'type' => CustomerType::Individual,
+            'company_id' => $company->id,
+        ]);
+
+        // حجز الشركة القديم
+        $companyOldBooking = $this->makeBooking([
+            'customer_id' => $company->id,
+            'selling_price' => 8000.0,
+            'purchase_price' => 6000.0,
+        ]);
+        $this->payBooking($companyOldBooking, 4000.0); // متبقي 4000
+
+        // حجز الموظف الجديد المسدد
+        $empBooking = $this->makeBooking([
+            'customer_id' => $employee->id,
+            'selling_price' => 6000.0,
+            'purchase_price' => 4500.0,
+        ]);
+        $this->payBooking($empBooking, 6000.0);
+
+        // إلغاء حجز الموظف مع تسوية ديون الشركة
+        $refund = $this->bookingService->cancelBooking($empBooking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'company_offset',
+            'airline_penalty' => 2800.0,
+            'office_penalty' => 200.0,
+        ]);
+
+        $this->assertEquals(3000.0, (float) $refund->refund_amount);
+
+        // دين شركة قديم انخفض من 4000 إلى 1000
+        $companyOldBooking->refresh();
+        $this->assertEqualsWithDelta(1000.0, (float) $companyOldBooking->remaining_amount, 0.01);
+
+        $this->assertBalanced('Scenario 8: Employee booking offsets company debt');
+    }
+
+    /**
+     * السيناريو 9: إلغاء اختياري لحجز مدفوع جزئياً.
+     * الحجز: سعر 8,000 ج.م - المدفوع: 3,000 ج.م فقط (المتبقي غير مسدد 5,000).
+     * غرامة الطيران: 1,000 ج.م - عمولة المكتب: 200 ج.م
+     * المسترد = المدفوع (3000) - الغرامة (1000) - العمولة (200) = 1,800 ج.م.
+     * الخزينة يخرج منها 1,800 ج.م فقط (وليس 8,000 ولا 3,000).
+     */
+    public function test_scenario_9_partially_paid_voluntary_cancellation(): void
+    {
+        $booking = $this->makeBooking([
+            'selling_price' => 8000.0,
+            'purchase_price' => 6000.0,
+        ]);
+        $this->payBooking($booking, 3000.0); // سدد 3000 فقط
+
+        $cashBefore = (float) $this->cashbox->fresh()->balance;
+
+        $refund = $this->bookingService->cancelBooking($booking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'cash',
+            'airline_penalty' => 1000.0,
+            'office_penalty' => 200.0,
+            'account_id' => $this->cashbox->id,
+        ]);
+
+        $this->assertEquals(1800.0, (float) $refund->refund_amount);
+        $this->assertEquals(FlightBookingStatus::REFUNDED, $booking->fresh()->status);
+
+        // الخزينة ينقص منها 1800 فقط
+        $cashAfter = (float) $this->cashbox->fresh()->balance;
+        $this->assertEqualsWithDelta($cashBefore - 1800.0, $cashAfter, 0.01);
+
+        $this->assertBalanced('Scenario 9: Partially paid voluntary cancel');
+    }
+
+    /**
+     * السيناريو 10: إلغاء طيران لحجز مدفوع جزئياً.
+     * الحجز: سعر 7,000 ج.م - مدفوع 2,500 ج.م.
+     * إلغاء الطيران يقفل غرامة الطيران على صفر، والعميل يسترد كامل ما دفعه (2,500).
+     */
+    public function test_scenario_10_partially_paid_airline_cancelled(): void
+    {
+        $booking = $this->makeBooking([
+            'selling_price' => 7000.0,
+            'purchase_price' => 5000.0,
+        ]);
+        $this->payBooking($booking, 2500.0);
+
+        $refund = $this->bookingService->cancelBooking($booking, [
+            'refund_case' => 'airline_cancelled',
+            'destination' => 'cash',
+            'airline_penalty' => 5000.0, // يتم تجاهلها وتصفيرها
+            'office_penalty' => 0.0,
+            'account_id' => $this->cashbox->id,
+        ]);
+
+        $this->assertEquals(0.0, (float) $refund->airline_penalty);
+        $this->assertEquals(2500.0, (float) $refund->refund_amount);
+
+        $this->assertBalanced('Scenario 10: Partially paid airline cancel');
+    }
+
+    /**
+     * السيناريو 11: دورة كاملة: استرداد لرصيد دائن -> سداد حجز جديد من الرصيد الدائن.
+     * 1. العميل يلغي حجزاً ويحول 4,000 ج.م كرصيد دائن.
+     * 2. العميل ينشئ حجزاً جديداً بقيمة 3,000 ج.م.
+     * 3. يتم سداد الحجز الجديد من الرصيد الدائن للعميل عبر consumeCustomerCredit().
+     * 4. الرصيد الدائن ينخفض من 4,000 إلى 1,000، والحجز الجديد يصبح مسدداً بالكامل.
+     */
+    public function test_scenario_11_full_cycle_refund_to_credit_then_pay_new_booking(): void
+    {
+        // 1. حجز وإلغاء لرصيد دائن
+        $b1 = $this->makeBooking([
+            'selling_price' => 6000.0,
+            'purchase_price' => 4500.0,
+        ]);
+        $this->payBooking($b1, 6000.0);
+
+        $this->bookingService->cancelBooking($b1, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'customer_credit',
+            'airline_penalty' => 1800.0,
+            'office_penalty' => 200.0,
+        ]);
+
+        $credit = CustomerCreditLedger::getAvailableCredit($this->customer->id);
+        $this->assertEqualsWithDelta(4000.0, $credit, 0.01);
+
+        // 2. حجز جديد للعميل
+        $b2 = $this->makeBooking([
+            'selling_price' => 3000.0,
+            'purchase_price' => 2200.0,
+        ]);
+        $this->assertEquals(3000.0, (float) $b2->remaining_amount);
+
+        // 3. سداد الحجز الجديد من الرصيد الدائن
+        $this->bookingService->consumeCustomerCredit($b2, 3000.0, $this->admin->id);
+
+        // 4. التحقق من الحسابات
+        $b2->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $b2->remaining_amount, 0.01);
+        $this->assertEqualsWithDelta(3000.0, (float) $b2->paid_amount, 0.01);
+
+        // الرصيد الدائن للعميل تبقى منه 1000
+        $creditAfter = CustomerCreditLedger::getAvailableCredit($this->customer->id);
+        $this->assertEqualsWithDelta(1000.0, $creditAfter, 0.01);
+
+        $this->assertBalanced('Scenario 11: Refund to credit then consume credit');
+    }
+
+    /**
+     * السيناريو 12: حماية الأمان المحاسبي - منع التكرار (Double-Refund Prevention).
+     * محاولة إلغاء حجز ملغي مسبقاً يجب أن تُرفض فوراً وتمنع أي صرف نقدي أو رصيد مكرر.
+     */
+    public function test_scenario_12_double_cancellation_prevented(): void
+    {
+        $booking = $this->makeBooking([
+            'selling_price' => 5000.0,
+            'purchase_price' => 3500.0,
+        ]);
+        $this->payBooking($booking, 5000.0);
+
+        // إلغاء أول
+        $this->bookingService->cancelBooking($booking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'cash',
+            'airline_penalty' => 1000.0,
+            'office_penalty' => 0.0,
+            'account_id' => $this->cashbox->id,
+        ]);
+
+        $this->assertEquals(FlightBookingStatus::REFUNDED, $booking->fresh()->status);
+
+        // محاولة إلغاء ثانية للحجز نفسه
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('الحجز ملغي أو مسترد بالفعل');
+
+        $this->bookingService->cancelBooking($booking, [
+            'refund_case' => 'customer_voluntary',
+            'destination' => 'cash',
+            'airline_penalty' => 1000.0,
+            'account_id' => $this->cashbox->id,
+        ]);
     }
 }

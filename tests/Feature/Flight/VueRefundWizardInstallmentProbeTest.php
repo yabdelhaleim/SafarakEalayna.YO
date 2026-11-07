@@ -6,7 +6,7 @@ use App\Http\Resources\Flight\FlightBookingResource;
 use App\Models\Customer;
 use App\Models\Flight\FlightBooking;
 use App\Models\Flight\FlightPayment;
-use Tests\Feature\Flight\Support\FlightTestCase;
+use Tests\Audit\AuditTestCase;
 
 /**
  * PROBE TEST — reproduces the user's exact scenario:
@@ -24,7 +24,7 @@ use Tests\Feature\Flight\Support\FlightTestCase;
  *
  * If only #2 is correct and #1 shows 5000 → confirmed bug: payments array is incomplete.
  */
-class VueRefundWizardInstallmentProbeTest extends FlightTestCase
+class VueRefundWizardInstallmentProbeTest extends AuditTestCase
 {
     public function test_counter_customer_three_installments_vue_wizard_sees_correct_total(): void
     {
@@ -34,9 +34,9 @@ class VueRefundWizardInstallmentProbeTest extends FlightTestCase
             'purchase_price' => 8000.0,
         ]);
 
-        $this->addPayment($booking, 5000.0);
-        $this->addPayment($booking, 3000.0);
-        $this->addPayment($booking, 2000.0);
+        $this->payBooking($booking, 5000.0);
+        $this->payBooking($booking, 3000.0);
+        $this->payBooking($booking, 2000.0);
 
         $booking->refresh();
 
@@ -120,7 +120,7 @@ class VueRefundWizardInstallmentProbeTest extends FlightTestCase
         $refund = $this->bookingService->cancelBooking($booking, [
             'airline_penalty' => 500.0,
             'office_penalty' => 100.0,
-            'account_id' => $this->cashboxEgp->id,
+            'account_id' => $this->cashbox->id,
             'notes' => 'E2E probe — counter customer installments',
         ]);
 
