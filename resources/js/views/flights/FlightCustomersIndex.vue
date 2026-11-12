@@ -530,14 +530,30 @@
         </div>
 
         <div class="modal-scroll">
-          <!-- Print Header -->
-          <div class="print-header hidden print:flex">
-            <div>
-              <h1 class="text-2xl font-black">سفرك علينا للسياحة والسفر</h1>
-              <p class="text-sm mt-1">كشف حساب | {{ selectedCustomerForStatement?.name || selectedCustomerForStatement?.full_name }}</p>
+          <!-- Professional Print Header -->
+          <div class="customer-print-header hidden print:block border-b-2 border-slate-900 pb-4 mb-4" dir="rtl">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <img v-if="printSettingsStore.settings.logo_url" :src="printSettingsStore.settings.logo_url" class="h-16 object-contain" style="max-height: 56px;" />
+                <div>
+                  <h2 class="text-2xl font-black text-slate-900">{{ printSettingsStore.settings.company_name_ar || 'سفرك علينا' }}</h2>
+                  <p class="text-xs font-bold text-slate-600 mt-0.5">للتسويق السياحي والخدمات الإلكترونية</p>
+                </div>
+              </div>
+              <div class="text-left font-mono">
+                <h1 class="text-xl font-black text-slate-900 mb-1">كشف حساب تفصيلي</h1>
+                <p class="text-xs font-bold text-slate-700">تاريخ الطباعة: {{ new Date().toLocaleString('ar-EG') }}</p>
+              </div>
             </div>
-            <div class="text-xs text-left" dir="ltr">
-              <p>تاريخ الطباعة: {{ new Date().toLocaleDateString('ar-EG') }}</p>
+            <div class="mt-4 pt-3 border-t border-slate-300 grid grid-cols-2 gap-4 text-xs font-bold text-slate-800">
+              <div class="space-y-1">
+                <p><span class="font-black text-slate-500">اسم العميل:</span> {{ selectedCustomerForStatement?.name || selectedCustomerForStatement?.full_name }}</p>
+                <p><span class="font-black text-slate-500">نوع الحساب:</span> {{ selectedCustomerForStatement?.is_group_flag ? 'مجموعة طيران' : (activeTab === 'counter' ? 'عميل شركة' : 'عميل كوانتر') }}</p>
+              </div>
+              <div class="space-y-1 text-left font-mono">
+                <p><span class="font-black text-slate-500">رقم الهاتف:</span> {{ selectedCustomerForStatement?.phone || selectedCustomerForStatement?.contact_phone || '—' }}</p>
+                <p v-if="selectedCustomerForStatement?.national_id"><span class="font-black text-slate-500">الرقم القومي:</span> {{ selectedCustomerForStatement.national_id }}</p>
+              </div>
             </div>
           </div>
 
@@ -975,7 +991,7 @@
         </div>
         <div class="p-8 space-y-5 text-right overflow-y-auto max-h-[70vh] print:overflow-visible print:max-h-none">
           <div class="text-center pb-4">
-            <h2 class="text-2xl font-black text-gold print:text-black">سفرك علينا للسياحة</h2>
+            <h2 class="text-2xl font-black text-gold print:text-black">{{ printSettingsStore.settings.company_name_ar || 'سفرك علينا للسياحة' }}</h2>
             <p class="text-xs text-muted print:text-black/60 mt-1">سند معاملة مالية</p>
           </div>
           <div class="text-center py-5 border border-white/10 rounded-2xl print:border-black/20 print:border-2">
@@ -1185,8 +1201,10 @@ import { isRequestCanceled } from '@/utils/api';
 import { fetchSettlementAccounts } from '@/composables/useTreasuryAccountGroups';
 import { formatLedgerBalance } from '@/composables/useLedgerBalance';
 import { enforcePhoneInput, validateEgyptianPhone } from '@/utils/phoneValidation';
+import { usePrintSettingsStore } from '@/stores/printSettingsStore';
 
 const store = useCustomerStore();
+const printSettingsStore = usePrintSettingsStore();
 
 // ——————————————————
 // UI State
@@ -1768,10 +1786,15 @@ const openReceipt = (item) => { selectedReceipt.value = item; };
 
 const printCurrentVoucher = () => {
   document.body.classList.add('printing-voucher');
+  const cleanup = () => {
+    document.body.classList.remove('printing-voucher');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
   setTimeout(() => {
     window.print();
-    document.body.classList.remove('printing-voucher');
-  }, 120);
+    setTimeout(cleanup, 3000);
+  }, 150);
 };
 
 const printSingleVoucher = async (item) => {
@@ -1782,10 +1805,15 @@ const printSingleVoucher = async (item) => {
 
 const printStatement = () => {
   document.body.classList.add('printing-statement');
+  const cleanup = () => {
+    document.body.classList.remove('printing-statement');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
   setTimeout(() => {
     window.print();
-    document.body.classList.remove('printing-statement');
-  }, 120);
+    setTimeout(cleanup, 3000);
+  }, 150);
 };
 
 // ——————————————————
@@ -1949,6 +1977,7 @@ const submitPayDebt = async () => {
 onMounted(() => {
   fetchCustomersList(1);
   fetchStats();
+  printSettingsStore.fetch().catch(() => {});
 });
 </script>
 
@@ -2213,19 +2242,199 @@ select.form-input { appearance: none; cursor: pointer; }
 .print-header { display: none; }
 
 @media print {
-  body.printing-statement *,
-  body.printing-voucher * { visibility: hidden; }
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  /* Universal reset for print */
+  html, body, #app, .app-shell, .main-zone, .page-wrapper {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide main background page elements so nothing bleeds through! */
+  body.printing-statement .page-header,
+  body.printing-statement .stats-grid,
+  body.printing-statement .content-card,
+  body.printing-statement .sidebar,
+  body.printing-statement .top-bar,
+  body.printing-voucher .page-header,
+  body.printing-voucher .stats-grid,
+  body.printing-voucher .content-card,
+  body.printing-voucher .sidebar,
+  body.printing-voucher .top-bar,
+  .print\:hidden,
+  .modal-header.print\:hidden {
+    display: none !important;
+  }
+
+  /* Transform modal overlay from a fixed dark backdrop to a static clean white container */
+  body.printing-statement .modal-overlay,
+  body.printing-voucher .modal-overlay {
+    position: static !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    inset: auto !important;
+    z-index: auto !important;
+  }
+
+  /* Modal box becomes full-width static printable page */
+  body.printing-statement .modal-box,
   body.printing-statement .print-statement-area,
-  body.printing-statement .print-statement-area * { visibility: visible; }
-  body.printing-voucher .print-voucher-area,
-  body.printing-voucher .print-voucher-area * { visibility: visible; }
-  .print-statement-area,
-  .print-voucher-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; color: #1e293b !important; }
-  .print\:hidden { display: none !important; }
-  .data-table th, .data-table td { border: 1px solid #e2e8f0 !important; padding: 8px 12px !important; font-size: 11px !important; color: #334155 !important; }
-  .data-table th { background: #f8fafc !important; }
+  body.printing-voucher .modal-box,
+  body.printing-voucher .print-voucher-area {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Allow modal scroll to flow naturally across printed pages */
+  body.printing-statement .modal-scroll,
+  body.printing-voucher .modal-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  /* Branded Print Header */
+  .customer-print-header {
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Statement KPI Summary Cards */
+  .stmt-stats {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 16px !important;
+  }
+  .stmt-stat {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    box-shadow: none !important;
+  }
+  .stmt-stat-label {
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    color: #475569 !important;
+    text-transform: uppercase !important;
+    display: block !important;
+    margin-bottom: 3px !important;
+  }
+  .stmt-stat-val {
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    font-family: monospace !important;
+    color: #0f172a !important;
+  }
+  .stmt-stat--red .stmt-stat-val {
+    color: #b91c1c !important;
+  }
+  .stmt-stat--green .stmt-stat-val {
+    color: #15803d !important;
+  }
+  .stmt-stat--gold .stmt-stat-val {
+    color: #b45309 !important;
+  }
+
+  /* Data Table */
+  .table-wrapper {
+    overflow: visible !important;
+  }
+  .data-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    color: #0f172a !important;
+    font-size: 9.5pt !important;
+    direction: rtl !important;
+  }
+  .data-table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  .data-table th, .data-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 10px !important;
+    color: #0f172a !important;
+    text-align: right !important;
+  }
+  .data-table th {
+    background-color: #f1f5f9 !important;
+    font-weight: bold !important;
+    color: #0f172a !important;
+  }
+
+  .text-white,
+  .text-muted {
+    color: #0f172a !important;
+  }
+
+  .booking-detail-box {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    padding: 6px 8px !important;
+    margin-top: 4px !important;
+    color: #334155 !important;
+  }
+  .booking-detail-box strong,
+  .booking-detail-box .text-white {
+    color: #0f172a !important;
+  }
+
   .text-error { color: #dc2626 !important; }
   .text-success { color: #16a34a !important; }
+
+  /* Signatures */
+  .hidden.print\:grid {
+    display: grid !important;
+    border-top: 1px solid #cbd5e1 !important;
+  }
+
+  /* Voucher Layout */
+  .print-voucher-area {
+    max-width: 600px !important;
+    margin: 0 auto !important;
+    border: 2px solid #0f172a !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+  }
 }
 
 /* CSS vars fallback */
