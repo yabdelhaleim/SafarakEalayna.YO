@@ -1716,12 +1716,12 @@ onMounted(async () => {
     background: #fff !important;
   }
 
-  body * {
+  html.flight-print-active body * {
     visibility: hidden !important;
   }
 
-  #ticket-content,
-  #ticket-content * {
+  html.flight-print-active #ticket-content,
+  html.flight-print-active #ticket-content * {
     visibility: visible !important;
   }
 

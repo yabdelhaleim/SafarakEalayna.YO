@@ -2213,7 +2213,8 @@ select.form-input { appearance: none; cursor: pointer; }
 .print-header { display: none; }
 
 @media print {
-  body * { visibility: hidden; }
+  body.printing-statement *,
+  body.printing-voucher * { visibility: hidden; }
   body.printing-statement .print-statement-area,
   body.printing-statement .print-statement-area * { visibility: visible; }
   body.printing-voucher .print-voucher-area,

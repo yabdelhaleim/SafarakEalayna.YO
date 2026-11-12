@@ -1,5 +1,6 @@
 <template>
-  <div class="space-y-8 animate-in fade-in pb-10 duration-700" :class="{ 'print:hidden': selectedEntryDetails }">
+  <div class="account-statement-view">
+    <div class="space-y-8 animate-in fade-in pb-10 duration-700" :class="{ 'print:hidden': selectedEntryDetails }">
     <!-- Professional Print Header (Visible only on print) -->
     <div class="hidden print:block print:mb-10">
       <div class="flex items-center justify-between border-b-2 border-black pb-6">
@@ -1274,7 +1275,7 @@
     </div>
 
       <!-- Dedicated Print Layout -->
-      <div v-if="selectedEntryDetails" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
+      <div v-if="selectedEntryDetails" id="statement-voucher-print" class="hidden print:block print:w-full print:bg-white print:text-black print:font-sans" dir="rtl">
         <div class="max-w-4xl mx-auto py-8 px-6">
           <!-- Logo & Header -->
           <div class="text-center mb-10 border-b-2 border-gray-800 pb-6">
@@ -1371,6 +1372,7 @@
           </div>
         </div>
       </div>
+    </div>
   </div>
 </template>
 
@@ -1542,9 +1544,16 @@ function getPaymentMethodLabel(method) {
 }
 
 function printSingleEntry() {
+  document.documentElement.classList.add('voucher-print-active');
+  const cleanup = () => {
+    document.documentElement.classList.remove('voucher-print-active');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
   setTimeout(() => {
     window.print();
-  }, 100);
+    setTimeout(cleanup, 2000);
+  }, 150);
 }
 
 // Quick Transaction Modal State
@@ -1936,14 +1945,16 @@ async function printFullStatement() {
     statement.value = data.items || [];
 
     await nextTick();
-    // Finish every entrance animation BEFORE snapshotting — without this,
-    // rows that have `animationDelay: ${idx * 30}ms` are still translated
-    // off-screen when window.print() captures the page, producing an empty
-    // table even though `statement.value` is populated.
     flushAnimations();
-    window.print();
+    await new Promise(r => setTimeout(r, 150));
 
-    statement.value = originalStatement;
+    const cleanup = () => {
+      statement.value = originalStatement;
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+    setTimeout(cleanup, 3000);
   } catch (err) {
     notifyError('فشل تحميل التقرير الكامل للطباعة', err, 'فشل تحميل التقرير الكامل للطباعة');
   } finally {
@@ -2071,7 +2082,9 @@ function flushAnimations() {
 async function printStatement() {
   await nextTick();
   flushAnimations();
-  window.print();
+  setTimeout(() => {
+    window.print();
+  }, 100);
 }
 
 const exportExcel = async () => {
@@ -2411,6 +2424,17 @@ onMounted(async () => {
   }
   .sidebar, .top-bar, .toast-rack, .backdrop {
     display: none !important;
+  }
+
+  #statement-voucher-print {
+    display: block !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  #statement-voucher-print * {
+    color: #000000 !important;
   }
 
   /* Printer-friendly voucher layout with high contrast */

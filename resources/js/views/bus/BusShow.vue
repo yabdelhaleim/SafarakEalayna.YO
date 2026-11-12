@@ -869,12 +869,12 @@ onMounted(() => {
     background: #fff !important;
   }
 
-  body * {
+  html.bus-print-active body * {
     visibility: hidden !important;
   }
 
-  #bus-ticket-content,
-  #bus-ticket-content * {
+  html.bus-print-active #bus-ticket-content,
+  html.bus-print-active #bus-ticket-content * {
     visibility: visible !important;
   }
 

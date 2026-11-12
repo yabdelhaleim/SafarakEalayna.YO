@@ -213,3 +213,161 @@
     animation: shimmer 2s infinite linear;
 }
 
+/* ═══════════════════════════════════════════════════
+   UNIVERSAL SYSTEM-WIDE PRINT STYLES
+   Guarantees crisp, high-contrast, professional printing
+   across all modules (Finance, Flights, Bus, Visa, Reports).
+   ═══════════════════════════════════════════════════ */
+@media print {
+    @page {
+        size: auto;
+        margin: 10mm;
+    }
+
+    /* Force browser to render backgrounds and colors accurately */
+    *, *::before, *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+    }
+
+    /* Reset core application layout to flow naturally across pages */
+    html, body, #app, .app-shell, .main-zone, .page-body {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Universal elements to hide on print */
+    .no-print,
+    .print\:hidden,
+    .sidebar,
+    .top-bar,
+    .toast-rack,
+    .backdrop,
+    .btn-airline,
+    .btn-gold,
+    .btn-airline-ghost,
+    nav,
+    aside,
+    button[type="button"].print\:hidden {
+        display: none !important;
+    }
+
+    /* Cards and dark containers converted to clean printable containers */
+    .card-midnight,
+    .flight-panel,
+    .bg-card-bg,
+    .bg-card,
+    .dashboard-kpi {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+        border-radius: 8px !important;
+    }
+
+    .flight-panel::before,
+    .flight-hero::after {
+        display: none !important;
+    }
+
+    /* Ensure text readability on white paper */
+    .text-white,
+    .text-text-main,
+    .text-slate-100,
+    .text-slate-200,
+    .text-slate-300,
+    .text-gray-100,
+    .text-gray-200,
+    .text-zinc-100,
+    .text-zinc-200 {
+        color: #0f172a !important;
+    }
+
+    .text-muted,
+    .text-text-muted,
+    .text-slate-400,
+    .text-slate-500,
+    .text-gray-400,
+    .text-gray-500 {
+        color: #475569 !important;
+    }
+
+    .text-gold {
+        color: #92400e !important;
+    }
+
+    .text-sky-300,
+    .text-sky-400,
+    .text-sky,
+    .text-cyan-400 {
+        color: #0369a1 !important;
+    }
+
+    .text-success {
+        color: #15803d !important;
+    }
+
+    .text-error {
+        color: #b91c1c !important;
+    }
+
+    .text-warning {
+        color: #b45309 !important;
+    }
+
+    /* Tables: standard crisp borders and non-splitting rows */
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        color: #0f172a !important;
+        font-size: 10pt !important;
+        direction: rtl !important;
+    }
+
+    tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    th, td {
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 8px 10px !important;
+        text-align: right !important;
+    }
+
+    th {
+        background-color: #f1f5f9 !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+    }
+
+    /* Strip lingering entrance transitions and animations that could capture faded elements */
+    [class*="animate-in"],
+    [class*="slide-in"],
+    [class*="fade-in"] {
+        animation: none !important;
+        animation-delay: 0ms !important;
+        animation-duration: 0ms !important;
+        transform: none !important;
+        opacity: 1 !important;
+        transition: none !important;
+        visibility: visible !important;
+    }
+}
+
+

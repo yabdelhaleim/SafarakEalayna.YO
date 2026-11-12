@@ -566,9 +566,42 @@ function fmt(n, curr = 'EGP') {
 onMounted(loadData);
 </script>
 
-<style scoped>
+<style>
 @media print {
-  body > * { display: none !important; }
-  body.visa-cust-print-active #visa-cust-print { display: block !important; }
+  @page {
+    size: A4 portrait;
+    margin: 15mm 10mm;
+  }
+  body.visa-cust-print-active * {
+    visibility: hidden !important;
+  }
+  body.visa-cust-print-active #visa-cust-print,
+  body.visa-cust-print-active #visa-cust-print * {
+    visibility: visible !important;
+  }
+  body.visa-cust-print-active #visa-cust-print {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 20px !important;
+    box-shadow: none !important;
+  }
+  body.visa-cust-print-active #visa-cust-print table {
+    border-collapse: collapse !important;
+    color: #000000 !important;
+    direction: rtl !important;
+    width: 100% !important;
+    font-size: 10pt !important;
+  }
+  body.visa-cust-print-active #visa-cust-print th,
+  body.visa-cust-print-active #visa-cust-print td {
+    color: #000000 !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 12px !important;
+  }
 }
 </style>
