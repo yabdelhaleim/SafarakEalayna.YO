@@ -55,7 +55,7 @@
 
     <div class="statement-page mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8 print:px-0">
       <!-- Header Section -->
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div class="flex items-center gap-5">
           <button
             type="button"
@@ -493,6 +493,7 @@
           </button>
         </div>
       </div>
+    </div>
 
       <!-- Main Statement Table -->
       <div class="flight-panel !p-0 overflow-hidden border border-white/5 shadow-2xl relative">
@@ -1373,7 +1374,6 @@
         </div>
       </div>
     </div>
-  </div>
 </template>
 
 <script setup>
@@ -2349,6 +2349,12 @@ onMounted(async () => {
   .space-y-8 {
     margin: 0 !important;
     padding: 0 !important;
+  }
+
+  .overflow-x-auto,
+  .overflow-hidden,
+  .flight-panel {
+    overflow: visible !important;
   }
 
   /* Restrict white overrides to only generic tables and main list views */
