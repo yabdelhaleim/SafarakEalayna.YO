@@ -195,11 +195,11 @@ class RealWorldRefundScenariosTest extends AuditTestCase
     }
 
     /**
-     * السيناريو 5: إلغاء من شركة الطيران (Airline Cancellation).
-     * غرامة الطيران تُقفل تلقائياً على صفر، والناقل يسترد تكلفة الشراء بالكامل،
+     * السيناريو 5أ: إلغاء من شركة الطيران باسترجاع كامل (بدون أي خصم/ضرائب).
+     * غرامة الطيران = 0 افتراضياً، والناقل يسترد تكلفة الشراء بالكامل،
      * والعميل يسترد كامل مبلغه (مخصوماً منه عمولة المكتب فقط إن وُجدت).
      */
-    public function test_scenario_5_airline_cancelled_forces_zero_penalty(): void
+    public function test_scenario_5a_airline_cancelled_full_refund_zero_penalty(): void
     {
         $booking = $this->makeBooking([
             'selling_price' => 7000.0,
@@ -209,17 +209,16 @@ class RealWorldRefundScenariosTest extends AuditTestCase
 
         $carrierBalanceBefore = (float) $this->carrier->fresh()->available_balance;
 
-        // حتى لو أرسل المتصل غرامة طيران بالخطأ، يتم قفلها على 0
+        // استرجاع كامل من الطيران (airline_penalty = 0)
         $refund = $this->bookingService->cancelBooking($booking, [
             'refund_case' => 'airline_cancelled',
             'destination' => 'cash',
-            'airline_penalty' => 9999.0, // يجب أن يتم تجاهلها وقفلها على 0
+            'airline_penalty' => 0.0,
             'office_penalty' => 200.0,
             'account_id' => $this->cashbox->id,
-            'notes' => 'إلغاء الرحلة من الخط الجوي',
+            'notes' => 'إلغاء الرحلة من الخط الجوي بدون خصم',
         ]);
 
-        // غرامة الطيران يجب أن تكون 0
         $this->assertEquals(0.0, (float) $refund->airline_penalty);
         $this->assertEquals(200.0, (float) $refund->office_penalty);
 
@@ -230,7 +229,48 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         $carrierBalanceAfter = (float) $this->carrier->fresh()->available_balance;
         $this->assertEqualsWithDelta($carrierBalanceBefore + 5000.0, $carrierBalanceAfter, 0.01);
 
-        $this->assertBalanced('Scenario 5: Airline cancellation');
+        $this->assertBalanced('Scenario 5A: Airline cancellation full refund');
+    }
+
+    /**
+     * السيناريو 5ب: إلغاء من شركة الطيران مع خصم ضرائب غير مستردة (الواقع العملي الجديد).
+     * التذكرة: سعر بيع 7,000 ج.م، شراء 5,000 ج.م.
+     * الطيران ألغى الرحلة وخصم ضرائب غير مستردة قدرها 400 ج.م.
+     * الناقل يسترد فقط: 5,000 - 400 = 4,600 ج.م.
+     * العميل يسترد: 7,000 - 400 - عمولة مكتب (0) = 6,600 ج.م.
+     * ميزان المراجعة متزن تماماً 0.00%.
+     */
+    public function test_scenario_5b_airline_cancelled_with_non_refundable_taxes(): void
+    {
+        $booking = $this->makeBooking([
+            'selling_price' => 7000.0,
+            'purchase_price' => 5000.0,
+        ]);
+        $this->payBooking($booking, 7000.0);
+
+        $carrierBalanceBefore = (float) $this->carrier->fresh()->available_balance;
+
+        // الطيران خصم ضرائب 400 ج.م
+        $refund = $this->bookingService->cancelBooking($booking, [
+            'refund_case' => 'airline_cancelled',
+            'destination' => 'cash',
+            'airline_penalty' => 400.0,
+            'office_penalty' => 0.0,
+            'account_id' => $this->cashbox->id,
+            'notes' => 'إلغاء من الطيران مع خصم ضرائب غير مستردة 400 ج.م',
+        ]);
+
+        $this->assertEquals(400.0, (float) $refund->airline_penalty);
+        $this->assertEquals(0.0, (float) $refund->office_penalty);
+
+        // العميل استرد 6600 (7000 - 400)
+        $this->assertEquals(6600.0, (float) $refund->refund_amount);
+
+        // الناقل استرد الصافي الفعلي: 5000 - 400 = 4600 ج.م
+        $carrierBalanceAfter = (float) $this->carrier->fresh()->available_balance;
+        $this->assertEqualsWithDelta($carrierBalanceBefore + 4600.0, $carrierBalanceAfter, 0.01);
+
+        $this->assertBalanced('Scenario 5B: Airline cancellation with non-refundable taxes');
     }
 
     /**
@@ -455,9 +495,9 @@ class RealWorldRefundScenariosTest extends AuditTestCase
     }
 
     /**
-     * السيناريو 10: إلغاء طيران لحجز مدفوع جزئياً.
+     * السيناريو 10: إلغاء طيران لحجز مدفوع جزئياً بدون ضرائب غير مستردة.
      * الحجز: سعر 7,000 ج.م - مدفوع 2,500 ج.م.
-     * إلغاء الطيران يقفل غرامة الطيران على صفر، والعميل يسترد كامل ما دفعه (2,500).
+     * استرجاع كامل من الطيران بدون غرامة (0.0)، والعميل يسترد كامل ما دفعه (2,500).
      */
     public function test_scenario_10_partially_paid_airline_cancelled(): void
     {
@@ -470,7 +510,7 @@ class RealWorldRefundScenariosTest extends AuditTestCase
         $refund = $this->bookingService->cancelBooking($booking, [
             'refund_case' => 'airline_cancelled',
             'destination' => 'cash',
-            'airline_penalty' => 5000.0, // يتم تجاهلها وتصفيرها
+            'airline_penalty' => 0.0,
             'office_penalty' => 0.0,
             'account_id' => $this->cashbox->id,
         ]);

@@ -134,7 +134,7 @@
                 إلغاء من شركة الطيران
               </div>
               <p class="text-[11px] text-muted mt-2 leading-relaxed">
-                استرداد كامل من الخط الجوي (غرامة الخط = 0 تلقائياً).
+                استرداد بسبب إلغاء الرحلة من الناقل (مع إمكانية إثبات أي ضرائب غير مستردة).
               </p>
             </button>
           </div>
@@ -145,7 +145,7 @@
           خصم الطيران وعمولة الإلغاء والمبلغ المرتجع يُدخلون ويُحسبون
           <span class="font-bold">بالجنيه المصري (ج.م)</span>
           — حتى لو كانت تكلفة الشراء على التذكرة بالدينار أو غيره.
-          إرجاع رصيد الساين يتم تلقائياً بعملة الخط وفق سعر صرف الحجز.
+          إذا فُرضت ضرائب أو رسوم غير مستردة من شركة الطيران، أدخل قيمتها في خانة خصم الطيران.
         </div>
 
         <div class="p-4 rounded-2xl bg-white/5 border border-white/10 flex justify-between items-center text-sm">
@@ -156,9 +156,11 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label class="block text-xs text-muted font-mono">خصم الطيران — ج.م</label>
+              <label class="block text-xs text-muted font-mono">
+                {{ form.refundCase === 'airline_cancelled' ? 'ضرائب / خصم الطيران (ج.م)' : 'خصم الطيران — ج.م' }}
+              </label>
               <span v-if="form.refundCase === 'airline_cancelled'" class="text-[10px] text-sky-300 bg-sky-500/15 px-2 py-0.5 rounded-md font-bold">
-                ملغى من الطيران = 0
+                ملغى من الطيران
               </span>
             </div>
             <div class="relative">
@@ -168,16 +170,12 @@
                 min="0"
                 step="0.01"
                 placeholder="0.00"
-                :disabled="form.refundCase === 'airline_cancelled'"
-                :class="[
-                  'w-full p-4 pl-14 bg-input border rounded-2xl focus:border-gold outline-none font-mono text-xl text-right',
-                  form.refundCase === 'airline_cancelled' ? 'border-sky-500/30 text-sky-200 opacity-60 cursor-not-allowed' : 'border-white/10 text-white'
-                ]"
+                class="w-full p-4 pl-14 bg-input border border-white/10 rounded-2xl focus:border-gold outline-none font-mono text-xl text-right text-white"
               />
               <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">ج.م</span>
             </div>
             <p class="mt-1.5 text-[10px] text-muted">
-              {{ form.refundCase === 'airline_cancelled' ? 'لا توجد غرامة طيران عند إلغاء الرحلة من قبل الناقل.' : 'غرامة شركة الطيران محوّلة للجنيه (ليس بالدينار/الدولار)' }}
+              {{ form.refundCase === 'airline_cancelled' ? 'أي ضرائب أو رسوم غير مستردة خصمها خط الطيران (ضع 0 إذا كان الاسترداد كاملاً بدون خصم).' : 'غرامة شركة الطيران محوّلة للجنيه (ليس بالدينار/الدولار)' }}
             </p>
           </div>
           <div>
@@ -382,7 +380,7 @@
           <SummaryRow label="العميل" :value="customerName" />
           <SummaryRow
             label="نوع الإلغاء"
-            :value="form.refundCase === 'airline_cancelled' ? 'إلغاء من شركة الطيران (غرامة طيران = 0)' : 'بناءً على رغبة العميل'"
+            :value="form.refundCase === 'airline_cancelled' ? 'إلغاء من شركة الطيران' : 'بناءً على رغبة العميل'"
             :value-class="form.refundCase === 'airline_cancelled' ? 'text-sky-300 font-bold' : 'text-white'"
           />
           <SummaryRow
@@ -575,7 +573,10 @@ const isCorporate = computed(() => {
 function setRefundCase(caseName) {
   form.value.refundCase = caseName;
   if (caseName === 'airline_cancelled') {
-    form.value.airlinePenalty = 0;
+    // نجعل القيمة 0 كقيمة أولية افتراضية مع فتح إمكانية التعديل للمستخدم
+    if (form.value.airlinePenalty === null || form.value.airlinePenalty === undefined) {
+      form.value.airlinePenalty = 0;
+    }
   }
 }
 
@@ -689,8 +690,8 @@ async function submitRefund() {
 
   try {
     const payload = {
-      airline_penalty: form.value.refundCase === 'airline_cancelled' ? 0 : roundMoney(form.value.airlinePenalty),
-      office_penalty: roundMoney(form.value.officePenalty),
+      airline_penalty: roundMoney(form.value.airlinePenalty || 0),
+      office_penalty: roundMoney(form.value.officePenalty || 0),
       refund_case: form.value.refundCase,
       destination: form.value.destination,
       notes: form.value.notes?.trim() || null,

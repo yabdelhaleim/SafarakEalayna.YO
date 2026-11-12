@@ -2685,11 +2685,8 @@ class FlightBookingService
                 $refundCase = $data['refund_case'] ?? 'customer_voluntary';
                 $destination = $data['destination'] ?? (! empty($data['account_id']) ? 'cash' : 'customer_credit');
 
-                if ($refundCase === 'airline_cancelled') {
-                    $airlinePenalty = 0.0;
-                } else {
-                    $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
-                }
+                // خصم/ضرائب الطيران: تقبل القيمة المدخلة في كلا الحالتين (إلغاء عميل أو إلغاء طيران بضرائب غير مستردة)، وتكون 0 افتراضياً إن لم تُرسل
+                $airlinePenalty = (float) ($data['airline_penalty'] ?? 0);
                 $officePenalty = (float) ($data['office_penalty'] ?? 0);
 
                 // Bug #1 fix (2026-07-29): PENALTIES ARE IN EGP — per the production API
