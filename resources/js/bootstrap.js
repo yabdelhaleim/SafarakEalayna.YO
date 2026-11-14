@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { isRequestCanceled } from './utils/api.js';
+import { getStoredToken, setStoredToken, clearStoredToken, isValidToken } from './utils/authStorage.js';
 
 // Global Locale Override to force English numerals (Latin numbering system) in Arabic formatting
 (function () {
@@ -169,11 +170,11 @@ axios.interceptors.request.use((config) => {
 
     // Enforce JSON headers so FormRequest works correctly in Laravel
     config.headers['Accept'] = 'application/json';
-    if (config.data && typeof config.data === 'object') {
+    if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
         config.headers['Content-Type'] = 'application/json';
     }
 
-    const token = localStorage.getItem('auth_token');
+    const token = getStoredToken();
     if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;
     } else {
@@ -244,18 +245,20 @@ axios.interceptors.response.use(
                 requestUrl.includes('/auth/login') ||
                 requestUrl.includes('/auth/register');
 
+            const currentToken = getStoredToken();
+
             if (
                 !isPublicAuthRequest &&
                 !error.config?._authRetried &&
-                localStorage.getItem('auth_token') &&
+                currentToken &&
                 !requestUrl.includes('/auth/refresh')
             ) {
                 error.config._authRetried = true;
                 try {
                     const refreshResponse = await axios.post('/api/v1/auth/refresh');
                     const newToken = refreshResponse.data?.data?.token;
-                    if (newToken) {
-                        localStorage.setItem('auth_token', newToken);
+                    if (isValidToken(newToken)) {
+                        setStoredToken(newToken);
                         axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
                         error.config.headers = error.config.headers || {};
                         error.config.headers['Authorization'] = `Bearer ${newToken}`;
@@ -266,19 +269,20 @@ axios.interceptors.response.use(
                 }
             }
 
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('auth_token_expires_minutes');
+            clearStoredToken();
             delete axios.defaults.headers.common['Authorization'];
 
-            if (!isRedirectingToLogin) {
-                isRedirectingToLogin = true;
-                if (window.addToast) {
-                    window.addToast('انتهت جلستك، سيتم تحويلك لتسجيل الدخول', 'warning');
+            if (!isPublicAuthRequest) {
+                if (!isRedirectingToLogin) {
+                    isRedirectingToLogin = true;
+                    if (window.addToast) {
+                        window.addToast('انتهت جلستك، سيتم تحويلك لتسجيل الدخول', 'warning');
+                    }
+                    setTimeout(() => {
+                        isRedirectingToLogin = false;
+                        window.location.href = '/login';
+                    }, 1500);
                 }
-                setTimeout(() => {
-                    isRedirectingToLogin = false;
-                    window.location.href = '/login';
-                }, 1500);
             }
 
         } else if (status === 419) {

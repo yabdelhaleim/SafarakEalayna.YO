@@ -34,10 +34,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'admin' => EnsureIsAdmin::class,
-            'active' => EnsureIsActive::class,
-            'role' => EnsureIsAdmin::class,
+            'admin'      => EnsureIsAdmin::class,
+            'active'     => EnsureIsActive::class,
+            'role'       => EnsureIsAdmin::class,
             'permission' => CheckPermission::class,
+            'lockout'    => \App\Http\Middleware\AccountLockout::class,
         ]);
     })
     ->withSchedule(function (Schedule $schedule): void {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Helpers\ApiResponse;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\AccountLockout;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -50,12 +51,17 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
+            // SEC-10: increment brute-force failure counter per email
+            AccountLockout::increment($request->email);
             return ApiResponse::error('بيانات الاعتماد غير صحيحة', null, Response::HTTP_UNAUTHORIZED);
         }
 
         if (! $user->is_active) {
             return ApiResponse::error('الحساب غير نشط', null, Response::HTTP_UNAUTHORIZED);
         }
+
+        // SEC-10: clear lockout counter on successful login
+        AccountLockout::clear($request->email);
 
         // توكن مستقل لكل جهاز/جلسة — لا نحذف جلسات أخرى (نفس المستخدم أو مستخدمين مختلفين)
         $tokenName = 'auth-token-' . Str::uuid();

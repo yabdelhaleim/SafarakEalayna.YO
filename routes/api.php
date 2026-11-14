@@ -79,9 +79,10 @@ use Illuminate\Support\Facades\Route;
 // Public Authentication Routes (No middleware required)
 // SECURITY (Phase 5): rate-limited to 5/min per IP via `throttle:auth` to
 // prevent brute-force attacks on credentials and registration spam.
+// SEC-10: `lockout` middleware adds per-account lockout after 10 failures.
 Route::prefix('v1/auth')->middleware('throttle:auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('lockout');
 });
 
 // Public routes for booking forms (no authentication required)

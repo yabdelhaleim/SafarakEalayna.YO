@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { h, resolveComponent } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
+import { getStoredToken } from '@/utils/authStorage';
 
 const routes = [
   {
@@ -779,7 +780,7 @@ router.beforeEach(async (to, from) => {
     window.cancelPendingRequests();
   }
   const authStore = useAuthStore();
-  const initialToken = localStorage.getItem('auth_token');
+  const initialToken = getStoredToken();
 
   // Ensure auth is initialized to check permissions correctly
   if (initialToken && !authStore.user) {
@@ -787,7 +788,7 @@ router.beforeEach(async (to, from) => {
   }
 
   // Get the fresh, updated token status from store (handles 401 logouts during initAuth)
-  const token = authStore.token;
+  const token = authStore.token || getStoredToken();
 
   // 1. Check if route requires auth
   if (to.matched.some(record => record.meta.requiresAuth)) {

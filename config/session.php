@@ -32,7 +32,9 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 525600),
+    // SEC-06: Fallback corrected from 525600 (1 year) to 120 min.
+    // On production servers set SESSION_LIFETIME=480 (8 hours) in .env.
+    'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

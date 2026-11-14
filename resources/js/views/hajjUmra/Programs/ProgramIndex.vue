@@ -105,6 +105,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useHajjUmraStore } from '@/stores/hajjUmraStore';
 import { useAuthStore } from '@/stores/authStore';
+import { getStoredToken } from '@/utils/authStorage';
 import { Plus, Calendar } from 'lucide-vue-next';
 
 const store = useHajjUmraStore();
@@ -133,7 +134,7 @@ const programStatusClass = (status) => {
 };
 
 const adminProgramsUrl = computed(() => {
-  const token = authStore.token || localStorage.getItem('auth_token') || '';
+  const token = authStore.token || getStoredToken() || '';
   return token ? `/admin/programs?token=${encodeURIComponent(token)}` : '/admin/programs';
 });
 

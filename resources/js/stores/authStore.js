@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import {
+  getStoredToken,
+  setStoredToken,
+  clearStoredToken,
+  getStoredExpiryMinutes,
+  isValidToken,
+} from '@/utils/authStorage';
 
 let tokenRefreshTimer = null;
 
@@ -13,7 +20,7 @@ function clearTokenRefreshTimer() {
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
-    token: localStorage.getItem('auth_token') || null,
+    token: getStoredToken(),
     loading: {
       login: false,
       register: false,
@@ -24,7 +31,7 @@ export const useAuthStore = defineStore('auth', {
   }),
 
   getters: {
-    isAuthenticated: (state) => !!state.token,
+    isAuthenticated: (state) => isValidToken(state.token),
     userName: (state) => state.user?.name || 'مستخدم',
     userRole: (state) => state.user?.role || 'employee',
     userInitial: (state) => {
@@ -39,27 +46,26 @@ export const useAuthStore = defineStore('auth', {
 
   actions: {
     /**
-     * Set the auth token in localStorage and axios defaults
+     * Persist the auth token securely using unified authStorage utility.
      */
     setToken(token, expiresInMinutes = null) {
-      this.token = token;
-      localStorage.setItem('auth_token', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      if (expiresInMinutes != null && expiresInMinutes > 0) {
-        localStorage.setItem('auth_token_expires_minutes', String(expiresInMinutes));
+      if (!isValidToken(token)) {
+        return false;
       }
+      this.token = token.trim();
+      setStoredToken(this.token, expiresInMinutes);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+      return true;
     },
 
     /**
-     * Clear auth state
+     * Clear all auth state — called on logout or 401.
      */
     clearAuth() {
       clearTokenRefreshTimer();
       this.token = null;
       this.user = null;
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_token_expires_minutes');
+      clearStoredToken();
       delete axios.defaults.headers.common['Authorization'];
     },
 
@@ -71,6 +77,7 @@ export const useAuthStore = defineStore('auth', {
         return;
       }
 
+      // Refresh at 80 % of lifetime, minimum every 60 seconds
       const intervalMs = Math.max(Math.floor(minutes * 0.8 * 60 * 1000), 60_000);
       tokenRefreshTimer = setInterval(() => {
         this.refreshToken().catch(() => {});
@@ -78,7 +85,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async refreshToken() {
-      if (!this.token) {
+      if (!isValidToken(this.token)) {
         return { success: false };
       }
 
@@ -88,12 +95,14 @@ export const useAuthStore = defineStore('auth', {
 
         if (result.success || result.status) {
           const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
-          this.setToken(token, expiresInMinutes);
-          if (user) {
-            this.user = user;
+          if (isValidToken(token)) {
+            this.setToken(token, expiresInMinutes);
+            if (user) {
+              this.user = user;
+            }
+            this.scheduleTokenRefresh(expiresInMinutes);
+            return { success: true };
           }
-          this.scheduleTokenRefresh(expiresInMinutes);
-          return { success: true };
         }
       } catch (error) {
         console.error('Token refresh failed:', error);
@@ -115,10 +124,14 @@ export const useAuthStore = defineStore('auth', {
         const result = response.data;
         if (result.success || result.status) {
           const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
-          this.setToken(token, expiresInMinutes);
-          this.user = user;
-          this.scheduleTokenRefresh(expiresInMinutes);
-          return { success: true };
+          if (isValidToken(token)) {
+            this.setToken(token, expiresInMinutes);
+            this.user = user;
+            this.scheduleTokenRefresh(expiresInMinutes);
+            return { success: true };
+          }
+          this.errors = { message: 'استجابة تسجيل الدخول غير صالحة' };
+          return { success: false, message: 'استجابة تسجيل الدخول غير صالحة' };
         } else {
           this.errors = { message: response.data.message || 'فشل تسجيل الدخول' };
           return { success: false, message: response.data.message };
@@ -150,11 +163,18 @@ export const useAuthStore = defineStore('auth', {
 
         const result = response.data;
         if (result.success || result.status) {
-          const { token, user, expires_in_minutes: expiresInMinutes } = response.data.data;
-          this.setToken(token, expiresInMinutes);
-          this.user = user;
-          this.scheduleTokenRefresh(expiresInMinutes);
-          return { success: true };
+          // SECURITY HARDENING: In registration, new accounts default to inactive (is_active: false)
+          // and no token is returned. Only set token if a valid token is explicitly provided.
+          const tokenData = response.data?.data;
+          if (tokenData?.token && isValidToken(tokenData.token)) {
+            const { token, user, expires_in_minutes: expiresInMinutes } = tokenData;
+            this.setToken(token, expiresInMinutes);
+            this.user = user;
+            this.scheduleTokenRefresh(expiresInMinutes);
+          } else if (tokenData?.user) {
+            this.user = tokenData.user;
+          }
+          return { success: true, message: response.data?.message };
         } else {
           this.errors = { message: response.data.message || 'فشل إنشاء الحساب' };
           return { success: false, message: response.data.message };
@@ -175,7 +195,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Logout - revoke token
+     * Logout — revoke token on server + clear local state
      */
     async logout() {
       this.loading.logout = true;
@@ -191,10 +211,11 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Fetch current user info
+     * Fetch current user info from the server
      */
     async fetchMe(force = false) {
-      if (!this.token) return;
+      const activeToken = this.token || getStoredToken();
+      if (!isValidToken(activeToken)) return;
       if (this.user && !force) return;
       if (this.loading.me) return;
 
@@ -202,7 +223,7 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         // Ensure token is set in headers
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+        axios.defaults.headers.common['Authorization'] = `Bearer ${activeToken}`;
 
         const response = await axios.get('/api/v1/auth/me');
 
@@ -224,16 +245,20 @@ export const useAuthStore = defineStore('auth', {
      * Initialize auth state on app load
      */
     async initAuth() {
-      if (this.token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+      const stored = getStoredToken();
+      if (isValidToken(stored)) {
+        this.token = stored;
+        axios.defaults.headers.common['Authorization'] = `Bearer ${stored}`;
         if (!this.user) {
           await this.fetchMe();
         }
 
-        const storedExpiry = parseInt(localStorage.getItem('auth_token_expires_minutes') || '', 10);
-        if (storedExpiry > 0) {
+        const storedExpiry = getStoredExpiryMinutes();
+        if (storedExpiry && storedExpiry > 0) {
           this.scheduleTokenRefresh(storedExpiry);
         }
+      } else {
+        this.clearAuth();
       }
     },
   },
